@@ -2,6 +2,15 @@
   "endpoint": "unboundBlocklistPolicies",
   "method": "GET",
   "path": "api/unbound/overview/get_policies",
-  "topLevelKind": "any",
-  "fields": []
+  "topLevelKind": "object",
+  "fields": [
+    {
+      "path": "*",
+      "kind": "object"
+    },
+    {
+      "path": "*.enabled",
+      "kind": "any"
+    }
+  ]
 }

@@ -1,0 +1,90 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-mbuf-jumbo-pool-saturated",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseMbufJumboPoolSaturated",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "10m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense mbuf {{ $labels.pool }} jumbo pool saturated ({{ $values.A.Value | printf \"%.1f\" }}%, {{ $labels.opnsense_instance }})",
+      "description": "The {{ $labels.pool }} jumbo mbuf pool has been over 90% of its configured ceiling for 10m. This is headroom BEFORE the pool exhausts and the box starts dropping jumbo-frame traffic, complementing opnsense_mbuf_failures_total (which only reports a failure after it has already happened). Scoped to jumbo9/jumbo16 only - the packet secondary zone has no ceiling series upstream.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensembufjumbopoolsaturated",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "102"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "100 * opnsense_mbuf_pool_current{pool=~\"jumbo9|jumbo16\"} / (opnsense_mbuf_pool_max{pool=~\"jumbo9|jumbo16\"} > 0)",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  90,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

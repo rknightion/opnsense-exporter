@@ -44,8 +44,11 @@ func TestFirmwareCollector_Update(t *testing.T) {
 
 	// 10 unconditional metrics (8 + the #373 remove_packages/upgrade_sets
 	// counts) + the 3 stored-check series (#373 success + 2 states) + the #380
-	// pending download gauge (download_size absent = unambiguously 0).
-	expectedCount := 14
+	// pending download gauge (download_size absent = unambiguously 0) + the
+	// #583 major_upgrade_available gauge. major_upgrade_info is NOT counted:
+	// this fixture carries no upgrade_major_version, so no major upgrade is on
+	// offer and there is no version to name.
+	expectedCount := 15
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -143,7 +146,9 @@ func TestFirmwareCollector_Update_NeedsReboot(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 14
+	// 15 since #583 added major_upgrade_available; see the count comment in
+	// TestFirmwareCollector_Update.
+	expectedCount := 15
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -480,10 +485,14 @@ func TestFirmwareCollector_Update_DetailsEnabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 14 non-detail metrics (8 base + #237 downgrade/reinstall counts + #373
-	// remove/upgrade-set counts + #373 success/2 states + #380 download bytes)
-	// + 1 package_update_available + 1 plugin_installed = 16.
-	expectedCount := 16
+	// 15 non-detail metrics (8 base + #237 downgrade/reinstall counts + #373
+	// remove/upgrade-set counts + #373 success/2 states + #380 download bytes
+	// + #583 major_upgrade_available) + 1 package_update_available
+	// + 1 plugin_installed + the two #583 per-plugin policy gauges
+	// (plugin_locked, plugin_automatic) = 19. plugin_size_bytes is NOT counted:
+	// this fixture's plugin row carries no flatsize, and an unreportable size
+	// emits no series rather than a fabricated 0.
+	expectedCount := 19
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics with details enabled, got %d", expectedCount, len(metrics))
 	}
@@ -531,8 +540,192 @@ func TestFirmwareCollector_Update_DetailsDisabledByDefault(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 14
+	// 15 since #583 added major_upgrade_available, which is unconditional once
+	// a check is stored; none of the #583 per-plugin gauges appear, which is
+	// the point of this test.
+	expectedCount := 15
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics with details disabled, got %d", expectedCount, len(metrics))
+	}
+}
+
+// TestFirmwareCollector_MajorUpgrade covers #583: a pending major release
+// (26.1 -> 26.7) is a scheduled-window decision, not the same maintenance
+// event as the package updates *_packages_count already tracks.
+func TestFirmwareCollector_MajorUpgrade(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check":"Tue Jun  9 10:13:17 UTC 2026",
+			"os_version":"FreeBSD 14","product_version":"26.1","product_id":"OPNsense","product_abi":"26.1",
+			"upgrade_major_version":"26.7","upgrade_needs_reboot":"1",
+			"product":{"product_check":{"upgrade_needs_reboot":"1"}},"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	c := &firmwareCollector{subsystem: FirmwareSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawAvailable, sawInfo bool
+	for _, m := range metrics {
+		switch {
+		case hasFqName(m, "opnsense_firmware_major_upgrade_available"):
+			sawAvailable = true
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("major_upgrade_available = %v, want 1", v)
+			}
+		case hasFqName(m, "opnsense_firmware_major_upgrade_info"):
+			sawInfo = true
+			if got := getMetricLabels(m)["version"]; got != "26.7" {
+				t.Errorf("major_upgrade_info version label = %q, want %q", got, "26.7")
+			}
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("major_upgrade_info = %v, want 1", v)
+			}
+		}
+	}
+	if !sawAvailable || !sawInfo {
+		t.Errorf("missing metric(s): available=%v info=%v", sawAvailable, sawInfo)
+	}
+}
+
+// TestFirmwareCollector_NoMajorUpgrade: with a check stored but no major
+// upgrade on offer, the 0/1 gauge must be a real 0 (so an alert has a series
+// to evaluate) while the version info series must be ABSENT — there is no
+// version to name, and an info metric labelled version="" is noise that
+// never goes away.
+func TestFirmwareCollector_NoMajorUpgrade(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check":"Tue Jun  9 10:13:17 UTC 2026",
+			"upgrade_major_version":"","upgrade_needs_reboot":"0",
+			"product":{"product_check":{"upgrade_needs_reboot":"0"}},"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	c := &firmwareCollector{subsystem: FirmwareSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+
+	var sawAvailable bool
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_firmware_major_upgrade_info") {
+			t.Fatalf("major_upgrade_info must not be emitted with no major upgrade (labels %v)", getMetricLabels(m))
+		}
+		if hasFqName(m, "opnsense_firmware_major_upgrade_available") {
+			sawAvailable = true
+			if v := getMetricValue(m); v != 0 {
+				t.Errorf("major_upgrade_available = %v, want 0", v)
+			}
+		}
+	}
+	if !sawAvailable {
+		t.Error("major_upgrade_available must be emitted as a real 0 once a check is stored")
+	}
+}
+
+// TestFirmwareCollector_NoStoredCheckEmitsNoMajorUpgradeSeries: before the box
+// has ever run an update check the envelope is minimal and there is nothing
+// stored to read. Emitting available=0 there would claim "no major upgrade
+// pending" on a firewall that has never looked.
+func TestFirmwareCollector_NoStoredCheckEmitsNoMajorUpgradeSeries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"product":{"product_check":null},"status":"none","status_msg":"check first"}`))
+	}))
+	defer server.Close()
+
+	c := &firmwareCollector{subsystem: FirmwareSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_firmware_major_upgrade_available") ||
+			hasFqName(m, "opnsense_firmware_major_upgrade_info") {
+			t.Fatalf("no major-upgrade series may be emitted before a check is stored: %s", m.Desc().String())
+		}
+	}
+}
+
+// TestFirmwareCollector_PluginDetail covers the #583 per-plugin gauges. They
+// ride the SAME --exporter.enable-firmware-package-details gate as
+// plugin_installed, so nothing new is paid for on a default scrape.
+func TestFirmwareCollector_PluginDetail(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/core/firmware/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"last_check":"Tue Jun  9 10:13:17 UTC 2026","status":"ok",
+			"product":{"product_check":{"upgrade_needs_reboot":"0"}}}`))
+	})
+	mux.HandleFunc("/api/core/firmware/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"product_id":"OPNsense","product_version":"26.1","plugin":[
+			{"name":"os-tailscale","version":"1.4","installed":"1","flatsize":"168KiB","locked":"1","automatic":"N/A"},
+			{"name":"os-frr","version":"1.0","installed":"1","flatsize":"N/A","locked":"N/A","automatic":"1"}
+		]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &firmwareCollector{subsystem: FirmwareSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+	assertNoDuplicateSeries(t, metrics)
+
+	size := map[string]float64{}
+	locked := map[string]float64{}
+	automatic := map[string]float64{}
+	for _, m := range metrics {
+		name := getMetricLabels(m)["name"]
+		switch {
+		case hasFqName(m, "opnsense_firmware_plugin_size_bytes"):
+			size[name] = getMetricValue(m)
+		case hasFqName(m, "opnsense_firmware_plugin_locked"):
+			locked[name] = getMetricValue(m)
+		case hasFqName(m, "opnsense_firmware_plugin_automatic"):
+			automatic[name] = getMetricValue(m)
+		}
+	}
+
+	if size["os-tailscale"] != 168*1024 {
+		t.Errorf("os-tailscale size = %v, want %v", size["os-tailscale"], 168*1024)
+	}
+	// "N/A" is not zero. A plugin whose size upstream could not report must
+	// emit no size series rather than appear free in a disk-attribution panel.
+	if _, ok := size["os-frr"]; ok {
+		t.Errorf("os-frr must emit no size series, got %v", size["os-frr"])
+	}
+	// The "N/A" trap: PHP's empty("0") is true, so upstream rewrites a false
+	// flag to "N/A" and the wire vocabulary is {"1","N/A"} — never "0".
+	if locked["os-tailscale"] != 1 || locked["os-frr"] != 0 {
+		t.Errorf("locked = %v, want os-tailscale=1 os-frr=0", locked)
+	}
+	if automatic["os-tailscale"] != 0 || automatic["os-frr"] != 1 {
+		t.Errorf("automatic = %v, want os-tailscale=0 os-frr=1", automatic)
+	}
+}
+
+// TestFirmwareCollector_PluginDetailOffByDefault pins the gating: none of the
+// #583 per-plugin series may appear on a default scrape.
+func TestFirmwareCollector_PluginDetailOffByDefault(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"last_check":"Tue Jun  9 10:13:17 UTC 2026","status":"ok",
+			"product":{"product_check":{"upgrade_needs_reboot":"0"}}}`))
+	}))
+	defer server.Close()
+
+	c := &firmwareCollector{subsystem: FirmwareSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+
+	for _, m := range metrics {
+		for _, banned := range []string{
+			"opnsense_firmware_plugin_size_bytes",
+			"opnsense_firmware_plugin_locked",
+			"opnsense_firmware_plugin_automatic",
+		} {
+			if hasFqName(m, banned) {
+				t.Errorf("%s emitted without --exporter.enable-firmware-package-details", banned)
+			}
+		}
 	}
 }

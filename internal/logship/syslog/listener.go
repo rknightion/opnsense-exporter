@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
@@ -72,6 +74,12 @@ type Config struct {
 	// TLSHandshakeTimeout bounds a pre-authentication TLS connection's hold on a slot.
 	// Zero means defaultTLSHandshakeTimeout.
 	TLSHandshakeTimeout time.Duration
+	// Registerer is where the connection-slot headroom gauges register (#592). It is
+	// separate from the ReceiverMetrics handle passed to NewListener because those are
+	// SHARED, source-labelled counters owned by the pipeline, while these are this
+	// listener's own gauges over its own budgets. Nil disables them, exactly as a nil
+	// ReceiverMetrics disables the counters.
+	Registerer prometheus.Registerer
 }
 
 // Listener is a hardened UDP + TCP syslog receiver. It hands each framed line to
@@ -94,8 +102,12 @@ type Listener struct {
 	// Separate budgets over a reserved share: a reservation still lets plaintext take
 	// the unreserved remainder of a shared pool, and there is no reason the two
 	// transports should compete at all. MaxConns is therefore per transport.
-	tcpSem  chan struct{}
-	tlsSem  chan struct{}
+	tcpSem chan struct{}
+	tlsSem chan struct{}
+	// slots reports the occupancy of the two budgets above. Nil when no registerer
+	// was supplied; every call site goes through the nil-safe methods.
+	slots *slotGauges
+
 	conns   sync.WaitGroup
 	closing chan struct{}
 	once    sync.Once
@@ -133,6 +145,16 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 	if log == nil {
 		log = slog.Default()
 	}
+	// Only the connection-oriented transports that are actually configured get slot
+	// series. UDP is absent by nature — it is connectionless and holds no slot — and a
+	// transport with no socket would publish a budget that can never be spent.
+	var slotTransports []string
+	if cfg.TCPAddr != "" {
+		slotTransports = append(slotTransports, "tcp")
+	}
+	if cfg.TLSAddr != "" && cfg.TLSConfig != nil {
+		slotTransports = append(slotTransports, "tls")
+	}
 	return &Listener{
 		cfg:     cfg,
 		handle:  handle,
@@ -140,6 +162,7 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 		log:     log,
 		tcpSem:  make(chan struct{}, cfg.MaxConns),
 		tlsSem:  make(chan struct{}, cfg.MaxConns),
+		slots:   newSlotGauges(cfg.Registerer, cfg.MaxConns, slotTransports),
 		closing: make(chan struct{}),
 
 		refusalLast: make(map[refusalLogKey]time.Time, 4),
@@ -375,6 +398,7 @@ func (l *Listener) serveTCP() {
 
 		select {
 		case l.tcpSem <- struct{}{}:
+			l.slots.observe("tcp", len(l.tcpSem))
 		default:
 			// At the connection cap: refuse rather than fork an unbounded goroutine.
 			// Counted, not merely logged (#399) — a capacity attack is exactly the
@@ -393,7 +417,7 @@ func (l *Listener) serveTCP() {
 		l.conns.Add(1)
 		go func() {
 			defer l.conns.Done()
-			defer func() { <-l.tcpSem }()
+			defer func() { <-l.tcpSem; l.slots.observe("tcp", len(l.tcpSem)) }()
 			defer func() { _ = conn.Close() }()
 			l.serveConn(conn, peer)
 		}()
@@ -430,6 +454,7 @@ func (l *Listener) serveTLS() {
 
 		select {
 		case l.tlsSem <- struct{}{}:
+			l.slots.observe("tls", len(l.tlsSem))
 		default:
 			// At the connection cap: refuse rather than fork an unbounded goroutine.
 			// Counted under the SAME conn_limit reason as plaintext: the budgets are
@@ -448,7 +473,7 @@ func (l *Listener) serveTLS() {
 		l.conns.Add(1)
 		go func() {
 			defer l.conns.Done()
-			defer func() { <-l.tlsSem }()
+			defer func() { <-l.tlsSem; l.slots.observe("tls", len(l.tlsSem)) }()
 			defer func() { _ = conn.Close() }()
 			if !l.handshake(conn, peer) {
 				return

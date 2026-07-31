@@ -26,7 +26,7 @@
       "description": "opnsense_up has been 0 (the OPNsense API was unreachable / the scrape failed) or the target produced NoData for 15m. opnsense_up reflects API reachability ONLY - a reachable box reporting a degraded subsystem (e.g. a crash report) stays up=1 and is covered by the lower-severity OPNsenseCrashReports / OPNsenseFirewallUnhealthy alerts, so this critical/page fires on genuine unreachability only. The 15m window tolerates a router reboot (typically <10m) without paging.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseexporterdown",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "88"
+      "__panelId__": "93"
     },
     "expressions": {
       "A": {

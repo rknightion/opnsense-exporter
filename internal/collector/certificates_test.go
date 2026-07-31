@@ -188,3 +188,50 @@ func TestCertificatesCollector_CAMetrics(t *testing.T) {
 		t.Errorf("missing CA metrics: total=%v valid_to=%v", sawCATotal, sawCAValidTo)
 	}
 }
+
+// TestCertificatesCollector_CAReferences covers #583: refcount separates a CA
+// about to expire that 50 things depend on (an outage) from one nothing uses
+// (dead config). The validity gauges alone cannot tell those apart.
+func TestCertificatesCollector_CAReferences(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/trust/cert/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[
+			{"descr":"busy","commonname":"busy-cn","refcount":"50","valid_from":"1","valid_to":"2"},
+			{"descr":"dead","commonname":"dead-cn","refcount":"0","valid_from":"1","valid_to":"2"},
+			{"descr":"legacy","commonname":"legacy-cn","valid_from":"1","valid_to":"2"}
+		]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &certificatesCollector{subsystem: CertificatesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+	assertNoDuplicateSeries(t, metrics)
+
+	got := map[string]float64{}
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_certificate_ca_references") {
+			got[getMetricLabels(m)["description"]] = getMetricValue(m)
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 ca_references series, got %d: %v", len(got), got)
+	}
+	if got["busy"] != 50 {
+		t.Errorf("busy: got %v, want 50", got["busy"])
+	}
+	// A real refcount of 0 IS emitted — "nothing references this CA" is the
+	// dead-config signal the metric exists for.
+	if v, ok := got["dead"]; !ok || v != 0 {
+		t.Errorf("dead: got %v (present=%v), want 0/true", v, ok)
+	}
+	// A row with no refcount key at all emits nothing, so an old generation
+	// that never sent the field cannot masquerade as dead config.
+	if _, ok := got["legacy"]; ok {
+		t.Error("a CA row without a refcount key must emit no ca_references series")
+	}
+}

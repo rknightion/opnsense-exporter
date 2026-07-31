@@ -80,3 +80,41 @@ func TestAliasCollector_Update_Details(t *testing.T) {
 		t.Error("missing packets_total{table=GeoIP_UK,direction=in,action=block}")
 	}
 }
+
+// TestAliasCollector_TableUpdated covers #583. A DNS- or URL-backed alias
+// (a threat feed) that silently stops refreshing is a security control failing
+// open — the table still holds rows, so table_entries looks perfectly healthy
+// while the content rots. This gauge is the only signal for that.
+func TestAliasCollector_TableUpdated(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","size":1000000,"used":11,"details":{
+			"threatfeed": {"count": 10, "updated": "2026-07-30T04:15:03.123456"},
+			"static":     {"count": 1,  "updated": null}
+		}}`))
+	}))
+	defer server.Close()
+
+	c := &aliasCollector{subsystem: AliasSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+	assertNoDuplicateSeries(t, metrics)
+
+	got := map[string]float64{}
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_alias_table_updated_timestamp_seconds") {
+			got[getMetricLabels(m)["table"]] = getMetricValue(m)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected exactly 1 updated series, got %d: %v", len(got), got)
+	}
+	if got["threatfeed"] != 1785384903 {
+		t.Errorf("threatfeed updated = %v, want 1785384903", got["threatfeed"])
+	}
+	// A static alias has no persisted file and therefore no refresh cycle.
+	// Emitting epoch 0 for it would make every static table on the box look
+	// 56 years stale and drown a real stale-feed alert in false positives.
+	if _, ok := got["static"]; ok {
+		t.Error("a table with a null updated must emit no series")
+	}
+}

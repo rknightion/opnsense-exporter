@@ -10,6 +10,50 @@
   "fields": [
     {
       "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].action",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].alert_id",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].as",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].country",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].events_count",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].expiration",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].id",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].reason",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].scope_value",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].source",
       "kind": "any"
     },
     {

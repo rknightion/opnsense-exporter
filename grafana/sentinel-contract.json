@@ -1,10 +1,10 @@
 {
   "prometheus": {
-    "total": 108,
+    "total": 111,
     "by_scope": {
-      "collector": 103,
-      "self_labeled": 4,
-      "target_join": 1,
+      "collector": 104,
+      "self_labeled": 5,
+      "target_join": 2,
       "global": 0
     },
     "sentinels": [
@@ -37,6 +37,16 @@
         "query": "label_values(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "OPNsense Exporter > Security > Aliases > Alias pf Counters (details flag)"
+        ]
+      },
+      {
+        "name": "has_alias_feeds",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_alias_table_updated_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter > Security > Aliases > Alias Feed Freshness"
         ]
       },
       {
@@ -888,6 +898,16 @@
         ]
       },
       {
+        "name": "has_process_fds",
+        "datasource": "prometheus",
+        "scope": "target_join",
+        "presence": "existence",
+        "query": "query_result(process_open_fds{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+        "gates": [
+          "OPNsense Exporter Health > Exporter Runtime > File Descriptors (process collector)"
+        ]
+      },
+      {
         "name": "has_qfeeds",
         "datasource": "prometheus",
         "scope": "collector",
@@ -1051,6 +1071,16 @@
         ]
       },
       {
+        "name": "has_syslog_conn_slots",
+        "datasource": "prometheus",
+        "scope": "self_labeled",
+        "presence": "existence",
+        "query": "label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter Health > Overview > Syslog Listener Headroom"
+        ]
+      },
+      {
         "name": "has_tailscale",
         "datasource": "prometheus",
         "scope": "collector",
@@ -1197,8 +1227,38 @@
     ]
   },
   "loki": {
-    "total": 2,
+    "total": 6,
     "sentinels": [
+      {
+        "name": "has_crowdsec_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"crowdsec\"}, opnsense_source)",
+        "gates": [
+          "OPNsense Exporter > Security > CrowdSec > Alert & Decision Records"
+        ]
+      },
+      {
+        "name": "has_flow_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=~\"netflow|merged\"}, opnsense_source)",
+        "gates": [
+          "OPNsense Exporter > Network > Flow Volume > Flow Record Drilldown"
+        ]
+      },
+      {
+        "name": "has_ids_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"ids\"}, opnsense_source)",
+        "gates": [
+          "OPNsense Exporter > Security > IDS/IPS > Alert Records"
+        ]
+      },
       {
         "name": "has_syslog_logs",
         "datasource": "loki",
@@ -1209,6 +1269,16 @@
           "OPNsense Exporter > Services",
           "OPNsense Exporter > Services > Syslog",
           "OPNsense Exporter > Services > Syslog > Shipped Syslog Logs"
+        ]
+      },
+      {
+        "name": "has_unbound_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"unbound\"}, opnsense_source)",
+        "gates": [
+          "OPNsense Exporter > Network > DNS - Unbound > Per-Query Log"
         ]
       },
       {

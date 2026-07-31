@@ -16,9 +16,10 @@ type certificatesCollector struct {
 	info             *prometheus.Desc
 	certificateTotal *prometheus.Desc
 
-	caValidFrom *prometheus.Desc
-	caValidTo   *prometheus.Desc
-	caTotal     *prometheus.Desc
+	caValidFrom  *prometheus.Desc
+	caValidTo    *prometheus.Desc
+	caTotal      *prometheus.Desc
+	caReferences *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -72,6 +73,15 @@ func (c *certificatesCollector) Register(namespace, instanceLabel string, log *s
 		"Total number of certificate authorities",
 		nil,
 	)
+	// #583. Deliberately keyed on the SAME (description, commonname) tuple as
+	// the sibling ca_valid_* gauges rather than the single {ca} label the issue
+	// sketched: an operator joins this against expiry, and a different label set
+	// would make that join impossible. It also means one dedupe pass covers all
+	// three series.
+	c.caReferences = buildPrometheusDesc(c.subsystem, "ca_references",
+		"Number of other configuration objects that reference this certificate authority (OPNsense's own refcount). This is what separates a CA nearing expiry that 50 things depend on - an outage on a known date - from one nothing uses, which is dead config; the validity gauges alone cannot tell them apart. 0 is a real, meaningful value; a CA whose payload carries no refcount at all emits no series.",
+		caLabels,
+	)
 }
 
 func (c *certificatesCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -82,6 +92,7 @@ func (c *certificatesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.caValidFrom
 	ch <- c.caValidTo
 	ch <- c.caTotal
+	ch <- c.caReferences
 }
 
 func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -176,6 +187,13 @@ func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Cli
 		if ca.HasValidTo {
 			ch <- prometheus.MustNewConstMetric(c.caValidTo, prometheus.GaugeValue,
 				ca.ValidTo, ca.Description, ca.CommonName, c.instance)
+		}
+		// Absent refcount emits nothing: "the key wasn't there" must not be
+		// reported as "referenced by nothing", which is the signal an operator
+		// would act on by deleting the CA.
+		if ca.HasReferences {
+			ch <- prometheus.MustNewConstMetric(c.caReferences, prometheus.GaugeValue,
+				ca.References, ca.Description, ca.CommonName, c.instance)
 		}
 	}
 

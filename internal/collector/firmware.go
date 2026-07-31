@@ -26,6 +26,11 @@ type firmwareCollector struct {
 	pendingDownloadBytes   *prometheus.Desc
 	packageUpdateAvailable *prometheus.Desc
 	pluginInstalled        *prometheus.Desc
+	majorUpgradeAvailable  *prometheus.Desc
+	majorUpgradeInfo       *prometheus.Desc
+	pluginSizeBytes        *prometheus.Desc
+	pluginLocked           *prometheus.Desc
+	pluginAutomatic        *prometheus.Desc
 
 	subsystem      string
 	instance       string
@@ -94,6 +99,30 @@ func (c *firmwareCollector) Register(namespace, instanceLabel string, log *slog.
 	c.pluginInstalled = buildPrometheusDesc(c.subsystem, "plugin_installed",
 		"Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set.",
 		[]string{"name", "version"})
+
+	// #583. Spelled out as a literal []string, NOT built with append(): docgen's
+	// AST label extractor follows a plain slice literal or variable but silently
+	// records an EMPTY label set for an append(...) expression, which then fails
+	// the docs-vs-registry cross-check with a message that points nowhere near
+	// here. Keep it a literal.
+	pluginLabels := []string{"name", "version"}
+
+	c.majorUpgradeAvailable = buildPrometheusDesc(c.subsystem, "major_upgrade_available",
+		"Whether a MAJOR release upgrade is on offer (1 = yes), e.g. 26.1 to 26.7. This is a different maintenance decision from the package updates upgrade_packages_count tracks - a scheduled-window job, not something to apply mid-afternoon - and upgrade_needs_reboot describes THIS upgrade, not the package ones. Only emitted once the box has a stored update check; before that there is nothing to report and a 0 would claim 'no major upgrade pending' on a firewall that has never looked.",
+		nil)
+	c.majorUpgradeInfo = buildPrometheusDesc(c.subsystem, "major_upgrade_info",
+		"The release a pending major upgrade would move this firewall to (always 1; read the version label). Emitted ONLY while such an upgrade is on offer, so the series appearing is itself the signal and there is never a stale version=\"\" series hanging around. Cardinality is one series, changing at most once or twice a year.",
+		[]string{"version"})
+
+	c.pluginSizeBytes = buildPrometheusDesc(c.subsystem, "plugin_size_bytes",
+		"Installed size of this OPNsense plugin, in bytes. Only emitted when --exporter.enable-firmware-package-details is set. APPROXIMATE: OPNsense reports the size as an already-humanised string with one decimal place (pkg's %sh, then formatBytes), so this is that display value converted to base-2 bytes, not the exact on-disk size - good for attributing disk pressure between plugins, not for accounting. A plugin whose size upstream could not report emits no series rather than 0.",
+		pluginLabels)
+	c.pluginLocked = buildPrometheusDesc(c.subsystem, "plugin_locked",
+		"Whether this plugin is pkg-locked against updates (1 = locked). Only emitted when --exporter.enable-firmware-package-details is set. This is the explanation for a plugin that sits at an old version while everything else moves - a locked plugin is skipped by an upgrade rather than failing it.",
+		pluginLabels)
+	c.pluginAutomatic = buildPrometheusDesc(c.subsystem, "plugin_automatic",
+		"Whether this plugin was installed automatically as a dependency rather than chosen deliberately (1 = automatic). Only emitted when --exporter.enable-firmware-package-details is set.",
+		pluginLabels)
 }
 
 // SetDetailsEnabled toggles the per-package detail metrics
@@ -118,6 +147,11 @@ func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pendingDownloadBytes
 	ch <- c.packageUpdateAvailable
 	ch <- c.pluginInstalled
+	ch <- c.majorUpgradeAvailable
+	ch <- c.majorUpgradeInfo
+	ch <- c.pluginSizeBytes
+	ch <- c.pluginLocked
+	ch <- c.pluginAutomatic
 }
 
 func (c *firmwareCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -173,6 +207,22 @@ func (c *firmwareCollector) Update(ctx context.Context, client *opnsense.Client,
 			"connection", data.Connection, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.updateCheckState, prometheus.GaugeValue, 1,
 			"repository", data.Repository, c.instance)
+
+		// #583: gated on the same stored check for the same reason — before the
+		// first check upstream sends the minimal envelope and there is no
+		// upgrade_major_version to read at all.
+		var majorVal float64
+		if data.MajorUpgradeAvailable {
+			majorVal = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(c.majorUpgradeAvailable, prometheus.GaugeValue, majorVal, c.instance)
+		// The info series exists only while there is a version to name. A
+		// version="" series would be permanent noise on every box that is
+		// already current.
+		if data.MajorUpgradeAvailable {
+			ch <- prometheus.MustNewConstMetric(c.majorUpgradeInfo, prometheus.GaugeValue, 1,
+				data.MajorUpgradeVersion, c.instance)
+		}
 	}
 
 	// #380: absent unless a stored check exists AND download_size parsed.
@@ -193,6 +243,27 @@ func (c *firmwareCollector) Update(ctx context.Context, client *opnsense.Client,
 		for _, p := range info.InstalledPlugins {
 			ch <- prometheus.MustNewConstMetric(c.pluginInstalled, prometheus.GaugeValue, 1,
 				p.Name, p.Version, c.instance)
+			// #583. HasSize is false when upstream reported "N/A" — no size
+			// series then, since 0 would show the plugin as costing nothing.
+			if p.HasSize {
+				ch <- prometheus.MustNewConstMetric(c.pluginSizeBytes, prometheus.GaugeValue,
+					p.SizeBytes, p.Name, p.Version, c.instance)
+			}
+			// locked/automatic are always emitted: upstream's wire vocabulary is
+			// {"1","N/A"} (PHP's empty("0") is true, so a false flag is rewritten
+			// to "N/A"), and "N/A" is a decoded false, not an unknown.
+			lockedVal := 0.0
+			if p.Locked {
+				lockedVal = 1.0
+			}
+			ch <- prometheus.MustNewConstMetric(c.pluginLocked, prometheus.GaugeValue,
+				lockedVal, p.Name, p.Version, c.instance)
+			automaticVal := 0.0
+			if p.Automatic {
+				automaticVal = 1.0
+			}
+			ch <- prometheus.MustNewConstMetric(c.pluginAutomatic, prometheus.GaugeValue,
+				automaticVal, p.Name, p.Version, c.instance)
 		}
 	}
 

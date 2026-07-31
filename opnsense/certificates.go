@@ -12,6 +12,19 @@ type caRow struct {
 	CommonName string `json:"commonname"`
 	ValidFrom  string `json:"valid_from"`
 	ValidTo    string `json:"valid_to"`
+	// Refcount is how many OTHER config nodes reference this CA (#583).
+	// Upstream computes it in Trust/FieldTypes/CAsField.php:112-118 as
+	// count(xpath("//*[text() = '<refid>']")) - 1 — the -1 drops the CA's own
+	// refid node — and assigns it with an explicit (string) cast, so the wire
+	// value is a string-encoded integer on both releases in the support window
+	// (stable/26.1 and stable/26.7 are byte-identical here). flexInt covers the
+	// string form and a future bare-number form without a code change.
+	//
+	// POINTER on purpose: upstream sets the field unconditionally, so nil means
+	// the key genuinely was not there (an older/other generation), which is a
+	// different fact from "referenced by nothing". Only the second is safe to
+	// alert on, so the collector must emit no series for nil rather than a 0.
+	Refcount *flexInt `json:"refcount"`
 }
 
 type caSearchResponse struct {
@@ -26,6 +39,14 @@ type CACertificate struct {
 	HasValidFrom bool
 	ValidTo      float64
 	HasValidTo   bool
+	// References is upstream's refcount: how many other config nodes use this
+	// CA (#583). It is what separates "a CA 20 days from expiry that 50 things
+	// depend on" (an outage in three weeks) from "a CA 20 days from expiry that
+	// nothing uses" (dead config) — the validity window alone cannot tell them
+	// apart. HasReferences is false when the key was absent; never treat the
+	// zero value as a real refcount of 0.
+	References    float64
+	HasReferences bool
 }
 
 // CACertificates holds the result of FetchCACertificates.
@@ -58,14 +79,19 @@ func (c *Client) FetchCACertificates() (CACertificates, *APICallError) {
 	for _, row := range resp.Rows {
 		validFrom, hasFrom := safeParseFloatOK(row.ValidFrom)
 		validTo, hasTo := safeParseFloatOK(row.ValidTo)
-		data.CAs = append(data.CAs, CACertificate{
+		ca := CACertificate{
 			Description:  row.Descr,
 			CommonName:   row.CommonName,
 			ValidFrom:    validFrom,
 			HasValidFrom: hasFrom,
 			ValidTo:      validTo,
 			HasValidTo:   hasTo,
-		})
+		}
+		if row.Refcount != nil {
+			ca.References = float64(row.Refcount.Int())
+			ca.HasReferences = true
+		}
+		data.CAs = append(data.CAs, ca)
 	}
 	return data, nil
 }

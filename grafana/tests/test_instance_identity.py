@@ -320,12 +320,21 @@ class InstanceIdentityTest(unittest.TestCase):
         exprs = [(r["metric"], r["expr"]) for r in RECORDING]
         exprs += [(r["name"], r["A"]) for r in RULES]
         self.assertEqual(len(exprs), len(RECORDING) + len(RULES))
-        # 59 alerts + 14 recording. Bump deliberately when a rule is added — the
+        # 64 alerts + 14 recording. Bump deliberately when a rule is added — the
         # literal is here so an accidentally emptied RULES/RECORDING cannot make the
         # offender scan below pass by having nothing to scan. 71 -> 73 when #560 added
         # OPNsenseDHCP6AddressExpiring and OPNsenseDHCP6AddressNotRefreshing, the IA_NA
-        # twins of the prefix pair.
-        self.assertEqual(len(exprs), 73)
+        # twins of the prefix pair. 73 -> 78 when the #593 Phase 3 wave added the four
+        # Phase 4 alert candidates (#578 IPsec child SA, #579 jumbo mbuf pool, #581
+        # unbound lame upstream, #582 OSPF LSA retransmission) plus
+        # OPNsenseFlowSourceDivergence, which is how #592 item 2 ships its divergence
+        # MARKER: a Grafana-managed rule annotates the panel it names, and the metric is
+        # a cumulative histogram with no instant value for an annotation Watch to diff.
+        #
+        # NOTE (#597): this fixture is build_all() only, so no health-dashboard panel is
+        # checked for instance identity — a known blind spot, tracked separately. Do not
+        # read a passing run here as covering the whole family.
+        self.assertEqual(len(exprs), 78)
         offenders = {
             name: f"{op} {kind or 'no-clause'}({','.join(sorted(labels))})"
             for name, expr in exprs

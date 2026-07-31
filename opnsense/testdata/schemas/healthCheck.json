@@ -97,7 +97,23 @@
     },
     {
       "path": "subsystems",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "subsystems.*",
+      "kind": "object"
+    },
+    {
+      "path": "subsystems.*.message",
+      "kind": "string"
+    },
+    {
+      "path": "subsystems.*.status",
+      "kind": "string"
+    },
+    {
+      "path": "subsystems.*.statusCode",
+      "kind": "number"
     }
   ]
 }

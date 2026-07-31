@@ -6,7 +6,7 @@ Complementary to tailscale2otel (fleet/control-plane — including peer
 from local WireGuard handshakes.
 """
 
-from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP
+from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP, YESNO
 
 
 def build(b: Builder):
@@ -30,6 +30,33 @@ def build(b: Builder):
                     desc="opnsense_tailscale_health_warnings: count of live warning strings "
                          "reported by the local tailscaled client (update available, DERP "
                          "unreachable, key expiry, ...). The warning text itself is not exported.")
+    # #583. Two separate failure modes that both end the tunnel and need
+    # different humans. reauth_required is always present, so it can carry a
+    # background colour; key expiry is ABSENT on a node whose key does not
+    # expire, so the panel reads "No data" rather than 1970.
+    reauth = b.stat("Reauth Required", sel("opnsense_tailscale_reauth_required"),
+                    unit="short", w=4, h=4, mappings=YESNO,
+                    color_mode="background",
+                    thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+                    desc="opnsense_tailscale_reauth_required: 1 when tailscaled is parked "
+                         "holding an interactive login URL. The tunnel stays down until a "
+                         "human completes that login — no restart clears it, which is what "
+                         "separates this from Backend (tailscaled) reading 0. The URL itself "
+                         "is a credential and is never exported.")
+    key_expiry = b.stat("Node Key Expires In",
+                        f'{sel("opnsense_tailscale_key_expiry_timestamp_seconds")} - time()',
+                        unit="s", w=4, h=4,
+                        color_mode="background",
+                        thresholds=[{"color": "red", "value": None},
+                                    {"color": "orange", "value": 7 * 86400},
+                                    {"color": "green", "value": 30 * 86400}],
+                        desc="Time until THIS node's own Tailscale key expires. When it does "
+                             "the tunnel dies with no other warning. Red inside 7 days "
+                             "(including already expired, which reads negative), amber 7 to 30 "
+                             "days, green beyond. No data means the node key does not expire — "
+                             "upstream omits the field entirely then, and the exporter "
+                             "deliberately emits nothing rather than a 1970 epoch. Self only: "
+                             "peer key expiry is tailscale2otel's job.")
     info = b.table("Node Info", [sel("opnsense_tailscale_info")],
                    w=4, h=4,
                    excludes=["Value", "__name__", "job", "instance"],
@@ -88,7 +115,8 @@ def build(b: Builder):
                              ))
 
     b.tab("Tailscale", [
-        b.row("Tailscale Node", [svc, backend, total, sessions, health, info],
+        b.row("Tailscale Node", [svc, backend, total, sessions, health, reauth,
+                                 key_expiry, info],
               present="has_tailscale"),
         b.row("Tailscale Peers (details flag)",
               [peer_traffic, peer_session, peer_direct, peer_handshake],

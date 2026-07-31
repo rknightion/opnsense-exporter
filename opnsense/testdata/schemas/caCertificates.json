@@ -24,6 +24,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].refcount",
+      "kind": "any"
+    },
+    {
       "path": "rows[].uuid",
       "kind": "string"
     },

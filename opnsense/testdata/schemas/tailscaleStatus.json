@@ -4,6 +4,7 @@
   "path": "api/tailscale/status/status",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
+    "AuthURL",
     "BackendState",
     "Health",
     "Peer",
@@ -11,6 +12,10 @@
     "Version"
   ],
   "fields": [
+    {
+      "path": "AuthURL",
+      "kind": "string"
+    },
     {
       "path": "BackendState",
       "kind": "string"
@@ -73,6 +78,10 @@
     },
     {
       "path": "Self.HostName",
+      "kind": "string"
+    },
+    {
+      "path": "Self.KeyExpiry",
       "kind": "string"
     },
     {

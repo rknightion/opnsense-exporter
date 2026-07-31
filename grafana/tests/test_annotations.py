@@ -312,6 +312,30 @@ class AnnotationLedgerTest(unittest.TestCase):
             with self.subTest(metric=metric):
                 self.assertTrue(reason and len(reason) > 20)
 
+    def test_the_non_instant_ledger_is_real_current_and_reasoned(self):
+        """The second ledger (#592 item 2), kept apart from NOT_ANNOTATED on purpose.
+
+        NOT_ANNOTATED answers "this metric's value IS an instant, and here is why we
+        still do not mark it". A metric that was ASKED to become a marker and cannot,
+        because its value is not an instant at all, fails no gate and would therefore
+        leave no trace — the request simply gets re-raised. Folding it into
+        NOT_ANNOTATED instead would contradict that ledger's own header and quietly
+        widen what the annotation gate is understood to cover.
+
+        Same three properties as the other ledger: the metric exists, the reason is
+        written down, and the two ledgers stay disjoint.
+        """
+        catalogue = set(build_dashboard.load_catalogue())
+        for metric, reason in ann.NOT_INSTANT_VALUED.items():
+            with self.subTest(metric=metric):
+                self.assertIn(metric, catalogue,
+                              "this metric no longer exists; drop the ledger entry")
+                self.assertFalse(EPOCH_METRIC.search(metric),
+                                 "this metric IS instant-shaped — it belongs in "
+                                 "NOT_ANNOTATED, which the annotation gate reads")
+                self.assertTrue(reason and len(reason) > 20)
+                self.assertNotIn(metric, ann.NOT_ANNOTATED)
+
     def test_the_go_emitter_watches_exactly_what_the_dashboard_derives(self):
         """The push and derive paths must describe the same events. A metric the Go
         side pushes but this side does not derive means an annotation appears with no

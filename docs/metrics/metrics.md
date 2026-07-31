@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 982
-- **Gauges:** 639
+- **Total metrics:** 994
+- **Gauges:** 651
 - **Counters:** 343
 
 ## General
@@ -153,6 +153,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_certificate_ca_valid_from_seconds | Gauge | description, commonname | Certificate authority valid from timestamp in seconds since epoch | --exporter.disable-certificates |
 | opnsense_certificate_ca_valid_to_seconds | Gauge | description, commonname | Certificate authority valid to (expiry) timestamp in seconds since epoch | --exporter.disable-certificates |
 | opnsense_certificate_ca_total | Gauge | --- | Total number of certificate authorities | --exporter.disable-certificates |
+| opnsense_certificate_ca_references | Gauge | description, commonname | Number of other configuration objects that reference this certificate authority (OPNsense's own refcount). This is what separates a CA nearing expiry that 50 things depend on - an outage on a known date - from one nothing uses, which is dead config; the validity gauges alone cannot tell them apart. 0 is a real, meaningful value; a CA whose payload carries no refcount at all emits no series. | --exporter.disable-certificates |
 
 ## Chrony
 
@@ -352,6 +353,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_alias_table_evaluations_total | Counter | table, result | Packet evaluations against this alias table since last reset | --exporter.disable-alias |
 | opnsense_alias_table_packets_total | Counter | table, direction, action | Packets matched against this alias table since last reset | --exporter.disable-alias |
 | opnsense_alias_table_bytes_total | Counter | table, direction, action | Bytes matched against this alias table since last reset | --exporter.disable-alias |
+| opnsense_alias_table_updated_timestamp_seconds | Gauge | table | Unix timestamp of the last time this alias table's persisted content was written - i.e. when a DNS- or URL-backed alias (a threat feed, say) last refreshed. A feed that silently stops refreshing is a security control failing open, and no other metric can see it: the table still holds its stale rows, so table_entries looks healthy. Only emitted for tables that HAVE persisted content; a static host/network alias has no refresh cycle and emits no series rather than a misleading epoch 0. Derived from the file mtime as a timezone-less local timestamp and read as UTC, so the absolute value can be off by the firewall's UTC offset - compare ages, not wall clocks. | --exporter.disable-alias |
 
 ## Firewall Rules
 
@@ -384,6 +386,11 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firmware_pending_download_bytes | Gauge | --- | Total size in bytes the pending update would download, parsed from the stored check's mixed-unit download_size list (base-2 units). Only emitted once a check has been stored AND the field parsed unambiguously - a value that cannot be parsed emits no series rather than a fabricated 0. Unlike the OPNsense GUI, which truncates a fractional size, fractions are kept, so this can read slightly higher than the number the GUI displays. | --exporter.disable-firmware |
 | opnsense_firmware_package_update_available | Gauge | name, installed_version, new_version | Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 | opnsense_firmware_plugin_installed | Gauge | name, version | Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
+| opnsense_firmware_major_upgrade_available | Gauge | --- | Whether a MAJOR release upgrade is on offer (1 = yes), e.g. 26.1 to 26.7. This is a different maintenance decision from the package updates upgrade_packages_count tracks - a scheduled-window job, not something to apply mid-afternoon - and upgrade_needs_reboot describes THIS upgrade, not the package ones. Only emitted once the box has a stored update check; before that there is nothing to report and a 0 would claim 'no major upgrade pending' on a firewall that has never looked. | --exporter.disable-firmware |
+| opnsense_firmware_major_upgrade_info | Gauge | version | The release a pending major upgrade would move this firewall to (always 1; read the version label). Emitted ONLY while such an upgrade is on offer, so the series appearing is itself the signal and there is never a stale version=\"\" series hanging around. Cardinality is one series, changing at most once or twice a year. | --exporter.disable-firmware |
+| opnsense_firmware_plugin_size_bytes | Gauge | name, version | Installed size of this OPNsense plugin, in bytes. Only emitted when --exporter.enable-firmware-package-details is set. APPROXIMATE: OPNsense reports the size as an already-humanised string with one decimal place (pkg's %sh, then formatBytes), so this is that display value converted to base-2 bytes, not the exact on-disk size - good for attributing disk pressure between plugins, not for accounting. A plugin whose size upstream could not report emits no series rather than 0. | --exporter.disable-firmware |
+| opnsense_firmware_plugin_locked | Gauge | name, version | Whether this plugin is pkg-locked against updates (1 = locked). Only emitted when --exporter.enable-firmware-package-details is set. This is the explanation for a plugin that sits at an old version while everything else moves - a locked plugin is skipped by an upgrade rather than failing it. | --exporter.disable-firmware |
+| opnsense_firmware_plugin_automatic | Gauge | name, version | Whether this plugin was installed automatically as a dependency rather than chosen deliberately (1 = automatic). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 
 ## Flow Volume
 
@@ -733,6 +740,9 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_auth_users_with_otp | Gauge | --- | Number of local users with a TOTP seed configured (aggregate count only - the seed itself is never read into exporter memory beyond a transient presence check). | --exporter.disable-auth |
 | opnsense_auth_api_keys | Gauge | --- | Total number of local-user API keys configured (aggregate count only - key material is never decoded). | --exporter.disable-auth |
 | opnsense_auth_groups | Gauge | --- | Total number of local authentication groups configured. | --exporter.disable-auth |
+| opnsense_auth_users_shell_warning | Gauge | --- | Number of local users OPNsense flags with shell_warning: a NON-administrator account that has been given a real login shell (any shell whose path starts with /). Says nothing about which shell, and never fires for an administrator. Aggregate count only - no usernames are exposed. | --exporter.disable-auth |
+| opnsense_auth_oldest_password_age_seconds | Gauge | --- | Age in seconds of the least recently changed local password, across the accounts that have a recorded change time. NOT emitted at all when no account has one - a 0 would claim every password was just rotated. Read alongside users_password_age_unknown, which counts the accounts this maximum cannot see. Aggregate only - no usernames are exposed. | --exporter.disable-auth |
+| opnsense_auth_users_password_age_unknown | Gauge | --- | Number of local users with no usable password-change time. OPNsense records pwd_changed_at only when a password is actually changed, so this counts accounts whose password predates that bookkeeping - the worst posture on the box, and invisible in oldest_password_age_seconds. Aggregate count only - no usernames are exposed. | --exporter.disable-auth |
 
 ## Log-derived Events
 
@@ -1194,6 +1204,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_tailscale_peer_rx_bytes_total | Counter | peer | Bytes received from this peer by this node since tailscaled start. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_tx_bytes_total | Counter | peer | Bytes sent to this peer by this node since tailscaled start. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_last_handshake_timestamp_seconds | Gauge | peer | Unix timestamp of the last WireGuard handshake with this peer from this node. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
+| opnsense_tailscale_reauth_required | Gauge | --- | Whether tailscaled is parked waiting for an interactive login (1 = it is holding an auth URL). The tunnel stays down until a human completes the login - no restart or retry clears it. Distinct from backend_running, which reads 0 for this and every other reason. The auth URL itself is a credential and is never exported, in a label or anywhere else. | --exporter.disable-tailscale |
+| opnsense_tailscale_key_expiry_timestamp_seconds | Gauge | --- | Unix timestamp at which THIS node's own Tailscale key expires. When it does the tunnel dies with no other warning, so this is the direct analogue of a certificate expiry gauge. Not emitted at all when the node key does not expire - upstream omits the field entirely then, and a 0 would read as \"expired in 1970\" and page forever on a healthy node. Self only: peer key expiry is fleet inventory covered by tailscale2otel. | --exporter.disable-tailscale |
 
 ## Temperature
 

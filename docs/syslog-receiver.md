@@ -125,10 +125,10 @@ you might change your mind about, since it needs no firewall config edit.
 
 ## Derived metrics and sampling
 
-The receiver counts what it parses. Every firewall, HAProxy, sshd, DHCP, audit, IDS,
-gateway, VPN lifecycle and supported FreeRADIUS access line it recognises increments a
-Prometheus counter at `/metrics`, so you get rates and totals without querying Loki at
-all:
+The receiver counts what it parses. Every firewall, HAProxy, sshd, DHCP (server and
+this firewall's own WAN DHCP/DHCPv6 client), audit, IDS, gateway, CARP, UPnP, VPN
+lifecycle and supported FreeRADIUS access line it recognises increments a Prometheus
+counter at `/metrics`, so you get rates and totals without querying Loki at all:
 
 | Metric | Labels |
 | --- | --- |
@@ -136,6 +136,9 @@ all:
 | `opnsense_log_events_haproxy_total` | `event`, `backend`, `server`, `state`, `status_class` |
 | `opnsense_log_events_sshd_total` | `result`, `method`, `scope` |
 | `opnsense_log_events_dhcp_total` | `action`, `interface`, `server` |
+| `opnsense_log_events_dhcp_client_total` | `interface`, `type` |
+| `opnsense_log_events_dhcp6c_message_total` | `interface`, `direction`, `type` |
+| `opnsense_log_events_dhcp6c_event_total` | `interface`, `event`, `reason` |
 | `opnsense_log_events_audit_total` | `event`, `result` |
 | `opnsense_log_events_ids_total` | `event_type`, `action`, `category`, `severity` |
 | `opnsense_log_events_gateway_total` | `event`, `gateway` |
@@ -481,13 +484,19 @@ record with its message body verbatim and its envelope as metadata.
 | `filterlog` | Firewall packet decisions - see below |
 | `audit`, `configd.py` | `config_user`, `config_revision`, `config_uri` (who changed the config), plus configd authorisation and RPC events |
 | `sshd`, `sshd-session` | `auth.result` (accepted/failed/invalid-user), `auth.user` (also as the semconv `user.name`), `auth.method`, key fingerprint, source address. A failed login is raised to **warning** - sshd logs a rejected login at the same severity as a successful one, and you should not have to know that to find it. |
-| `dhcpd`, `dnsmasq`, `kea-dhcp4`, `kea-dhcp6` | `dhcp.action`, `dhcp.ip`, `dhcp.mac`, `dhcp.hostname`, `dhcp.lease_seconds` - **normalised across all three backends**, so you can query DHCP activity without caring which one your box runs |
+| `dhcpd`, `dnsmasq`, `dnsmasq-dhcp`, `kea-dhcp4`, `kea-dhcp6`, `dhcrelay` | `dhcp.action`, `dhcp.ip`, `dhcp.mac`, `dhcp.hostname`, `dhcp.lease_seconds` - **normalised across every backend**, so you can query DHCP activity without caring which one your box runs |
+| `dhclient` | This firewall's **own WAN DHCP client** lease lifecycle (#541) - not the LAN DHCP servers above: `dhcp_client.type`, `dhcp_client.interface`, `dhcp_client.server`, `dhcp_client.address`, `dhcp_client.lease.*` timestamps, `dhcp_client.script.reason`. |
+| `dhcp6c` | This firewall's **own WAN DHCPv6 client and delegated-prefix** lifecycle (#546): `dhcp6c.event`, `dhcp6c.type`, `dhcp6c.direction`, `dhcp6c.interface`, `dhcp6c.prefix`, `dhcp6c.prefix_length`, `dhcp6c.address`, plus prefix/address lease timestamps. |
 | `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode. HTTP fields use OTel semconv names: `http.request.method`, `http.response.status_code`, `url.path`, `network.protocol.version`. |
 | `dpinger` | Gateway monitor transitions `none -> down` and `down -> none`, with the observed address, alarm state and probe values. Nonmatching `dpinger` lines remain generic records. |
 | `radiusd` | FreeRADIUS access accepted/rejected with closed non-PII attributes. Every unsupported or malformed recognizable `radiusd` form is sanitized before it becomes a generic record or debug capture. |
+| `unbound` | Local-zone query log, only when Unbound's `log-local-actions: yes` is set: `dns.query_name`, `dns.query_type`, `dns.query_class`, `dns.local_zone`, `dns.local_action`, resolved `src.*`; plus SERVFAIL failures as `dns.error`/`dns.upstream`/`dns.error_zone`. **No blocklist match, policy, resolution source or DNSSEC status** - that stays poll-lane-only, see [Unbound](log-shipping.md#unbound-per-query-dns-log). Cache maintenance and DNSBL/plugin chatter stay generic records. |
 | `kernel` | FreeBSD CARP transitions only: `carp.event`, `carp.state.previous`, `carp.state.current`, `carp.interface`, `carp.vhid`, `carp.reason`, `carp.demotion.delta`, `carp.demotion.total`. **Every other kernel line stays a generic record** - link state, watchdogs, ZFS, USB and the rest are not claimed. |
 | `miniupnpd` | UPnP/NAT-PMP mapping expiries and failures: `upnp.event`, `upnp.result`, `upnp.protocol`, `upnp.port.external`, `upnp.port.internal`. **No successful add or delete, and no active-mapping count** - see above. Request, response and daemon-lifecycle lines stay generic records. |
 | `charon`, `openvpn_*` | IPsec and OpenVPN tunnel lifecycle: `vpn.backend`, `vpn.event`, `vpn.result` and nothing else - no username, certificate subject, IKE identity, address or port is extracted. `openvpn_*` is matched by PREFIX because OPNsense names one program per configured instance. Only the captured grammar above is parsed; everything else stays a generic record. |
+| `suricata` | Suricata EVE **alerts only**, when the `syslog_eve` setting is forwarding them: `event_type`, `signature`, `alert_sid`, `alert_action`, `alert_category`, `alert_severity`, resolved `src`/`dest` endpoints. See [Suricata alerts](#suricata-alerts-pick-one-path) below. Non-JSON `suricata` lines (engine text) stay generic. |
+| `cron`, `/usr/sbin/cron` | `cron.user`, `cron.action` (`cmd`/`mail`), `cron.command` (CMD lines only, never set for MAIL). |
+| `radvd` | `radvd.event` (`polling`/`timer`), `interface`, `interface.name`, `radvd.interval_seconds` (polling lines only). |
 
 **Every record**, structured or generic, also gets:
 
@@ -527,10 +536,11 @@ So the line above arrives looking like this:
 }
 ```
 
-Every other program OPNsense routes through syslog-ng - the auth/audit trail (SSH
-logins, "action allowed X for user root"), configd, unbound, dnsmasq, kea, haproxy,
-frr, ipsec, openvpn, package installs, and a catch-all for everything else - ships as
-a generic record with its raw body and its envelope attributes.
+Every other program OPNsense routes through syslog-ng - the bare `configd` daemon (as
+opposed to `configd.py`'s authorisation/RPC lines, parsed above), routing daemons
+(`bgpd`, `ospfd`, `zebra`), VPN backends with no parser yet (`wireguard`, `netbird`,
+`tailscaled`), package installs, `su`, `sudo`, and a catch-all for everything else -
+ships as a generic record with its raw body and its envelope attributes.
 
 ## Querying it in Loki
 
@@ -608,10 +618,11 @@ all by design. They get `rule.ref` (`rule #16.115`) instead of a description.
 The receiver is not a total replacement for the API-polling sources. Three things
 have no usable syslog path, and their poll lanes remain:
 
-- **Per-query DNS** (`--logs.unbound.enabled`) - Unbound's per-query log with
-  blocklist/policy/rcode comes from OPNsense's reporting database. What arrives over
-  syslog under `program("unbound")` is the resolver *daemon* log (cache maintenance,
-  errors), which is a different stream entirely.
+- **Blocklist/policy/DNSSEC DNS detail** (`--logs.unbound.enabled`) - the syslog
+  `unbound` parser structures Unbound's local-zone query log (query name/type/class,
+  matched local-zone, resolved client) and SERVFAIL failures, but blocklist match,
+  policy, resolution source and DNSSEC status come only from OPNsense's reporting
+  database, which only the poll lane reads. See [What you get](#what-you-get) above.
 - **CrowdSec** (`--logs.crowdsec.enabled`) - CrowdSec logs to file only. Nothing it
   produces reaches syslog, and it ships no syslog notification plugin.
 - **Suricata payloads** (`--logs.ids.enabled`) - the syslog copy of an EVE alert never

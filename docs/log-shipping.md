@@ -224,6 +224,25 @@ pipeline's own `opnsense.source` stamp; see [Loki label model](#loki-label-model
 log body is a compact JSON encoding of the full row, including fields not
 promoted to structured metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
 
+Separately, the syslog receiver's `unbound` parser structures a plainer slice of
+this same data - query name/type/class and the matched local-zone - straight off
+Unbound's daemon log, with no blocklist, policy or DNSSEC detail. See
+[Structured parsers](syslog-receiver.md#what-you-get) for what it captures.
+
+### Flow log records (`netflow`, `merged`)
+
+A **push** source layered on the separate NetFlow/Zenarmor flow pipeline
+(`--flow.enabled`, `--flow.netflow.enabled`, `--flow.zenarmor` - see
+[NetFlow & flow metrics](flow.md)): the same correlator that builds the `netflow_*`
+metrics also ships one OTLP log record per correlated flow, stamped
+`opnsense.source` = `netflow` (NetFlow only) or `merged` (a NetFlow fragment joined
+with a matching Zenarmor `conn` document). Gated on three settings rather than its
+own `--logs.<source>.enabled` flag: `--logs.enabled`, `--flow.enabled`, and
+`--flow.log-mode` (`per_flow`, the default, ships the logs; `off` keeps deriving the
+metrics without them). See **[Flow log records](flow.md#flow-log-records)** for the
+full attribute set, timestamp semantics and the `--flow.max-logs-per-window` flood
+guard.
+
 ## Loki label model
 
 Loki promotes **only OTLP resource attributes** to index labels. Scope and log
@@ -238,11 +257,16 @@ them, whatever the tenant config says. Cardinality discipline therefore falls ou
 | `service.name` | `--otlp.service-name` | **yes** |
 | `service.instance.id` | the resolved instance label | **yes** |
 | `service.version` | the exporter version | no |
-| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor` | no - opt in below |
-| `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (~22) | no - opt in below |
+| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor`, `netflow`, `merged` | no - opt in below |
+| `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (26) | no - opt in below |
 | `opnsense.action` | `pass`, `block` | no - opt in below |
 | `opnsense.device_category` | `laptop`, `camera`, `iot`, `server`, … (9) | no - opt in below |
 | `opnsense.interface` | the interface *descriptions* - `LAN`, `IOT`, `MGMT` | no - opt in below |
+
+The 26 `opnsense.subsystem` values are the syslog receiver's 22-entry
+program→subsystem map (`internal/logship/syslog/registry.go`) plus the four
+Zenarmor-only families that don't overlap it: `flow`, `tls`, `web`, `voip` (its other
+two, `dns` and `ids`, already exist in the syslog map).
 
 The last two are Zenarmor-only: they are absent on every other source's records, and
 absent rather than empty, so they never pool unrelated records into one empty-valued

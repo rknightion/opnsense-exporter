@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **59 alert rules** and **14 recording rules**.
+Total: **64 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -1792,6 +1792,161 @@ unless on (opnsense_instance, interface) (opnsense_flow_interface_capture_unsupp
 
 **Verify recovery:**
 - opnsense_netflow_cache_packets_total for the device resumes counting - the alert resolves automatically once it does
+
+## OPNsenseIPsecChildSADown
+
+**Severity:** warning  
+**Pending window:** 5m0s  
+**Rule name:** `opnsense-ipsec-child-sa-down`
+
+**Expression:**
+```promql
+opnsense_ipsec_phase2_established == 0
+and on (opnsense_instance, phase1_name)
+  label_replace(opnsense_ipsec_phase1_status == 1, "phase1_name", "$1", "name", "(.*)")
+```
+
+**What it measures:** opnsense_ipsec_phase2_established for a specific child SA (1 only when the vici state is INSTALLED), joined against opnsense_ipsec_phase1_status for its parent tunnel via label_replace (phase1's own "name" label renamed to "phase1_name" to match phase2's join key) - isolates a child SA down UNDER A TUNNEL THAT IS ITSELF UP, which OPNsenseIPsecTunnelDown structurally cannot see.
+
+**Threshold & window:** lt 1 (established=0) for 5m, restricted by the join to phase1 tunnels currently connected (status=1) - a child SA down alongside a down phase1 is already covered by OPNsenseIPsecTunnelDown and is deliberately not double-reported here.
+
+**Absent / no-data semantics:** Default noDataState (Ok) - absence means either that child SA is not configured, or its phase1 parent is down (already covered by OPNsenseIPsecTunnelDown), not that it is healthy.
+
+**First checks:**
+- Read the name/description labels for the specific child SA and phase1_name for its parent tunnel
+- Check the OPNsense UI's IPsec status page for that child SA's negotiation state (REKEYING/DELETING/etc rather than INSTALLED)
+- Confirm the traffic selector (local/remote subnet) configured for this child SA still matches what the remote peer proposes
+
+**Likely causes:**
+- A phase2 proposal (encryption/traffic-selector) mismatch introduced by a config change on either side
+- The child SA is stuck mid-rekey (REKEYING/REKEYED) and never completing to INSTALLED
+- The remote peer removed or renumbered the specific subnet this child SA covers while keeping the tunnel itself up
+
+**Verify recovery:**
+- opnsense_ipsec_phase2_established for that child SA returns to 1 (INSTALLED)
+- Traffic is observably flowing again for the specific subnet that child SA covers
+
+## OPNsenseMbufJumboPoolSaturated
+
+**Severity:** warning  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-mbuf-jumbo-pool-saturated`
+
+**Expression:**
+```promql
+100 * opnsense_mbuf_pool_current{pool=~"jumbo9|jumbo16"} / (opnsense_mbuf_pool_max{pool=~"jumbo9|jumbo16"} > 0)
+```
+
+**What it measures:** 100 * opnsense_mbuf_pool_current / opnsense_mbuf_pool_max for the jumbo9 (9k) and jumbo16 (16k) jumbo-cluster pools - percentage headroom against each pool's configured ceiling, restricted to the two pools that HAVE a ceiling series (the packet secondary zone has none upstream).
+
+**Threshold & window:** gt 90% sustained for 10m. The `> 0` division guard is load-bearing, the same limit-0-means-no-ceiling trap as kernel_memory.py's Zone Saturation panel (#543): a pool reporting max=0 has NO CEILING CONFIGURED, not a ceiling of zero, so an unguarded division would read +Inf and fire permanently.
+
+**Absent / no-data semantics:** Default noDataState (Ok) - the `> 0` guard means a pool with no configured ceiling (max=0 or absent) produces no series here at all, by design.
+
+**First checks:**
+- Read the pool label (jumbo9 or jumbo16) to know which jumbo-cluster size is under pressure
+- Check opnsense_mbuf_failures_total{type="jumbo9"|"jumbo16"} for whether allocations have already started failing
+- Check whether jumbo-frame-heavy traffic (large MTU workloads, certain NIC offload paths) increased recently
+
+**Likely causes:**
+- A genuine increase in jumbo-frame traffic outrunning the configured pool ceiling
+- The pool ceiling is undersized for this box's NIC/offload configuration
+- A leak or stuck consumer holding jumbo clusters that are never freed back to the pool
+
+**Verify recovery:**
+- The percentage drops back under 90% and stays there for 10m
+- opnsense_mbuf_failures_total for the same pool type stays at 0
+
+## OPNsenseUnboundUpstreamLame
+
+**Severity:** warning  
+**Pending window:** 15m0s  
+**Rule name:** `opnsense-unbound-upstream-lame`
+
+**Expression:**
+```promql
+max by (opnsense_instance, ip, kind) (opnsense_unbound_dns_infra_host_lame)
+```
+
+**What it measures:** Whether Unbound currently considers an upstream server lame for a given query kind (recursion/type_a/other), max'd across every zone (`host`) that upstream has been contacted for so one flaky delegation among many does not fragment into its own alert instance.
+
+**Threshold & window:** gt 0 (lame) sustained for 15m. 15m is not arbitrary: Unbound clears lameness when the infra entry's TTL expires (host-ttl, default 900s = 15m), so surviving a full 15m means it has stayed lame across at least one full cache-TTL cycle, not just a single stale reading.
+
+**Absent / no-data semantics:** No series at all when --exporter.enable-unbound-infra is not set (the metric does not exist). Absent for a specific ip/kind otherwise means that upstream has never been marked lame for that query kind, which is the healthy state.
+
+**First checks:**
+- Read the ip label to identify the specific upstream/forwarder and the kind label for which query class it can no longer be trusted for
+- Check the DNS tab's "Upstream Health Detail" table for exactly which zone(s) triggered the lame marking
+- Confirm whether this upstream is a deliberately configured forwarder (e.g. a DoT resolver) versus one picked up during ordinary recursion - a forwarder going lame is far more actionable than an incidental external nameserver
+
+**Likely causes:**
+- The upstream server itself is misconfigured or not authoritative for what it is being asked
+- A network path change is making the upstream reply incorrectly or not at all for that query class
+- The upstream is deliberately blocking or rate-limiting recursive-style queries from this resolver
+
+**Verify recovery:**
+- opnsense_unbound_dns_infra_host_lame for that ip/kind returns to 0 and stays there for a full infra-cache TTL
+- The "Upstream Health Detail" table on the DNS tab no longer lists that upstream
+
+## OPNsenseOSPFLSARetransmissionStuck
+
+**Severity:** warning  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-ospf-lsa-retransmission-stuck`
+
+**Expression:**
+```promql
+opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"}
+```
+
+**What it measures:** opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"}: the count of LSAs FRR is still waiting on this neighbor to acknowledge, restricted to the retransmission queue (not the db_summary/ls_request queues, which legitimately drain during a normal initial sync).
+
+**Threshold & window:** gt 0 sustained for 10m - any LSA sitting in the retransmission queue for that long means it has been resent at least once with no ack.
+
+**Absent / no-data semantics:** Default noDataState (Ok) - absence means either the neighbor relationship does not exist or its retransmission queue is empty (the healthy state).
+
+**First checks:**
+- Read the neighbor_id/interface labels to identify the specific OSPF adjacency
+- Check opnsense_frr_ospf_neighbor_nsm_state_info for that neighbor - stuck below Full points at the adjacency itself, not just one LSA
+- Confirm basic reachability (ping) to the neighbor's address over that interface
+
+**Likely causes:**
+- The neighbor is unreachable or dropping packets on that interface
+- The neighbor is overloaded and not processing/acking LSAs promptly
+- An MTU mismatch or ACL is silently eating OSPF packets on the link
+
+**Verify recovery:**
+- opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"} for that neighbor returns to 0
+
+## OPNsenseFlowSourceDivergence
+
+**Severity:** warning  
+**Pending window:** 30m0s  
+**Rule name:** `opnsense-flow-source-divergence`
+
+**Expression:**
+```promql
+histogram_quantile(0.9, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket[15m])))
+```
+
+**What it measures:** The 90th-percentile of opnsense_flow_source_byte_delta_ratio (NetFlow bytes / Zenarmor bytes on the same merged flow record) per interface, over a 15m rolling window - the same p90 series already on the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel, so the alert threshold and the chart read the same number.
+
+**Threshold & window:** gt 1.5 sustained for 30m. The histogram's own bucket bounds (0.9, 1, 1.05, 1.1, 1.25, 1.5, 2, 3, 5, 10, 100 - internal/flow/deltaratio.go:16) cluster tightly from 0.9 to 1.25 to capture legitimate per-packet header overhead; 1.5 is the first bound past that cluster, so it is the line between 'NetFlow counts the IP/TCP headers Zenarmor's payload accounting does not' and 'the two sources have genuinely stopped agreeing'. The 30m pending period exceeds the 15m rate() window on purpose (#594): a single anomalous flow keeps the p90 elevated for exactly the window's 15m and then drops out, which cannot reach a 30m pending period, while a genuinely sustained divergence keeps every rolling 15m window elevated throughout and does fire.
+
+**Absent / no-data semantics:** Default noDataState (Ok) - the metric is only emitted where both NetFlow and Zenarmor run and correlate (--flow.log-mode=per_flow); absent means there is no second source to disagree with, not that they agree.
+
+**First checks:**
+- Open the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel for the named interface to see the full p50/p90/p99 distribution and how long it has been elevated
+- Check whether Zenarmor's own engine/service health looks normal (a running-but-blind engine looks identical to a healthy one on service-status checks alone)
+- Look for a traffic pattern change on that interface - new encrypted/tunnelled/QUIC-heavy traffic is a plausible reason Zenarmor's DPI stops accounting for a flow's bytes correctly while NetFlow (packet-path counting) keeps counting it
+
+**Likely causes:**
+- Traffic evading Zenarmor's inspection engine (a protocol or encapsulation its DPI does not recognise) while still being counted at the packet path by NetFlow
+- A Zenarmor accounting bug or misconfiguration undercounting bytes on a class of flows
+- A genuinely malicious flow deliberately structured to minimise what a DPI engine attributes to it
+
+**Verify recovery:**
+- The p90 series on the 'Source Byte-Delta Ratio' panel drops back under 1.5 and stays there for a full 15m window
 
 ## Recording rules
 

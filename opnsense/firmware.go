@@ -62,7 +62,28 @@ type firmwareStatusResponse struct {
 		NewVersion     string `json:"new_version"`
 		Repository     string `json:"repository"`
 	} `json:"upgrade_sets"`
-	Product struct {
+	// UpgradeMajorVersion is the release a pending MAJOR upgrade would move the
+	// box to (#583) — "26.7", not a package version. check.sh assigns it as
+	// `upgrade_major_version=$(opnsense-update -vR)` (line 368) only inside
+	// `if [ -n "${packages_is_size}" ]` (line 366), then writes the key
+	// unconditionally at line 422. So within a stored check the key is always
+	// present and an EMPTY STRING is the "no major upgrade offered" signal;
+	// emptiness is the availability test, there is no separate flag.
+	UpgradeMajorVersion string `json:"upgrade_major_version"`
+	// UpgradeNeedsReboot mirrors the SAME key check.sh writes at line 423
+	// (initialised "0" at line 68, flipped to "1" when a major upgrade's
+	// packages/kernel/base sets differ from the running ones).
+	//
+	// It is read from the top level here and from Product.ProductCheck below,
+	// resolved new-wins-else-legacy by upgradeNeedsReboot(). Those two are not
+	// really two sources: FirmwareController.php:126-127 builds the response as
+	// `$response = $product['product_check']; $response['product'] = $product;`
+	// — the top level IS product_check, served a second time under `product`.
+	// The exporter historically read only the nested copy; the pointer keeps
+	// that path working on any generation that omits the top-level key while
+	// letting the canonical location win.
+	UpgradeNeedsReboot *flexString `json:"upgrade_needs_reboot"`
+	Product            struct {
 		ProductCheck struct {
 			UpgradeNeedsReboot string `json:"upgrade_needs_reboot"`
 		} `json:"product_check"`
@@ -120,6 +141,25 @@ type FirmwareStatus struct {
 	// at all, rather than reporting a fabricated zero.
 	PendingDownloadBytes      float64
 	PendingDownloadBytesValid bool
+	// MajorUpgradeAvailable / MajorUpgradeVersion describe a pending MAJOR
+	// release upgrade (26.1 -> 26.7), which is a different maintenance decision
+	// from the package updates the *_packages_count gauges track: it is a
+	// scheduled-window job, not something to apply on a Tuesday afternoon.
+	// Both are meaningful only when CheckPresent — before the box's first check
+	// there is nothing stored to read.
+	MajorUpgradeAvailable bool
+	MajorUpgradeVersion   string
+}
+
+// upgradeNeedsReboot resolves the major-upgrade reboot flag new-wins-else-
+// legacy: the canonical top-level key when the response carries it, otherwise
+// the copy nested under product.product_check. See the field comments on
+// firmwareStatusResponse for why these are the same datum served twice.
+func (r *firmwareStatusResponse) upgradeNeedsReboot() bool {
+	if r.UpgradeNeedsReboot != nil {
+		return r.UpgradeNeedsReboot.String() == "1"
+	}
+	return r.Product.ProductCheck.UpgradeNeedsReboot == "1"
 }
 
 // The two CLOSED state vocabularies upstream's firmware check can persist,
@@ -307,7 +347,11 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		data.ProductVersion = resp.ProductVersion
 		data.LastCheck = resp.LastCheck
 		data.NeedsReboot = resp.NeedsReboot == "1"
-		data.UpgradeNeedsReboot = resp.Product.ProductCheck.UpgradeNeedsReboot == "1"
+		data.UpgradeNeedsReboot = resp.upgradeNeedsReboot()
+		// Emptiness is the signal (see the field comment): a version string
+		// means a major upgrade is on offer, "" means none is.
+		data.MajorUpgradeVersion = strings.TrimSpace(resp.UpgradeMajorVersion)
+		data.MajorUpgradeAvailable = data.MajorUpgradeVersion != ""
 		data.LastCheckTimestamp = parseLastCheckTimestamp(resp.LastCheck)
 		data.NewPackages = len(resp.NewPackages)
 		data.UpgradePackages = len(resp.UpgradePackages)
@@ -355,6 +399,32 @@ type firmwareInfoResponse struct {
 		Name      string `json:"name"`
 		Version   string `json:"version"`
 		Installed string `json:"installed"`
+		// FlatSize is the installed size — as a FORMATTED STRING, not bytes
+		// (#583). scripts/firmware/query.sh:52 asks pkg for `%sh`, which is
+		// already humanized ("168KiB"), and FirmwareController.php:854 then
+		// passes it through formatBytes(), which returns any non-numeric input
+		// unchanged (line 55-58). It is therefore the same mixed-unit base-2
+		// shape as the firmware status download_size field, and is parsed with
+		// the same helper.
+		//
+		// Two lossy edges to keep in mind for anything that sums these:
+		// pkg/formatBytes render one decimal place, so the value is the display
+		// string's precision (±0.05 of its unit) and not the exact on-disk
+		// size; and an empty size is rewritten to the literal "N/A" (see
+		// Locked below), which parses to nothing rather than to zero.
+		FlatSize string `json:"flatsize"`
+		// Locked / Automatic are pkg's `%k` and `%a` (query.sh:52): whether the
+		// package is pinned against updates, and whether it was installed as an
+		// automatic dependency rather than explicitly.
+		//
+		// TRAP: these NEVER arrive as "0". pkg emits a bare 0 or 1, but
+		// FirmwareController.php:852-853 replaces any value for which PHP's
+		// empty() is true with gettext('N/A') — and empty("0") is true in PHP.
+		// So the wire vocabulary is exactly {"1", "N/A"}. Reading "N/A" as
+		// false is a decode of a known-false value, not a guess: the producing
+		// query emits nothing but 0 and 1.
+		Locked    string `json:"locked"`
+		Automatic string `json:"automatic"`
 	} `json:"plugin"`
 }
 
@@ -362,6 +432,44 @@ type firmwareInfoResponse struct {
 type FirmwarePlugin struct {
 	Name    string
 	Version string
+	// SizeBytes is the installed size in bytes, parsed from upstream's
+	// formatted flatsize string. HasSize is false when the field was "N/A" or
+	// otherwise unparseable — emit no series then, since a 0 would show the
+	// plugin as free in a disk-attribution view.
+	SizeBytes float64
+	HasSize   bool
+	// Locked: pkg-locked, so it will not be updated by an upgrade — the reason
+	// a plugin can sit at an old version while everything else moves.
+	// Automatic: installed as a dependency rather than deliberately.
+	Locked    bool
+	Automatic bool
+}
+
+// parseFirmwarePluginSize converts a firmwareInfo plugin[].flatsize value into
+// bytes. The unit handling is shared with the firmware status download_size
+// parser (both come out of the same formatBytes/pkg humanization), but this is
+// a SINGLE item — never the comma-separated list download_size can be — and an
+// empty value is not zero here: upstream rewrites an empty size to "N/A", so an
+// empty string can only mean the key was missing entirely. Returns ok=false for
+// anything it cannot resolve, including "N/A".
+func parseFirmwarePluginSize(raw string) (float64, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	m := firmwareSizeItem.FindStringSubmatch(raw)
+	if m == nil {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0, false
+	}
+	multiplier, ok := firmwareSizeMultiplier(m[2])
+	if !ok {
+		return 0, false
+	}
+	return value * multiplier, true
 }
 
 // FirmwareInfo is the parsed subset of api/core/firmware/info the exporter
@@ -400,9 +508,14 @@ func (c *Client) FetchFirmwareInfo() (FirmwareInfo, *APICallError) {
 		if p.Installed != "1" {
 			continue
 		}
+		size, hasSize := parseFirmwarePluginSize(p.FlatSize)
 		data.InstalledPlugins = append(data.InstalledPlugins, FirmwarePlugin{
-			Name:    p.Name,
-			Version: p.Version,
+			Name:      p.Name,
+			Version:   p.Version,
+			SizeBytes: size,
+			HasSize:   hasSize,
+			Locked:    p.Locked == "1",
+			Automatic: p.Automatic == "1",
 		})
 	}
 	return data, nil

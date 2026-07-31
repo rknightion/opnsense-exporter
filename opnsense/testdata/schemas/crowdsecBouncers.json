@@ -10,6 +10,26 @@
   "fields": [
     {
       "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].last_seen",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].valid",
       "kind": "any"
     },
     {

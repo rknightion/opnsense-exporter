@@ -114,6 +114,101 @@ def loki_annotation_targets(builder) -> list:
     return targets
 
 
+# ---- the five streams #591 item 5 found unread ---------------------------
+# Of seven registered `opnsense.source` emitters, the generated LogQL referenced
+# only `syslog` and `zenarmor`. These five shipped detail nothing on the dashboard
+# could read. Each maps to the stream-selector matcher its owning tab must use.
+#
+# This is deliberately NOT the generic log-stream coverage gate (that lives in
+# `build_dashboard.py` and asks "does every registered source appear somewhere?").
+# It pins the SPECIFIC selectors, because the way to satisfy a generic gate while
+# still shipping blank panels is to select on the wrong label — see
+# `SUBSYSTEMLESS_LANES` below, which is the exact trap #591 called out.
+UNREAD_STREAMS = {
+    "unbound": 'opnsense_source="unbound"',
+    "ids": 'opnsense_source="ids"',
+    "crowdsec": 'opnsense_source="crowdsec"',
+    # The two flow-log lanes share one selector: they are the same record schema
+    # (internal/flow Record.LogAttributes), differing only in whether a Zenarmor
+    # conn document was correlated in, so splitting them across panels would ask an
+    # operator to know which lane produced a connection before they can look it up.
+    "netflow": 'opnsense_source=~"netflow|merged"',
+    "merged": 'opnsense_source=~"netflow|merged"',
+}
+
+# The lanes that never stamp `opnsense.subsystem`, checked against the emitters
+# themselves rather than asserted. A panel selecting one of these on
+# `opnsense_subsystem` matches NOTHING and reports no error — it renders as a quiet
+# empty panel, which is why this is checked at the source rather than trusted.
+SUBSYSTEMLESS_LANES = {
+    "unbound": "internal/logship/unbound.go",
+    "ids": "internal/logship/ids.go",
+    "crowdsec": "internal/logship/crowdsec.go",
+}
+
+# The synthetic self-observability record the IDS lane emits when the query_alerts
+# window saturated before reaching the prior cursor (internal/logship/ids.go's
+# idsGapEvent). It is accepted, bounded alert loss — the point of emitting it is
+# that the loss is visible rather than silent, which needs a panel reading it.
+IDS_GAP_FILTER = 'event="gap_detected"'
+
+
+class UnreadStreamCoverageTest(unittest.TestCase):
+    """#591 item 5: every registered log stream is read by at least one panel.
+
+    A log stream's absence from the dashboard is invisible in exactly the way an
+    annotation's is — there is no empty panel to notice, only a question nobody
+    thought to ask. The exporter was shipping per-query DNS dispositions, per-alert
+    Suricata signatures, CrowdSec decision detail and ~24 attributes per correlated
+    flow, and the estate could read none of it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.builder = build_dashboard.build_all()
+        cls.panels = loki_panel_targets(cls.builder)
+
+    def test_every_previously_unread_stream_now_has_a_panel(self):
+        missing = sorted(
+            source for source, matcher in UNREAD_STREAMS.items()
+            if not any(matcher in stream_selector(expr) for _, expr in self.panels)
+        )
+        self.assertEqual(
+            [], missing,
+            f"these registered opnsense.source lanes are read by no panel: {missing}")
+
+    def test_the_subsystemless_lanes_are_selected_on_source_not_subsystem(self):
+        """The trap, checked at BOTH ends.
+
+        First against the emitters: these three lanes build their Record.Attributes
+        without `logship.AttrSubsystem`, so their records carry no
+        `opnsense_subsystem` label at all. Then against the panels: no stream
+        selector may name one of these lanes on the subsystem label, because such a
+        selector matches nothing and says nothing about it.
+        """
+        repo = GRAFANA_DIR.parent
+        for lane, path in SUBSYSTEMLESS_LANES.items():
+            with self.subTest(lane=lane, source=path):
+                self.assertNotIn(
+                    "AttrSubsystem", (repo / path).read_text(),
+                    f"{path} now stamps a subsystem — re-check whether the {lane} "
+                    "panels should select on it, and update this guard")
+        for label, expr in self.panels:
+            selector = stream_selector(expr)
+            for lane in SUBSYSTEMLESS_LANES:
+                with self.subTest(panel=label, lane=lane):
+                    self.assertNotIn(f'opnsense_subsystem="{lane}"', selector)
+
+    def test_the_ids_gap_record_has_a_consumer(self):
+        """`gap_detected` is the IDS lane's own admission that it lost alerts. It was
+        emitted and read by nothing, which makes the admission as silent as the loss
+        it reports."""
+        self.assertTrue(
+            any(IDS_GAP_FILTER in expr for _, expr in self.panels),
+            f"no panel filters on {IDS_GAP_FILTER}; the synthetic IDS gap record is "
+            "emitted and read by nothing")
+
+
 class LokiScopingTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

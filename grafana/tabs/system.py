@@ -12,11 +12,13 @@ Covers:
   - SMART subsystem (18 metrics) — gated by has_smart sentinel; includes smartctl's own
     normalized SSD wear percentages (spare_available/endurance_used), the HDD/SSD rotation-rate
     discriminator, and a per-attribute failed-state gauge distinct from the drive-wide health (#577)
-  - Firmware subsystem (15 metrics) — including update-check health (#373) and
-    pending download size (#380)
+  - Firmware subsystem — including update-check health (#373), pending download
+    size (#380), the pending major-release upgrade and the per-plugin size/update-policy
+    gauges (#583)
   - Backup subsystem (3 metrics) — config backup freshness
   - Snapshots subsystem (3 metrics) — ZFS boot environment inventory
-  - Auth subsystem (6 metrics) — local user/group/API-key security posture (aggregate counts only)
+  - Auth subsystem — local user/group/API-key security posture plus password-age and
+    login-shell aggregates (#583). Aggregate counts only: no usernames, ever.
 """
 
 from builder import Builder, sel, grp, epoch_ms, RATE, YESNO, YESNO_GOOD, UPDOWN, OKERR
@@ -683,8 +685,35 @@ def build(b: Builder):
         desc="opnsense_firmware_update_check_state: current state of each update-check component. connection: error/unauthenticated/misconfigured/unresolved/ok. repository: error/untrusted/unsigned/revoked/incomplete/forbidden/ok. Anything else, including a future upstream state, collapses to unknown.",
     )
 
+    # #583. A pending MAJOR release is a different maintenance decision from the
+    # package counts either side of it: a scheduled-window job, and the thing
+    # fw_upgrade_reboot is actually describing. The info panel exists only while
+    # an upgrade is on offer, so an up-to-date box shows "No data" here rather
+    # than a permanent empty-version row.
+    fw_major_available = b.stat(
+        "Major Upgrade",
+        sel("opnsense_firmware_major_upgrade_available"),
+        mappings=YESNO,
+        color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "blue", "value": 1}],
+        w=3,
+        h=4,
+        desc="opnsense_firmware_major_upgrade_available: 1 when a major release upgrade (26.1 to 26.7, say) is on offer. Blue, not red — it is a plan-a-window signal, not a fault. No data means no update check has been stored yet, in which case nothing is claimed either way. This is the upgrade that Upgrade Reboot refers to.",
+    )
+    fw_major_version = b.table(
+        "Major Upgrade Target",
+        [sel("opnsense_firmware_major_upgrade_info")],
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"version": "Target Release", "opnsense_instance": "Instance"},
+        sort_by="Instance",
+        w=6,
+        h=4,
+        desc="opnsense_firmware_major_upgrade_info: the release a pending major upgrade would move this firewall to. Present only while such an upgrade is on offer — an empty panel means the box is on the current train.",
+    )
+
     row_firmware = b.row("Firmware", [
         fw_info, fw_needs_reboot, fw_upgrade_reboot, fw_last_check, fw_check_success,
+        fw_major_available, fw_major_version,
         fw_pending_download, fw_new_pkgs, fw_upgrade_pkgs,
         fw_downgrade_pkgs, fw_reinstall_pkgs, fw_remove_pkgs, fw_upgrade_sets,
         fw_check_state,
@@ -719,7 +748,36 @@ def build(b: Builder):
         sort_by="Plugin",
         desc="opnsense_firmware_plugin_installed: installed os-* plugin inventory. Requires --exporter.enable-firmware-package-details.",
     )
-    row_firmware_details = b.row("Firmware Packages", [fw_pending_updates, fw_plugins],
+    # #583. Same details gate as the inventory above, so nothing new is paid for
+    # on a default scrape. Size is APPROXIMATE by construction: OPNsense reports
+    # it as an already-humanised one-decimal string, so this is that display
+    # value converted back to bytes — fine for attributing disk pressure between
+    # plugins, not for accounting. A plugin whose size upstream could not report
+    # has no bar rather than a zero-length one.
+    fw_plugin_size = b.bargauge(
+        "Plugin Size on Disk",
+        [(f'topk {grp()} (20, {sel("opnsense_firmware_plugin_size_bytes")})', "{{name}}")],
+        unit="bytes", w=12, h=8,
+        desc="opnsense_firmware_plugin_size_bytes: installed size per os-* plugin, largest first. Approximate — derived from OPNsense's own one-decimal humanised size string, not an exact on-disk figure. Shows the top 20 per firewall, not the top 20 overall. Requires --exporter.enable-firmware-package-details.",
+    )
+    fw_plugin_policy = b.table(
+        "Plugin Update Policy",
+        [sel("opnsense_firmware_plugin_locked"), sel("opnsense_firmware_plugin_automatic")],
+        w=12, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "name": "Plugin",
+            "version": "Version",
+            "Value #A": "Locked",
+            "Value #B": "Automatic",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="Plugin",
+        desc="Locked (opnsense_firmware_plugin_locked) = pkg-pinned, so an upgrade SKIPS it rather than failing — this is the explanation for a plugin stuck at an old version while everything else moves. Automatic (opnsense_firmware_plugin_automatic) = pulled in as a dependency rather than chosen. Requires --exporter.enable-firmware-package-details.",
+    )
+    row_firmware_details = b.row("Firmware Packages",
+                                 [fw_pending_updates, fw_plugins,
+                                  fw_plugin_size, fw_plugin_policy],
                                  present="has_firmware_details")
 
     # =========================================================================
@@ -1344,9 +1402,50 @@ def build(b: Builder):
         desc="opnsense_auth_groups: total local authentication groups configured.",
     )
 
+    # #583. Named after OPNsense's own shell_warning flag, which fires on a
+    # NON-admin account holding a real login shell — it says nothing about which
+    # shell, and never fires for an administrator.
+    auth_shell_warning = b.stat(
+        "Shell Warnings",
+        sel("opnsense_auth_users_shell_warning"),
+        w=4,
+        h=4,
+        color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+        desc="opnsense_auth_users_shell_warning: non-administrator accounts that have been given a real login shell — OPNsense raises this warning itself in the user manager. Aggregate count only; no usernames are exposed.",
+    )
+
+    # These two are one reading in two panels and neither is complete alone:
+    # OPNsense only records pwd_changed_at when a password is actually changed,
+    # so an account that has never had one changed is invisible to the maximum
+    # and is counted separately instead. A high Unknown count with a healthy
+    # Oldest reading is the misleading case this pair exists to prevent.
+    auth_oldest_pwd = b.stat(
+        "Oldest Password Age",
+        sel("opnsense_auth_oldest_password_age_seconds"),
+        unit="s",
+        w=4,
+        h=4,
+        color_mode="background",
+        thresholds=[{"color": "green", "value": None},
+                    {"color": "orange", "value": 180 * 86400},
+                    {"color": "red", "value": 365 * 86400}],
+        desc="opnsense_auth_oldest_password_age_seconds: age of the least recently changed local password, across the accounts that HAVE a recorded change time. Amber past 180 days, red past a year. No data means no account on the box has a recorded change at all — read Unknown Password Age next to this, never on its own.",
+    )
+    auth_unknown_pwd_age = b.stat(
+        "Unknown Password Age",
+        sel("opnsense_auth_users_password_age_unknown"),
+        w=4,
+        h=4,
+        color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+        desc="opnsense_auth_users_password_age_unknown: accounts with no recorded password-change time, because OPNsense only writes one when a password is actually changed. These are the accounts whose password has never been rotated since the box started tracking it — the worst posture on the firewall, and invisible in Oldest Password Age.",
+    )
+
     row_auth = b.row("Local Auth", [
         auth_users_enabled, auth_users_disabled, auth_admin_users,
         auth_expired_users, auth_users_with_otp, auth_api_keys, auth_groups,
+        auth_shell_warning, auth_oldest_pwd, auth_unknown_pwd_age,
     ])
 
     # =========================================================================

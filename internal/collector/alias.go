@@ -18,6 +18,7 @@ type aliasCollector struct {
 	tableEvaluations  *prometheus.Desc
 	tablePackets      *prometheus.Desc
 	tableBytes        *prometheus.Desc
+	tableUpdated      *prometheus.Desc
 
 	subsystem      string
 	instance       string
@@ -60,6 +61,14 @@ func (c *aliasCollector) Register(namespace, instanceLabel string, log *slog.Log
 	c.tableBytes = buildPrometheusDesc(c.subsystem, "table_bytes_total",
 		"Bytes matched against this alias table since last reset",
 		[]string{"table", "direction", "action"})
+	// #583. NOT gated behind --exporter.enable-alias-details: the detail flag
+	// exists to hold back the 10 pf counter series per table, and this is one
+	// low-cardinality gauge that is the sole signal for a whole failure mode.
+	// Emitted alongside table_entries, which is on by default for the same
+	// reason.
+	c.tableUpdated = buildPrometheusDesc(c.subsystem, "table_updated_timestamp_seconds",
+		"Unix timestamp of the last time this alias table's persisted content was written - i.e. when a DNS- or URL-backed alias (a threat feed, say) last refreshed. A feed that silently stops refreshing is a security control failing open, and no other metric can see it: the table still holds its stale rows, so table_entries looks healthy. Only emitted for tables that HAVE persisted content; a static host/network alias has no refresh cycle and emits no series rather than a misleading epoch 0. Derived from the file mtime as a timezone-less local timestamp and read as UTC, so the absolute value can be off by the firewall's UTC offset - compare ages, not wall clocks.",
+		tableLabels)
 }
 
 func (c *aliasCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -70,6 +79,7 @@ func (c *aliasCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.tableEvaluations
 	ch <- c.tablePackets
 	ch <- c.tableBytes
+	ch <- c.tableUpdated
 }
 
 func (c *aliasCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -88,6 +98,11 @@ func (c *aliasCollector) Update(ctx context.Context, client *opnsense.Client, ch
 	for _, tb := range data.Tables {
 		ch <- prometheus.MustNewConstMetric(c.tableEntries, prometheus.GaugeValue,
 			tb.Entries, tb.Name, c.instance)
+
+		if tb.HasUpdated {
+			ch <- prometheus.MustNewConstMetric(c.tableUpdated, prometheus.GaugeValue,
+				tb.UpdatedTimestamp, tb.Name, c.instance)
+		}
 
 		if c.detailsEnabled {
 			ch <- prometheus.MustNewConstMetric(c.tableEvaluations, prometheus.CounterValue,

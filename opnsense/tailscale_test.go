@@ -1,7 +1,9 @@
 package opnsense
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -173,5 +175,112 @@ func TestFetchTailscaleStatus_PluginAbsent(t *testing.T) {
 	}
 	if data.Present {
 		t.Error("expected Present=false on 404")
+	}
+}
+
+// TestFetchTailscaleStatus_ReauthAndKeyExpiry pins the #583 node-local posture
+// decode: the two signals that say "this tunnel is about to stop working".
+//
+// Wire evidence, tailscale ipn/ipnstate/ipnstate.go:
+//   - `AuthURL string` (line 47) has NO omitempty, so the key is always present
+//     and empty means "not waiting for interactive reauth".
+//   - `KeyExpiry *time.Time \`json:",omitempty"\“ (line 338) is a POINTER with
+//     omitempty, so the key is ABSENT whenever the node key does not expire
+//     (key expiry disabled on the node). Absent must produce no series.
+func TestFetchTailscaleStatus_ReauthAndKeyExpiry(t *testing.T) {
+	cases := []struct {
+		name          string
+		body          string
+		wantReauth    bool
+		wantExpiry    float64
+		wantHasExpiry bool
+	}{
+		{
+			name: "awaiting reauth with a key expiry",
+			body: `{"Version":"1.2.3","BackendState":"NeedsLogin",
+			        "AuthURL":"https://login.tailscale.com/a/SECRETSECRET",
+			        "Self":{"HostName":"fw","KeyExpiry":"2026-09-01T00:00:00Z"},"Peer":{}}`,
+			wantReauth:    true,
+			wantExpiry:    1788220800,
+			wantHasExpiry: true,
+		},
+		{
+			name: "healthy, empty AuthURL, key expiry disabled (KeyExpiry omitted)",
+			body: `{"Version":"1.2.3","BackendState":"Running","AuthURL":"",
+			        "Self":{"HostName":"fw"},"Peer":{}}`,
+			wantReauth:    false,
+			wantHasExpiry: false,
+		},
+		{
+			name: "AuthURL key absent entirely (older tailscaled)",
+			body: `{"Version":"1.2.3","BackendState":"Running",
+			        "Self":{"HostName":"fw"},"Peer":{}}`,
+			wantReauth:    false,
+			wantHasExpiry: false,
+		},
+		{
+			name: "unparseable KeyExpiry emits nothing rather than epoch 0",
+			body: `{"Version":"1.2.3","BackendState":"Running","AuthURL":"",
+			        "Self":{"HostName":"fw","KeyExpiry":"soon"},"Peer":{}}`,
+			wantReauth:    false,
+			wantHasExpiry: false,
+		},
+		{
+			name: "a PEER key expiry must never leak into the Self-only metric",
+			body: `{"Version":"1.2.3","BackendState":"Running","AuthURL":"",
+			        "Self":{"HostName":"fw"},
+			        "Peer":{"nodekey":{"HostName":"other","KeyExpiry":"2026-09-01T00:00:00Z"}}}`,
+			wantReauth:    false,
+			wantHasExpiry: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.body))
+			})
+			defer server.Close()
+
+			data, err := client.FetchTailscaleStatus()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if data.ReauthRequired != tc.wantReauth {
+				t.Errorf("ReauthRequired = %v, want %v", data.ReauthRequired, tc.wantReauth)
+			}
+			if data.HasSelfKeyExpiry != tc.wantHasExpiry {
+				t.Errorf("HasSelfKeyExpiry = %v, want %v", data.HasSelfKeyExpiry, tc.wantHasExpiry)
+			}
+			if tc.wantHasExpiry && data.SelfKeyExpiry != tc.wantExpiry {
+				t.Errorf("SelfKeyExpiry = %v, want %v", data.SelfKeyExpiry, tc.wantExpiry)
+			}
+		})
+	}
+}
+
+// TestFetchTailscaleStatus_AuthURLNeverRetained is the standing privacy guard
+// for #583: the AuthURL is a one-click credential (anyone who reads it can
+// authorise the tailnet node). Only its PRESENCE may ever leave this package.
+// This asserts on the whole decoded struct so a future field that stashes the
+// URL fails here rather than in review.
+func TestFetchTailscaleStatus_AuthURLNeverRetained(t *testing.T) {
+	const secret = "https://login.tailscale.com/a/DEADBEEFCAFE"
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Version":"1.2.3","BackendState":"NeedsLogin","AuthURL":"` + secret +
+			`","Self":{"HostName":"fw"},"Peer":{}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchTailscaleStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.ReauthRequired {
+		t.Fatal("expected ReauthRequired=true")
+	}
+	if rendered := fmt.Sprintf("%+v", data); strings.Contains(rendered, "login.tailscale.com") ||
+		strings.Contains(rendered, "DEADBEEFCAFE") {
+		t.Fatalf("AuthURL leaked into TailscaleStatus: %s", rendered)
 	}
 }

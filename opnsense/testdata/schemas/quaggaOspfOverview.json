@@ -13,7 +13,31 @@
     },
     {
       "path": "response.areas",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.areas.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.areas.*.areaIfActiveCounter",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.lsaNumber",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.nbrFullAdjacencyCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.nbrFullAdjacentCounter",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.spfExecutedCounter",
+      "kind": "number"
     },
     {
       "path": "response.spfLastDurationMsecs",

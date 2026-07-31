@@ -18,8 +18,8 @@ import sys
 import sentinel_contract
 import uids
 from annotations import add_annotations
-from builder import (INSTANCE_SEL, Builder, sel, grp, RATE, ENABLED, UPDOWN, OKERR,
-                     YESNO, GW_STATUS)
+from builder import (INSTANCE_LABEL, INSTANCE_SEL, Builder, sel, grp, RATE, ENABLED,
+                     UPDOWN, OKERR, YESNO, GW_STATUS)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -61,6 +61,132 @@ COVERAGE_EXEMPT = {
     # not for that.
     "opnsense_unbound_dns_recursion_time_seconds",
 }
+
+# The REVERSE direction of COVERAGE_EXEMPT (#591): panel -> catalogue rather than
+# catalogue -> panel. An `opnsense_`-prefixed name a panel queries which is not in
+# the catalogue and is deliberately kept. Each entry needs a written reason, exactly
+# as COVERAGE_EXEMPT's do — a bare name here silently re-opens the hole the gate
+# exists to close.
+#
+# EMPTY BY DESIGN. Every legitimate shape the estate actually uses is handled
+# structurally by `panel_metric_gaps()` (histogram child series, recording-rule
+# output names, the `opnsense_instance` label token), so an entry here means a panel
+# is querying something no build of this exporter can emit. If you are about to add
+# one, first check it is not simply a typo — that is what item 1 of #591 turned out
+# to be, and it survived from the first dashboard commit.
+PANEL_METRIC_EXEMPT: dict[str, str] = {}
+
+# ---- the runtime-metric ledger (#591 item 4) ----------------------------
+# `coverage()` cannot see any of these. `load_catalogue()`'s row regex admits only
+# `opnsense_`-prefixed names, and it could not do otherwise: the catalogue documents
+# what THIS codebase emits, while `up`, `go_*` and `process_*` come from the
+# Prometheus server and the client library. So the whole runtime namespace is
+# structurally invisible to the gate that reports "1020/1020 metrics referenced" —
+# blind spot 1 of #591.
+#
+# The answer is a written decision rather than a widened regex. Rob's call
+# (2026-07-31) was selective coverage plus this ledger: panel the runtime metrics
+# that answer a question nothing else answers, and record a REASON for each family
+# left off, so "we decided not to chart that" stops being tribal knowledge that the
+# next audit has to re-derive from scratch.
+#
+# Keys are exact metric names, or a `*` suffix for a family. Longest matching key
+# wins, so a specific name overrides the family it sits in. Values are
+# (verdict, reason); verdict is PANELLED or EXCLUDED.
+#
+# WHAT THE GATE ENFORCES, and what it cannot: `runtime_ledger_gaps()` checks both
+# directions of the PANELLED half — a panel querying a runtime metric with no
+# PANELLED entry fails, and a PANELLED entry no panel queries fails. The EXCLUDED
+# half is a decision record and is NOT enforceable here, because nothing in this
+# repo can enumerate what the client library will emit on the operator's platform
+# and version without scraping a live process. Treat a missing EXCLUDED entry as a
+# documentation gap, not as a passing check.
+PANELLED = "panelled"
+EXCLUDED = "excluded"
+RUNTIME_METRIC_LEDGER: dict[str, tuple[str, str]] = {
+    "up": (PANELLED, "Exporter Runtime / Liveness. The only signal that says the "
+                     "exporter PROCESS is alive; opnsense_up says the firewall is "
+                     "reachable, which is a different failure with a different fix, "
+                     "and OPNsenseExporterDown alerts on the latter despite its name."),
+    "go_goroutines": (PANELLED, "Exporter Goroutines. A goroutine count that climbs "
+                                "and never falls is the leak signature for the "
+                                "long-lived syslog/NetFlow/SSE listeners."),
+    "go_memstats_heap_inuse_bytes": (PANELLED, "Exporter Memory, plotted against RSS "
+                                               "so runtime arena overhead is visible "
+                                               "as the gap between the two lines."),
+    "go_gc_duration_seconds*": (PANELLED, "Exporter GC Pressure. The `*` covers the "
+                                          "ConstSummary's quantile series plus its "
+                                          "_sum and _count children, which are what "
+                                          "give pause seconds/sec and cycles/sec."),
+    "process_cpu_seconds_total": (PANELLED, "Exporter CPU. Rated to core-seconds per "
+                                            "second, so 1.0 is one core saturated — "
+                                            "the number that says whether the exporter "
+                                            "itself is the bottleneck rather than the "
+                                            "firewall it is waiting on."),
+    "process_resident_memory_bytes": (PANELLED, "Exporter Memory, plotted with Go heap "
+                                                "in use. RSS is the figure the host and "
+                                                "any container limit actually enforce, "
+                                                "and the gap to heap-in-use is runtime "
+                                                "arena overhead rather than a leak."),
+    "process_open_fds": (PANELLED, "FD Utilisation + Open vs Max File Descriptors. "
+                                   "The shared failure surface of every listener and "
+                                   "the API pool."),
+    "process_max_fds": (PANELLED, "Denominator of FD Utilisation, and drawn on its "
+                                  "own because a container or unit file can set it far "
+                                  "lower than the operator assumes."),
+    # --- deliberately not charted -----------------------------------------
+    "go_info": (EXCLUDED, "A constant 1 labelled with the Go version. The build's Go "
+                          "version is already a column of the Build Info table, from "
+                          "opnsense_exporter_build_info, which is instance-labelled "
+                          "and this is not."),
+    "go_threads": (EXCLUDED, "OS threads, which for this workload track goroutines "
+                             "and GOMAXPROCS and move for no reason an operator can "
+                             "act on. Goroutines is the leak signal; a thread count "
+                             "beside it adds a second line and no second question."),
+    "go_memstats_*": (EXCLUDED, "~25 series describing heap internals (spans, mcache, "
+                                "mspan, buckhash, next_gc, lookups). Diagnosing a Go "
+                                "memory problem from these is a pprof job, not a "
+                                "dashboard one; heap-in-use plus RSS plus GC pressure "
+                                "is where a dashboard's usefulness ends. Overridden "
+                                "above for heap_inuse_bytes only."),
+    "go_sched_*": (EXCLUDED, "Not emitted. main.go:700 registers the base "
+                             "`NewGoCollector()`; the runtime/metrics-derived "
+                             "families need WithGoCollectorRuntimeMetrics, which is "
+                             "not enabled. Listed so a future audit does not read "
+                             "their absence as an oversight."),
+    "go_cgo_*": (EXCLUDED, "Not emitted, and CGO_ENABLED=0 for every shipped build."),
+    "process_start_time_seconds": (EXCLUDED, "Process start time. Restart detection is "
+                                             "already an annotation layer, which puts "
+                                             "it on every panel's time axis instead of "
+                                             "on one tile nobody would open."),
+    "process_virtual_memory_*": (EXCLUDED, "Virtual address space, which on a Go "
+                                           "process is a large number bearing almost "
+                                           "no relation to memory actually consumed. "
+                                           "Charting it invites the wrong alarm; RSS "
+                                           "is the honest figure and is charted."),
+    "process_network_*": (EXCLUDED, "Linux-only, and it counts bytes on the EXPORTER "
+                                    "host's interfaces. On a firewall dashboard that "
+                                    "is a near-guaranteed misread — the interface "
+                                    "traffic anyone wants is the FIREWALL's, and that "
+                                    "is the whole Interfaces tab."),
+    "promhttp_*": (EXCLUDED, "Not registered. internal/server/metrics.go:320 uses "
+                             "promhttp.HandlerFor, never InstrumentMetricHandler, so "
+                             "no promhttp_* series exists. The equivalent numbers are "
+                             "hand-rolled and instance-labelled "
+                             "(opnsense_exporter_server_metrics_*, charted on Metrics "
+                             "& OTLP), which promhttp's could not have been."),
+}
+
+# The runtime namespaces the ledger governs. Deliberately a small closed list rather
+# than "every identifier that is not opnsense_-prefixed": PromQL function names,
+# keywords and label names are all bare identifiers too, so a broader scan would need
+# a real parser to avoid reporting `rate`, `le` and `by` as unledgered metrics.
+#
+# `up` is an EXACT name, not a prefix. As a prefix it would also claim `upper`,
+# `uptime` and any label value beginning "up" — and the whole point of the closed
+# list is that a token it claims must really be a metric.
+RUNTIME_METRIC_PREFIXES = ("go_", "process_", "promhttp_")
+RUNTIME_METRIC_EXACT = ("up",)
 
 # The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's
 # Prometheus scrape config sets. The docs use `job_name: opnsense` (getting-started,
@@ -269,7 +395,7 @@ def add_core_variables(b: Builder):
         "current": {"text": "All", "value": "$__all"}, "options": [],
         "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
                   "datasource": {"name": "${datasource}"},
-                  "spec": {"query": 'label_values(opnsense_interfaces_link_state{opnsense_instance=~"$opnsense_instance"}, interface)',
+                  "spec": {"query": f'label_values({sel("opnsense_interfaces_link_state")}, interface)',
                            "refId": "interface"}},
         "refresh": "onTimeRangeChanged", "regex": "", "sort": "alphabeticalAsc",
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
@@ -396,9 +522,48 @@ def build_overview(b: Builder):
                                         {"color": "yellow", "value": 70}, {"color": "red", "value": 85}],
                   color="thresholds", color_mode="background", legend="{{opnsense_instance}}",
                   desc="Highest reported hardware temperature.")
-    cpu = b.stat("CPU Busy %", f'100 - {sel("opnsense_activity_cpu_idle_percent")}',
+    # #591: this tile queried `100 - opnsense_activity_cpu_idle_percent` from the
+    # first dashboard commit until now, and that metric has NEVER existed in any
+    # release — zero hits in the Go source, absent from both generated catalogues.
+    # `100 - <empty vector>` is an empty vector, so the most prominent tile on the
+    # dashboard read "No data" for its entire life with every gate green. Nothing
+    # checked panel -> catalogue; `panel_metric_gaps()` now does.
+    #
+    # The replacement is the cumulative counter reconstructed from the
+    # api/diagnostics/cpu_usage SSE stream (#559). OPNsense reports CPU AGGREGATED
+    # ACROSS CORES, so the family carries no `cpu` label and `sum by mode` of the
+    # rate is 1, not the core count — which means `1 - rate(idle)` is already the
+    # busy fraction of the whole machine and must NOT be divided by a core count.
+    # Hoisted into a local because the mode matcher carries double quotes and
+    # nesting `sel(..., 'mode="idle"')` inside the f-string below is a SyntaxError.
+    #
+    # NO presence gate, deliberately, and this is the considered answer rather than
+    # an oversight. conditionalRendering lives on tabs and rows only (builder.py's
+    # frozen contract — there is no per-panel form), and this tile shares the
+    # "Resource pressure" row with memory, PF states, load, disk and temperature.
+    # Gating the row on the CPU stream's health sentinel would therefore blank five
+    # unrelated healthy panels every time one SSE connection stalled. Going no-data
+    # during a stall is also the CORRECT reading rather than a regression: past the
+    # grace window the collector WITHDRAWS cpu_seconds_total instead of freezing it,
+    # because a frozen counter is indistinguishable from an idle CPU. Which of the
+    # two it is gets answered by the three CPU-stream health stats on System &
+    # Resources and by the OPNsenseCPUStreamStalled alert, so the information is not
+    # lost — it is one click away, where it belongs.
+    cpu_idle = sel("opnsense_cpu_seconds_total", 'mode="idle"')
+    cpu = b.stat("CPU Busy %",
+                 f'100 * (1 - sum {grp()} (rate({cpu_idle}[{RATE}])))',
                  unit="percent", w=4, h=5, graph="none", color_mode="background",
-                 thresholds=pressure_thresholds, desc="Current non-idle CPU percentage.")
+                 legend="{{opnsense_instance}}",
+                 thresholds=pressure_thresholds,
+                 desc="Non-idle CPU across all cores, as a rate over the cumulative "
+                      "counters reconstructed from the api/diagnostics/cpu_usage SSE "
+                      "stream. OPNsense reports CPU aggregated across cores, so 100% "
+                      "means the whole machine is busy, not one core. Reads NO DATA "
+                      "while the stream has been silent past its grace window: the "
+                      "counters are deliberately withdrawn rather than frozen, since "
+                      "a frozen counter looks exactly like a perfectly idle CPU. That "
+                      "is the honest answer, not a broken panel — the CPU stream "
+                      "health stats on System & Resources say which it is.")
 
     gw_status = b.statetimeline("Gateway Status", [(sel("opnsense_gateways_status"),
                                 "{{name}} ({{address}})")], GW_STATUS, w=12, h=7,
@@ -780,6 +945,152 @@ def build_diagnostics(b: Builder):
                        "since process_* metrics carry no appliance label."
                   ))
 
+    # ---- GC pressure (#591 item 4) ---------------------------------------
+    # The panel that explains a rising /metrics or API p95 when no API call is
+    # actually slow: stop-the-world pause time is charged to whatever goroutine was
+    # running, so it inflates every latency histogram at once and shows up on none
+    # of the per-endpoint panels.
+    #
+    # `go_gc_duration_seconds` is a client-library ConstSummary, NOT a histogram, so
+    # there are no _bucket series and histogram_quantile does not apply. Its
+    # quantiles are the runtime's own PauseQuantiles (0, 0.25, 0.5, 0.75, 1), _sum is
+    # cumulative pause time and _count is NumGC (verified against
+    # vendor/.../prometheus/go_collector.go:254-259). Three series, three questions:
+    # how long is the worst pause, how often is it collecting, and how much of each
+    # second is spent stopped.
+    #
+    # The third series is seconds-per-second, i.e. a unitless fraction, sharing a
+    # seconds axis with the other two. That is a deliberate compromise rather than an
+    # oversight — its magnitude is directly comparable to a pause duration, and it is
+    # the number that answers "is GC the reason", so splitting it onto a second panel
+    # would separate the answer from the evidence. Both derived series carry a field
+    # override so the legend and tooltip state their real unit.
+    gc = b.ts(
+        "Exporter GC Pressure",
+        [(f'go_gc_duration_seconds{{{JOB},quantile="1"}}', "worst pause"),
+         (f'go_gc_duration_seconds{{{JOB},quantile="0.5"}}', "median pause"),
+         (f"rate(go_gc_duration_seconds_sum{{{JOB}}}[{RATE}])", "pause seconds/sec"),
+         (f"rate(go_gc_duration_seconds_count{{{JOB}}}[{RATE}])", "GC cycles/sec")],
+        unit="s", w=8, h=6,
+        overrides=[
+            {"matcher": {"id": "byName", "options": "pause seconds/sec"},
+             "properties": [{"id": "unit", "value": "percentunit"}]},
+            {"matcher": {"id": "byName", "options": "GC cycles/sec"},
+             "properties": [{"id": "unit", "value": "ops"}]},
+        ],
+        desc="Go garbage-collector pause behaviour in the exporter process. Read this "
+             "when a latency panel elsewhere has climbed and no single endpoint or "
+             "collector explains it: stop-the-world pauses are charged to whichever "
+             "goroutine was running, so they inflate every latency figure at once and "
+             "appear on none of the per-endpoint breakdowns. 'pause seconds/sec' is "
+             "the share of wall-clock time spent stopped and is the number that "
+             "actually decides whether GC is the cause — worst pause on its own can "
+             "be alarming and harmless if it happens once an hour. Like the other "
+             "runtime panels this is scoped by scrape job, NOT by $opnsense_instance: "
+             "go_* metrics come from the client library and carry no appliance label.")
+
+    # ---- file-descriptor headroom (#591 item 4) --------------------------
+    # The exporter's failure surfaces share one budget: TCP and TLS syslog listener
+    # slots, the NetFlow UDP socket, the OPNsense API connection pool and every
+    # accepted /metrics request are all file descriptors out of the same rlimit.
+    # Exhaustion presents as unrelated-looking symptoms in all of them at once —
+    # syslog connections refused, API dials failing, scrapes 500ing — which is
+    # precisely the kind of shared cause nobody finds by staring at the subsystem
+    # panels.
+    #
+    # Its OWN sentinel rather than reusing has_go_runtime, because the two are not
+    # co-present: go_goroutines comes from the Go collector and exists on every
+    # platform, while process_open_fds/process_max_fds come from the process
+    # collector, which emits nothing at all on wasip1/js/ios
+    # (process_collector_not_supported.go) and reports an error instead of a value
+    # when the Linux procfs probe or the darwin syscall fails. Sharing one sentinel
+    # would light the row and render two permanently blank panels — the exact
+    # "is it broken or is it absent?" ambiguity this dashboard exists to remove.
+    #
+    # scope="target_join" for the same reason has_go_runtime uses it: no appliance
+    # label exists to scope on, so the co-scrape identity (job, instance) is joined
+    # against opnsense_up instead.
+    b.sentinel("has_process_fds", metric="process_open_fds", more=JOB,
+               scope="target_join")
+    fd_headroom = b.stat(
+        "FD Utilisation",
+        f"process_open_fds{{{JOB}}} / process_max_fds{{{JOB}}}",
+        unit="percentunit", w=6, h=6, graph="none", color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 0.7},
+                    {"color": "red", "value": 0.85}],
+        desc="Open file descriptors as a share of the process rlimit. One shared "
+             "budget covers the TCP and TLS syslog listeners, the NetFlow UDP socket, "
+             "the OPNsense API connection pool and every in-flight /metrics request, "
+             "so exhaustion presents as several unrelated-looking faults at once. The "
+             "70%/85% boundaries are headroom warnings, not limits: nothing degrades "
+             "at 70%, but a descriptor leak that reaches it will reach 100%. Scoped by "
+             "scrape job, not by $opnsense_instance — process_* metrics carry no "
+             "appliance label. Absent on platforms whose process collector cannot read "
+             "descriptor counts, which is what the row's sentinel gates on.")
+    fd_ts = b.ts(
+        "Open vs Max File Descriptors",
+        [(f"process_open_fds{{{JOB}}}", "open"),
+         (f"process_max_fds{{{JOB}}}", "limit")],
+        w=18, h=6,
+        desc="Open descriptors against the rlimit over time. The tile beside this one "
+             "cannot tell a leak from a burst and this panel can: a leak is a line "
+             "that climbs and never returns, a burst is a spike that decays when the "
+             "connections close. The limit is drawn because it is not a constant in "
+             "practice — a container runtime or systemd unit can hand the process a "
+             "far lower rlimit than the operator assumes, and a 'sudden' exhaustion "
+             "is often the limit having always been small.")
+
+    # ---- exporter alive vs firewall reachable (#591 item 4, #592 item 5) --
+    # Two DIFFERENT failures that both get described as "the exporter is down", and
+    # the pair exists so an incident does not start by confusing them:
+    #
+    #   up          — is the EXPORTER process alive and being scraped/pushing?
+    #   opnsense_up — did the exporter reach the FIREWALL on its last poll?
+    #
+    # OPNsenseExporterDown alerts on opnsense_up, so despite its name it fires on
+    # firewall unreachability. A dead exporter makes opnsense_up ABSENT rather than
+    # 0, which is a different alert condition entirely.
+    #
+    # `up` has two provenances and they carry disjoint labels, which is why the
+    # expression is an `or` of two matchers rather than one (verified against
+    # internal/telemetry/synthetic.go): in PULL mode `up` is synthesized by the
+    # Prometheus server per target and carries job/instance but no opnsense_instance;
+    # in OTLP PUSH mode there is no scraper, so the exporter emits its own `up = 1`
+    # with opnsense_instance as a const label and no job — and that gatherer is
+    # deliberately never wired into /metrics, because a literal `up` there would
+    # collide with the scrape target's own. Either matcher alone leaves this tile
+    # permanently blank in one of the two supported delivery modes. A deployment
+    # running both will legitimately show two series.
+    #
+    # Not covered by the reverse gate above and not coverable by it: `up` is not
+    # `opnsense_`-prefixed, so no catalogue can contain it. RUNTIME_METRIC_LEDGER is
+    # what records the decision instead.
+    alive = b.stat(
+        "Exporter Alive (up)",
+        f'up{{{JOB}}} or {sel("up")}', mappings=UPDOWN,
+        w=6, h=5, graph="none", color_mode="background",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        desc="Is the EXPORTER PROCESS alive — a different question from the tile "
+             "beside it. In pull mode this is the `up` series Prometheus synthesizes "
+             "for the scrape target; in OTLP push mode there is no scraper, so the "
+             "exporter emits its own `up = 1` while it runs and the series simply "
+             "stops when it dies. Both spellings are queried because they carry "
+             "different labels and only one exists in each mode. NO DATA here means "
+             "the exporter is gone or unreachable, and every other panel on both "
+             "dashboards is showing history rather than the present.")
+    fw_reachable = b.stat(
+        "Firewall Reachable (opnsense_up)", sel("opnsense_up"), mappings=UPDOWN,
+        w=6, h=5, graph="none", color_mode="background",
+        legend="{{opnsense_instance}}",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        desc="Did the exporter reach the FIREWALL on its last poll. Read as a pair "
+             "with 'Exporter Alive' to the left, which is what tells the two 'it is "
+             "down' incidents apart: alive=1 with this at 0 is a firewall, network or "
+             "credential fault and the exporter is working correctly; alive absent "
+             "makes this absent too, and the fault is the exporter or its host. "
+             "OPNsenseExporterDown alerts on THIS metric, so despite its name it "
+             "fires on firewall unreachability, not on a dead exporter.")
+
     # Per-endpoint API request rate + p95 latency, sourced from the client choke-point
     # self-metrics (#126). api_requests_total gives the denominator for a per-endpoint
     # error rate; the duration histogram shows which endpoint regressed when a
@@ -787,10 +1098,17 @@ def build_diagnostics(b: Builder):
     api_rate = b.ts("API Request Rate (by endpoint)",
                     [(f'sum {grp("endpoint")} (rate({sel("opnsense_exporter_api_requests_total")}[{RATE}]))',
                       "{{endpoint}}")], unit="reqps", w=12, h=7)
+    # #591 item 6b: the bucket selector is built with sel(), not hand-written. It
+    # produced a byte-identical string before, which is exactly why it was worth
+    # changing — a hand-written `{opnsense_instance=~"$opnsense_instance"}` is
+    # correct until the day someone copies the line and drops the matcher, and
+    # sel() is the chokepoint that makes that impossible to do by accident (the
+    # same argument grp() makes for the by-clause). Two call sites had opted out;
+    # this is one, `server_p95` below is the other.
+    api_p95_buckets = sel("opnsense_exporter_api_request_duration_seconds_bucket")
     api_p95 = b.ts("API Request p95 Latency (by endpoint)",
                    [(f'histogram_quantile(0.95, sum {grp("le", "endpoint")} '
-                     f'(rate(opnsense_exporter_api_request_duration_seconds_bucket'
-                     f'{{opnsense_instance=~"$opnsense_instance"}}[{RATE}])))', "{{endpoint}}")],
+                     f'(rate({api_p95_buckets}[{RATE}])))', "{{endpoint}}")],
                    unit="s", w=12, h=7,
                    desc="p95 of opnsense_exporter_api_request_duration_seconds by endpoint.")
 
@@ -924,11 +1242,13 @@ def build_diagnostics(b: Builder):
              "whole response (#81) - most commonly a collector emitting a duplicate label "
              "tuple. The response still returned 200 with whatever WAS collected; this is "
              "the only queryable evidence that a scrape was partial rather than complete.")
+    # Through sel() rather than a hand-written matcher — see api_p95 above (#591 6b).
+    server_p95_buckets = sel(
+        "opnsense_exporter_server_metrics_request_duration_seconds_bucket")
     server_p95 = b.ts(
         "Metrics Handler Request p95 Latency (by status)",
         [(f'histogram_quantile(0.95, sum {grp("le", "status")} '
-          f'(rate(opnsense_exporter_server_metrics_request_duration_seconds_bucket'
-          f'{{opnsense_instance=~"$opnsense_instance"}}[{RATE}])))', "{{status}}")],
+          f'(rate({server_p95_buckets}[{RATE}])))', "{{status}}")],
         unit="s", w=6, h=6,
         desc="p95 of opnsense_exporter_server_metrics_request_duration_seconds, timed from "
              "admission to response completion, by outcome status. Excludes requests the "
@@ -958,10 +1278,22 @@ def build_diagnostics(b: Builder):
         b.row("Grafana Annotation Writing", [ann_rate, ann_age], present="has_annotations"),
     ])
     b.tab("Exporter Runtime", [
+        # First row on the tab, above the build/collector inventory: it answers
+        # "which down is it?", which is the question that decides whether anything
+        # below is worth reading (#591 item 4 / #592 item 5). Ungated — `up` and
+        # `opnsense_up` are the two signals that must render when everything else
+        # has stopped, so gating them on a presence sentinel would hide exactly the
+        # panels an outage needs.
+        b.row("Liveness (exporter vs firewall)", [alive, fw_reachable]),
         b.row("Exporter Build & Collectors", [build, cov, series_total]),
         b.row("Plugin Availability (autodiscovery, #517/#525)", [feature_available, feature_unscraped]),
-        b.row("Go Runtime (client metrics)", [go_goro, go_mem, go_cpu],
+        b.row("Go Runtime (client metrics)", [go_goro, go_mem, go_cpu, gc],
               present="has_go_runtime"),
+        # Separate from the Go Runtime row on purpose: process_* descriptor counts
+        # are not exported on every platform while go_* are, so they need their own
+        # sentinel — see the has_process_fds registration above.
+        b.row("File Descriptors (process collector)", [fd_headroom, fd_ts],
+              present="has_process_fds"),
     ])
 
 
@@ -1038,6 +1370,56 @@ def build_health_overview(b: Builder):
              "export has EVER succeeded since this exporter started — the `> 0` guard "
              "suppresses the zero deliberately, since time() minus 0 would render a "
              "56-year age as though an export had once landed.")
+    # ---- syslog connection-slot headroom (#592 item 4) -------------------
+    # Before these two gauges, pressure on the listener's connection budget was
+    # observable only once `opnsense_exporter_logs_rejected_total{reason="conn_limit"}`
+    # started climbing — a WALL-HIT counter, which tells an operator they have already
+    # run out and never that they are about to. This is the headroom view.
+    #
+    # NOT summed across `transport`, and that is load-bearing rather than stylistic.
+    # The budget is PER TRANSPORT by design (#328): plain TCP and TLS hold separate
+    # budgets of the same size specifically so an unauthenticated plaintext flood
+    # cannot starve the mTLS senders an operator trusts. A `sum` over the label would
+    # average an exhausted TCP budget against an idle TLS one into a reassuring 50%,
+    # which is the precise failure the split budget exists to prevent. Dividing two
+    # identically-labelled vectors matches on the full label set, so this yields one
+    # series — and, on a stat panel, one tile — per (instance, transport) with no
+    # aggregation at all.
+    #
+    # An absent `transport="tls"` series is EXPECTED, not a gap: newSlotGauges seeds
+    # only the transports actually listening, because a TLS budget pinned at zero on a
+    # listener with no TLS socket would claim we are watching something that cannot
+    # happen. A missing tile therefore means "not configured"; a tile at 100% means
+    # "full". Those must not look alike, which is why this is one tile per transport
+    # rather than a single blended number.
+    #
+    # Its own sentinel rather than the row's `has_logs`: has_logs probes
+    # opnsense_exporter_logs_queue_capacity, i.e. the pipeline, which a box shipping
+    # only Zenarmor or NetFlow records also has. Gating on that would render two
+    # permanently blank tiles on every box with no syslog listener.
+    b.sentinel("has_syslog_conn_slots",
+               metric="opnsense_exporter_logs_syslog_conn_slots_limit",
+               scope="self_labeled")
+    slot_util = b.stat(
+        "Syslog Connection Slots Used",
+        f'{sel("opnsense_exporter_logs_syslog_conn_slots_in_use")} / '
+        f'{sel("opnsense_exporter_logs_syslog_conn_slots_limit")}',
+        unit="percentunit", w=6, h=5, graph="none", color_mode="background",
+        legend="{{transport}} {{opnsense_instance}}",
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 0.7},
+                    {"color": "red", "value": 0.9}],
+        desc="Syslog receiver connection slots held against the "
+             "--logs.syslog.max-conns ceiling, ONE TILE PER TRANSPORT. The budget is "
+             "per transport rather than a shared pool, so that an unauthenticated "
+             "plaintext flood cannot starve the mTLS senders you trust — never read "
+             "these as one number. A missing tile means that transport is not "
+             "configured, which is a different state from a tile at 100%. Reaching "
+             "the ceiling is the point at which new senders are refused and "
+             "logs_rejected_total{reason=\"conn_limit\"} starts climbing, so this is "
+             "the panel that gives you warning where that counter gives you the "
+             "post-mortem. A TLS connection holds its slot from accept, BEFORE it has "
+             "authenticated: rising TLS occupancy with no matching rise in records "
+             "shipped is the slowloris signature, not busy senders.")
     ship_rate = b.stat(
         "Log Records Shipped",
         f'sum {grp()} (rate({sel("opnsense_exporter_logs_shipped_total")}[{RATE}]))',
@@ -1051,7 +1433,8 @@ def build_health_overview(b: Builder):
         b.panel_links(panel, api_detail)
     for panel in (series, otlp_on, otlp_fail, otlp_last):
         b.panel_links(panel, otlp_detail)
-    b.panel_links(ship_rate, logs_detail)
+    for panel in (ship_rate, slot_util):
+        b.panel_links(panel, logs_detail)
 
     b.tab("Overview", [
         b.row("Collection", [reachable, failing, stalest, api_errs, cache_ratio, series]),
@@ -1061,6 +1444,12 @@ def build_health_overview(b: Builder):
         # dashboard exists to remove.
         b.row("OTLP Delivery", [otlp_on, otlp_fail, otlp_last], present="has_otlp"),
         b.row("Log Shipping", [ship_rate], present="has_logs"),
+        # A row of its own rather than a third tile on the row above: the two are
+        # gated on different sentinels (see has_syslog_conn_slots), and a row can
+        # carry only one presence condition. Merging them would mean choosing which
+        # of the two panels is allowed to be honest about being absent.
+        b.row("Syslog Listener Headroom", [slot_util],
+              present="has_syslog_conn_slots"),
     ])
 
 
@@ -1099,6 +1488,22 @@ def coverage(*builders: Builder) -> list:
     first, so the self-observability split could not land without either weakening
     the gate or exempting every metric it moved. Taking the union costs nothing
     while there is one dashboard and is the whole unblock once there are two.
+
+    ACCEPTED LIMITATION, recorded here so it is not re-derived (#591 blind spot 4):
+    this is a SUBSTRING match over one flat blob of every expression, not a semantic
+    one. It proves the metric name appears in some query. It does NOT prove an
+    operator can ever see the result — a panel on a row whose presence sentinel is
+    never satisfied, a hidden panel, or a series blanked by a `> 0` guard all count
+    as coverage here. That is deliberate: the alternative is evaluating conditional
+    rendering against a hypothetical firewall, which needs a fixture of what that
+    firewall exports and would fail for every optional plugin nobody in the fixture
+    runs. The gate's real claim is the narrower one — "no metric was forgotten
+    entirely" — and it is worth having at that strength. Do NOT widen it by adding
+    per-panel visibility heuristics; the honest fix is a live-box check, which is
+    what `cmd/apidrift` is for.
+
+    The complementary direction — a panel querying a metric that cannot exist — is
+    `panel_metric_gaps()` below, not this function.
     """
     blob = "\n".join(expr for b in builders for expr in b._exprs)
     missing = []
@@ -1110,6 +1515,288 @@ def coverage(*builders: Builder) -> list:
         if not re.search(re.escape(n) + r"(?![a-z0-9_])", blob):
             missing.append(n)
     return missing
+
+
+# A PromQL identifier, including the colons a recording-rule output name carries.
+# Matching the colons is the point: `instance:opnsense_pf_state:utilization` must be
+# seen as ONE token, or the bare `opnsense_pf_state` falls out of the middle of it
+# and reads as a panel querying a metric that does not exist.
+_PROM_IDENT = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
+# The child series a histogram or summary exports. They are never in the catalogue —
+# docgen lists the base name — so a panel legitimately querying `..._bucket` must
+# resolve against the base.
+_HIST_CHILD = re.compile(r"_(bucket|sum|count)$")
+
+
+def panel_metric_gaps(*builders: Builder) -> dict:
+    """Panel references to an `opnsense_*` name the exporter cannot emit (#591).
+
+    The REVERSE of `coverage()`, and the gate that did not exist. `coverage()` asks
+    "does every catalogue metric reach a panel"; nothing asked "does every panel
+    reach a real metric", so a syntactically perfect selector for a metric that has
+    never existed passed every gate in the repo — `tools/promqlcheck` parses syntax,
+    and PromQL has no notion of an unknown metric name (an absent selector is an
+    empty vector, not an error). `100 - <empty vector>` is an empty vector, so the
+    Overview's headline "CPU Busy %" tile read "No data" from the first dashboard
+    commit until #591 and every check stayed green.
+
+    Returns {token: example expression}, so the failure message can name the panel
+    query rather than just the token.
+
+    Three things are NOT gaps, and each is skipped structurally rather than by
+    allowlist, because each is a whole legitimate class rather than a case:
+
+    * A token containing `:` is a RECORDING-RULE output name (`instance:x:rate5m`).
+      Those are produced by `grafana/alerts/build_rules.py`, never by the exporter,
+      so they are correctly absent from the catalogue. `test_recording_rules.py`
+      owns checking that the rules generating them exist.
+    * `_bucket` / `_sum` / `_count` are histogram and summary CHILD series. Tried as
+      the literal token FIRST and only then stripped, so a metric genuinely named
+      `..._count` (`opnsense_firmware_upgrade_packages_count`) is matched on its own
+      name and never mangled into a nonexistent base.
+    * `opnsense_instance` is a LABEL, and appears in every `by (...)` clause and
+      every instance matcher in the estate.
+
+    Non-`opnsense_`-prefixed runtime metrics (`up`, `go_*`, `process_*`) are out of
+    scope here and covered by `RUNTIME_METRIC_LEDGER` instead — see its comment for
+    why the catalogue cannot see them at all.
+    """
+    catalogue = set(load_catalogue())
+    gaps = {}
+    for b in builders:
+        for expr in b._exprs:
+            for token in _PROM_IDENT.findall(expr):
+                if not token.startswith("opnsense_") or ":" in token:
+                    continue
+                if token == INSTANCE_LABEL or token in catalogue:
+                    continue
+                if _HIST_CHILD.sub("", token) in catalogue:
+                    continue
+                if token in PANEL_METRIC_EXEMPT:
+                    continue
+                gaps.setdefault(token, expr)
+    return gaps
+
+
+def _ledger_entry(token: str):
+    """The RUNTIME_METRIC_LEDGER entry governing `token`, longest key first.
+
+    Longest-match so a specific name can override the family it sits in —
+    `go_memstats_heap_inuse_bytes` is panelled while the rest of `go_memstats_*`
+    is not, and a shortest-match lookup would silently give the family's verdict
+    to the one metric that has its own.
+    """
+    best = None
+    for key, entry in RUNTIME_METRIC_LEDGER.items():
+        name = key[:-1] if key.endswith("*") else key
+        matched = token.startswith(name) if key.endswith("*") else token == key
+        if matched and (best is None or len(name) > len(best[0])):
+            best = (name, entry)
+    return best[1] if best else None
+
+
+def runtime_ledger_gaps(*builders: Builder) -> dict:
+    """Disagreements between RUNTIME_METRIC_LEDGER and what panels actually query.
+
+    The runtime namespace (`up`, `go_*`, `process_*`, `promhttp_*`) is structurally
+    invisible to `coverage()`: `load_catalogue()` reads two generated documents whose
+    row regex admits only `opnsense_`-prefixed names, and it cannot do otherwise —
+    those documents describe what THIS codebase emits, and these metrics come from
+    the Prometheus server and the client library. Widening the regex would not help;
+    there is no row to match. So the decision is recorded instead, and this gate
+    keeps the record honest in both directions:
+
+      * a panel querying a runtime metric with no PANELLED entry  -> "unledgered"
+      * a PANELLED entry no panel queries                         -> "stale"
+
+    Returns {"unledgered": {token: expr}, "stale": [key, ...]}.
+
+    The EXCLUDED half is deliberately NOT enforced, and pretending otherwise would
+    be the worse mistake. Nothing in this repo can enumerate the metrics the client
+    library will emit on the operator's platform and client_golang version without
+    scraping a live process, so an "every excluded metric exists" check would be
+    asserting against a hardcoded list — which is the drift this ledger exists to
+    replace, reintroduced one layer down. The EXCLUDED entries are a decision record
+    for the next auditor; the PANELLED entries are a gate.
+    """
+    blob = "\n".join(expr for b in builders for expr in b._exprs)
+    unledgered = {}
+    for b in builders:
+        for expr in b._exprs:
+            for token in _PROM_IDENT.findall(expr):
+                if ":" in token:
+                    continue
+                if not (token.startswith(RUNTIME_METRIC_PREFIXES)
+                        or token in RUNTIME_METRIC_EXACT):
+                    continue
+                entry = _ledger_entry(token)
+                if entry is None or entry[0] != PANELLED:
+                    unledgered.setdefault(token, expr)
+    stale = []
+    for key, (verdict, _) in RUNTIME_METRIC_LEDGER.items():
+        if verdict != PANELLED:
+            continue
+        name = key[:-1] if key.endswith("*") else key
+        # Right boundary only for an exact key: a `*` key is a prefix by definition,
+        # so requiring "not followed by a name character" would reject the very
+        # children (`_sum`, `_count`, `{quantile=...}`) it exists to cover.
+        pattern = re.escape(name) + ("" if key.endswith("*") else r"(?![A-Za-z0-9_])")
+        if not re.search(pattern, blob):
+            stale.append(key)
+    return {"unledgered": unledgered, "stale": sorted(stale)}
+
+
+# ---- log-stream coverage gate (#591 item 5) -----------------------------
+# The metric half of the project rule ("every emitted signal is consumed by at least
+# one generated panel or rule") has been gate-enforced since #84. The LOG half was
+# enforced by nothing at all — blind spot 2 of #591. `coverage()` blobs `_exprs`, and
+# `builder.py` deliberately routes LogQL into a SEPARATE `_loki_exprs` list so LogQL
+# can never reach the Prometheus gate; the only thing that had ever read that second
+# list was the instance-scoping test. A whole registered source could therefore ship
+# with no panel, and five of the seven did.
+LOGSHIP_DIR = os.path.join(REPO, "internal", "logship")
+
+# Source values that are registered but deliberately not required to appear in a
+# panel. Same contract as COVERAGE_EXEMPT: a written reason each.
+#
+# THE FACTORY NAME IS NOT ALWAYS THE SOURCE VALUE, and this one entry is the whole
+# difference between 6 registered factories and 7 shipped streams. It is expressed as
+# a UNION (every Name() plus every static ExtraSourceNames() literal) minus this
+# exemption, rather than as "drop any source that implements ExtraSourceNames and use
+# its list instead". That second rule reads more elegant and is WRONG here: the
+# syslog source implements ExtraSourceNames too (internal/logship/syslog/source.go:196
+# — dynamically, reporting whatever a registered ProgramProcessor stamps), so the drop
+# rule would delete `syslog` itself, the most-consumed stream on the estate, and no
+# gate would notice because it would simply stop being required.
+LOG_SOURCE_EXEMPT = {
+    "flow": "The flowlog Bridge's LANE name, which is never stamped on a record. "
+            "Every record it emits carries an explicit Record.Source override of "
+            "`netflow` or `merged` (internal/logship/flowlog/flowlog.go:89-96,134 "
+            "resolved through internal/flow/record.go:27-38), and both of those ARE "
+            "required below. Requiring `flow` as well would demand a panel selecting "
+            "a stream no record can ever carry.",
+}
+
+_GO_REGISTERS = re.compile(r"\bRegister(?:Push)?Source\(")
+_GO_NAME_FN = re.compile(r"func\s*\([^)]*\)\s*Name\(\)\s*string\s*\{\s*return\s+([^\s}]+)\s*\}")
+_GO_EXTRA_FN = re.compile(
+    r"func\s*\([^)]*\)\s*ExtraSourceNames\(\)\s*\[\]string\s*\{\s*return\s+\[\]string\{([^}]*)\}")
+_GO_STRING_LIT = re.compile(r'"([a-z0-9_]+)"')
+
+
+def registered_log_sources() -> set:
+    """Every `opnsense.source` value the Go pipeline can stamp, read from the source.
+
+    DERIVED, not copied. A hardcoded Python list of source names is exactly the drift
+    this epic keeps finding: the Go side would gain a source, the list would not, and
+    the gate would go on reporting full coverage of a set that had quietly stopped
+    being the real one. Nothing generated carries this set today (`self-metrics.md`
+    documents metric names, not source values), so the Go source itself is the only
+    non-drifting origin.
+
+    The extraction is narrow on purpose — a source registers itself with
+    `RegisterSource`/`RegisterPushSource` from an `init()` in its own file, and
+    declares its name in the same file, either as a string literal in `Name()` or via
+    a package const. Names reached only through a `Record.Source` override come from
+    the `ExtraSourceNames()` declaration the pipeline already requires for its
+    per-source metric pre-initialisation (internal/logship/source.go:69-75).
+
+    It raises rather than returning a short set when the extraction stops working.
+    That is the important property: a regex that silently matches nothing turns this
+    gate into a check that every member of the empty set is panelled, which passes
+    forever and looks identical to success.
+    """
+    names, registering = set(), []
+    for root, _, files in os.walk(LOGSHIP_DIR):
+        for fname in sorted(files):
+            if not fname.endswith(".go") or fname.endswith("_test.go"):
+                continue
+            path = os.path.join(root, fname)
+            with open(path) as f:
+                text = f.read()
+            if not _GO_REGISTERS.search(text):
+                continue
+            # source.go/push.go define the Register* functions themselves; they hold
+            # no source of their own.
+            consts = dict(re.findall(r'^const\s+(\w+)\s*=\s*"([a-z0-9_]+)"', text, re.M))
+            found = set()
+            for token in _GO_NAME_FN.findall(text):
+                if token.startswith('"'):
+                    found.add(token.strip('"'))
+                elif token in consts:
+                    found.add(consts[token])
+            for literal_list in _GO_EXTRA_FN.findall(text):
+                found |= set(_GO_STRING_LIT.findall(literal_list))
+            if found:
+                registering.append(path)
+                names |= found
+    if len(registering) < 5 or len(names) < 6:
+        raise RuntimeError(
+            "registered_log_sources() extracted "
+            f"{sorted(names)} from {len(registering)} file(s) under {LOGSHIP_DIR}; "
+            "that is fewer than the pipeline is known to have, so the Go-side shape "
+            "the regexes match has changed. FIX THE EXTRACTION — do not lower this "
+            "guard, or the log-coverage gate silently becomes a no-op.")
+    return names
+
+
+_LOKI_SOURCE_MATCHER = re.compile(r'opnsense_source\s*(?:=~|=)\s*"([^"]*)"')
+
+
+def panelled_log_sources(*builders: Builder) -> set:
+    """Source values selected by at least one generated LogQL expression.
+
+    Reads the `opnsense_source` STREAM-SELECTOR matcher rather than searching for the
+    bare word, because the bare word appears in body text, legends and unrelated
+    matchers — "zenarmor" is in half the Zenarmor tab's line filters. A `=~` value is
+    split on `|`, so `opnsense_source=~"netflow|merged"` covers both.
+
+    Only the POSITIVE matchers `=` and `=~` count. `!=` / `!~` name a source in order
+    to exclude it, which is the opposite of consuming it, and the regex is written so
+    the `=` inside `!=` cannot match.
+    """
+    found = set()
+    for b in builders:
+        for expr in b._loki_exprs:
+            for value in _LOKI_SOURCE_MATCHER.findall(expr):
+                found |= {v.strip() for v in value.split("|") if v.strip()}
+    return found
+
+
+def log_stream_gaps(*builders: Builder) -> list:
+    """Registered log sources that no generated panel selects (#591 item 5).
+
+    The mirror of `coverage()` for the log half of the rule.
+
+    SEMANTICS, decided in #591 and recorded here because the gate encodes it: the
+    generic Log Explorer panel and the 31 derived `opnsense_log_events_*` metrics DO
+    count as coverage for per-program SYSLOG FORMATS. A cron line, an radvd line and a
+    miniupnpd failure variant are shapes WITHIN the `syslog` source, they are all
+    reachable from the Log Explorer, and their volumes are already charted from the
+    derived metrics — dedicated panels for each would be a tab of near-empty graphs.
+    That reading does NOT extend to a whole SOURCE: `unbound`, `ids`, `crowdsec`,
+    `netflow` and `merged` each carry attributes no metric summarises (which client
+    hit which blocklist, which signature fired, which decision was taken, which
+    conversation moved the bytes), so they are gaps under any reading of the rule and
+    the gate requires an explicit selector for each.
+
+    Hence the unit here is the SOURCE, not the program or the subsystem — a source is
+    what the pipeline stamps and what Loki indexes, so it is the coarsest thing that
+    can be selected and the finest thing that can be enforced without a fixture of
+    real log lines. It also has to be the source rather than the subsystem for a
+    blunter reason: `unbound`, `ids` and `crowdsec` never set `opnsense.subsystem` at
+    all, so a subsystem-keyed gate could not see them.
+
+    One name collision to keep straight, because collapsing it would hide a whole
+    stream: `unbound` is BOTH a poll source (internal/logship/unbound.go, stamping
+    `source="unbound"`) and a registered syslog PARSER
+    (internal/logship/syslog/unbound.go:65, whose records stamp `source="syslog"`).
+    They are different streams carrying different fields; a panel selecting the
+    parser's output does not cover the poll source.
+    """
+    panelled = panelled_log_sources(*builders)
+    return sorted(s for s in registered_log_sources()
+                  if s not in panelled and s not in LOG_SOURCE_EXEMPT)
 
 
 def leaf_tab_titles(b: Builder) -> list[str]:
@@ -1362,6 +2049,56 @@ def main():
         for n in missing:
             print(f"  - {n}", file=sys.stderr)
 
+    # ---- the three gates #591 added, all reported here and enforced at the
+    # bottom of main() alongside `missing` --------------------------------------
+    # They share the coverage gate's both-modes policy for the same reason it has
+    # one: a stale dashboard.json must not be able to ship, and in write mode the
+    # (partial) artifacts are still written first so a contributor can iterate
+    # before the non-zero exit blocks the commit.
+
+    # REVERSE coverage: a panel querying a metric no build can emit (#591 item 1/2).
+    metric_gaps = panel_metric_gaps(*builders)
+    if metric_gaps:
+        print(f"panels referencing metrics outside the catalogue ({len(metric_gaps)}):",
+              file=sys.stderr)
+        for token, expr in sorted(metric_gaps.items()):
+            print(f"  - {token}\n      in: {expr}", file=sys.stderr)
+        print("  (fix the metric name, or add it to PANEL_METRIC_EXEMPT with a "
+              "reason. `100 - <nonexistent metric>` is an empty vector, not an "
+              "error — nothing else in CI can catch this.)", file=sys.stderr)
+
+    # LOG-STREAM coverage: the mirror of `coverage()` for the log half of the rule.
+    stream_gaps = log_stream_gaps(*builders)
+    if stream_gaps:
+        print(f"registered log sources no panel selects ({len(stream_gaps)}):",
+              file=sys.stderr)
+        for source in stream_gaps:
+            print(f"  - {source}", file=sys.stderr)
+        print("  (add a Loki panel selecting opnsense_source=\"<source>\" on the tab "
+              "that owns it, or add it to LOG_SOURCE_EXEMPT with a reason.)",
+              file=sys.stderr)
+    else:
+        print(f"log streams: {len(registered_log_sources()) - len(LOG_SOURCE_EXEMPT)}"
+              f"/{len(registered_log_sources()) - len(LOG_SOURCE_EXEMPT)} registered "
+              f"sources selected by a generated panel", file=sys.stderr)
+
+    # RUNTIME LEDGER: the decision record for the metrics no catalogue can hold.
+    ledger = runtime_ledger_gaps(*builders)
+    if ledger["unledgered"]:
+        print(f"runtime metrics on a panel with no ledger entry "
+              f"({len(ledger['unledgered'])}):", file=sys.stderr)
+        for token, expr in sorted(ledger["unledgered"].items()):
+            print(f"  - {token}\n      in: {expr}", file=sys.stderr)
+        print("  (add a PANELLED entry to RUNTIME_METRIC_LEDGER saying which panel "
+              "and what question it answers.)", file=sys.stderr)
+    if ledger["stale"]:
+        print(f"RUNTIME_METRIC_LEDGER entries claiming a panel that no longer exists "
+              f"({len(ledger['stale'])}):", file=sys.stderr)
+        for key in ledger["stale"]:
+            print(f"  - {key}", file=sys.stderr)
+        print("  (the panel was removed or renamed: repoint the entry, or move it to "
+              "EXCLUDED with the reason it is no longer charted.)", file=sys.stderr)
+
     # Correctness gate: every dateTimeAsIso field must be fed epoch milliseconds
     # (epoch seconds render as ~1970 dates otherwise). Fails the build in both
     # modes — a stale dashboard.json can't ship without this being satisfied (#78).
@@ -1478,7 +2215,12 @@ def main():
     # via `build_dashboard.py --check`. In write mode the (partial) dashboard.json is
     # still written first so a contributor can iterate, then the non-zero exit blocks
     # the commit/CI until a panel is added (#84).
-    if missing:
+    #
+    # #591 added three more failure conditions on the same terms — the reverse metric
+    # gate, the log-stream gate and the runtime ledger. All four are collected into one
+    # exit so a build reports EVERY problem it found rather than making a contributor
+    # rediscover the next one on each rerun.
+    if missing or metric_gaps or stream_gaps or ledger["unledgered"] or ledger["stale"]:
         sys.exit(1)
 
 

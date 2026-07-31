@@ -292,3 +292,86 @@ func TestAuthUserExpired(t *testing.T) {
 		})
 	}
 }
+
+// TestFetchAuthUsers_PasswordAgeAndShellWarning pins the #583 aggregate
+// posture decode. Both fields stay AGGREGATES — no username ever reaches a
+// struct field, let alone a label.
+//
+// Wire evidence (OPNsense core, identical on stable/26.1 and stable/26.7):
+//   - Auth/Api/UserController.php:104 and etc/inc/auth.inc:461 both write
+//     `pwd_changed_at = microtime(true)` into a TextField (Auth/User.xml:35),
+//     so the wire value is a STRING holding float UNIX SECONDS with a
+//     microsecond fraction — not milliseconds, not a formatted date. It is
+//     written ONLY on a password change, so it is EMPTY for any account whose
+//     password predates the feature; upstream itself guards with
+//     `empty($userObject->pwd_changed_at) ? 0 : ...` (Auth/Local.php:124).
+//   - UserController.php:121 computes shell_warning per search row as
+//     `strpos($row['shell'], '/') === 0 && empty($row['is_admin']) ? '1' : '0'`
+//     — always present, string '1'/'0'.
+func TestFetchAuthUsers_PasswordAgeAndShellWarning(t *testing.T) {
+	now := time.Now()
+	oldest := now.Add(-400 * 24 * time.Hour)
+	newer := now.Add(-10 * 24 * time.Hour)
+
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/auth/user/search", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"rows": [
+			{"name":"a","pwd_changed_at":"%.6f","shell_warning":"1"},
+			{"name":"b","pwd_changed_at":"%.6f","shell_warning":"0"},
+			{"name":"c","pwd_changed_at":"","shell_warning":"1"},
+			{"name":"d","shell_warning":"0"},
+			{"name":"e","pwd_changed_at":"not-a-number","shell_warning":"0"}
+		]}`, float64(oldest.UnixNano())/1e9, float64(newer.UnixNano())/1e9)
+	})
+
+	data, err := client.FetchAuthUsers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.UsersWithShellWarning != 2 {
+		t.Errorf("UsersWithShellWarning = %d, want 2", data.UsersWithShellWarning)
+	}
+	// Three users have no usable change time (empty, absent, unparseable).
+	// They are counted separately rather than folded into the age aggregate:
+	// an account that has NEVER had its password changed is the worst case,
+	// and silently dropping it would make the oldest-age gauge read healthier
+	// than the box actually is.
+	if data.UsersWithUnknownPasswordAge != 3 {
+		t.Errorf("UsersWithUnknownPasswordAge = %d, want 3", data.UsersWithUnknownPasswordAge)
+	}
+	if !data.HasOldestPasswordAge {
+		t.Fatal("expected HasOldestPasswordAge=true")
+	}
+	// ~400 days, allowing a generous slack for test execution time.
+	wantAge := now.Sub(oldest).Seconds()
+	if delta := data.OldestPasswordAgeSeconds - wantAge; delta < -5 || delta > 5 {
+		t.Errorf("OldestPasswordAgeSeconds = %v, want ~%v", data.OldestPasswordAgeSeconds, wantAge)
+	}
+}
+
+// TestFetchAuthUsers_NoPasswordAgeKnown covers the box where NO account has a
+// recorded password change: the aggregate must be absent, not 0. A 0 would
+// read as "every password was changed this instant", the exact inverse of the
+// truth.
+func TestFetchAuthUsers_NoPasswordAgeKnown(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/auth/user/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows": [{"name":"root"},{"name":"admin","pwd_changed_at":""}]}`))
+	})
+
+	data, err := client.FetchAuthUsers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.HasOldestPasswordAge {
+		t.Errorf("expected HasOldestPasswordAge=false, got age %v", data.OldestPasswordAgeSeconds)
+	}
+	if data.UsersWithUnknownPasswordAge != 2 {
+		t.Errorf("UsersWithUnknownPasswordAge = %d, want 2", data.UsersWithUnknownPasswordAge)
+	}
+}

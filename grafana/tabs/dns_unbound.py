@@ -9,9 +9,45 @@ Covers all opnsense_unbound_dns_* metrics across seven rows:
   5. Cache & Memory     — cache_count, memory_bytes, tcp_usage_ratio
   6. Upstream Infra Cache (opt-in) — infra_rtt/rto
   7. DNSBL / Query Stats (opt-in)  — qstats totals, blocklist size, local zones/data/insecure domains
+  8. Per-Query Log (opt-in, Loki)  — the `unbound` log lane's per-query records
+
+Row 8 reads a LOG STREAM, not metrics (#591 item 5). The `unbound` source
+(`--logs.unbound.enabled`, internal/logship/unbound.go) ships one record per DNS
+query carrying client / domain / qtype / action / query_source / rcode / blocklist /
+dnssec_status — and until #591 nothing on the dashboard read any of it, so "which
+client is being blocked by which list" was unanswerable from the estate even though
+the data was already in Loki.
+
+**Select on `opnsense_source`, never on `opnsense_subsystem`.** The lane builds its
+attributes without `logship.AttrSubsystem` (verified in internal/logship/unbound.go),
+so its records carry no subsystem label at all: a selector naming it there matches
+nothing and reports no error. `tests/test_loki_scoping.py` pins both ends of that.
+
+The row 7 qstats leaderboards and row 8's tables look similar and answer different
+questions. qstats is Unbound's OWN rolling ~7-day aggregate, cheap, truncated at 512
+domains, and available with no log shipping. The Loki tables are per-query records
+over the dashboard's window, complete, and carry the CLIENT — which is the field
+qstats has no equivalent for and the reason this row exists.
 """
 
-from builder import Builder, sel, grp, RATE, RUNSTOP, ENABLED
+from builder import Builder, sel, grp, loki_sel, loki_grp, RATE, RUNSTOP, ENABLED
+
+# One record per DNS query, so this is the highest-volume poll lane the exporter has.
+# Hoisted to module constants so the row's panels cannot drift apart (AUTHORING.md).
+UNBOUND_STREAM = loki_sel('opnsense_source="unbound"')
+# `opnsense_action` is the normalised disposition (MapUnboundAction: Pass -> pass,
+# Block/Drop -> block) and IS an indexed label, so filtering blocked queries belongs
+# in the stream selector rather than after the `|`. The resolver's own capitalised
+# verb survives as the structured-metadata `action` key, where Drop and Block stay
+# distinguishable.
+UNBOUND_BLOCKED = loki_sel('opnsense_source="unbound", opnsense_action="block"')
+
+# Domain names are unbounded, so the table ranking them pins its own window rather
+# than following the dashboard picker (#479): Loki's max_query_series is enforced on
+# an intermediate of the query, so `topk` does not bound it and only the RANGE moves
+# it. 1h is the same measured fit the Zenarmor tab uses on the same tenant; lower it
+# if the panel starts returning "No data" with a query error.
+UNBOUNDED_LABEL_WINDOW = "1h"
 
 
 def build(b: Builder):
@@ -471,10 +507,90 @@ def build(b: Builder):
     )
 
     # =====================================================================
+    # Row 8: Per-Query Log (opt-in, Loki — #591 item 5)
+    # =====================================================================
+    b.loki_sentinel("has_unbound_logs", matchers='opnsense_source="unbound"',
+                    label="opnsense_source")
+
+    unbound_raw_logs = b.logs(
+        "Raw Unbound Query Log",
+        UNBOUND_STREAM,
+        desc="The `unbound` log stream (--logs.unbound.enabled): one record per DNS query, body "
+             "carrying the full row and structured metadata carrying client, domain, qtype, "
+             "action, query_source (Recursion/Cache/Local — where the ANSWER came from, not the "
+             "log source), rcode, blocklist and dnssec_status. Open the log details on any line "
+             "to filter on those. Accepted-loss lane: OPNsense exposes only the newest 1000 rows "
+             "resolver-wide, so a busy resolver can push rows out before a poll fetches them — "
+             "Possible Sampling Gaps on the Log Shipping tab counts when that happened.",
+        w=24,
+    )
+    unbound_disposition = b.loki_ts(
+        "Query Dispositions/s (log stream)",
+        [(f'sum {loki_grp("opnsense_action")} (rate({UNBOUND_STREAM} [$__auto]))',
+          "{{opnsense_action}}")],
+        unit="ops",
+        desc="Per-query log records per second by normalised disposition, from the `unbound` "
+             "stream. This is the log-side twin of the metrics Queries/s panel, and the two will "
+             "NOT match: the metric is Unbound's own complete counter, while this counts the "
+             "records the bounded 1000-row window actually yielded. Read it for the pass/block "
+             "SPLIT, which the metric side cannot give at all; read Queries/s for the volume. An "
+             "empty disposition means the resolver reported a verb outside Pass/Block/Drop.",
+    )
+    unbound_blocked_clients = b.loki_table(
+        "Top Blocked Clients",
+        [f'topk {loki_grp()} (200, sum {loki_grp("client")} (count_over_time({UNBOUND_BLOCKED} '
+         '| client!="" [$__range])))'],
+        field_title="Client",
+        desc="Which LAN clients had the most DNS queries blocked by policy, over the selected "
+             "range. `client` is structured metadata on the per-query record, so it exists "
+             "nowhere in metrics at any setting — this table is the only place the estate can "
+             "attribute a block to a device. A single client dominating is usually one app "
+             "retrying a blocked endpoint rather than a policy problem; pair it with Top "
+             "Blocklists beside it to see which list is doing the blocking.",
+    )
+    unbound_blocklists = b.loki_table(
+        "Top Blocklists",
+        [f'topk {loki_grp()} (200, sum {loki_grp("blocklist")} (count_over_time({UNBOUND_BLOCKED} '
+         '| blocklist!="" [$__range])))'],
+        field_title="Blocklist",
+        desc="Which configured DNSBL list matched, counted over blocked query records. Together "
+             "with Top Blocked Clients this answers 'which client is being blocked by which "
+             "list', which #591 found the estate could not ask despite shipping both fields. A "
+             "list with no rows is not matching anything — either it is redundant with a broader "
+             "list ahead of it, or it failed to load.",
+    )
+    unbound_blocked_names = b.loki_table(
+        "Top Blocked Query Names",
+        [f'topk {loki_grp()} (200, sum {loki_grp("domain")} (count_over_time({UNBOUND_BLOCKED} '
+         '| domain!="" [$__range])))'],
+        field_title="Query Name",
+        desc="The domains policy blocked most, over this panel's own 1h window rather than the "
+             "dashboard picker — query names are unbounded and Loki's series ceiling is enforced "
+             "on an intermediate of the query, so a wider range returns a query error rather "
+             "than a partial result. The Top Blocked Domains leaderboard in the DNSBL row is the "
+             "cheaper 7-day view of roughly the same question, truncated at 512 domains and with "
+             "no client attribution; this one is complete for its window and joins to the client "
+             "and blocklist tables beside it.",
+        time_from=UNBOUNDED_LABEL_WINDOW,
+    )
+
+    row_query_log = b.row(
+        "Per-Query Log",
+        [unbound_raw_logs, unbound_disposition, unbound_blocked_clients,
+         unbound_blocklists, unbound_blocked_names],
+        present="has_unbound_logs",
+        # Collapsed for the same reason the Zenarmor detail rows are (#422): cold-load
+        # cost is round-trip COUNT, and this is one log record per DNS query on a
+        # resolver answering continuously. A collapsed row issues nothing until opened.
+        collapse=True,
+    )
+
+    # =====================================================================
     # Assemble the tab
     # =====================================================================
     b.tab(
         "DNS - Unbound",
-        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra, row_qstats],
+        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra,
+         row_qstats, row_query_log],
         present="has_unbound",
     )

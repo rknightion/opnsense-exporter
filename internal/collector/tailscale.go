@@ -29,6 +29,8 @@ type tailscaleCollector struct {
 	peerRxBytes            *prometheus.Desc
 	peerTxBytes            *prometheus.Desc
 	peerLastHandshake      *prometheus.Desc
+	reauthRequired         *prometheus.Desc
+	keyExpiry              *prometheus.Desc
 
 	subsystem      string
 	instance       string
@@ -86,6 +88,22 @@ func (c *tailscaleCollector) Register(namespace, instanceLabel string, log *slog
 	c.peerLastHandshake = buildPrometheusDesc(c.subsystem, "peer_last_handshake_timestamp_seconds",
 		"Unix timestamp of the last WireGuard handshake with this peer from this node. Only emitted when --exporter.enable-tailscale-peer-details is set.",
 		peerLabels)
+
+	// #583. PRESENCE ONLY, and that is a hard rule: the AuthURL tailscaled is
+	// holding is a one-click credential - anyone who reads it can authorise this
+	// node onto the tailnet - so it is never a label value and never a metric
+	// value. backend_running already goes to 0 in this state, but it goes to 0
+	// for every other reason too; this isolates the one cause that needs a human
+	// rather than a restart.
+	c.reauthRequired = buildPrometheusDesc(c.subsystem, "reauth_required",
+		"Whether tailscaled is parked waiting for an interactive login (1 = it is holding an auth URL). The tunnel stays down until a human completes the login - no restart or retry clears it. Distinct from backend_running, which reads 0 for this and every other reason. The auth URL itself is a credential and is never exported, in a label or anywhere else.",
+		nil)
+	// Self only. Peer key expiry is fleet inventory and belongs to
+	// tailscale2otel; tailscale.go enforces that structurally by declaring
+	// KeyExpiry on the Self type alone.
+	c.keyExpiry = buildPrometheusDesc(c.subsystem, "key_expiry_timestamp_seconds",
+		"Unix timestamp at which THIS node's own Tailscale key expires. When it does the tunnel dies with no other warning, so this is the direct analogue of a certificate expiry gauge. Not emitted at all when the node key does not expire - upstream omits the field entirely then, and a 0 would read as \"expired in 1970\" and page forever on a healthy node. Self only: peer key expiry is fleet inventory covered by tailscale2otel.",
+		nil)
 }
 
 func (c *tailscaleCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -100,6 +118,8 @@ func (c *tailscaleCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.peerRxBytes
 	ch <- c.peerTxBytes
 	ch <- c.peerLastHandshake
+	ch <- c.reauthRequired
+	ch <- c.keyExpiry
 }
 
 func (c *tailscaleCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -127,6 +147,18 @@ func (c *tailscaleCollector) Update(ctx context.Context, client *opnsense.Client
 		float64(data.PeersWithActiveSession), c.instance)
 	ch <- prometheus.MustNewConstMetric(c.healthWarnings, prometheus.GaugeValue,
 		float64(data.HealthWarnings), c.instance)
+
+	reauthVal := 0.0
+	if data.ReauthRequired {
+		reauthVal = 1.0
+	}
+	ch <- prometheus.MustNewConstMetric(c.reauthRequired, prometheus.GaugeValue,
+		reauthVal, c.instance)
+	// Absent, not zero, when the node key has no expiry.
+	if data.HasSelfKeyExpiry {
+		ch <- prometheus.MustNewConstMetric(c.keyExpiry, prometheus.GaugeValue,
+			data.SelfKeyExpiry, c.instance)
+	}
 
 	if c.detailsEnabled {
 		for _, p := range data.Peers {

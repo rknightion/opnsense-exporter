@@ -1941,6 +1941,258 @@ RULES = [
                 'opnsense_netflow_cache_packets_total for the device resumes counting - the alert resolves automatically once it does',
             ],
          )),
+    # #578 (epic #593 Phase 4 alert wave): phase1 (IKE SA) can stay up while one
+    # phase2 (child SA) fails or gets stuck rekeying, silently blackholing traffic
+    # for whatever subnet that child SA covers. OPNsenseIPsecTunnelDown watches
+    # phase1 only and cannot see this.
+    #
+    # No `max by` collapsing name/description here (unlike the byte/packet-counter
+    # aggregation #578 itself shipped, which groups at the reqid level to dodge
+    # per-SPI rekey churn): opnsense_ipsec_phase2_established is one series per
+    # CONFIGURED child SA (internal/collector/ipsec.go:452-467, keyed on
+    # phase2.Phase2desc/phase2.Name/phase1.Name), not per rekey-transient SPI, so
+    # there is no churn to guard against here, and collapsing name/description away
+    # would throw away exactly the "which subnet" information this alert exists to
+    # surface. "and" is a set operator, so the many-phase2-to-one-phase1 match below
+    # is not an error and does not need group_left.
+    #
+    # label_replace is needed because phase1's own name label is called "name"
+    # (internal/collector/ipsec.go:107-109) while phase2 names the SAME parent
+    # tunnel "phase1_name" (internal/collector/ipsec.go:171-173) - same value,
+    # different label, confirmed by reading both Register() blocks side by side.
+    dict(name="opnsense-ipsec-child-sa-down", title="OPNsenseIPsecChildSADown",
+         A="opnsense_ipsec_phase2_established == 0\n"
+           "and on (opnsense_instance, phase1_name)\n"
+           "  label_replace(opnsense_ipsec_phase1_status == 1, \"phase1_name\", \"$1\", \"name\", \"(.*)\")",
+         op="lt", params=[1, 0], for_min=5, severity="warning",
+         summary="OPNsense IPsec child SA {{ $labels.name }} down under tunnel {{ $labels.phase1_name }} while phase1 is up ({{ $labels.opnsense_instance }})",
+         description="Phase2 (child SA) {{ $labels.name }} ({{ $labels.description }}) under phase1 "
+                     "tunnel {{ $labels.phase1_name }} has read established=0 for 5m while that phase1 "
+                     "tunnel is itself connected (status=1). OPNsenseIPsecTunnelDown watches phase1 only "
+                     "and cannot see this: the parent IKE SA is fine, but the child SA for whatever "
+                     "traffic selector this covers has failed or is stuck rekeying, silently "
+                     "blackholing that subnet's traffic while the tunnel looks healthy overall.",
+         runbook=dict(
+             measures='opnsense_ipsec_phase2_established for a specific child SA (1 only when the vici state is INSTALLED), joined against opnsense_ipsec_phase1_status for its parent tunnel via label_replace (phase1\'s own "name" label renamed to "phase1_name" to match phase2\'s join key) - isolates a child SA down UNDER A TUNNEL THAT IS ITSELF UP, which OPNsenseIPsecTunnelDown structurally cannot see.',
+             threshold="lt 1 (established=0) for 5m, restricted by the join to phase1 tunnels currently connected (status=1) - a child SA down alongside a down phase1 is already covered by OPNsenseIPsecTunnelDown and is deliberately not double-reported here.",
+             absent="Default noDataState (Ok) - absence means either that child SA is not configured, or its phase1 parent is down (already covered by OPNsenseIPsecTunnelDown), not that it is healthy.",
+             checks=[
+                'Read the name/description labels for the specific child SA and phase1_name for its parent tunnel',
+                "Check the OPNsense UI's IPsec status page for that child SA's negotiation state (REKEYING/DELETING/etc rather than INSTALLED)",
+                'Confirm the traffic selector (local/remote subnet) configured for this child SA still matches what the remote peer proposes',
+            ],
+             causes=[
+                'A phase2 proposal (encryption/traffic-selector) mismatch introduced by a config change on either side',
+                'The child SA is stuck mid-rekey (REKEYING/REKEYED) and never completing to INSTALLED',
+                'The remote peer removed or renumbered the specific subnet this child SA covers while keeping the tunnel itself up',
+            ],
+             verify=[
+                'opnsense_ipsec_phase2_established for that child SA returns to 1 (INSTALLED)',
+                'Traffic is observably flowing again for the specific subnet that child SA covers',
+            ],
+         )),
+    # #579 (epic #593 Phase 4 alert wave): a leading indicator ahead of
+    # opnsense_mbuf_failures_total, which only reports AFTER an allocation has
+    # already failed and traffic already dropped. Restricted to jumbo9/jumbo16
+    # because only those two pools have a _max series at all
+    # (internal/collector/mbuf.go: the packet secondary zone emits no total/max
+    # upstream, so PoolMax never gets a "packet" entry). The `> 0` guard is the
+    # same limit-0-means-no-ceiling trap as kernel_memory.py's Zone Saturation
+    # panel (#543), and the 80/90 thresholds match grafana/tabs/system.py's own
+    # "Jumbo Pool Utilization %" panel, which was built with this alert in mind.
+    dict(name="opnsense-mbuf-jumbo-pool-saturated", title="OPNsenseMbufJumboPoolSaturated",
+         A="100 * opnsense_mbuf_pool_current{pool=~\"jumbo9|jumbo16\"} "
+           "/ (opnsense_mbuf_pool_max{pool=~\"jumbo9|jumbo16\"} > 0)",
+         op="gt", params=[90, 0], for_min=10, severity="warning",
+         summary="OPNsense mbuf {{ $labels.pool }} jumbo pool saturated ({{ $values.A.Value | printf \"%.1f\" }}%, {{ $labels.opnsense_instance }})",
+         description="The {{ $labels.pool }} jumbo mbuf pool has been over 90% of its configured ceiling "
+                     "for 10m. This is headroom BEFORE the pool exhausts and the box starts dropping "
+                     "jumbo-frame traffic, complementing opnsense_mbuf_failures_total (which only reports "
+                     "a failure after it has already happened). Scoped to jumbo9/jumbo16 only - the "
+                     "packet secondary zone has no ceiling series upstream.",
+         runbook=dict(
+             measures="100 * opnsense_mbuf_pool_current / opnsense_mbuf_pool_max for the jumbo9 (9k) and jumbo16 (16k) jumbo-cluster pools - percentage headroom against each pool's configured ceiling, restricted to the two pools that HAVE a ceiling series (the packet secondary zone has none upstream).",
+             threshold="gt 90% sustained for 10m. The `> 0` division guard is load-bearing, the same limit-0-means-no-ceiling trap as kernel_memory.py's Zone Saturation panel (#543): a pool reporting max=0 has NO CEILING CONFIGURED, not a ceiling of zero, so an unguarded division would read +Inf and fire permanently.",
+             absent="Default noDataState (Ok) - the `> 0` guard means a pool with no configured ceiling (max=0 or absent) produces no series here at all, by design.",
+             checks=[
+                'Read the pool label (jumbo9 or jumbo16) to know which jumbo-cluster size is under pressure',
+                'Check opnsense_mbuf_failures_total{type="jumbo9"|"jumbo16"} for whether allocations have already started failing',
+                'Check whether jumbo-frame-heavy traffic (large MTU workloads, certain NIC offload paths) increased recently',
+            ],
+             causes=[
+                'A genuine increase in jumbo-frame traffic outrunning the configured pool ceiling',
+                "The pool ceiling is undersized for this box's NIC/offload configuration",
+                'A leak or stuck consumer holding jumbo clusters that are never freed back to the pool',
+            ],
+             verify=[
+                'The percentage drops back under 90% and stays there for 10m',
+                'opnsense_mbuf_failures_total for the same pool type stays at 0',
+            ],
+         )),
+    # #581 (epic #593 Phase 4 alert wave): unbound stops querying an upstream once
+    # it marks it lame, so that upstream's RTT/RTO series (infra_rtt_seconds /
+    # infra_rto_seconds) stay perfectly healthy precisely BECAUSE resolution
+    # through it has stopped - this is the one signal RTT structurally cannot
+    # carry. Deliberately does NOT alert on infra_host_dnssec_lame /
+    # infra_host_edns_broken (#581's own finding: those are chronically true for a
+    # subset of upstreams and would page constantly); they stay dashboard-only, on
+    # the DNS tab's "Unhealthy Upstreams" panel alongside this metric.
+    #
+    # Aggregated to (opnsense_instance, ip, kind), dropping `host`: `host` is a
+    # zone name (internal/collector/unbound_dns_test.go's fixture uses real zone
+    # names like "example.com.") and the infra cache holds one entry per (ip, zone)
+    # ever contacted, so grouping by host too would multiply alert instances by
+    # however many zones a busy/full-recursive resolver has touched, most of which
+    # are one-off and not pageworthy on their own. `kind` (recursion/type_a/other)
+    # IS kept - only 3 values, and it says exactly what class of query that
+    # upstream can no longer be trusted for, which collapsing `host` does not lose
+    # (kind is not zone-specific, per the Register() doc comment).
+    dict(name="opnsense-unbound-upstream-lame", title="OPNsenseUnboundUpstreamLame",
+         A="max by (opnsense_instance, ip, kind) (opnsense_unbound_dns_infra_host_lame)",
+         op="gt", params=[0, 0], for_min=15, severity="warning",
+         summary="OPNsense Unbound upstream {{ $labels.ip }} marked lame ({{ $labels.kind }}, {{ $labels.opnsense_instance }})",
+         description="Unbound has continuously marked upstream {{ $labels.ip }} lame for its "
+                     "{{ $labels.kind }} queries for 15m - a full infra-cache TTL (host-ttl, default "
+                     "900s). Unbound stops querying a server it has marked lame, so that server's "
+                     "RTT/RTO series stay perfect while resolution through it is actually failing; this "
+                     "is the only signal that catches it. Only emitted with "
+                     "--exporter.enable-unbound-infra.",
+         runbook=dict(
+             measures="Whether Unbound currently considers an upstream server lame for a given query kind (recursion/type_a/other), max'd across every zone (`host`) that upstream has been contacted for so one flaky delegation among many does not fragment into its own alert instance.",
+             threshold="gt 0 (lame) sustained for 15m. 15m is not arbitrary: Unbound clears lameness when the infra entry's TTL expires (host-ttl, default 900s = 15m), so surviving a full 15m means it has stayed lame across at least one full cache-TTL cycle, not just a single stale reading.",
+             absent="No series at all when --exporter.enable-unbound-infra is not set (the metric does not exist). Absent for a specific ip/kind otherwise means that upstream has never been marked lame for that query kind, which is the healthy state.",
+             checks=[
+                'Read the ip label to identify the specific upstream/forwarder and the kind label for which query class it can no longer be trusted for',
+                'Check the DNS tab\'s "Upstream Health Detail" table for exactly which zone(s) triggered the lame marking',
+                'Confirm whether this upstream is a deliberately configured forwarder (e.g. a DoT resolver) versus one picked up during ordinary recursion - a forwarder going lame is far more actionable than an incidental external nameserver',
+            ],
+             causes=[
+                'The upstream server itself is misconfigured or not authoritative for what it is being asked',
+                'A network path change is making the upstream reply incorrectly or not at all for that query class',
+                'The upstream is deliberately blocking or rate-limiting recursive-style queries from this resolver',
+            ],
+             verify=[
+                'opnsense_unbound_dns_infra_host_lame for that ip/kind returns to 0 and stays there for a full infra-cache TTL',
+                'The "Upstream Health Detail" table on the DNS tab no longer lists that upstream',
+            ],
+         )),
+    # #582 (epic #593 Phase 4 alert wave): a persistently non-empty
+    # ls_retransmission queue means FRR keeps re-flooding an LSA that neighbor is
+    # not acknowledging - the neighbor is either unreachable, overloaded, or has a
+    # broken adjacency despite still showing up in the neighbor table. Scoped to
+    # ls_retransmission only (internal/collector/frr.go:235-239 documents all three
+    # queue kinds: db_summary, ls_request, ls_retransmission) - the other two
+    # legitimately drain during a normal initial database sync and are not by
+    # themselves evidence of a stuck neighbor.
+    dict(name="opnsense-ospf-lsa-retransmission-stuck", title="OPNsenseOSPFLSARetransmissionStuck",
+         A='opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"}',
+         op="gt", params=[0, 0], for_min=10, severity="warning",
+         summary="OPNsense OSPF neighbor {{ $labels.neighbor_id }} not acknowledging LSAs on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="FRR's link-state retransmission queue to neighbor {{ $labels.neighbor_id }} on "
+                     "{{ $labels.interface }} has stayed non-empty for 10m - FRR keeps re-flooding at "
+                     "least one LSA that neighbor has not acknowledged. Scoped to the ls_retransmission "
+                     "queue only; the db_summary/ls_request queues drain during a normal initial "
+                     "database sync and are not included.",
+         runbook=dict(
+             measures='opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"}: the count of LSAs FRR is still waiting on this neighbor to acknowledge, restricted to the retransmission queue (not the db_summary/ls_request queues, which legitimately drain during a normal initial sync).',
+             threshold="gt 0 sustained for 10m - any LSA sitting in the retransmission queue for that long means it has been resent at least once with no ack.",
+             absent="Default noDataState (Ok) - absence means either the neighbor relationship does not exist or its retransmission queue is empty (the healthy state).",
+             checks=[
+                'Read the neighbor_id/interface labels to identify the specific OSPF adjacency',
+                'Check opnsense_frr_ospf_neighbor_nsm_state_info for that neighbor - stuck below Full points at the adjacency itself, not just one LSA',
+                "Confirm basic reachability (ping) to the neighbor's address over that interface",
+            ],
+             causes=[
+                'The neighbor is unreachable or dropping packets on that interface',
+                'The neighbor is overloaded and not processing/acking LSAs promptly',
+                'An MTU mismatch or ACL is silently eating OSPF packets on the link',
+            ],
+             verify=[
+                'opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"} for that neighbor returns to 0',
+            ],
+         )),
+    # #592 item 2, handed to this lane by the annotation lane after it declined to
+    # build this as an annotation layer: opnsense_flow_source_byte_delta_ratio is a
+    # cumulative per-interface HISTOGRAM (internal/collector/flow.go:428-435,
+    # MustNewConstHistogram at flow.go:971) with no instant value for the Go
+    # annotation Watch mechanism to diff, and edge detection inside an annotation
+    # query is step-dependent (smears above the scrape interval, returns nothing
+    # below it). Threshold + dwell + a marker at the transition IS an alert rule,
+    # and a firing Grafana-managed rule already annotates the panel named in its
+    # __dashboardUid__/__panelId__ - the same mechanism 20+ rules here already use -
+    # so the annotation comes for free from this rule pointed at "Source Byte-Delta
+    # Ratio (NetFlow / Zenarmor)" (grafana/tabs/flow.py).
+    #
+    # Threshold derivation: the real bucket bounds, read from
+    # internal/flow/deltaratio.go:16, are
+    #   {0.9, 1, 1.05, 1.1, 1.25, 1.5, 2, 3, 5, 10, 100}.
+    # That file's own comment says the buckets "cluster tightly just above [1.0]"
+    # to separate legitimate per-packet header overhead (NetFlow counts at L3,
+    # Zenarmor's payload accounting does not) from genuine disagreement, and
+    # explicitly groups 1.05/1.1/1.25 together as that cluster. 1.5 is the first
+    # bound outside it - a 50%+ discrepancy is not plausible as header overhead
+    # even on tiny-packet-heavy flows - so it is the threshold, with one whole
+    # bucket (1.25) of margin between "known-normal" and "alerts".
+    #
+    # p90 (matching the dashboard panel's own p90 series exactly, so the alert
+    # line and the chart the operator lands on read the same number) rather than
+    # p50 or p99: p50 would trip on ordinary overhead half the time, p99 waits for
+    # the tail to be almost the whole population before firing at all.
+    #
+    # #594 check: NOT covered by test_single_event_sensitivity.py's automated
+    # classifier (it only scans op="gt"/params[0]==0 rules; this one's threshold is
+    # 1.5, not 0), so verified by hand instead, same arithmetic the classifier
+    # applies elsewhere: rate() smears one observation across the entire window it
+    # sits inside, so a single anomalous flow makes histogram_quantile read high
+    # for exactly the 15m window and then drops out - that cannot by itself
+    # satisfy a 30m pending period (30m > 15m, strictly), while a genuinely
+    # sustained divergence keeps every rolling 15m window elevated throughout the
+    # 30m and does fire. Same shape as OPNsenseNetmapRingFull (15m window, 30m
+    # pending, "an isolated burst ... is normal, a persistent one is not").
+    #
+    # Severity: warning, not info. In this file's own convention only "critical"
+    # ever pages (emit_grafana_managed sets the "page" label solely on critical
+    # under --stack), so "warning" already means "annotate and let someone look",
+    # never a wake-up - choosing it does not conflict with "the marker is the
+    # deliverable". And the metric's own doc comment calls sustained divergence "a
+    # security signal, not an error": traffic silently evading Zenarmor's
+    # inspection while both services keep reporting healthy is exactly the kind of
+    # thing this file uses warning for elsewhere (e.g. OPNsenseIDSAlertSpike), not
+    # the info tier reserved for pure housekeeping nuance (OPNsenseCollectorDegraded,
+    # OPNsenseUnboundDNSSECBogus).
+    dict(name="opnsense-flow-source-divergence", title="OPNsenseFlowSourceDivergence",
+         A="histogram_quantile(0.9, sum by (opnsense_instance, le, interface) "
+           "(rate(opnsense_flow_source_byte_delta_ratio_bucket[15m])))",
+         op="gt", params=[1.5, 0], for_min=30, severity="warning",
+         summary="OPNsense NetFlow/Zenarmor byte counts diverging on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="The 90th-percentile NetFlow-over-Zenarmor byte ratio on merged flow records for "
+                     "{{ $labels.interface }} has stayed above 1.5x for 30m - well past the 0.9-1.25 "
+                     "range that per-packet header overhead alone accounts for. NetFlow is authoritative "
+                     "(it counts at the packet path), so this means Zenarmor is inspecting far fewer "
+                     "bytes than are actually crossing the wire on a meaningful share of flows: a "
+                     "security-relevant blind spot (traffic evading inspection), not necessarily an "
+                     "error in either lane. #346 decision 3 forbids summing the two sources, so this "
+                     "ratio is the only signal for 'one ingest lane is losing data' - the histogram "
+                     "panel shows the distribution, this rule marks WHEN it crossed into the abnormal "
+                     "range.",
+         runbook=dict(
+             measures="The 90th-percentile of opnsense_flow_source_byte_delta_ratio (NetFlow bytes / Zenarmor bytes on the same merged flow record) per interface, over a 15m rolling window - the same p90 series already on the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel, so the alert threshold and the chart read the same number.",
+             threshold="gt 1.5 sustained for 30m. The histogram's own bucket bounds (0.9, 1, 1.05, 1.1, 1.25, 1.5, 2, 3, 5, 10, 100 - internal/flow/deltaratio.go:16) cluster tightly from 0.9 to 1.25 to capture legitimate per-packet header overhead; 1.5 is the first bound past that cluster, so it is the line between 'NetFlow counts the IP/TCP headers Zenarmor's payload accounting does not' and 'the two sources have genuinely stopped agreeing'. The 30m pending period exceeds the 15m rate() window on purpose (#594): a single anomalous flow keeps the p90 elevated for exactly the window's 15m and then drops out, which cannot reach a 30m pending period, while a genuinely sustained divergence keeps every rolling 15m window elevated throughout and does fire.",
+             absent="Default noDataState (Ok) - the metric is only emitted where both NetFlow and Zenarmor run and correlate (--flow.log-mode=per_flow); absent means there is no second source to disagree with, not that they agree.",
+             checks=[
+                "Open the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel for the named interface to see the full p50/p90/p99 distribution and how long it has been elevated",
+                "Check whether Zenarmor's own engine/service health looks normal (a running-but-blind engine looks identical to a healthy one on service-status checks alone)",
+                "Look for a traffic pattern change on that interface - new encrypted/tunnelled/QUIC-heavy traffic is a plausible reason Zenarmor's DPI stops accounting for a flow's bytes correctly while NetFlow (packet-path counting) keeps counting it",
+            ],
+             causes=[
+                "Traffic evading Zenarmor's inspection engine (a protocol or encapsulation its DPI does not recognise) while still being counted at the packet path by NetFlow",
+                "A Zenarmor accounting bug or misconfiguration undercounting bytes on a class of flows",
+                "A genuinely malicious flow deliberately structured to minimise what a DPI engine attributes to it",
+            ],
+             verify=[
+                "The p90 series on the 'Source Byte-Delta Ratio' panel drops back under 1.5 and stays there for a full 15m window",
+            ],
+         )),
 ]
 
 # Recording rules: metric name (level:metric:operation) + value query.
@@ -2202,6 +2454,12 @@ PANEL_LINKS = {
     "OPNsenseFlowLogsTruncated": "Flow Log Emission",
     "OPNsenseFlowGeoIPDatabaseStale": "GeoIP Database Age & Updates",
     "OPNsenseNetFlowHookDead": "Dead Capture Hooks (configured, own node frozen)",
+    # --- epic #593 Phase 4 alert wave (#578/#579/#581/#582) ---------------------
+    "OPNsenseIPsecChildSADown": "IPsec Phase 2 (Child SA) Established",
+    "OPNsenseMbufJumboPoolSaturated": "Jumbo Pool Utilization %",
+    "OPNsenseUnboundUpstreamLame": "Unhealthy Upstreams",
+    "OPNsenseOSPFLSARetransmissionStuck": "OSPF Neighbor LSA Queue Depth",
+    "OPNsenseFlowSourceDivergence": "Source Byte-Delta Ratio (NetFlow / Zenarmor)",
 }
 
 # Alerts that deliberately carry NO panel link, with the reason. Empty today — every

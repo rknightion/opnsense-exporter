@@ -19,6 +19,8 @@
     "remove_packages",
     "repository",
     "status",
+    "upgrade_major_version",
+    "upgrade_needs_reboot",
     "upgrade_packages",
     "upgrade_sets"
   ],
@@ -158,6 +160,14 @@
     {
       "path": "status",
       "kind": "string"
+    },
+    {
+      "path": "upgrade_major_version",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_needs_reboot",
+      "kind": "any"
     },
     {
       "path": "upgrade_packages",

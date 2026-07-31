@@ -7,6 +7,154 @@
     {
       "path": "[]",
       "kind": "any"
+    },
+    {
+      "path": "[].act",
+      "kind": "string"
+    },
+    {
+      "path": "[].bck",
+      "kind": "string"
+    },
+    {
+      "path": "[].bin",
+      "kind": "string"
+    },
+    {
+      "path": "[].bout",
+      "kind": "string"
+    },
+    {
+      "path": "[].chkdown",
+      "kind": "string"
+    },
+    {
+      "path": "[].chkfail",
+      "kind": "string"
+    },
+    {
+      "path": "[].cli_abrt",
+      "kind": "string"
+    },
+    {
+      "path": "[].ctime",
+      "kind": "string"
+    },
+    {
+      "path": "[].downtime",
+      "kind": "string"
+    },
+    {
+      "path": "[].dreq",
+      "kind": "string"
+    },
+    {
+      "path": "[].econ",
+      "kind": "string"
+    },
+    {
+      "path": "[].ereq",
+      "kind": "string"
+    },
+    {
+      "path": "[].eresp",
+      "kind": "string"
+    },
+    {
+      "path": "[].hrsp_1xx",
+      "kind": "string"
+    },
+    {
+      "path": "[].hrsp_2xx",
+      "kind": "string"
+    },
+    {
+      "path": "[].hrsp_3xx",
+      "kind": "string"
+    },
+    {
+      "path": "[].hrsp_4xx",
+      "kind": "string"
+    },
+    {
+      "path": "[].hrsp_5xx",
+      "kind": "string"
+    },
+    {
+      "path": "[].hrsp_other",
+      "kind": "string"
+    },
+    {
+      "path": "[].lastchg",
+      "kind": "string"
+    },
+    {
+      "path": "[].lbtot",
+      "kind": "string"
+    },
+    {
+      "path": "[].pxname",
+      "kind": "string"
+    },
+    {
+      "path": "[].qcur",
+      "kind": "string"
+    },
+    {
+      "path": "[].qtime",
+      "kind": "string"
+    },
+    {
+      "path": "[].req_tot",
+      "kind": "string"
+    },
+    {
+      "path": "[].rtime",
+      "kind": "string"
+    },
+    {
+      "path": "[].scur",
+      "kind": "string"
+    },
+    {
+      "path": "[].slim",
+      "kind": "string"
+    },
+    {
+      "path": "[].srv_abrt",
+      "kind": "string"
+    },
+    {
+      "path": "[].status",
+      "kind": "string"
+    },
+    {
+      "path": "[].stot",
+      "kind": "string"
+    },
+    {
+      "path": "[].svname",
+      "kind": "string"
+    },
+    {
+      "path": "[].ttime",
+      "kind": "string"
+    },
+    {
+      "path": "[].type",
+      "kind": "string"
+    },
+    {
+      "path": "[].weight",
+      "kind": "string"
+    },
+    {
+      "path": "[].wredis",
+      "kind": "string"
+    },
+    {
+      "path": "[].wretr",
+      "kind": "string"
     }
   ]
 }

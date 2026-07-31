@@ -1,0 +1,90 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-flow-source-divergence",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseFlowSourceDivergence",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "30m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense NetFlow/Zenarmor byte counts diverging on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+      "description": "The 90th-percentile NetFlow-over-Zenarmor byte ratio on merged flow records for {{ $labels.interface }} has stayed above 1.5x for 30m - well past the 0.9-1.25 range that per-packet header overhead alone accounts for. NetFlow is authoritative (it counts at the packet path), so this means Zenarmor is inspecting far fewer bytes than are actually crossing the wire on a meaningful share of flows: a security-relevant blind spot (traffic evading inspection), not necessarily an error in either lane. #346 decision 3 forbids summing the two sources, so this ratio is the only signal for 'one ingest lane is losing data' - the histogram panel shows the distribution, this rule marks WHEN it crossed into the abnormal range.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseflowsourcedivergence",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "783"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.9, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket[15m])))",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  1.5,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

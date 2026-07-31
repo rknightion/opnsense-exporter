@@ -16,6 +16,9 @@ Covers all 10 opnsense_certificate_* and opnsense_acme_certificate* metrics:
     • acme_certificate_status_last_update_timestamp_seconds table
     • acme_certificate_enabled stat/table
     • acme_certificate_info table
+
+  CA panels live in row 1 alongside the leaf certificates: ca_total stat, ca_expiry,
+  ca_valid_from and ca_references (#583) tables.
 """
 
 from builder import Builder, sel, epoch_ms
@@ -117,6 +120,25 @@ def build(b: Builder):
         sort_by="Days Left", sort_desc=False,
         desc="Days remaining until each CA certificate expires (sorted ascending).",
     )
+    # #583. Joined on the SAME (description, commonname) tuple as CA Expiry, on
+    # purpose: refcount only means anything read against expiry. A CA 20 days
+    # out with 50 references is a dated outage; one with 0 is dead config to
+    # delete. Sorted ascending so the 0s — the ones safe to remove — surface.
+    ca_references = b.table(
+        "CA References",
+        [sel("opnsense_certificate_ca_references")],
+        w=4, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"description": "Description", "commonname": "Common Name",
+                 "Value": "References", "opnsense_instance": "Instance"},
+        sort_by="References", sort_desc=False,
+        desc=(
+            "How many other configuration objects reference each CA (OPNsense's own "
+            "refcount). Read it against CA Expiry: an expiring CA with a high count is "
+            "a scheduled outage, one with 0 is dead config. A CA whose payload carries "
+            "no refcount at all has no row here."
+        ),
+    )
     ca_valid_from = b.table(
         "CA Validity Start",
         [epoch_ms(sel("opnsense_certificate_ca_valid_from_seconds"))],
@@ -130,7 +152,7 @@ def build(b: Builder):
     row_certs = b.row(
         "Certificates",
         [cert_expiry, cert_valid_from, cert_total, cert_info,
-         ca_total, ca_expiry, ca_valid_from],
+         ca_total, ca_expiry, ca_valid_from, ca_references],
     )
 
     # =====================================================================

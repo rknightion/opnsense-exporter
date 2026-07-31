@@ -779,3 +779,142 @@ func TestFetchFirmwareStatus_StatusNoneWithLastCheck(t *testing.T) {
 		t.Errorf("expected LastCheckTimestamp 1780999997, got %v", firmware.LastCheckTimestamp)
 	}
 }
+
+// TestFetchFirmwareStatus_MajorUpgrade pins the #583 major-version-upgrade
+// decode.
+//
+// Wire evidence: OPNsense core src/opnsense/scripts/firmware/check.sh
+// (identical on stable/26.1 and stable/26.7) writes BOTH keys unconditionally
+// into the stored check's JSON heredoc (lines 422-423), so within a stored
+// check they are always present. `upgrade_major_version=$(opnsense-update -vR)`
+// is assigned only inside `if [ -n "${packages_is_size}" ]` (line 366), so it
+// is an EMPTY STRING when no major upgrade is offered and a version string
+// ("26.7") when one is — emptiness IS the availability signal.
+//
+// `upgrade_needs_reboot` starts at "0" (line 68) and flips to "1" when a major
+// upgrade's packages/kernel/base sets differ. FirmwareController.php:126-127
+// does `$response = $product['product_check']; $response['product'] = $product;`
+// so the top level and product.product_check are the SAME object; the exporter
+// reads top-level first and falls back to the nested copy.
+func TestFetchFirmwareStatus_MajorUpgrade(t *testing.T) {
+	cases := []struct {
+		name            string
+		body            string
+		wantAvailable   bool
+		wantVersion     string
+		wantNeedsReboot bool
+	}{
+		{
+			name: "major upgrade offered",
+			body: `{"last_check":"Tue Jun  9 10:13:17 UTC 2026",
+			        "upgrade_major_version":"26.7","upgrade_needs_reboot":"1",
+			        "product":{"product_check":{"upgrade_needs_reboot":"1"}}}`,
+			wantAvailable:   true,
+			wantVersion:     "26.7",
+			wantNeedsReboot: true,
+		},
+		{
+			name: "check stored, no major upgrade — empty string, not a missing key",
+			body: `{"last_check":"Tue Jun  9 10:13:17 UTC 2026",
+			        "upgrade_major_version":"","upgrade_needs_reboot":"0",
+			        "product":{"product_check":{"upgrade_needs_reboot":"0"}}}`,
+			wantAvailable:   false,
+			wantVersion:     "",
+			wantNeedsReboot: false,
+		},
+		{
+			name: "top-level key absent — falls back to the nested product_check copy",
+			body: `{"last_check":"Tue Jun  9 10:13:17 UTC 2026",
+			        "product":{"product_check":{"upgrade_needs_reboot":"1"}}}`,
+			wantAvailable:   false,
+			wantVersion:     "",
+			wantNeedsReboot: true,
+		},
+		{
+			name:            "no stored check — nothing is claimed at all",
+			body:            `{"status":"none","product":{"product_check":null}}`,
+			wantAvailable:   false,
+			wantVersion:     "",
+			wantNeedsReboot: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.body))
+			})
+			defer server.Close()
+
+			data, err := client.FetchFirmwareStatus()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if data.MajorUpgradeAvailable != tc.wantAvailable {
+				t.Errorf("MajorUpgradeAvailable = %v, want %v", data.MajorUpgradeAvailable, tc.wantAvailable)
+			}
+			if data.MajorUpgradeVersion != tc.wantVersion {
+				t.Errorf("MajorUpgradeVersion = %q, want %q", data.MajorUpgradeVersion, tc.wantVersion)
+			}
+			if data.UpgradeNeedsReboot != tc.wantNeedsReboot {
+				t.Errorf("UpgradeNeedsReboot = %v, want %v", data.UpgradeNeedsReboot, tc.wantNeedsReboot)
+			}
+		})
+	}
+}
+
+// TestFetchFirmwareInfo_PluginPolicyAndSize pins the #583 plugin decode, and
+// with it two upstream traps the issue got wrong.
+//
+// TRAP 1 — flatsize is NOT bytes. scripts/firmware/query.sh:52 queries pkg with
+// `%sh`, pkg's HUMANIZED size, and FirmwareController.php:854 then runs it
+// through formatBytes(), which returns a non-numeric input unchanged. So the
+// wire value is a formatted base-2 string ("168KiB", "1.2MiB").
+//
+// TRAP 2 — locked/automatic never arrive as "0". query.sh emits pkg's `%k`/`%a`
+// as a bare 0 or 1, but FirmwareController.php:852-853 rewrites any value for
+// which PHP's empty() is true, and empty("0") IS true. The string "0" is
+// therefore replaced by gettext('N/A') before it reaches the wire.
+func TestFetchFirmwareInfo_PluginPolicyAndSize(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"product_id": "OPNsense", "product_version": "26.7",
+			"plugin": [
+				{"name":"os-tailscale","version":"1.4","installed":"1",
+				 "flatsize":"168KiB","locked":"1","automatic":"1"},
+				{"name":"os-frr","version":"1.0","installed":"1",
+				 "flatsize":"1.2MiB","locked":"N/A","automatic":"N/A"},
+				{"name":"os-tiny","version":"0.1","installed":"1",
+				 "flatsize":"512B","locked":"N/A","automatic":"N/A"},
+				{"name":"os-nosize","version":"0.1","installed":"1",
+				 "flatsize":"N/A","locked":"N/A","automatic":"N/A"},
+				{"name":"os-notinstalled","version":"9.9","installed":"0",
+				 "flatsize":"9MiB","locked":"1","automatic":"1"}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchFirmwareInfo()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.InstalledPlugins) != 4 {
+		t.Fatalf("expected 4 installed plugins, got %d", len(data.InstalledPlugins))
+	}
+
+	want := []FirmwarePlugin{
+		{Name: "os-tailscale", Version: "1.4", SizeBytes: 168 * 1024, HasSize: true, Locked: true, Automatic: true},
+		{Name: "os-frr", Version: "1.0", SizeBytes: 1.2 * 1024 * 1024, HasSize: true},
+		{Name: "os-tiny", Version: "0.1", SizeBytes: 512, HasSize: true},
+		// "N/A" is unparseable, so no size is claimed at all — a 0 would show
+		// up in a disk-attribution panel as a plugin that costs nothing.
+		{Name: "os-nosize", Version: "0.1"},
+	}
+	for i, w := range want {
+		got := data.InstalledPlugins[i]
+		if got != w {
+			t.Errorf("plugin[%d]: got %+v, want %+v", i, got, w)
+		}
+	}
+}

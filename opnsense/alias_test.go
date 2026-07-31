@@ -50,3 +50,64 @@ func TestFetchAliasTables_Success(t *testing.T) {
 		t.Error("internal __ tables must be kept")
 	}
 }
+
+// TestFetchAliasTables_Updated pins the #583 per-table last-refresh decode.
+//
+// Wire evidence: OPNsense core src/opnsense/scripts/filter/pftablecount.py:69-82
+// (identical on stable/26.1 and stable/26.7) sets
+//
+//	table_updated = None
+//	if os.path.isfile("/var/db/aliastables/<table>.txt"):
+//	    table_updated = datetime.fromtimestamp(os.path.getmtime(filename)).isoformat()
+//	result['details'][table]['updated'] = table_updated
+//
+// so the key is ALWAYS present but is JSON null for every table with no
+// persisted file (i.e. every table that is not a DNS- or URL-backed alias),
+// and a naive local-time ISO-8601 string — microseconds included, because
+// getmtime returns a float — otherwise.
+func TestFetchAliasTables_Updated(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok", "size": 1000000, "used": 12,
+			"details": {
+				"threatfeed":  {"count": 10, "updated": "2026-07-30T04:15:03.123456"},
+				"wholesecond": {"count": 1,  "updated": "2026-07-30T04:15:03"},
+				"static":      {"count": 1,  "updated": null},
+				"nokey":       {"count": 0},
+				"garbage":     {"count": 0,  "updated": "not-a-timestamp"}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchAliasTables()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	byName := map[string]AliasTable{}
+	for _, tb := range data.Tables {
+		byName[tb.Name] = tb
+	}
+	if len(byName) != 5 {
+		t.Fatalf("expected 5 tables, got %d", len(byName))
+	}
+
+	// 2026-07-30T04:15:03 read as UTC.
+	const wantEpoch = 1785384903
+
+	if tb := byName["threatfeed"]; !tb.HasUpdated || tb.UpdatedTimestamp != wantEpoch {
+		t.Errorf("threatfeed: got %v/%v, want %v/true", tb.UpdatedTimestamp, tb.HasUpdated, float64(wantEpoch))
+	}
+	if tb := byName["wholesecond"]; !tb.HasUpdated || tb.UpdatedTimestamp != wantEpoch {
+		t.Errorf("wholesecond: got %v/%v, want %v/true", tb.UpdatedTimestamp, tb.HasUpdated, float64(wantEpoch))
+	}
+	// null / absent / unparseable must all read as "no refresh time known".
+	// Emitting epoch 0 here would make every static table look 56 years stale
+	// and false-fire a not-refreshed-recently alert on data that has no
+	// refresh cycle at all.
+	for _, name := range []string{"static", "nokey", "garbage"} {
+		if tb := byName[name]; tb.HasUpdated {
+			t.Errorf("%s: expected HasUpdated=false, got %v (%v)", name, tb.HasUpdated, tb.UpdatedTimestamp)
+		}
+	}
+}

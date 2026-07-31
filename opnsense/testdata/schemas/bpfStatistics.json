@@ -13,7 +13,43 @@
     },
     {
       "path": "bpf-statistics.bpf-entry",
-      "kind": "any"
+      "kind": "array"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[]",
+      "kind": "object"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].direction",
+      "kind": "string"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].dropped-packets",
+      "kind": "number"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].filter-packets",
+      "kind": "number"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].hold-buffer-length",
+      "kind": "number"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].interface-name",
+      "kind": "string"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].process",
+      "kind": "string"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].received-packets",
+      "kind": "number"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry[].store-buffer-length",
+      "kind": "number"
     }
   ]
 }

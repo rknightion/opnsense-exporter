@@ -177,6 +177,10 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		TLSConfig:    cfg.TLSConfig,
 		AllowedPeers: cfg.AllowedPeers,
 		MaxConns:     cfg.MaxConns,
+		// Same registerer the ReceiverMetrics counters use, so the slot gauges land
+		// beside logs_rejected_total{reason="conn_limit"} — the wall-hit counter they
+		// give headroom context to (#592).
+		Registerer: d.Registerer,
 	}, s.handle, s.m, d.Logger)
 	return s
 }

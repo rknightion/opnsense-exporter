@@ -40,9 +40,12 @@ func TestTailscaleCollector_Update_Default(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 	// service_running + backend_running + info + peers_total + peers_with_active_session
-	// + health_warnings = 6
-	if len(metrics) != 6 {
-		t.Fatalf("expected 6 metrics without details, got %d", len(metrics))
+	// + health_warnings + the #583 reauth_required gauge = 7.
+	// key_expiry_timestamp_seconds is NOT counted: the fixture's Self carries no
+	// KeyExpiry (upstream omits it when the node key does not expire), and an
+	// absent expiry must emit nothing rather than epoch 0.
+	if len(metrics) != 7 {
+		t.Fatalf("expected 7 metrics without details, got %d", len(metrics))
 	}
 	var sawHealthWarnings bool
 	for _, m := range metrics {
@@ -82,9 +85,10 @@ func TestTailscaleCollector_Update_Details(t *testing.T) {
 	//   server-a (handshake): session_active/direct/rx/tx/last_handshake (5)
 	//   laptop-b (no handshake): session_active/rx/tx (3 — direct and
 	//   last_handshake are omitted without a session)
-	// = 14
-	if len(metrics) != 14 {
-		t.Fatalf("expected 14 metrics with details, got %d", len(metrics))
+	// = 14, plus the #583 reauth_required gauge = 15 (see the count comment in
+	// TestTailscaleCollector_Update_Default for why key_expiry is absent).
+	if len(metrics) != 15 {
+		t.Fatalf("expected 15 metrics with details, got %d", len(metrics))
 	}
 	var sawRx, sawDirectForB bool
 	for _, m := range metrics {
@@ -125,5 +129,93 @@ func TestTailscaleCollector_PluginAbsent(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 	if len(metrics) != 0 {
 		t.Errorf("expected 0 metrics when plugin absent, got %d", len(metrics))
+	}
+}
+
+// TestTailscaleCollector_ReauthAndKeyExpiry covers the two #583 node-local
+// posture signals. Both describe the same outcome — the tunnel stops working —
+// with completely different remedies, which is why BackendState alone is not
+// enough: it says "not Running" without saying a human has to click a link.
+func TestTailscaleCollector_ReauthAndKeyExpiry(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tailscale/status/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Version":"1.96.4","BackendState":"NeedsLogin",
+			"AuthURL":"https://login.tailscale.com/a/SUPERSECRETTOKEN",
+			"Self":{"HostName":"fw","Relay":"lhr","KeyExpiry":"2026-09-01T00:00:00Z"},
+			"Peer":{},"Health":[]}`))
+	})
+	mux.HandleFunc("/api/tailscale/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &tailscaleCollector{subsystem: TailscaleSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawReauth, sawExpiry bool
+	for _, m := range metrics {
+		switch {
+		case hasFqName(m, "opnsense_tailscale_reauth_required"):
+			sawReauth = true
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("reauth_required = %v, want 1", v)
+			}
+		case hasFqName(m, "opnsense_tailscale_key_expiry_timestamp_seconds"):
+			sawExpiry = true
+			if v := getMetricValue(m); v != 1788220800 {
+				t.Errorf("key_expiry = %v, want 1788220800", v)
+			}
+		}
+		// The AuthURL is a one-click credential. It must never reach a label,
+		// on this metric or any other.
+		for k, v := range getMetricLabels(m) {
+			if strings.Contains(v, "login.tailscale.com") || strings.Contains(v, "SUPERSECRETTOKEN") {
+				t.Fatalf("AuthURL leaked into label %s=%q on %s", k, v, m.Desc().String())
+			}
+		}
+	}
+	if !sawReauth || !sawExpiry {
+		t.Errorf("missing metric(s): reauth=%v expiry=%v", sawReauth, sawExpiry)
+	}
+}
+
+// TestTailscaleCollector_NoKeyExpiryEmitsNoSeries: a node with key expiry
+// disabled omits KeyExpiry entirely (upstream declares it *time.Time with
+// omitempty). Emitting 0 there would read as "the key expired in 1970" and
+// page immediately and forever on a perfectly healthy tunnel. reauth_required
+// is still emitted as a real 0 — the field is always on the wire.
+func TestTailscaleCollector_NoKeyExpiryEmitsNoSeries(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tailscale/status/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Version":"1.96.4","BackendState":"Running","AuthURL":"",
+			"Self":{"HostName":"fw","Relay":"lhr"},"Peer":{},"Health":[]}`))
+	})
+	mux.HandleFunc("/api/tailscale/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &tailscaleCollector{subsystem: TailscaleSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+
+	var sawReauth bool
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_tailscale_key_expiry_timestamp_seconds") {
+			t.Fatalf("key_expiry must not be emitted when the node key does not expire (got %v)", getMetricValue(m))
+		}
+		if hasFqName(m, "opnsense_tailscale_reauth_required") {
+			sawReauth = true
+			if v := getMetricValue(m); v != 0 {
+				t.Errorf("reauth_required = %v, want 0", v)
+			}
+		}
+	}
+	if !sawReauth {
+		t.Error("reauth_required must be emitted as a real 0 on a healthy node")
 	}
 }

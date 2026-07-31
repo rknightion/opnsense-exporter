@@ -53,10 +53,26 @@
     },
     {
       "path": "top",
+      "kind": "object"
+    },
+    {
+      "path": "top.*",
+      "kind": "object"
+    },
+    {
+      "path": "top.*.total",
       "kind": "any"
     },
     {
       "path": "top_blocked",
+      "kind": "object"
+    },
+    {
+      "path": "top_blocked.*",
+      "kind": "object"
+    },
+    {
+      "path": "top_blocked.*.total",
       "kind": "any"
     },
     {

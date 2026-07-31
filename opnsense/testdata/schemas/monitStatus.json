@@ -15,6 +15,158 @@
     {
       "path": "status",
       "kind": "any"
+    },
+    {
+      "path": "status.service",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[]",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].@attributes",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].@attributes.type",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].block",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].block.percent",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].cpu",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].cpu.percent",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].icmp",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].icmp.responsetime",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].inode",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].inode.percent",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].memory",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].memory.kilobyte",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].memory.percent",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].monitor",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].name",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].pendingaction",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].port",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].port[]",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].port[].portnumber",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].port[].protocol",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].port[].responsetime",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].status",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].system.cpu",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].system.cpu.*",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system.load",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].system.load.avg01",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system.load.avg05",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system.load.avg15",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system.memory",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].system.memory.kilobyte",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system.memory.percent",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].system.swap",
+      "kind": "object"
+    },
+    {
+      "path": "status.service[].system.swap.percent",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].threads",
+      "kind": "any"
+    },
+    {
+      "path": "status.service[].uptime",
+      "kind": "any"
     }
   ]
 }

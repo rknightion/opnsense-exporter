@@ -10,19 +10,41 @@ never rate(). opnsense_ids_installed_rules_total is a current count → RAW.
 opnsense_ids_ruleset_last_updated_timestamp_seconds is a unix timestamp → shown
 as age: time() - <ts>.
 
-No Loki row here: verified live (`gcx logs labels --label opnsense_subsystem`) that the
-shipped syslog stream's `opnsense_subsystem` values are audit/auth/cron/dhcp/dns/firewall/
-flow/gateways/ipsec/kernel/logging/ntp/packages/proxy/tls/web — there is no "ids"/"suricata"
-lane. Lines mentioning suricata are configd RPC audit entries (rule sync/lookup calls), not
-eve/alert lines, so there's no real stream to gate a row on. Revisit if a Suricata eve.json
-lane is ever added to logship.
+## The Loki row, and the note it replaces (#591 item 5)
+
+This module used to carry a note saying there was no Loki row because the shipped
+SYSLOG stream has no `ids` subsystem — lines mentioning suricata there are configd
+RPC audit entries, not eve alerts. That observation is still true and is still why
+no panel here selects `opnsense_subsystem="ids"`. It was the wrong conclusion: the
+"Suricata eve.json lane" it said to revisit for ALREADY EXISTS as its own poll
+source (`--logs.ids.enabled`, internal/logship/ids.go), shipping full eve records
+under `opnsense_source="ids"` with alert_sid / signature / alert_action / src_ip /
+dest_ip / in_iface / proto per alert. Nothing read a byte of it.
+
+**Select on `opnsense_source`, never on `opnsense_subsystem`.** The lane builds its
+attributes without `logship.AttrSubsystem`, so its records carry no subsystem label
+at all and a selector naming one matches nothing while reporting no error — the same
+trap that produced the note above. `tests/test_loki_scoping.py` pins both ends.
+
+The lane is mutually exclusive with the syslog receiver (options/logs_syslog.go
+refuses both), so a box running the syslog receiver has this row's sentinel absent
+and the row hidden, which is correct rather than a gap.
 """
 
-from builder import Builder, sel, ENABLED, YESNO
+from builder import Builder, sel, loki_sel, loki_grp, ENABLED, YESNO
 from tabs import log_events
 
 IDS_STATUS = {"-1": ("Disabled", "text"), "0": ("Stopped", "red"), "1": ("Running", "green")}
 IPS_MODE = {"0": ("IDS (passive)", "blue"), "1": ("IPS (inline)", "orange")}
+
+# The eve-alert log lane. Hoisted so the row's panels cannot drift apart.
+IDS_STREAM = loki_sel('opnsense_source="ids"')
+# The lane's own synthetic self-observability record: query_alerts is a windowed,
+# saturating backend, and when a poll's window fills before reaching the prior cursor
+# the alerts in between were never observed. The lane emits one of these describing
+# the bounds rather than losing them silently (internal/logship/ids.go). `event` is
+# structured metadata, so it filters after the `|`, not in the selector.
+IDS_GAPS = f'{IDS_STREAM} | event="gap_detected"'
 
 
 def build(b: Builder):
@@ -120,6 +142,73 @@ def build(b: Builder):
         ),
     )
 
+    # ------------------------------------------------------------------ #
+    # Row 5: Alert Records (Loki, --logs.ids.enabled) — #591 item 5 / #592 item 3
+    # ------------------------------------------------------------------ #
+    b.loki_sentinel("has_ids_logs", matchers='opnsense_source="ids"',
+                    label="opnsense_source")
+
+    # The first `loki_stat` in the project, so the shape is worth stating. It is a
+    # RANGE query (the helper has no instant mode) whose range selector is the WHOLE
+    # dashboard window, reduced with lastNotNull: every step's window looks back
+    # $__range, so the final point's window is exactly the selected range and the
+    # reduction reads "gaps in this window" rather than "gaps in the last step".
+    # $__auto would give the latter, which reports a clean 0 while an hour-old gap
+    # sits on screen. Loki emits no sample for an empty window rather than a zero, so
+    # the helper's noValue:"0" is what makes a genuinely gap-free box read 0 instead
+    # of "No data" — the distinction this whole panel exists to make.
+    ids_gaps = b.loki_stat(
+        "Alert Coverage Gaps",
+        f'sum {loki_grp()} (count_over_time({IDS_GAPS} [$__range]))',
+        unit="short", w=4, h=4,
+        # Non-zero is not an error to fix in the exporter, it is alerts that were
+        # never seen — so it colours as a warning rather than a failure.
+        thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+        color_mode="background",
+        desc="Synthetic gap records over the selected range: times the query_alerts window "
+             "saturated before reaching the poll cursor, so Suricata alerts in between were "
+             "never observed. This is accepted, BOUNDED loss by design — the point of the "
+             "record is that the loss is visible instead of silent, and this stat is what makes "
+             "it so. Non-zero means the panels above and the Recent Alerts gauge are an "
+             "incomplete sample for that window, not a quiet network; each record's body carries "
+             "the gap_start/gap_end bounds. Sustained non-zero means alerts are firing faster "
+             "than the 30s poll can drain the window.",
+    )
+    ids_alert_rate = b.loki_ts(
+        "Alert Records/s by Disposition",
+        [(f'sum {loki_grp("opnsense_action")} (rate({IDS_STREAM} [$__auto]))',
+          "{{opnsense_action}}")],
+        unit="ops", w=20, h=8,
+        desc="eve alert records per second from the `ids` log stream, by normalised disposition "
+             "(block = Suricata acted on it inline, pass = it alerted only). Read against Recent "
+             "Alerts above, which is a GAUGE over a lookback window and floors at 500: this is a "
+             "true rate and does not saturate. A series with an empty disposition is the "
+             "synthetic gap record, which carries no action.",
+    )
+    ids_signatures = b.loki_table(
+        "Top Alert Signatures",
+        [f'topk {loki_grp()} (200, sum {loki_grp("signature")} (count_over_time({IDS_STREAM} '
+         '| signature!="" [$__range])))'],
+        field_title="Signature",
+        desc="Which Suricata rules actually fired, ranked over the selected range. The signature "
+             "text is structured metadata on the eve record and is deliberately not a metric "
+             "label, so this is the only place the estate can say WHICH rule is producing the "
+             "alert rate — Recent Alerts by Action gives the count and nothing else. A single "
+             "signature dominating is usually a noisy rule worth suppressing rather than an "
+             "incident. The `| signature!=\"\"` filter also excludes the synthetic gap records, "
+             "which carry no signature; Alert Coverage Gaps counts those separately.",
+    )
+    ids_alert_raw = b.logs(
+        "Raw Alert Records",
+        IDS_STREAM,
+        desc="Unfiltered `ids` log stream (--logs.ids.enabled): the full eve JSON per alert as "
+             "the body, with alert_sid, signature, alert_action, src_ip, dest_ip, in_iface and "
+             "proto as structured metadata. Note the destination key is `dest_ip`, Suricata's own "
+             "spelling, not `dst_ip` — the firewall log lane uses the other one. Open the log "
+             "details on a line to filter on any of them.",
+        w=24,
+    )
+
     b.tab("IDS/IPS", [
         b.row("Suricata Overview", [status, ips, promisc, rules, logfiles], present="has_ids"),
         b.row("eve Log Files", [log_sizes], present="has_ids"),
@@ -129,4 +218,9 @@ def build(b: Builder):
         # Observability domain. It reads beside Alert Activity: that one is the
         # exporter's alert-log sample, this one is every event Suricata emitted.
         log_events.ids_row(b),
+        # Collapsed (#422): cold-load cost is round-trip COUNT, and these are range
+        # queries over a per-alert stream. The row is also the tab's drill-down —
+        # opened after the metric panels above have raised a question, not before.
+        b.row("Alert Records", [ids_gaps, ids_alert_rate, ids_signatures, ids_alert_raw],
+              present="has_ids_logs", collapse=True),
     ])

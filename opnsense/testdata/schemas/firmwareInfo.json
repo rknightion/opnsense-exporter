@@ -18,7 +18,19 @@
       "kind": "object"
     },
     {
+      "path": "plugin[].automatic",
+      "kind": "string"
+    },
+    {
+      "path": "plugin[].flatsize",
+      "kind": "string"
+    },
+    {
       "path": "plugin[].installed",
+      "kind": "string"
+    },
+    {
+      "path": "plugin[].locked",
       "kind": "string"
     },
     {

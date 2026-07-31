@@ -237,8 +237,9 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
         silently drift further from what the builder actually produces. 40 -> 41 when
         #557 added the Kea server-reported lease pool accounting bargauge; 41 -> 43
         when #587 added the top-resolved and top-blocked domain leaderboards; 43 -> 44
-        when #579 added the jumbo mbuf pool utilization bargauge."""
-        self.assertEqual(len(_bargauge_panels(self.builder)), 44)
+        when #579 added the jumbo mbuf pool utilization bargauge; 44 -> 45 when #583
+        added the per-plugin size bargauge."""
+        self.assertEqual(len(_bargauge_panels(self.builder)), 45)
 
     def test_neutral_bytes_panel_has_no_severity_boundary(self):
         panel = self._panel("eve Log File Sizes")

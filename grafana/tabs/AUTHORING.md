@@ -309,13 +309,14 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 108 total (collector 103 / self_labeled 4 / target_join 1 / global 0)
+### Prometheus sentinels — 111 total (collector 104 / self_labeled 5 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
 | `has_acme` | `collector` | existence (series presence) | OPNsense Exporter > System > Certificates > ACME Client | `label_values(opnsense_acme_certificates_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_alias` | `collector` | existence (series presence) | OPNsense Exporter > Security > Aliases; OPNsense Exporter > Security > Aliases > Alias Tables | `label_values(opnsense_alias_tables_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_alias_details` | `collector` | existence (series presence) | OPNsense Exporter > Security > Aliases > Alias pf Counters (details flag) | `label_values(opnsense_alias_table_packets_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_alias_feeds` | `collector` | existence (series presence) | OPNsense Exporter > Security > Aliases > Alias Feed Freshness | `label_values(opnsense_alias_table_updated_timestamp_seconds{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_annotations` | `self_labeled` | existence (series presence) | OPNsense Exporter Health > Delivery > Metrics & OTLP > Grafana Annotation Writing | `label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_apcupsd` | `collector` | existence (series presence) | OPNsense Exporter > System > UPS; OPNsense Exporter > System > UPS > APC UPS (apcupsd) | `label_values(opnsense_apcupsd_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_bridge` | `collector` | existence (series presence) | OPNsense Exporter > Network > Interfaces > Bridge Membership | `label_values(opnsense_interfaces_bridge_member{opnsense_instance=~"$opnsense_instance"}, __name__)` |
@@ -393,6 +394,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_nut` | `collector` | existence (series presence) | OPNsense Exporter > System > UPS; OPNsense Exporter > System > UPS > NUT (Network UPS Tools) | `label_values(opnsense_nut_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_openvpn` | `collector` | existence (series presence) | OPNsense Exporter > VPN & remote access; OPNsense Exporter > VPN & remote access > VPN; OPNsense Exporter > VPN & remote access > VPN > OpenVPN | `label_values(opnsense_openvpn_instances{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_otlp` | `self_labeled` | existence (series presence) | OPNsense Exporter Health > Delivery > Metrics & OTLP > OTLP Delivery Health; OPNsense Exporter Health > Overview > OTLP Delivery | `label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_process_fds` | `target_join` | existence (series presence) | OPNsense Exporter Health > Exporter Runtime > File Descriptors (process collector) | `query_result(process_open_fds{job=~"opnsense.*"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~"$opnsense_instance"}))` |
 | `has_qfeeds` | `collector` | existence (series presence) | OPNsense Exporter > Security > Q-Feeds; OPNsense Exporter > Security > Q-Feeds > Q-Feeds Activity; OPNsense Exporter > Security > Q-Feeds > Q-Feeds Overview | `label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_recording_flow` | `collector` | existence (series presence) | OPNsense Exporter Health > Recording rules > Flow Volume | `label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_recording_gateway_loss` | `collector` | existence (series presence) | OPNsense Exporter Health > Recording rules > Gateway Health | `label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~"$opnsense_instance"}, __name__)` |
@@ -408,6 +410,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_siproxd` | `collector` | existence (series presence) | OPNsense Exporter > Services; OPNsense Exporter > Services > Siproxd; OPNsense Exporter > Services > Siproxd > Registrations | `label_values(opnsense_siproxd_registrations{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_smart` | `collector` | existence (series presence) | OPNsense Exporter > System > System & Resources > SMART; OPNsense Exporter > System > System & Resources > SMART Attributes & NVMe | `label_values(opnsense_smart_device_health{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_syslog` | `collector` | existence (series presence) | OPNsense Exporter > Services; OPNsense Exporter > Services > Syslog; OPNsense Exporter > Services > Syslog > Syslog-ng Overview; OPNsense Exporter > Services > Syslog > Syslog-ng Target States; OPNsense Exporter > Services > Syslog > Syslog-ng Throughput | `label_values(opnsense_syslog_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_syslog_conn_slots` | `self_labeled` | existence (series presence) | OPNsense Exporter Health > Overview > Syslog Listener Headroom | `label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_tailscale` | `collector` | existence (series presence) | OPNsense Exporter > VPN & remote access; OPNsense Exporter > VPN & remote access > Tailscale; OPNsense Exporter > VPN & remote access > Tailscale > Tailscale Node | `label_values(opnsense_tailscale_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_tailscale_peers` | `collector` | existence (series presence) | OPNsense Exporter > VPN & remote access > Tailscale > Tailscale Peers (details flag) | `label_values(opnsense_tailscale_peer_session_active{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_temperature` | `collector` | existence (series presence) | OPNsense Exporter > System > System & Resources > Temperature | `label_values(opnsense_temperature_celsius{opnsense_instance=~"$opnsense_instance"}, __name__)` |
@@ -422,11 +425,15 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_wireguard_peers` | `collector` | existence (series presence) | OPNsense Exporter > VPN & remote access > VPN > WireGuard Peers | `label_values(opnsense_wireguard_peer_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_zenarmor_metrics` | `collector` | existence (series presence) | OPNsense Exporter > Security > Zenarmor; OPNsense Exporter > Security > Zenarmor > Overview | `label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 
-### Loki sentinels — 2 total (scope: `stream_selector`)
+### Loki sentinels — 6 total (scope: `stream_selector`)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
+| `has_crowdsec_logs` | `stream_selector` | existence (series presence) | OPNsense Exporter > Security > CrowdSec > Alert & Decision Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="crowdsec"}, opnsense_source)` |
+| `has_flow_logs` | `stream_selector` | existence (series presence) | OPNsense Exporter > Network > Flow Volume > Flow Record Drilldown | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source=~"netflow\|merged"}, opnsense_source)` |
+| `has_ids_logs` | `stream_selector` | existence (series presence) | OPNsense Exporter > Security > IDS/IPS > Alert Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="ids"}, opnsense_source)` |
 | `has_syslog_logs` | `stream_selector` | existence (series presence) | OPNsense Exporter > Services; OPNsense Exporter > Services > Syslog; OPNsense Exporter > Services > Syslog > Shipped Syslog Logs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog"}, opnsense_source)` |
+| `has_unbound_logs` | `stream_selector` | existence (series presence) | OPNsense Exporter > Network > DNS - Unbound > Per-Query Log | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="unbound"}, opnsense_source)` |
 | `has_zenarmor_logs` | `stream_selector` | existence (series presence) | OPNsense Exporter > Security > Zenarmor; OPNsense Exporter > Security > Zenarmor > Applications & Destinations; OPNsense Exporter > Security > Zenarmor > DNS Detail; OPNsense Exporter > Security > Zenarmor > Live Records & Rates; OPNsense Exporter > Security > Zenarmor > Security Detail; OPNsense Exporter > Security > Zenarmor > Web / HTTP Detail | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="zenarmor"}, opnsense_source)` |
 <!-- sentinelgen:end -->
 

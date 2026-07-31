@@ -12,9 +12,27 @@ hub_items (component, status) is an aggregated instantaneous gauge — never
 rate(), never per-item name labels (a collection pulls in 50-200
 scenarios/parsers). version_info is an info metric (value always 1) — table
 only, per AUTHORING.md rule 7.
+
+## The Loki row (#591 item 5)
+
+Every metric above is a COUNT. `opnsense_crowdsec_alerts_total` says forty things
+were flagged and cannot say what or whom, because scenario and the banned address
+are unbounded and must never be metric labels. The `crowdsec` log lane
+(`--logs.crowdsec.enabled`, internal/logship/crowdsec.go) already ships both, plus
+decision_type, country, as and duration, one record per new alert and per new
+decision — and until #591 nothing read it. So the counters said how many; nothing
+said which.
+
+**Select on `opnsense_source`, never on `opnsense_subsystem`.** This lane builds its
+attributes without `logship.AttrSubsystem`, so its records carry no subsystem label.
+Note the near-miss: the SYSLOG receiver maps a `crowdsec` program name to
+subsystem `ids` (internal/logship/syslog/registry.go), which is a different stream
+carrying different records. `tests/test_loki_scoping.py` pins both ends.
 """
 
-from builder import Builder, sel, RUNSTOP
+from builder import Builder, sel, loki_sel, loki_grp, RUNSTOP
+
+CROWDSEC_STREAM = loki_sel('opnsense_source="crowdsec"')
 
 
 def build(b: Builder):
@@ -190,6 +208,67 @@ def build(b: Builder):
         desc="CrowdSec engine (cscli) version, parsed from cscli version's raw text output.",
     )
 
+    # ------------------------------------------------------------------ #
+    # Row 6: Alert & Decision Records (Loki, --logs.crowdsec.enabled)      #
+    # ------------------------------------------------------------------ #
+    b.loki_sentinel("has_crowdsec_logs", matchers='opnsense_source="crowdsec"',
+                    label="opnsense_source")
+
+    cs_decisions_rate = b.loki_ts(
+        "New Records/s by Decision Type",
+        [(f'sum {loki_grp("decision_type")} (rate({CROWDSEC_STREAM} [$__auto]))',
+          "{{decision_type}}")],
+        unit="ops",
+        desc="Newly observed CrowdSec records per second from the `crowdsec` log stream, split "
+             "by enforcement type (ban / captcha / throttle). The series with an EMPTY "
+             "decision_type is the alert records: an alert is an observation with no disposition "
+             "of its own, so the lane deliberately leaves the key unset on it — alerts and "
+             "decisions are separate LAPI objects with independent id cursors. Read this against "
+             "Active Decisions above, which is a current TOTAL that falls as bans expire; this "
+             "is the arrival rate and never falls.",
+    )
+    cs_scenarios = b.loki_table(
+        "Top Scenarios",
+        [f'topk {loki_grp()} (200, sum {loki_grp("scenario")} (count_over_time({CROWDSEC_STREAM} '
+         '| scenario!="" [$__range])))'],
+        field_title="Scenario",
+        desc="Which CrowdSec scenarios fired, over the selected range. The scenario name is "
+             "structured metadata on the record and is deliberately not a metric label, so this "
+             "is the only place the estate can say WHAT the alert count above is made of. Counts "
+             "alert and decision records together — a scenario that produced a ban appears in "
+             "both, which is the normal path rather than double counting.",
+    )
+    cs_values = b.loki_table(
+        "Top Flagged Addresses",
+        [f'topk {loki_grp()} (200, sum {loki_grp("value")} (count_over_time({CROWDSEC_STREAM} '
+         '| value!="" [$__range])))'],
+        field_title="Flagged Value",
+        # Deliberately NOT window-pinned, unlike the unbounded-label tables on the
+        # Zenarmor and DNS tabs. This lane emits one record per NEW alert or decision
+        # at a 60s poll floor, not one per connection, so a range wide enough to
+        # approach Loki's series ceiling would take weeks rather than hours. If it
+        # ever does return a query error, pin time_from rather than lowering topk —
+        # the ceiling is enforced on a query intermediate, so the rank depth is not
+        # the lever.
+        desc="The scope values CrowdSec acted on — an address for a scope:ip decision, which is "
+             "the overwhelmingly common case. High cardinality by nature, which is why it is "
+             "structured metadata and never a label. Counts alert and decision records together, "
+             "so an address alerted on and then banned appears twice; the decision-type panel "
+             "beside this separates the two.",
+    )
+    cs_raw_logs = b.logs(
+        "Raw CrowdSec Records",
+        CROWDSEC_STREAM,
+        desc="Unfiltered `crowdsec` log stream (--logs.crowdsec.enabled). Each body is a compact "
+             "JSON object whose `kind` is either alert or decision; structured metadata carries "
+             "scenario, value, country, as, and — on decisions only — decision_type and "
+             "duration. This is the only path these records take: the CrowdSec plugin registers "
+             "no syslog scope, so alerts live solely in the LAPI. On a cold start the lane ships "
+             "every currently-active alert and decision once, so the first window after enabling "
+             "it shows existing state rather than only new events.",
+        w=24,
+    )
+
     b.tab("CrowdSec", [
         b.row("CrowdSec Overview",
               [svc, alerts, decisions, bouncers, machines],
@@ -206,4 +285,10 @@ def build(b: Builder):
         b.row("Engine Version",
               [version_table],
               present="has_crowdsec_version"),
+        # Collapsed (#422): range queries over a log stream cost round-trips on every
+        # cold load, and this row is the drill-down an operator opens after the
+        # counters above raised a question.
+        b.row("Alert & Decision Records",
+              [cs_decisions_rate, cs_scenarios, cs_values, cs_raw_logs],
+              present="has_crowdsec_logs", collapse=True),
     ])

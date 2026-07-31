@@ -19,15 +19,51 @@ themselves rather than only here:
     packet path, and #346 decision 3 forbids summing them. Every volume query here
     therefore aggregates BY source rather than over it, so it is already correct
     when the second source appears.
+
+The last row is the LOG drilldown (#592 item 1 / #591 item 5), and it is here rather
+than on Flow Pipeline deliberately: Flow Pipeline is the exporter watching its own
+ingest machinery, while the question this row answers — "WAN egress is at 400 Mbit,
+which conversation is it?" — is asked by an operator standing in front of these
+volume panels, usually because `instance:opnsense_flow_bytes:rate5m` just alerted.
+Every panel above is an aggregate by construction (host and application NAME are
+unbounded and can never be metric labels), so before this row the drilldown simply
+ended there, even though the exporter already ships src.ip, dst.ip, app.name and
+flow.community_id on one record per connection-window.
 """
 
-from builder import Builder, sel, grp, RATE
+from builder import Builder, sel, grp, loki_sel, loki_grp, RATE
 from uids import focus_interface, to_tab
 
 # Aggregating by source rather than over it is the whole point — see the module
 # docstring. Adding this to a `sum by (...)` costs one extra legend field and makes
 # the panel correct for phase 2 by construction instead of by a later edit.
 BY_SOURCE = "source"
+
+# The correlated flow-log stream (#346, --flow.log-mode=per_flow). Two lanes, one
+# record schema (internal/flow Record.LogAttributes): `netflow` is a record the
+# correlator emitted with no Zenarmor conn document matched, `merged` is one where a
+# match folded L7 in. They are selected TOGETHER because an operator asking which
+# conversation moved the bytes does not know in advance which lane produced it — and
+# splitting them would hide exactly the un-correlated half.
+#
+# Unlike the unbound/ids/crowdsec lanes, this one DOES stamp a subsystem
+# (logship.AttrSubsystem = "flow", set by internal/logship/flowlog). It is not used
+# here: Zenarmor's own receiver also ships subsystem="flow" records, which are its
+# conn documents rather than these correlated ones, so the source label is the only
+# matcher that selects this schema and nothing else.
+FLOW_LOG_STREAM = loki_sel('opnsense_source=~"netflow|merged"')
+
+# Attribute names lose their dots in Loki (docs/syslog-receiver.md): the record emits
+# `dst.ip` / `app.name` / `flow.nf.bytes`, and LogQL sees dst_ip / app_name /
+# flow_nf_bytes. A query written with the dotted name matches nothing and reports no
+# error, which is why these are named once here.
+NF_BYTES = "flow_nf_bytes"
+
+# Endpoint addresses are unbounded, so the table ranking them pins its own window
+# (#479) — Loki's max_query_series is enforced on a query INTERMEDIATE, so `topk`
+# does not bound it and only the range moves the cliff. Same measured 1h fit the
+# Zenarmor tab uses against the same tenant.
+UNBOUNDED_LABEL_WINDOW = "1h"
 
 
 def build(b: Builder):
@@ -215,10 +251,89 @@ def build(b: Builder):
              "two lanes' measurements of the same traffic are summed.",
     )
 
+    # ---- flow-log drilldown (#592 item 1 / #591 item 5) -------------------
+    # The panels above are the only aggregate view; these are the individual
+    # conversations behind them. Present only with --flow.log-mode=per_flow, which is
+    # why the row has its own sentinel rather than riding has_flow_volume: the metric
+    # rollup runs whether or not log records are emitted.
+    b.loki_sentinel("has_flow_logs", matchers='opnsense_source=~"netflow|merged"',
+                    label="opnsense_source")
+
+    flow_raw_logs = b.logs(
+        "Raw Flow Records",
+        FLOW_LOG_STREAM,
+        desc="One log record per connection-window, from the #346 correlator "
+             "(--flow.log-mode=per_flow). The body is a one-line src -> dst summary; the "
+             "structured metadata is ~24 keys — src_ip, dst_ip, ports, net_transport, "
+             "flow_community_id, flow_direction, flow_interface, flow_action, app_name, "
+             "dst_domain, dst_hostname, the geo fields, and BOTH sources' byte and packet "
+             "counters as flow_nf_bytes and flow_zen_bytes. The two byte counters are never "
+             "summed (#346 decision 3): they measure at different points and their disagreement "
+             "is itself the signal, which the Source Byte-Delta Ratio panel above quantifies. "
+             "flow_community_id is the cross-tool connection id — the same value Suricata and "
+             "Zenarmor compute, so it joins this record to an IDS alert.",
+        w=24,
+    )
+    flow_records_rate = b.loki_ts(
+        "Flow Records/s by Lane",
+        [(f'sum {loki_grp("opnsense_source")} (rate({FLOW_LOG_STREAM} [$__auto]))',
+          "{{opnsense_source}}")],
+        unit="ops",
+        desc="Correlated flow-log records per second, split by lane. `merged` is a connection "
+             "where a Zenarmor conn document matched the NetFlow record, so it carries L7 "
+             "(app_name, dst_domain, encryption); `netflow` is one where none did, so those keys "
+             "are absent rather than empty. The merged share is the join hit-rate seen from the "
+             "log side — the Flow Correlator panel on the Flow Pipeline tab is the same ratio "
+             "from the exporter's own counters, and is the cheaper one to alert on. Both lanes "
+             "are subject to the --flow.max-logs-per-window budget, so a flood truncates this "
+             "while the metric panels above stay complete.",
+    )
+    flow_top_dst = b.loki_table(
+        "Top Flow Destinations by Bytes",
+        [f'topk {loki_grp()} (200, sum {loki_grp("dst_ip")} (sum_over_time({FLOW_LOG_STREAM} '
+         f'| dst_ip!="" | unwrap {NF_BYTES} [$__range])))'],
+        field_title="Destination",
+        value_unit="bytes",
+        # NetFlow's counter, not Zenarmor's, and not a sum of the two. NF counts at the
+        # packet path and is authoritative for volume (internal/flow/deltaratio.go);
+        # both lanes selected here always carry it, while flow_zen_bytes exists only on
+        # the merged half — ranking on that would silently rank a subset.
+        desc="The destinations that actually moved the bytes, over this panel's own 1h window. "
+             "THIS is the drilldown from Throughput by Interface: that panel says WAN egress is "
+             "at 400 Mbit, this says which conversations it is. Value is NetFlow's byte counter "
+             "(flow_nf_bytes) — the packet-path measurement, which is authoritative for volume "
+             "and is present on both lanes; Zenarmor's counter is deliberately not summed with "
+             "it and exists only on merged records. Pinned to 1h rather than following the time "
+             "picker because addresses are unbounded and Loki's series ceiling is enforced on a "
+             "query intermediate, so a wider range returns a query error rather than fewer rows.",
+        time_from=UNBOUNDED_LABEL_WINDOW,
+    )
+    flow_top_apps = b.loki_table(
+        "Top Flow Applications by Bytes",
+        [f'topk {loki_grp()} (200, sum {loki_grp("app_name")} (sum_over_time({FLOW_LOG_STREAM} '
+         f'| app_name!="" | unwrap {NF_BYTES} [$__range])))'],
+        field_title="Application",
+        value_unit="bytes",
+        desc="Application NAMES behind the Top Application Categories panel above, which can "
+             "only show the bounded 24-value category taxonomy because names are unbounded and "
+             "must not be a metric label. Merged records only, by construction: app_name comes "
+             "from the Zenarmor conn document, so an uncorrelated NetFlow record carries none "
+             "and is absent here rather than counted as unknown — read the merged share on Flow "
+             "Records/s by Lane before treating this as a complete picture of the traffic. "
+             "Zenarmor's own Top Applications table counts RECORDS; this one weighs them by "
+             "NetFlow's bytes, so a chatty app and a heavy one rank differently.",
+    )
+
     b.tab("Flow Volume", [
         b.row("Volume", [iface, direction], present="has_flow_volume"),
         b.row("Breakdown", [category, transport, scope], present="has_flow_volume"),
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
         b.row("Domain, Talkers & Source Delta", [dnscache, uniquedest, toptalkers, delta]),
         b.row("Geography", [country], present="has_flow_country"),
+        # Collapsed (#422): four round-trips against a per-connection stream on every
+        # cold load, and this row is by definition opened AFTER a volume panel above
+        # has raised the question it answers.
+        b.row("Flow Record Drilldown",
+              [flow_raw_logs, flow_records_rate, flow_top_dst, flow_top_apps],
+              present="has_flow_logs", collapse=True),
     ], present="has_flow_volume")

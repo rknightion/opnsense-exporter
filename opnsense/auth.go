@@ -2,6 +2,8 @@ package opnsense
 
 import (
 	"encoding/json"
+	"math"
+	"strings"
 	"time"
 )
 
@@ -57,6 +59,28 @@ type authUserRow struct {
 	IsAdmin  flexString      `json:"is_admin"`
 	Expires  flexString      `json:"expires"`
 	HasOTP   otpSeedPresence `json:"otp_seed"`
+	// PwdChangedAt is when this account's password was last changed (#583).
+	// Upstream writes it as `microtime(true)` — Auth/Api/UserController.php:104
+	// on an API/GUI change and etc/inc/auth.inc:461 on the legacy path — into a
+	// TextField (Auth/User.xml:35). So the wire value is a STRING holding float
+	// UNIX SECONDS with a microsecond fraction: seconds, NOT milliseconds, and
+	// not a formatted date like the sibling `expires` field a few lines up.
+	//
+	// CONDITIONAL: written only when a password is actually changed, so it is
+	// an empty string on any account whose password predates the feature.
+	// Upstream reads it back behind `empty(...) ? 0 : ...` (Auth/Local.php:124),
+	// i.e. it treats "never recorded" as its own case, and so do we.
+	//
+	// This is still aggregate-only data: the value is folded into a
+	// whole-population maximum and the row's name is never bound.
+	PwdChangedAt flexString `json:"pwd_changed_at"`
+	// ShellWarning is upstream's own computed warning flag, not raw config.
+	// UserController.php:121 sets it on every search row as
+	//   strpos($row['shell'], '/') === 0 && empty($row['is_admin']) ? '1' : '0'
+	// so it means "a NON-ADMIN account has been given a real login shell" — it
+	// says nothing about WHICH shell, and an administrator with /bin/sh does
+	// NOT raise it. Always present, always the string "1" or "0".
+	ShellWarning flexString `json:"shell_warning"`
 }
 
 type authUserSearchResponse struct {
@@ -95,6 +119,22 @@ type AuthPosture struct {
 	AdminUsers    int
 	ExpiredUsers  int
 	UsersWithOTP  int
+	// UsersWithShellWarning counts accounts upstream itself flags in the GUI:
+	// a non-admin user with a real login shell (#583).
+	UsersWithShellWarning int
+	// OldestPasswordAgeSeconds is the age of the LEAST recently changed
+	// password across all accounts that have a recorded change time.
+	// HasOldestPasswordAge is false when no account has one at all — the
+	// aggregate is then absent rather than 0, because 0 would read as "every
+	// password was just changed", the exact inverse of the truth.
+	OldestPasswordAgeSeconds float64
+	HasOldestPasswordAge     bool
+	// UsersWithUnknownPasswordAge counts accounts with no usable change time
+	// (empty, absent, or unparseable). These are NOT folded into the maximum
+	// above: an account whose password has never been changed is the worst
+	// posture on the box, and quietly dropping it would make the age gauge read
+	// healthier than reality. The two series have to be read together.
+	UsersWithUnknownPasswordAge int
 }
 
 // FetchAuthUsers returns aggregate local-user security-posture counts from
@@ -134,8 +174,41 @@ func (c *Client) FetchAuthUsers() (AuthPosture, *APICallError) {
 		if authUserExpired(row.Expires.String(), now) {
 			data.ExpiredUsers++
 		}
+		if row.ShellWarning.String() == "1" {
+			data.UsersWithShellWarning++
+		}
+		if changed, ok := parseAuthPwdChangedAt(row.PwdChangedAt.String()); ok {
+			// A clock skew or a hand-edited config can put the recorded change
+			// in the future; clamp at zero rather than reporting a negative
+			// age, which would silently satisfy every "older than N" alert.
+			age := now.Sub(changed).Seconds()
+			if age < 0 {
+				age = 0
+			}
+			if !data.HasOldestPasswordAge || age > data.OldestPasswordAgeSeconds {
+				data.OldestPasswordAgeSeconds = age
+				data.HasOldestPasswordAge = true
+			}
+		} else {
+			data.UsersWithUnknownPasswordAge++
+		}
 	}
 	return data, nil
+}
+
+// parseAuthPwdChangedAt converts an Auth/User "pwd_changed_at" value — PHP
+// microtime(true), i.e. float Unix SECONDS with a microsecond fraction, stored
+// as text — into a time. Returns ok=false for an empty value (the password has
+// never been changed since OPNsense started recording it) or an unparseable
+// one; callers must count those separately rather than treating them as
+// "changed at epoch 0", which would report a 56-year-old password.
+func parseAuthPwdChangedAt(raw string) (time.Time, bool) {
+	secs, ok := safeParseFloatOK(strings.TrimSpace(raw))
+	if !ok || secs <= 0 {
+		return time.Time{}, false
+	}
+	whole, frac := math.Modf(secs)
+	return time.Unix(int64(whole), int64(frac*1e9)), true
 }
 
 // authUserExpired reports whether an Auth/User "expires" value (an m/d/Y date

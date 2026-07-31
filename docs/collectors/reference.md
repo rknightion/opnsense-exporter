@@ -14,7 +14,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
 | CPU | cpu | 6 | Enabled | --exporter.disable-cpu | OPNSENSE_EXPORTER_DISABLE_CPU |
 | Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
-| Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
+| Certificates | certificate | 8 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |
 | ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPNSENSE_EXPORTER_DISABLE_CLAMAV |
 | Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPNSENSE_EXPORTER_DISABLE_BACKUP |
@@ -25,9 +25,9 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | FRR Routing (BGP/OSPF/BFD) | frr | 58 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
 | Feature Availability | feature | 1 | Enabled | --exporter.disable-feature-availability | OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY |
 | Firewall | firewall | 26 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
-| Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
+| Firewall Aliases | alias | 8 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
-| Firmware | firmware | 15 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
+| Firmware | firmware | 20 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
 | Flow Volume | flow | 56 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
 | Gateways | gateways | 19 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
@@ -42,7 +42,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Kea DHCP | kea | 21 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
-| Local Auth | auth | 6 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
+| Local Auth | auth | 9 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
 | Log-derived Events | log_events | 31 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
 | Mbuf | mbuf | 20 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 17 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
@@ -63,7 +63,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPNSENSE_EXPORTER_DISABLE_SIPROXD |
 | Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
 | System | system | 13 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
-| Tailscale | tailscale | 11 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
+| Tailscale | tailscale | 13 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
 | Tor | tor | 6 | Disabled | --exporter.enable-tor | OPNSENSE_EXPORTER_ENABLE_TOR |
 | Traffic Shaper | trafficshaper | 22 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |

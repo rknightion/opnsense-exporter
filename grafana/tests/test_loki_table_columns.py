@@ -310,6 +310,13 @@ class UnboundedLabelTablesPinTheirOwnWindowTest(unittest.TestCase):
         "Top TLS Server Names (SNI)",  # SNI values
         "Top JA3 Fingerprints",       # JA3 hashes
         "Top URIs",                   # request paths
+        # #591 item 5 / #592 item 1 — the same two shapes on the new log-stream
+        # tables. Query names are the Unbound lane's own copy of the DNS-name
+        # cardinality already pinned above, and endpoint ADDRESSES are worse: the
+        # flow lane emits one record per connection-window, so a busy WAN mints
+        # distinct dst_ip values continuously.
+        "Top Blocked Query Names",           # DNS names, unbound per-query lane
+        "Top Flow Destinations by Bytes",    # remote addresses, flow-log lane
     }
 
     @classmethod

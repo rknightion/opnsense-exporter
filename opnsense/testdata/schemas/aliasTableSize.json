@@ -63,6 +63,10 @@
       "kind": "number"
     },
     {
+      "path": "details.*.updated",
+      "kind": "any"
+    },
+    {
       "path": "size",
       "kind": "number"
     },

@@ -330,7 +330,18 @@ ANNOTATIONS: list = [
             "default-off is real on a box with many road-warrior peers — turn it off "
             "there — but it is the wrong default for a site-to-site box, where a "
             "tunnel establishing or terminating is precisely the event explaining the "
-            "graph. It is a toolbar-menu toggle, not a permanent cost.",
+            "graph. It is a toolbar-menu toggle, not a permanent cost. "
+            "COVERAGE BOUNDARY (#591 item 6a, verified against the emitters): the "
+            "vpn.event attribute this filters on is set by exactly two syslog "
+            "parsers, openvpn (subsystem vpn) and charon (subsystem ipsec). The "
+            "wireguard, netbird and tailscaled programs also map to subsystem=vpn "
+            "(internal/logship/syslog/registry.go) but have NO registered parser, so "
+            "their lines ship generic and carry no vpn_event — this layer can never "
+            "mark a WireGuard, NetBird or Tailscale tunnel, and its silence on such a "
+            "box is a missing parser rather than a quiet tunnel. Registering the "
+            "three is its own piece of work; until then the subsystem regex is "
+            "deliberately left wide, because narrowing it to the two covered "
+            "programs would make the gap invisible in the query as well.",
     ),
     Annotation(
         name="Exporter-pushed events",
@@ -495,6 +506,18 @@ NOT_ANNOTATED: dict = {
         "same lifecycle is available as discrete events in the Tunnel lifecycle layer.",
     "opnsense_qfeeds_feed_next_update_timestamp_seconds":
         "Future-dated by construction.",
+    "opnsense_tailscale_key_expiry_timestamp_seconds":
+        "Future-dated by construction - it is the deadline the node's own Tailscale key "
+        "stops working at, so a marker would sit ahead of now, the same reason "
+        "collector_next_poll is excluded. Its value is as a COUNTDOWN, which is what "
+        "OPNsenseTailscaleKeyExpiringSoon alerts on (#583).",
+    "opnsense_alias_table_updated_timestamp_seconds":
+        "Derived from a file mtime that OPNsense renders with NO timezone offset "
+        "(pftablecount.py's datetime.fromtimestamp().isoformat()), so it is read as UTC and a "
+        "marker would land at the wrong wall-clock time by the firewall's zone offset - up to "
+        "14 hours out. It is also a scheduled refresh that repeats every cycle, so under "
+        "value-as-time it smears rather than marking an event. Its value is as a STALENESS "
+        "reading, which is what OPNsenseAliasFeedNotRefreshing alerts on (#583).",
     "opnsense_qfeeds_license_expiry_timestamp_seconds":
         "Future-dated by construction, and an expiry deadline rather than an event.",
     "opnsense_tailscale_peer_last_handshake_timestamp_seconds":
@@ -502,6 +525,47 @@ NOT_ANNOTATED: dict = {
     "opnsense_trafficshaper_rule_last_match_timestamp_seconds":
         "Advances every time a shaper rule matches traffic, so on a busy box it "
         "advances continuously per rule.",
+}
+
+
+# ---- the second ledger: asked for, and structurally not a marker ---------
+# NOT_ANNOTATED above answers "this metric's value IS an instant, and here is why it
+# is still not a marker" — and the annotation gate reads it, so an entry there is
+# load-bearing. This one answers a different question that no gate can raise: a
+# metric someone specifically ASKED to become an annotation, which cannot be one
+# because its value is not an instant at all.
+#
+# Such a request leaves no trace anywhere — it fails no test, so it simply gets
+# raised again — which is why the refusal is recorded as data rather than as a
+# comment. `tests/test_annotations.py` keeps the two ledgers disjoint and keeps this
+# one from silently becoming a second, unenforced copy of the first.
+NOT_INSTANT_VALUED: dict = {
+    "opnsense_flow_source_byte_delta_ratio":
+        "#592 item 2 asked for a 'these stopped agreeing at 14:02' marker on the "
+        "NetFlow-vs-Zenarmor byte ratio. Refused as an annotation LAYER, three times "
+        "over. (1) It is a cumulative, never-reset per-interface histogram, so it has "
+        "no instant to place a marker at: `useValueForTime` has nothing to read and "
+        "the Go Watch mechanism in internal/annotations, which is a diff over "
+        "instant-valued series, cannot watch it. (2) A divergence EVENT only exists "
+        "relative to a threshold and a dwell time — 1.0 is agreement but per-packet "
+        "header overhead legitimately sits just above it, which is why the bucket "
+        "bounds cluster at 1.05/1.1/1.25 — and encoding both in a generated query "
+        "string puts a policy decision somewhere no operator can see or tune it. "
+        "(3) Edge detection inside an annotation query is step-dependent: the "
+        "`(x > T) unless (x offset D > T)` idiom smears markers for D after the "
+        "crossing when D exceeds Grafana's chosen step, and returns NOTHING AT ALL "
+        "when D falls below the scrape interval, because the offset then resolves to "
+        "the same sample. A silently empty annotation layer is the exact failure "
+        "test_annotations.py exists to prevent. Threshold plus dwell time plus a "
+        "marker at the transition is an ALERT RULE, and a Grafana-managed rule "
+        "already annotates the panel it names in __dashboardUid__/__panelId__ — the "
+        "mechanism 20+ rules in grafana/alerts/grafana-managed already use. The "
+        "marker therefore belongs to a divergence alert rule pinned to the Source "
+        "Byte-Delta Ratio panel, not to a layer here. Emitting a companion "
+        "last-divergence timestamp in Go was also considered and rejected on merit "
+        "rather than scope: it would advance on every diverging flow, making it the "
+        "same continuous smear the heartbeat entries above are excluded for, and "
+        "avoiding that means reimplementing threshold-and-dwell inside the exporter.",
 }
 
 

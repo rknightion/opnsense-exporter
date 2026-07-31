@@ -102,7 +102,7 @@ class RunbookDocumentParityTest(unittest.TestCase):
         cls.markdown = build_rules.generate_runbooks_md()
         cls.headings = _headings(cls.markdown)
 
-    def test_exact_alert_count_is_59(self):
+    def test_exact_alert_count_is_64(self):
         # Re-measured against current main (#430 audit found the tracked issue's
         # figures - 31/19 rows - stale; the epic's 2026-07-27 revalidation corrected
         # it to 42/14, confirmed again here structurally). 43 since #520 added
@@ -113,8 +113,13 @@ class RunbookDocumentParityTest(unittest.TestCase):
         # prefix expiring, prefix not refreshing, and kea-dhcp6 allocation failures.
         # 57 since #559 added OPNsenseCPUStreamStalled. 59 since #560 added
         # OPNsenseDHCP6AddressExpiring and OPNsenseDHCP6AddressNotRefreshing, the
-        # IA_NA WAN-address-lease twin of the two #546 prefix rules.
-        self.assertEqual(len(build_rules.RULES), 59)
+        # IA_NA WAN-address-lease twin of the two #546 prefix rules. 63 since the
+        # epic #593 Phase 4 alert wave (#578/#579/#581/#582): IPsec child-SA-down,
+        # mbuf jumbo pool saturation, Unbound upstream lame, and OSPF LSA
+        # retransmission stuck. 64 since #592 item 2 (OPNsenseFlowSourceDivergence),
+        # handed to this lane by the annotation lane because the underlying metric
+        # is a histogram an annotation Watch cannot carry.
+        self.assertEqual(len(build_rules.RULES), 64)
 
     def test_exact_recording_count_is_14(self):
         self.assertEqual(len(build_rules.RECORDING), 14)

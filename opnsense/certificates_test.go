@@ -240,3 +240,59 @@ func TestFetchCACertificates_NonFiniteValidTo(t *testing.T) {
 		t.Errorf("expected the finite valid_from to still parse, got (%v, %v)", ca.ValidFrom, ca.HasValidFrom)
 	}
 }
+
+// TestFetchCACertificates_Refcount pins the #583 CA reference-count decode.
+//
+// Wire type evidence: OPNsense core
+// src/opnsense/mvc/app/models/OPNsense/Trust/FieldTypes/CAsField.php:112-118 sets
+// `$node->refcount = (string)$refcount;` unconditionally in
+// actionPostLoadingEvent, so the field is ALWAYS present and ALWAYS a
+// string-encoded integer (identical on stable/26.1 and stable/26.7). The value
+// is the number of OTHER config nodes referencing the CA's refid — the `- 1`
+// upstream applies drops the CA's own refid node — so 0 is a real, meaningful
+// value (dead config), not "unknown".
+func TestFetchCACertificates_Refcount(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"descr": "in-use", "commonname": "in-use", "refcount": "50",
+				 "valid_from": "1643140565", "valid_to": "1958500565"},
+				{"descr": "dead", "commonname": "dead", "refcount": "0",
+				 "valid_from": "1643140565", "valid_to": "1958500565"},
+				{"descr": "numeric", "commonname": "numeric", "refcount": 7,
+				 "valid_from": "1643140565", "valid_to": "1958500565"},
+				{"descr": "absent", "commonname": "absent",
+				 "valid_from": "1643140565", "valid_to": "1958500565"}
+			]
+		}`))
+	})
+
+	data, err := client.FetchCACertificates()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.CAs) != 4 {
+		t.Fatalf("expected 4 CAs, got %d", len(data.CAs))
+	}
+	for i, want := range []struct {
+		refs float64
+		has  bool
+	}{
+		{50, true},
+		{0, true},
+		{7, true},
+		// An absent refcount must NOT read as a real 0: "no such key" and
+		// "referenced by nothing" are different facts and only the second one
+		// is safe to alert on.
+		{0, false},
+	} {
+		if data.CAs[i].References != want.refs || data.CAs[i].HasReferences != want.has {
+			t.Errorf("CA[%d] (%s): got References=%v HasReferences=%v, want %v/%v",
+				i, data.CAs[i].Description, data.CAs[i].References, data.CAs[i].HasReferences,
+				want.refs, want.has)
+		}
+	}
+}

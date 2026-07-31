@@ -34,7 +34,31 @@
     },
     {
       "path": "pools",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "pools.*",
+      "kind": "object"
+    },
+    {
+      "path": "pools.*.name",
+      "kind": "string"
+    },
+    {
+      "path": "pools.*.net",
+      "kind": "string"
+    },
+    {
+      "path": "pools.*.offline",
+      "kind": "number"
+    },
+    {
+      "path": "pools.*.online",
+      "kind": "number"
+    },
+    {
+      "path": "pools.*.size",
+      "kind": "number"
     }
   ]
 }
