@@ -64,9 +64,19 @@ type corrKey struct {
 // corrEntry is one key's running state. It emits at most once, when its window
 // expires, is evicted under memory pressure, or the process flushes at shutdown.
 type corrEntry struct {
-	key    corrKey
-	nf     Counters // accumulated across fragments; Present once any NetFlow fragment lands
-	sample Record   // the first NetFlow fragment: carries tuple, interfaces, direction, enrichment
+	key corrKey
+	// nf is the SAMPLE orientation's accumulated volume and nfMirror the mirror's,
+	// kept apart because a NetFlow record is strictly unidirectional and all of its
+	// volume lands in Tx (processor.go documents that OUT_BYTES/OUT_PKTS are declared
+	// but always zero). Summing both halves into one accumulator made a merged record
+	// report a 2 GB download as 2 GB transmitted and nothing received (#617).
+	//
+	// Which of the two becomes Tx is decided by orientation() at finalize, not here:
+	// deciding it on arrival would make the split depend on datagram scheduling, which
+	// is exactly what #605 removed.
+	nf       Counters // Present once any NetFlow fragment lands
+	nfMirror Counters
+	sample   Record // the first NetFlow fragment: carries tuple, interfaces, direction, enrichment
 	// mirror is the first fragment of the OPPOSITE orientation, if one arrived.
 	//
 	// A conversation has exactly two orientations and ng_netflow reports both, on
@@ -238,10 +248,19 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 	} else if fragmentDisagrees(e.sample, r) {
 		c.fragmentDisagreement++
 	}
-	e.nf.TxBytes += r.NF.TxBytes
-	e.nf.RxBytes += r.NF.RxBytes
-	e.nf.TxPackets += r.NF.TxPackets
-	e.nf.RxPackets += r.NF.RxPackets
+	// Volume goes to the accumulator for the half that reported it. A fragment's own
+	// Rx rides with it rather than being dropped: it is always zero on this export,
+	// but discarding volume on the strength of that assumption is not a trade worth
+	// making.
+	half := &e.nf
+	if e.mirror != nil && isMirrorOf(e.sample, r) {
+		half = &e.nfMirror
+	}
+	half.TxBytes += r.NF.TxBytes
+	half.RxBytes += r.NF.RxBytes
+	half.TxPackets += r.NF.TxPackets
+	half.RxPackets += r.NF.RxPackets
+	half.Present = true
 	e.nf.Present = true
 	e.hasNF = true
 	e.tcpFlags |= r.TCPFlags
@@ -395,8 +414,21 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 	if !e.hasNF {
 		return Record{}, false
 	}
-	out := e.orientation()
-	out.NF = e.nf
+	out, chosenIsMirror := e.orientation()
+	// The chosen orientation's volume is Tx, the other half's is Rx (#617). Bytes()
+	// and Packets() are unchanged by the split, so opnsense_flow_bytes_total does not
+	// move for any existing consumer — what changes is that Rx finally means something.
+	fwd, rev := e.nf, e.nfMirror
+	if chosenIsMirror {
+		fwd, rev = e.nfMirror, e.nf
+	}
+	out.NF = Counters{
+		TxBytes:   fwd.TxBytes + fwd.RxBytes,
+		RxBytes:   rev.TxBytes + rev.RxBytes,
+		TxPackets: fwd.TxPackets + fwd.RxPackets,
+		RxPackets: rev.TxPackets + rev.RxPackets,
+		Present:   e.nf.Present,
+	}
 	out.TCPFlags = e.tcpFlags
 	out.Fragments = e.fragments
 	out.Start = e.start
@@ -479,9 +511,12 @@ func (c *Correlator) spansWindows(start, end time.Time) bool {
 // inbound-initiated conversation (a port-forwarded service) must stay inbound, and
 // the obvious "always orient local->remote" rule would flip every one of them to
 // outbound.
-func (e *corrEntry) orientation() Record {
+//
+// The bool reports whether the MIRROR was chosen, so finalize knows which
+// accumulator holds the forward volume (#617).
+func (e *corrEntry) orientation() (Record, bool) {
 	if e.mirror == nil {
-		return e.sample
+		return e.sample, false
 	}
 	a, b := e.sample, *e.mirror
 
@@ -489,17 +524,17 @@ func (e *corrEntry) orientation() Record {
 	if e.zen != nil && e.zen.Direction != DirectionUnknown {
 		switch {
 		case a.Direction == e.zen.Direction && b.Direction != e.zen.Direction:
-			return a
+			return a, false
 		case b.Direction == e.zen.Direction && a.Direction != e.zen.Direction:
-			return b
+			return b, true
 		}
 	}
 	// 2. Whichever half started first.
 	if a.Start.Before(b.Start) {
-		return a
+		return a, false
 	}
 	if b.Start.Before(a.Start) {
-		return b
+		return b, true
 	}
 	// 3. The local->remote half.
 	const remote = "remote"
@@ -507,16 +542,16 @@ func (e *corrEntry) orientation() Record {
 	bLocalOut := b.Enrich.SrcScope != remote && b.Enrich.DstScope == remote
 	if aLocalOut != bLocalOut {
 		if aLocalOut {
-			return a
+			return a, false
 		}
-		return b
+		return b, true
 	}
 	// 4. Canonical endpoint order — the same comparison CanonicalTuple uses, so
 	// this agrees with the community id rather than inventing a second ordering.
 	if endpointLess(a.SrcAddr.Unmap(), a.SrcPort, a.DstAddr.Unmap(), a.DstPort) {
-		return a
+		return a, false
 	}
-	return b
+	return b, true
 }
 
 // oldestLocked returns the entry with the earliest firstSeen, or nil if the map is

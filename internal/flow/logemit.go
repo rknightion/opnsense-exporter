@@ -153,6 +153,18 @@ func (r Record) LogAttributes() map[string]string {
 	if r.NF.Present {
 		a["flow.nf.bytes"] = strconv.FormatUint(r.NF.Bytes(), 10)
 		a["flow.nf.packets"] = strconv.FormatUint(r.NF.Packets(), 10)
+		// The DIRECTIONAL split, emitted only where it means something (#617). A raw
+		// NetFlow record is strictly unidirectional and all of its volume is Tx, so
+		// tx/rx on one would restate flow.nf.bytes and say nothing. On a MERGED record
+		// the two halves have been told apart on evidence rather than arrival order
+		// (#605), so Rx is the reverse half's volume — the difference between "a 2 GB
+		// download" and "2 GB transmitted", which nothing else on this record expresses.
+		if r.Source == SourceMerged {
+			a["flow.nf.tx_bytes"] = strconv.FormatUint(r.NF.TxBytes, 10)
+			a["flow.nf.rx_bytes"] = strconv.FormatUint(r.NF.RxBytes, 10)
+			a["flow.nf.tx_packets"] = strconv.FormatUint(r.NF.TxPackets, 10)
+			a["flow.nf.rx_packets"] = strconv.FormatUint(r.NF.RxPackets, 10)
+		}
 	}
 	if r.Zen.Present {
 		a["flow.zen.bytes"] = strconv.FormatUint(r.Zen.Bytes(), 10)

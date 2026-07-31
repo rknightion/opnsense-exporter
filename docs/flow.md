@@ -540,6 +540,24 @@ if none of the three is set (an incomplete or synthetic record). It is never the
 time the exporter happened to process the record, which is what makes it usable for
 "when did this actually happen" queries instead of just "when did we notice it."
 
+**Direction of volume.** A NetFlow record is strictly unidirectional and all of its
+volume lands in the transmit counters, so the two halves of a conversation are two
+separate exports. On a **merged** record the correlator now keeps them apart: the
+chosen orientation's volume is transmit, the reverse half's is receive, so a 2 GB
+download reads as 2 GB received rather than 2 GB transmitted. The split is emitted as
+`flow.nf.tx_bytes` / `flow.nf.rx_bytes` (and the packet equivalents), only on merged
+records - on a raw NetFlow record it would merely restate `flow.nf.bytes` and say
+nothing.
+
+`opnsense_flow_bytes_total` is **unchanged** by this: it has always summed both
+directions, so the total does not move for any existing consumer. Which half is which
+is decided by the same evidence that decides the record's other dimensions, so the
+answer does not depend on which datagram arrived first.
+
+Zenarmor's own counters are deliberately left alone. They are never summed with the
+NetFlow side, and whether the two sources agree on what "transmit" means has not been
+checked against a real conn document.
+
 **Interval attributes.** Every record additionally carries, as Loki structured
 metadata (never a label):
 
