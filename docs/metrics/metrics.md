@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 995
+- **Total metrics:** 996
 - **Gauges:** 652
-- **Counters:** 343
+- **Counters:** 344
 
 ## General
 
@@ -425,7 +425,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_correlator_evicted_total | Counter | --- | Entries force-emitted early because the map hit --flow.correlate.max-entries. A forced emit loses no bytes, but a rising rate means the cap is binding under load and should be raised. | --exporter.disable-flow |
 | opnsense_flow_correlator_expired_total | Counter | --- | Entries emitted on the normal window-expiry path (the healthy path, as opposed to eviction). | --exporter.disable-flow |
 | opnsense_flow_correlator_enrichment_overwrites_total | Counter | --- | A second Zenarmor conn document landing for a key that already held one (#590). The second REPLACES the first wholesale rather than merging - L7, verdict, enrichment and geo the first document carried and the second doesn't repeat are gone with no trace. Zero on every deployment where each conversation gets one conn document, which is the common case; a non-zero rate means Zenarmor is re-reporting a connection and only the latest report survives. | --exporter.disable-flow |
-| opnsense_flow_correlator_fragment_disagreement_total | Counter | --- | A NetFlow fragment whose interface, direction, VLAN or enrichment disagreed with the entry's first fragment (#590) - the copy finalize() emits verbatim for the life of the entry. The disagreeing fragment's bytes still count toward the emitted total; only its DIMENSIONS are dropped, silently until this counter. Excludes TCPFlags on purpose: that field is unioned across every fragment (#585), a merge, not a loss. | --exporter.disable-flow |
+| opnsense_flow_correlator_fragment_disagreement_total | Counter | --- | A NetFlow fragment whose interface, direction, VLAN or enrichment disagreed with the entry's first fragment OF ITS OWN ORIENTATION (#590, #605). The disagreeing fragment's bytes still count toward the emitted total; only its DIMENSIONS are dropped, silently until this counter. Two exclusions, both because the field differs by design rather than in error: TCPFlags is unioned across fragments (#585), and the conversation's reverse half mirrors interface and direction by construction - that case is counted by correlator_fragment_mirrored_total instead. | --exporter.disable-flow |
+| opnsense_flow_correlator_fragment_mirrored_total | Counter | --- | A NetFlow fragment belonging to the conversation's OTHER direction - the reverse half, which shares a correlator key by design because the community id is direction-independent. This is the expected case for any bidirectional flow, not an anomaly, and it is counted rather than merely excluded so the exclusion stays visible: a collapse to zero would mean the two halves stopped sharing a key, which would break correlation itself. Before #605 these were counted as disagreements and were 48.6% of every fragment that counter could examine. | --exporter.disable-flow |
 | opnsense_flow_logs_emitted_total | Counter | --- | Flow records shipped to the OTLP log pipeline. Zero when --flow.log-mode=off even though the correlator still runs and its metrics still move. | --exporter.disable-flow |
 | opnsense_flow_logs_truncated_total | Counter | --- | Flow log records dropped by the --flow.max-logs-per-window budget. Truncated, never sampled, and counted: a flood on the unauthenticated NetFlow ingress is visible here rather than as a silently thinned stream. Metrics are never truncated. | --exporter.disable-flow |
 | opnsense_flow_logs_dropped_total | Counter | --- | Flow log records dropped because the log pipeline was not accepting records - before it started or after shutdown began. Distinct from a budget truncation. | --exporter.disable-flow |

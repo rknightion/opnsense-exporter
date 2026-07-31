@@ -288,6 +288,7 @@ type flowCollector struct {
 	corrExpired          *prometheus.Desc
 	corrEnrichOverwrites *prometheus.Desc
 	corrFragDisagree     *prometheus.Desc
+	corrFragMirrored     *prometheus.Desc
 
 	logEmitted   *prometheus.Desc
 	logTruncated *prometheus.Desc
@@ -591,11 +592,21 @@ func (c *flowCollector) registerCorrelator() {
 			"report survives.",
 		nil)
 	c.corrFragDisagree = buildPrometheusDesc(c.subsystem, "correlator_fragment_disagreement_total",
-		"A NetFlow fragment whose interface, direction, VLAN or enrichment disagreed with the "+
-			"entry's first fragment (#590) - the copy finalize() emits verbatim for the life of the "+
-			"entry. The disagreeing fragment's bytes still count toward the emitted total; only its "+
-			"DIMENSIONS are dropped, silently until this counter. Excludes TCPFlags on purpose: that "+
-			"field is unioned across every fragment (#585), a merge, not a loss.",
+		"A NetFlow fragment whose interface, direction, VLAN or enrichment disagreed with the entry's "+
+			"first fragment OF ITS OWN ORIENTATION (#590, #605). The disagreeing fragment's bytes still "+
+			"count toward the emitted total; only its DIMENSIONS are dropped, silently until this "+
+			"counter. Two exclusions, both because the field differs by design rather than in error: "+
+			"TCPFlags is unioned across fragments (#585), and the conversation's reverse half mirrors "+
+			"interface and direction by construction - that case is counted by "+
+			"correlator_fragment_mirrored_total instead.",
+		nil)
+	c.corrFragMirrored = buildPrometheusDesc(c.subsystem, "correlator_fragment_mirrored_total",
+		"A NetFlow fragment belonging to the conversation's OTHER direction - the reverse half, which "+
+			"shares a correlator key by design because the community id is direction-independent. This "+
+			"is the expected case for any bidirectional flow, not an anomaly, and it is counted rather "+
+			"than merely excluded so the exclusion stays visible: a collapse to zero would mean the two "+
+			"halves stopped sharing a key, which would break correlation itself. Before #605 these were "+
+			"counted as disagreements and were 48.6% of every fragment that counter could examine.",
 		nil)
 
 	c.logEmitted = buildPrometheusDesc(c.subsystem, "logs_emitted_total",
@@ -900,6 +911,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.corrExpired
 	ch <- c.corrEnrichOverwrites
 	ch <- c.corrFragDisagree
+	ch <- c.corrFragMirrored
 	ch <- c.logEmitted
 	ch <- c.logTruncated
 	ch <- c.logDropped
@@ -993,6 +1005,8 @@ func (c *flowCollector) collectCorrelator(ch chan<- prometheus.Metric) {
 			float64(st.EnrichmentOverwrites), c.instance)
 		ch <- prometheus.MustNewConstMetric(c.corrFragDisagree, prometheus.CounterValue,
 			float64(st.FragmentDisagreements), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrFragMirrored, prometheus.CounterValue,
+			float64(st.FragmentMirrored), c.instance)
 	}
 	if st, ok := c.store.flowLogStats(); ok {
 		ch <- prometheus.MustNewConstMetric(c.logEmitted, prometheus.CounterValue, float64(st.Emitted), c.instance)

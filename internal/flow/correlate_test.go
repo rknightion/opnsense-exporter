@@ -418,3 +418,185 @@ func TestCorrelator_ExpireBeforeWindowHoldsEntry(t *testing.T) {
 		t.Fatalf("entry not emitted after its window elapsed, got %d", len(sink.recs))
 	}
 }
+
+// mirrorNF is baseNF's reverse half: the same conversation reported from the other
+// direction, exactly as ng_netflow exports it. Endpoints swapped, interfaces
+// swapped, direction inverted — and the same community id, because CanonicalTuple
+// is direction-independent by design (record.go:258) and that is what makes the
+// correlator work at all.
+func mirrorNF(community string, bytes, packets uint64, end time.Time, observed time.Time) Record {
+	r := baseNF(community, bytes, packets, end, observed)
+	r.SrcAddr, r.DstAddr = r.DstAddr, r.SrcAddr
+	r.SrcPort, r.DstPort = r.DstPort, r.SrcPort
+	r.In, r.Out = r.Out, r.In
+	r.Direction = DirectionInbound
+	r.Enrich.SrcScope, r.Enrich.DstScope = "remote", "lan"
+	return r
+}
+
+// #605: the two unidirectional halves of one conversation share a corrKey BY
+// DESIGN, and their In/Out/Direction are necessarily mirror images. Counting that
+// as a disagreement fired on ordinary bidirectional traffic by construction — 48.6%
+// of every fragment the counter could examine on prod — which made it useless for
+// the job #590 added it for.
+//
+// Same precedent as the TCPFlags exclusion: a field that differs by design is not a
+// disagreement.
+func TestCorrelator_MirrorHalfIsNotADisagreement(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseNF("cid-A", 100, 1, t0, t0))
+	c.Observe(mirrorNF("cid-A", 200, 2, t0, t0.Add(time.Second)))
+	c.Expire(t0.Add(4 * time.Minute))
+
+	st := c.Stats()
+	if st.FragmentDisagreements != 0 {
+		t.Errorf("FragmentDisagreements = %d, want 0: the reverse half is the expected case, not an anomaly", st.FragmentDisagreements)
+	}
+	if st.FragmentMirrored != 1 {
+		t.Errorf("FragmentMirrored = %d, want 1: the excluded case must still be counted", st.FragmentMirrored)
+	}
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+	}
+	if got := sink.recs[0].NF.Bytes(); got != 300 {
+		t.Errorf("bytes = %d, want 300: both halves' volume still counts", got)
+	}
+}
+
+// A fragment that genuinely disagrees — same orientation, different egress — must
+// still be counted. Without this the fix above would be indistinguishable from
+// deleting the counter.
+func TestCorrelator_SameOrientationDisagreementStillCounts(t *testing.T) {
+	c, _ := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseNF("cid-A", 100, 1, t0, t0))
+	odd := baseNF("cid-A", 200, 2, t0, t0.Add(time.Second))
+	odd.Out = Iface{Device: "ixl1", Name: "WAN2"}
+	c.Observe(odd)
+
+	if st := c.Stats(); st.FragmentDisagreements != 1 {
+		t.Errorf("FragmentDisagreements = %d, want 1: a same-orientation egress disagreement is the real anomaly", st.FragmentDisagreements)
+	}
+}
+
+// #605, the headline: the emitted dimensions must be the SAME whichever half
+// arrived first. Before the fix, finalize() emitted whichever fragment landed
+// first, so 22.5% of merged records on prod described the conversation backwards —
+// public source address, inverted interfaces, inverted direction.
+//
+// Rule 2 of the recorded decision decides this pair: both halves have the same
+// Start here, so rule 3 (prefer the local->remote half) settles it.
+func TestCorrelator_OrientationIsIndependentOfArrivalOrder(t *testing.T) {
+	t0 := time.Unix(1_700_000_000, 0)
+
+	run := func(t *testing.T, forwardFirst bool) Record {
+		t.Helper()
+		c, sink := newCorr(t, true, 3*time.Minute, 0)
+		fwd := baseNF("cid-A", 100, 1, t0, t0)
+		fwd.Enrich.SrcScope, fwd.Enrich.DstScope = "lan", "remote"
+		rev := mirrorNF("cid-A", 200, 2, t0, t0.Add(time.Second))
+		if forwardFirst {
+			c.Observe(fwd)
+			c.Observe(rev)
+		} else {
+			c.Observe(rev)
+			c.Observe(fwd)
+		}
+		c.Expire(t0.Add(4 * time.Minute))
+		if len(sink.recs) != 1 {
+			t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+		}
+		return sink.recs[0]
+	}
+
+	a := run(t, true)
+	b := run(t, false)
+
+	for _, tc := range []struct {
+		name string
+		got  Record
+	}{{"forward arrived first", a}, {"reverse arrived first", b}} {
+		if tc.got.SrcAddr.String() != "192.0.2.10" {
+			t.Errorf("%s: SrcAddr = %v, want the local end 192.0.2.10", tc.name, tc.got.SrcAddr)
+		}
+		if tc.got.Out.Name != "WAN1" {
+			t.Errorf("%s: Out.Name = %q, want WAN1", tc.name, tc.got.Out.Name)
+		}
+		if tc.got.In.Name != "LAN" {
+			t.Errorf("%s: In.Name = %q, want LAN", tc.name, tc.got.In.Name)
+		}
+		if tc.got.Direction != DirectionOutbound {
+			t.Errorf("%s: Direction = %v, want outbound", tc.name, tc.got.Direction)
+		}
+	}
+	if a.NF.Bytes() != b.NF.Bytes() || a.NF.Bytes() != 300 {
+		t.Errorf("bytes differ by arrival order: %d vs %d, want 300 both ways", a.NF.Bytes(), b.NF.Bytes())
+	}
+}
+
+// Rule 2 outranks rule 3: the half that STARTED first is the initiator's, so an
+// inbound-initiated conversation (a port-forwarded service) must stay inbound
+// rather than being flipped outbound by the locality tiebreak. This is the case
+// the naive "always orient local->remote" rule would get wrong.
+func TestCorrelator_EarliestStartWinsOverLocality(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+
+	// The remote end opened the connection: its half starts a second earlier.
+	rev := mirrorNF("cid-A", 200, 2, t0, t0)
+	rev.Start = t0.Add(-5 * time.Second)
+	fwd := baseNF("cid-A", 100, 1, t0, t0.Add(time.Second))
+	fwd.Enrich.SrcScope, fwd.Enrich.DstScope = "lan", "remote"
+
+	c.Observe(fwd) // local half arrives FIRST, and would win on arrival order
+	c.Observe(rev)
+	c.Expire(t0.Add(4 * time.Minute))
+
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+	}
+	got := sink.recs[0]
+	if got.Direction != DirectionInbound {
+		t.Errorf("Direction = %v, want inbound: the remote half started first, so it initiated", got.Direction)
+	}
+	if got.SrcAddr.String() != "203.0.113.5" {
+		t.Errorf("SrcAddr = %v, want the initiator 203.0.113.5", got.SrcAddr)
+	}
+}
+
+// Rule 1 outranks rule 2: Zenarmor is the only connection-oriented source here, so
+// when it states a direction the half matching it wins even against an earlier
+// Start. NetFlow's FIRST_SWITCHED is initiation evidence by inference; a conn
+// document is initiation evidence by construction.
+func TestCorrelator_ZenarmorDirectionPicksTheHalf(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+
+	rev := mirrorNF("cid-A", 200, 2, t0, t0)
+	rev.Start = t0.Add(-5 * time.Second) // would win rule 2
+	fwd := baseNF("cid-A", 100, 1, t0, t0.Add(time.Second))
+	fwd.Enrich.SrcScope, fwd.Enrich.DstScope = "lan", "remote"
+
+	c.Observe(rev)
+	c.Observe(fwd)
+
+	zen := baseZen("cid-A", 480, t0, t0.Add(2*time.Second))
+	zen.Direction = DirectionOutbound
+	c.Observe(zen)
+
+	c.Expire(t0.Add(4 * time.Minute))
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+	}
+	got := sink.recs[0]
+	if got.Source != SourceMerged {
+		t.Fatalf("source = %v, want merged", got.Source)
+	}
+	if got.Direction != DirectionOutbound {
+		t.Errorf("Direction = %v, want outbound: Zenarmor stated it", got.Direction)
+	}
+	if got.Out.Name != "WAN1" {
+		t.Errorf("Out.Name = %q, want WAN1 from the half Zenarmor's direction selected", got.Out.Name)
+	}
+}

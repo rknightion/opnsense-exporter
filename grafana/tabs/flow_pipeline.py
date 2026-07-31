@@ -247,7 +247,9 @@ def build(b: Builder):
          (f'rate({sel("opnsense_flow_correlator_enrichment_overwrites_total")}[{RATE}])',
           "enrichment overwrites/sec"),
          (f'rate({sel("opnsense_flow_correlator_fragment_disagreement_total")}[{RATE}])',
-          "fragment disagreements/sec")],
+          "fragment disagreements/sec"),
+         (f'rate({sel("opnsense_flow_correlator_fragment_mirrored_total")}[{RATE}])',
+          "reverse-half fragments/sec")],
         unit="short",
         desc="The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) "
              "into one record per connection-window and merges Zenarmor L7 where a conn document "
@@ -259,11 +261,17 @@ def build(b: Builder):
              "replacing the first wholesale rather than merging - a non-zero rate means Zenarmor "
              "re-reported a connection and only the latest report survived. fragment disagreements "
              "(#590) counts a later NetFlow fragment reporting a different interface, direction, VLAN "
-             "or enrichment than the entry's first fragment, whose copy of those fields is what the "
-             "merged record actually carries for the connection's whole life - a non-zero rate means "
-             "that dimension silently disagreed and only the first fragment's answer survived. Neither "
-             "counter fires on the TCP-flags union across fragments (#585), which is a merge by "
-             "design, not a loss.",
+             "or enrichment than the entry's first fragment OF THE SAME ORIENTATION, whose copy of "
+             "those fields is what the merged record actually carries - a non-zero rate means that "
+             "dimension silently disagreed and only one fragment's answer survived. reverse-half "
+             "fragments (#605) counts the conversation's OTHER direction, which shares a correlator "
+             "key by design because the community id is direction-independent: expect it to track "
+             "roughly the merged rate on any bidirectional traffic, and read a collapse to zero as the "
+             "two halves having stopped sharing a key, which would break correlation itself. It used "
+             "to be counted as a disagreement and was 48.6% of every examinable fragment on a real "
+             "box, which is why the two are now separate. Neither disagreement counter fires on the "
+             "TCP-flags union across fragments (#585) or on the reverse half, both merges by design "
+             "rather than losses.",
     )
 
     flowlogs = b.ts(

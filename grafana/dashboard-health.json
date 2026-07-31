@@ -4549,7 +4549,7 @@
         "spec": {
           "id": 31,
           "title": "Flow Correlator",
-          "description": "The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) into one record per connection-window and merges Zenarmor L7 where a conn document matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is materially lower for long flows whose NetFlow records arrive up to ~30m after the connection ended. A rising force-evicted rate means --flow.correlate.max-entries is binding under load and should be raised; expired is the healthy path. enrichment overwrites (#590) counts a second Zenarmor conn document for the same connection-window replacing the first wholesale rather than merging - a non-zero rate means Zenarmor re-reported a connection and only the latest report survived. fragment disagreements (#590) counts a later NetFlow fragment reporting a different interface, direction, VLAN or enrichment than the entry's first fragment, whose copy of those fields is what the merged record actually carries for the connection's whole life - a non-zero rate means that dimension silently disagreed and only the first fragment's answer survived. Neither counter fires on the TCP-flags union across fragments (#585), which is a merge by design, not a loss.",
+          "description": "The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) into one record per connection-window and merges Zenarmor L7 where a conn document matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is materially lower for long flows whose NetFlow records arrive up to ~30m after the connection ended. A rising force-evicted rate means --flow.correlate.max-entries is binding under load and should be raised; expired is the healthy path. enrichment overwrites (#590) counts a second Zenarmor conn document for the same connection-window replacing the first wholesale rather than merging - a non-zero rate means Zenarmor re-reported a connection and only the latest report survived. fragment disagreements (#590) counts a later NetFlow fragment reporting a different interface, direction, VLAN or enrichment than the entry's first fragment OF THE SAME ORIENTATION, whose copy of those fields is what the merged record actually carries - a non-zero rate means that dimension silently disagreed and only one fragment's answer survived. reverse-half fragments (#605) counts the conversation's OTHER direction, which shares a correlator key by design because the community id is direction-independent: expect it to track roughly the merged rate on any bidirectional traffic, and read a collapse to zero as the two halves having stopped sharing a key, which would break correlation itself. It used to be counted as a disagreement and was 48.6% of every examinable fragment on a real box, which is why the two are now separate. Neither disagreement counter fires on the TCP-flags union across fragments (#585) or on the reverse half, both merges by design rather than losses.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -4731,6 +4731,32 @@
                         "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_correlator_fragment_disagreement_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "G",
                         "legendFormat": "fragment disagreements/sec",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "H",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_correlator_fragment_mirrored_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "H",
+                        "legendFormat": "reverse-half fragments/sec",
                         "instant": false,
                         "range": true
                       }

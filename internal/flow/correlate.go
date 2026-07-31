@@ -49,6 +49,7 @@ type Correlator struct {
 	// observeZenarmorLocked and fragmentDisagrees for what each counts.
 	enrichmentOverwrites uint64
 	fragmentDisagreement uint64
+	fragmentMirrored     uint64
 }
 
 // corrKey groups fragments of one conversation whose flow-end falls in the same
@@ -63,9 +64,17 @@ type corrKey struct {
 // corrEntry is one key's running state. It emits at most once, when its window
 // expires, is evicted under memory pressure, or the process flushes at shutdown.
 type corrEntry struct {
-	key       corrKey
-	nf        Counters // accumulated across fragments; Present once any NetFlow fragment lands
-	sample    Record   // the first NetFlow fragment: carries tuple, interfaces, direction, enrichment
+	key    corrKey
+	nf     Counters // accumulated across fragments; Present once any NetFlow fragment lands
+	sample Record   // the first NetFlow fragment: carries tuple, interfaces, direction, enrichment
+	// mirror is the first fragment of the OPPOSITE orientation, if one arrived.
+	//
+	// A conversation has exactly two orientations and ng_netflow reports both, on
+	// the same corrKey by construction (CanonicalTuple is direction-independent —
+	// record.go:258). Keeping one representative of each is what lets finalize()
+	// choose between them on evidence instead of on which datagram landed first,
+	// and what lets fragmentDisagrees compare like with like (#605).
+	mirror    *Record
 	fragments int
 	start     time.Time // earliest FIRST_SWITCHED across fragments
 	end       time.Time // latest LAST_SWITCHED across fragments
@@ -96,12 +105,23 @@ type CorrelatorStats struct {
 	// and the correlator is silently keeping only the latest report.
 	EnrichmentOverwrites uint64
 	// FragmentDisagreements counts a NetFlow fragment whose interface, direction,
-	// VLAN or enrichment dimensions differ from the entry's sample - the first
-	// fragment, whose copy of those fields finalize() emits verbatim (#590). The
-	// disagreeing fragment's bytes still count toward the emitted total; only its
-	// DIMENSIONS are dropped, silently until this counter. Excludes TCPFlags on
-	// purpose: that field is unioned across fragments (#585), a merge, not a loss.
+	// VLAN or enrichment dimensions differ from the sample OF ITS OWN ORIENTATION.
+	// The disagreeing fragment's bytes still count toward the emitted total; only
+	// its DIMENSIONS are dropped, silently until this counter.
+	//
+	// Two exclusions, both for the same reason - a field that differs by design is
+	// not a disagreement. TCPFlags is unioned across fragments (#585), a merge
+	// rather than a loss. And the reverse half of a bidirectional conversation
+	// mirrors In/Out/Direction by construction (#605); before that exclusion this
+	// counter fired on ordinary two-way traffic and read 48.6% of every fragment it
+	// could examine on prod, which is not a rate anyone can act on.
 	FragmentDisagreements uint64
+	// FragmentMirrored counts fragments belonging to the conversation's OTHER
+	// orientation - the reverse half. This is the expected case for any
+	// bidirectional flow, not an anomaly, and it is counted rather than merely
+	// excluded so the exclusion stays visible: a sudden collapse to zero would mean
+	// the halves stopped sharing a key, which would break correlation itself.
+	FragmentMirrored uint64
 }
 
 // CorrelatorConfig sizes the correlator.
@@ -204,6 +224,17 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 		e.sample = r
 		e.start = r.Start
 		e.end = r.End
+	} else if isMirrorOf(e.sample, r) {
+		// The conversation's other half. Expected, not anomalous - but keep the
+		// first one we see, because finalize() chooses between the orientations on
+		// evidence rather than on arrival order (#605).
+		c.fragmentMirrored++
+		if e.mirror == nil {
+			m := r
+			e.mirror = &m
+		} else if fragmentDisagrees(*e.mirror, r) {
+			c.fragmentDisagreement++
+		}
 	} else if fragmentDisagrees(e.sample, r) {
 		c.fragmentDisagreement++
 	}
@@ -234,10 +265,28 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 //
 // TCPFlags is deliberately NOT compared: it is unioned across fragments (#585),
 // a merge by design, not a dimension finalize() takes from the sample alone.
+//
+// Callers must only compare fragments of the SAME orientation. The reverse half
+// mirrors every field this function looks at, so comparing across orientations
+// reports a disagreement on every ordinary bidirectional conversation (#605) -
+// route with isMirrorOf first.
 func fragmentDisagrees(sample, r Record) bool {
 	return sample.In != r.In || sample.Out != r.Out ||
 		sample.Direction != r.Direction || sample.VLANID != r.VLANID ||
 		sample.Enrich != r.Enrich
+}
+
+// isMirrorOf reports whether r describes the same conversation as sample, seen from
+// the other direction: r's source endpoint is sample's destination and vice versa.
+//
+// Endpoints are compared rather than orientation being derived from In/Out or
+// Direction, because those are exactly the fields whose disagreement is in
+// question - deriving orientation from them would assume the answer. Addresses are
+// Unmapped for the same reason CanonicalTuple does it: ::ffff:192.0.2.5 and
+// 192.0.2.5 are one host, and netip compares them as two.
+func isMirrorOf(sample, r Record) bool {
+	return r.SrcAddr.Unmap() == sample.DstAddr.Unmap() && r.SrcPort == sample.DstPort &&
+		r.DstAddr.Unmap() == sample.SrcAddr.Unmap() && r.DstPort == sample.SrcPort
 }
 
 // observeZenarmorLocked stashes a Zenarmor conn document as enrichment for a matching
@@ -335,6 +384,7 @@ func (c *Correlator) Stats() CorrelatorStats {
 		Expired:               c.expired,
 		EnrichmentOverwrites:  c.enrichmentOverwrites,
 		FragmentDisagreements: c.fragmentDisagreement,
+		FragmentMirrored:      c.fragmentMirrored,
 	}
 }
 
@@ -345,7 +395,7 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 	if !e.hasNF {
 		return Record{}, false
 	}
-	out := e.sample
+	out := e.orientation()
 	out.NF = e.nf
 	out.TCPFlags = e.tcpFlags
 	out.Fragments = e.fragments
@@ -370,6 +420,78 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 		out.Source = SourceNetflow
 	}
 	return out, true
+}
+
+// orientation picks which of the conversation's two halves describes the emitted
+// record — the tuple, In, Out, Direction and the scopes, all from that ONE half.
+//
+// There is no coherent "merged" answer to build instead. Those fields form a
+// consistent set on each half (In=LAN, Out=WAN, Direction=outbound, src=local on
+// the forward half; the exact mirror on the reverse), and interfaceLabel
+// (processor.go:387) reads Direction to decide WHICH of In/Out it labels by — so
+// taking Direction from one half and Out from the other would describe a
+// conversation that never happened. Picking a whole half keeps the record
+// internally consistent.
+//
+// Evidence, strongest first (the decision recorded on #605):
+//
+//  1. Zenarmor's stated direction, when a conn document merged. It is the only
+//     connection-oriented source in the pipeline — one document per connection —
+//     so it is the only thing here that knows who INITIATED. NetFlow's
+//     FIRST_SWITCHED is initiation evidence by inference; a conn document is
+//     initiation evidence by construction.
+//  2. The earlier Start (FIRST_SWITCHED, firewall clock). The initiator's half
+//     starts first by definition, and the firewall clock is independent of the
+//     order datagrams reached us — which is the whole point, since arrival order
+//     is what this replaces.
+//  3. The local->remote half. A tie on Start means we cannot tell who initiated;
+//     describing the conversation from the local end is the more useful reading
+//     and is what the rest of the pipeline assumes.
+//  4. Canonical endpoint order, so the result is total and deterministic even for
+//     two internal hosts where none of the above discriminates.
+//
+// Rule 2 ranking above rule 3 is load-bearing, not an ordering detail: an
+// inbound-initiated conversation (a port-forwarded service) must stay inbound, and
+// the obvious "always orient local->remote" rule would flip every one of them to
+// outbound.
+func (e *corrEntry) orientation() Record {
+	if e.mirror == nil {
+		return e.sample
+	}
+	a, b := e.sample, *e.mirror
+
+	// 1. Zenarmor stated the conversation's direction.
+	if e.zen != nil && e.zen.Direction != DirectionUnknown {
+		switch {
+		case a.Direction == e.zen.Direction && b.Direction != e.zen.Direction:
+			return a
+		case b.Direction == e.zen.Direction && a.Direction != e.zen.Direction:
+			return b
+		}
+	}
+	// 2. Whichever half started first.
+	if a.Start.Before(b.Start) {
+		return a
+	}
+	if b.Start.Before(a.Start) {
+		return b
+	}
+	// 3. The local->remote half.
+	const remote = "remote"
+	aLocalOut := a.Enrich.SrcScope != remote && a.Enrich.DstScope == remote
+	bLocalOut := b.Enrich.SrcScope != remote && b.Enrich.DstScope == remote
+	if aLocalOut != bLocalOut {
+		if aLocalOut {
+			return a
+		}
+		return b
+	}
+	// 4. Canonical endpoint order — the same comparison CanonicalTuple uses, so
+	// this agrees with the community id rather than inventing a second ordering.
+	if endpointLess(a.SrcAddr.Unmap(), a.SrcPort, a.DstAddr.Unmap(), a.DstPort) {
+		return a
+	}
+	return b
 }
 
 // oldestLocked returns the entry with the earliest firstSeen, or nil if the map is
