@@ -455,7 +455,7 @@ class GrafanaManagedRuleGenerationTest(unittest.TestCase):
             try:
                 build_rules.HERE = tmp
                 outdir, written = build_rules.emit_grafana_managed(
-                    "test-prometheus", "test-opnsense2otel-alerts", stack=False,
+                    "test-prometheus", "test-opnsense-alerts", stack=False,
         health_folder="test-opnsense-health-alerts"
                 )
             finally:
@@ -614,8 +614,8 @@ class SelfHealthFolderRoutingTest(unittest.TestCase):
     cannot fall behind the expressions.
     """
 
-    OPS = "opnsense2otel-alerts"
-    HEALTH = "opnsense2otel-health-alerts"
+    OPS = "opnsense-alerts"
+    HEALTH = "opnsense-exporter-health-alerts"
 
     def _folder(self, rule):
         return build_rules.rule_folder(rule, self.OPS, self.HEALTH)

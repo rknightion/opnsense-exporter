@@ -2,7 +2,7 @@
   "apiVersion": "folder.grafana.app/v1beta1",
   "kind": "Folder",
   "metadata": {
-    "name": "opnsense2otel-alerts"
+    "name": "opnsense-alerts"
   },
   "spec": {
     "title": "opnsense2otel Alerts"

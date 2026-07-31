@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-collector-degraded",
     "annotations": {
-      "grafana.app/folder": "opnsense2otel-health-alerts"
+      "grafana.app/folder": "opnsense-exporter-health-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense2otel-health-alerts"
+      "grafana.app/folder": "opnsense-exporter-health-alerts"
     }
   },
   "spec": {

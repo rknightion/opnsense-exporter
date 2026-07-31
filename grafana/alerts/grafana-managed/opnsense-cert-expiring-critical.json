@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-cert-expiring-critical",
     "annotations": {
-      "grafana.app/folder": "opnsense2otel-alerts"
+      "grafana.app/folder": "opnsense-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense2otel-alerts"
+      "grafana.app/folder": "opnsense-alerts"
     }
   },
   "spec": {

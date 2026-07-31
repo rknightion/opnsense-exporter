@@ -4,10 +4,10 @@
   "metadata": {
     "name": "oxrec-wireguard-peers-down-count",
     "annotations": {
-      "grafana.app/folder": "opnsense2otel-alerts"
+      "grafana.app/folder": "opnsense-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense2otel-alerts"
+      "grafana.app/folder": "opnsense-alerts"
     }
   },
   "spec": {

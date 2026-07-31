@@ -301,8 +301,8 @@ convention.
 
 `alerts/grafana-managed/` holds one `rules.alerting.grafana.app/v0alpha1` manifest per rule
 plus two folder manifests. Rules are sorted into **two Grafana folders**: firewall-operational
-ones in `opnsense2otel-alerts` (`_folder.json`) and exporter self-health ones in
-`opnsense2otel-health-alerts` (`_folder-health.json`). The split is for the 3am read — an
+ones in `opnsense-alerts` (`_folder.json`) and exporter self-health ones in
+`opnsense-exporter-health-alerts` (`_folder-health.json`). The split is for the 3am read — an
 `OPNsenseFirewallUnhealthy` page means go look at the firewall, an `OPNsenseLogShipSinkErrors`
 page means the firewall is probably fine and the monitoring is not. Membership is declared per
 rule and cross-checked: a rule built purely from `opnsense_exporter_*` metrics that is not

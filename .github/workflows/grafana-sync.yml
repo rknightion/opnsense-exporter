@@ -33,13 +33,18 @@ concurrency:
 env:
   GCX_VERSION: '1.0.0'
   GCX_SHA256: 'c88c65958d19d83dc3a192a2a5037e08307a9c776019f24249b89f369c9c4d41'
-  # Renamed with the project (was opnsense-alerts / opnsense-exporter-health-alerts).
-  # Unlike the dashboard UIDs these are safe to move — nothing deep-links a folder —
-  # but `gcx resources push --prune` only prunes WITHIN the folders it is given, so
-  # the two old folders must be deleted by hand or their rules keep firing alongside
-  # the new ones.
-  OPS_FOLDER: opnsense2otel-alerts
-  HEALTH_FOLDER: opnsense2otel-health-alerts
+  # These still spell the pre-rename project name ON PURPOSE, for the same reason the
+  # dashboard UIDs do (see grafana/uids.py): in the resources API a folder's
+  # `metadata.name` IS its UID, and every rule manifest references it. The
+  # opnsense2otel rename moved them once and the sync failed with a bare `403` —
+  # GRAFANA_TOKEN can update rules in existing folders but cannot CREATE a folder, so
+  # the push aborted and nothing deployed. Renaming would also strand the old folders,
+  # whose rules keep evaluating (`--prune` only prunes within the folders it is given),
+  # i.e. every alert firing twice.
+  # The folders are RETITLED instead — build_rules.py sets spec.title to
+  # "opnsense2otel Alerts" / "opnsense2otel Health Alerts", which is what operators see.
+  OPS_FOLDER: opnsense-alerts
+  HEALTH_FOLDER: opnsense-exporter-health-alerts
 
 jobs:
   dashboards:

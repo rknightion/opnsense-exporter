@@ -4,10 +4,10 @@
   "metadata": {
     "name": "oxrec-haproxy-5xx-ratio5m",
     "annotations": {
-      "grafana.app/folder": "opnsense2otel-alerts"
+      "grafana.app/folder": "opnsense-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense2otel-alerts"
+      "grafana.app/folder": "opnsense-alerts"
     }
   },
   "spec": {

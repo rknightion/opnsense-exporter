@@ -6,7 +6,7 @@ rule dropped from the generator keeps evaluating and paging forever, and nothing
 says so. This closes that half.
 
     python3 scripts/grafana-prune-rules.py \
-        --folder opnsense2otel-alerts --folder opnsense2otel-health-alerts \
+        --folder opnsense-alerts --folder opnsense-exporter-health-alerts \
         --keep-file /tmp/expected.txt
 
 `--keep-file` is a newline-separated list of the rule names (App Platform

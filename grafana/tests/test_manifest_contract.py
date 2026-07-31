@@ -150,7 +150,7 @@ class StackRoutingLabelContractTest(unittest.TestCase):
             try:
                 build_rules.HERE = tmp
                 outdir, written = build_rules.emit_grafana_managed(
-                    "test-prometheus", "test-opnsense2otel-alerts", stack=stack,
+                    "test-prometheus", "test-opnsense-alerts", stack=stack,
             health_folder="test-opnsense-health-alerts"
                 )
             finally:
