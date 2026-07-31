@@ -311,6 +311,49 @@ class Builder:
         return {"mode": "absolute", "steps": steps}
 
     @staticmethod
+    def _overrides(overrides) -> list:
+        """Normalise fieldConfig.overrides to the shape Grafana's v2 schema accepts.
+
+        Accepts either the full form — {"matcher": {...}, "properties": [...]} — or the
+        shorthand 3-tuple (regex, property_id, value), which expands to a byRegexp
+        matcher setting one property.
+
+        This exists because the shorthand was ALREADY in use at one call site and was
+        being emitted verbatim. `overrides or []` passed a list of tuples straight into
+        dashboard-health.json, and JSON has no tuple, so it serialised as a list of
+        lists. Grafana's GitSync then refused the whole dashboard:
+
+            Dashboard in version "v2" cannot be handled as a Dashboard: json: cannot
+            unmarshal array into Go struct field
+            DashboardSpec.spec.elements.spec.vizConfig.spec.fieldConfig.overrides
+            of type v2.DashboardV2FieldConfigSourceOverrides
+
+        Nothing surfaced that. The repository status sat at CompletedWithWarnings, the
+        sync workflow reported success because it only checks the push to the GitSync
+        repo, and the live dashboard silently froze 12 panels behind for two days (#616).
+
+        Anything that is neither shape raises, so a bad override fails the build here
+        rather than at a stack that reports it in a place no one reads.
+        """
+        out = []
+        for ov in overrides or []:
+            if isinstance(ov, dict):
+                if "matcher" not in ov or "properties" not in ov:
+                    raise ValueError(
+                        f"override dict needs both 'matcher' and 'properties': {ov!r}")
+                out.append(ov)
+                continue
+            if isinstance(ov, (tuple, list)) and len(ov) == 3:
+                regex, prop_id, value = ov
+                out.append({"matcher": {"id": "byRegexp", "options": regex},
+                            "properties": [{"id": prop_id, "value": value}]})
+                continue
+            raise ValueError(
+                "override must be {'matcher':...,'properties':[...]} or a 3-tuple "
+                f"(regex, property_id, value); got {ov!r}")
+        return out
+
+    @staticmethod
     def _value_mappings(mapping: dict) -> list:
         """mapping: {"0": ("Down","red"), "1": ("Up","green")}."""
         opts = {}
@@ -340,7 +383,8 @@ class Builder:
             defaults["decimals"] = decimals
         if min0:
             defaults["min"] = 0
-        spec = {"fieldConfig": {"defaults": defaults, "overrides": overrides or []},
+        spec = {"fieldConfig": {"defaults": defaults,
+                                "overrides": self._overrides(overrides)},
                 "options": {
                     "legend": {"calcs": list(legend_calcs), "displayMode": "table",
                                "placement": "bottom"},

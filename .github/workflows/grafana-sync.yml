@@ -71,11 +71,13 @@ jobs:
           cp grafana/dashboard-health.json gitsync/networking/opnsense-exporter-health.json
 
       - name: commit and push
+        id: push
         working-directory: gitsync
         run: |
           set -euo pipefail
           if git diff --quiet; then
             echo "dashboards already match the stack source"
+            echo "ref=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name  'github-actions[bot]'
@@ -84,12 +86,43 @@ jobs:
           # Grafana commits UI saves into this repo on its own, so a push can lose a
           # race with the stack. Rebase and retry rather than failing the sync.
           for attempt in 1 2 3; do
-            if git push; then exit 0; fi
+            if git push; then
+              echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "push rejected (attempt ${attempt}) — rebasing onto origin/main"
             git pull --rebase origin main
           done
           echo "::error::could not push dashboards to gc-gitsync-m7kni after 3 attempts"
           exit 1
+
+      # A successful `git push` is NOT a deploy. GitSync pulls asynchronously and
+      # validates each file against the Dashboard schema; a file that fails validation
+      # is skipped and the repository merely reports CompletedWithWarnings. That is how
+      # dashboard-health.json sat rejected for two days, 12 panels behind, with every
+      # gate in this repository green (#616). Everything below closes that loop.
+      - name: install gcx
+        if: steps.push.outputs.ref != ''
+        run: |
+          set -euo pipefail
+          curl -fsSL -o gcx.tgz \
+            "https://github.com/grafana/gcx/releases/download/v${GCX_VERSION}/gcx_${GCX_VERSION}_linux_amd64.tar.gz"
+          echo "${GCX_SHA256}  gcx.tgz" | sha256sum -c -
+          tar -xzf gcx.tgz gcx
+          sudo install -m 0755 gcx /usr/local/bin/gcx
+          rm -f gcx gcx.tgz
+
+      - name: verify Grafana actually applied the dashboards
+        if: steps.push.outputs.ref != ''
+        env:
+          GRAFANA_SERVER: ${{ vars.GRAFANA_SERVER }}
+          GRAFANA_TOKEN: ${{ secrets.GRAFANA_TOKEN }}
+          GRAFANA_STACK_ID: ${{ vars.GRAFANA_STACK_ID }}
+          PUSHED_REF: ${{ steps.push.outputs.ref }}
+        run: |
+          python3 scripts/verify-gitsync.py --ref "$PUSHED_REF" \
+            --file networking/opnsense-exporter.json=grafana/dashboard.json \
+            --file networking/opnsense-exporter-health.json=grafana/dashboard-health.json
 
   rules:
     name: publish alert and recording rules

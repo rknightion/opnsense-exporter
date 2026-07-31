@@ -5166,16 +5166,30 @@
                   "min": 0
                 },
                 "overrides": [
-                  [
-                    "downloads/day .*",
-                    "unit",
-                    "short"
-                  ],
-                  [
-                    "reloads/day .*",
-                    "unit",
-                    "short"
-                  ]
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": "downloads/day .*"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "short"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": "reloads/day .*"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "short"
+                      }
+                    ]
+                  }
                 ]
               },
               "options": {
