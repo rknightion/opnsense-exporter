@@ -37,6 +37,10 @@ func main() {
 	profile := flag.String("profile", os.Getenv("OPNSENSE_CANARY_PROFILE"), fmt.Sprintf("probe profile selecting profile-scoped ledger entries, one of %v (env OPNSENSE_CANARY_PROFILE)", opnsense.KnownProbeProfiles()))
 	flag.Parse()
 	generation = *gen
+	// Set BEFORE the validation below only in the sense that it is assigned
+	// here; nothing reads it until the report is rendered, and an unknown value
+	// exits non-zero two lines down rather than reaching the coverage ledger.
+	canaryProfile = *profile
 
 	// Reject an unknown profile rather than falling back to the base ledger.
 	// A silent fallback would still produce a plausible-looking report, just

@@ -127,6 +127,78 @@ type CoveragePath struct {
 	// PruneTrigger names the change that should delete the entry. stateOptional
 	// only.
 	PruneTrigger string `json:"pruneTrigger,omitempty"`
+
+	// Profiles re-classes this entry for named probe targets (#611). See
+	// Index and CoverageProfileOverride. Resolved at compile time, so a
+	// CoveragePath handed out by Classify never carries any.
+	Profiles map[string]CoverageProfileOverride `json:"profiles,omitempty"`
+}
+
+// CoverageProfileOverride re-classes one ledger entry under one probe target
+// (#611), mirroring what SchemaExemption.Profiles does for the exemption ledger.
+//
+// WHY THIS EXISTS, and why neither existing knob would do. A path can be
+// metric-backing and exercisable on the two testbed VMs while being permanently
+// unreachable on prod: the production firewall has no CARP VIP, no Kea DHCPv4
+// subnet, no DHCPv6 PD pool and no WireGuard instance, all four of which would
+// need config WRITES on a box whose standing authorisation is read-only. Those
+// paths verify correctly on both testbeds, so the prod canary reported 15
+// required-coverage warnings that could never clear (#531).
+//
+// An exemption is not the alternative, and this is checked in code rather than
+// assumed: missingOK is consulted only in the `absentFinal > 0 && !unverifiable`
+// branch and suppresses ValidationResult.Missing (schema_validate.go), while an
+// EMPTY PARENT ARRAY - what prod returns for all four - files its children under
+// ValidationResult.Unverified with no missingOK check, and the coverage ledger
+// reads that. And the two knobs that do reach here, base `stateOptional` and
+// `opaque`, are both base-scoped: either would blind all three targets on paths
+// the testbeds verify today, which is strictly worse than the warning.
+//
+// The override is a RE-CLASS, not an additive list, which is the one structural
+// difference from SchemaExemption.Profiles: an exemption profile appends more
+// exempt paths, whereas here the entry already exists and only its severity
+// differs per target. It therefore carries its own Reason and PruneTrigger,
+// enforced by TestCommittedCoverageLedgerIntegrity exactly as a base
+// stateOptional entry's are - an override with no reason is an unexplained blind
+// spot on one target, which is HARDER to notice than a base one because the
+// other two profiles keep verifying the path and the ledger reads healthy.
+type CoverageProfileOverride struct {
+	// Class is the class this entry takes under the named profile. It must
+	// differ from the base class, or the override does nothing.
+	Class CoverageClass `json:"class"`
+	// Reason explains why this target legitimately cannot reach the path.
+	Reason string `json:"reason"`
+	// PruneTrigger names the change that should delete the override.
+	PruneTrigger string `json:"pruneTrigger"`
+}
+
+// resolve applies any override for profile, returning the class and the entry as
+// the rest of the tool should see it: overridden class folded in, the override's
+// Reason/PruneTrigger promoted onto the entry so the report can print WHY the
+// path is informational on this target, and Profiles stripped so nothing
+// downstream can re-resolve against a different target.
+//
+// An empty or unledgered profile yields the base class untouched. That is
+// deliberate and mirrors SchemaExemption.ForProfile: a local run that names no
+// target is not a claim about any target, and a typo is caught by
+// TestCommittedCoverageLedgerIntegrity, which can see the whole committed file.
+func (e CoveragePath) resolve(base CoverageClass, profile string) (CoverageClass, CoveragePath) {
+	out := e
+	out.Profiles = nil
+	ov, ok := e.Profiles[profile]
+	if !ok || profile == "" {
+		return base, out
+	}
+	if ov.Class != CoverageStateOptional && ov.Class != CoverageRequired {
+		// An unknown class is a ledger bug the integrity test fails on. At
+		// runtime, keep the stricter base reading rather than inventing one:
+		// silently degrading a required path to informational is the one
+		// outcome that loses a signal.
+		return base, out
+	}
+	out.Reason = ov.Reason
+	out.PruneTrigger = ov.PruneTrigger
+	return ov.Class, out
 }
 
 // EndpointCoverage is one endpoint's ledger section.
@@ -171,19 +243,32 @@ type coverageMatcher struct {
 // required-then-stateOptional order.
 type CoverageIndex map[string][]coverageMatcher
 
-// Index compiles the ledger for lookup. Required entries come first so a path
-// listed in both classes resolves as required — the stricter reading — though
-// the integrity test rejects that ledger anyway.
-func (l CoverageLedger) Index() CoverageIndex {
+// Index compiles the ledger for lookup against one probe target. Required
+// entries come first so a path listed in both classes resolves as required — the
+// stricter reading — though the integrity test rejects that ledger anyway.
+//
+// Per-profile overrides are baked in HERE and nowhere else (#611), the same way
+// SchemaExemption.ForProfile is applied once in main: an entry that leaves this
+// function carries a single resolved class and no Profiles, so Classify,
+// Entries, reviewCoverage and the report all keep treating a ledger entry as a
+// plain class and none of them has to know profiles exist. Pass "" for the base
+// ledger.
+func (l CoverageLedger) Index(profile string) CoverageIndex {
 	ix := make(CoverageIndex, len(l))
 	for endpoint, cov := range l {
 		matchers := make([]coverageMatcher, 0, len(cov.Required)+len(cov.StateOptional))
-		for _, e := range cov.Required {
-			matchers = append(matchers, coverageMatcher{set: compilePathSet([]string{e.Path}), class: CoverageRequired, entry: e})
+		add := func(base CoverageClass, entries []CoveragePath) {
+			for _, e := range entries {
+				class, resolved := e.resolve(base, profile)
+				matchers = append(matchers, coverageMatcher{
+					set:   compilePathSet([]string{resolved.Path}),
+					class: class,
+					entry: resolved,
+				})
+			}
 		}
-		for _, e := range cov.StateOptional {
-			matchers = append(matchers, coverageMatcher{set: compilePathSet([]string{e.Path}), class: CoverageStateOptional, entry: e})
-		}
+		add(CoverageRequired, cov.Required)
+		add(CoverageStateOptional, cov.StateOptional)
 		ix[endpoint] = matchers
 	}
 	return ix

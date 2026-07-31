@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -44,7 +45,7 @@ func TestCoverageIndexClassify(t *testing.T) {
 				{Path: "hardware.*", Reason: "no such hardware on a VM", PruneTrigger: "canary moves to metal"},
 			},
 		},
-	}.Index()
+	}.Index("")
 
 	cases := []struct {
 		endpoint, path string
@@ -69,6 +70,156 @@ func TestCoverageIndexClassify(t *testing.T) {
 		}
 		if found && entry.Path == "" {
 			t.Errorf("Classify(%q,%q) returned an empty entry", tc.endpoint, tc.path)
+		}
+	}
+}
+
+// Per-profile scoping (#611). A required entry may be re-classed stateOptional
+// for ONE probe target, because a path can be metric-backing and exercisable on
+// the testbeds while being permanently unreachable on prod - prod has no CARP
+// VIP, no Kea DHCPv4, no DHCPv6 PD pool and no WireGuard instance, and prod is
+// read-only so none of that can be provisioned.
+//
+// The override resolves at COMPILE time, exactly as SchemaExemption.ForProfile
+// flattens: Index(profile) bakes the class in, so Classify and everything
+// downstream keep treating an entry as a plain class and nothing else has to
+// know profiles exist.
+func TestCoverageIndexProfileOverride(t *testing.T) {
+	ledger := CoverageLedger{
+		"epA": {
+			Required: []CoveragePath{
+				{
+					Path: "rows[].vhid", Metrics: []string{"opnsense_x_vip"}, Exercise: "add a VIP",
+					Blocker: "no VIP on the testbed",
+					Profiles: map[string]CoverageProfileOverride{
+						ProbeProfileProd: {
+							Class:        CoverageStateOptional,
+							Reason:       "prod has no CARP VIP and is read-only",
+							PruneTrigger: "a second production firewall exists",
+						},
+					},
+				},
+				// A sibling with NO override: proves the override is per-entry and
+				// does not leak across entries in the same endpoint section.
+				{Path: "rows[].other", Metrics: []string{"opnsense_x_other"}, Exercise: "poke it", Verified: "seen"},
+			},
+		},
+	}
+
+	for _, profile := range KnownProbeProfiles() {
+		want := CoverageRequired
+		if profile == ProbeProfileProd {
+			want = CoverageStateOptional
+		}
+		ix := ledger.Index(profile)
+
+		class, entry, found := ix.Classify("epA", "rows[].vhid")
+		if !found {
+			t.Fatalf("profile %q: Classify lost the entry", profile)
+		}
+		if class != want {
+			t.Errorf("profile %q: class = %q, want %q", profile, class, want)
+		}
+		// The override's reason/prune trigger must reach the resolved entry, or
+		// the report cannot print why the path is informational on this target.
+		if want == CoverageStateOptional {
+			if entry.Reason == "" || entry.PruneTrigger == "" {
+				t.Errorf("profile %q: resolved entry has reason=%q pruneTrigger=%q, want both from the override",
+					profile, entry.Reason, entry.PruneTrigger)
+			}
+		}
+		// The resolved entry must carry no Profiles of its own, so no consumer
+		// can re-resolve against a different profile downstream.
+		if len(entry.Profiles) != 0 {
+			t.Errorf("profile %q: resolved entry still carries Profiles %v", profile, entry.Profiles)
+		}
+
+		if class, _, _ := ix.Classify("epA", "rows[].other"); class != CoverageRequired {
+			t.Errorf("profile %q: the un-overridden sibling became %q, want required", profile, class)
+		}
+	}
+}
+
+// THE WIDENING GUARD (#611 acceptance). An override keyed to one profile must
+// change that profile and no other. This is the failure mode that would make the
+// mechanism worse than the warning it replaces: a prod-scoped stateOptional that
+// silently also applied to nightly would blind the two targets that DO verify
+// these paths, which is exactly what the base-scoped `stateOptional` knob
+// already does and why #611 could not use it.
+//
+// Written as an invariant over the committed ledger rather than over a fixture,
+// so it holds for every override anybody adds later.
+func TestCommittedCoverageOverridesNeverWiden(t *testing.T) {
+	ledger, err := LoadCoverageLedger(coverageLedgerTestPath)
+	if err != nil {
+		t.Fatalf("LoadCoverageLedger: %v", err)
+	}
+
+	// Base class per (endpoint, path), read straight off which array the entry
+	// sits in - the class every profile must see unless it is the named one.
+	type key struct{ endpoint, path string }
+	base := map[key]CoverageClass{}
+	overrides := map[key]map[string]CoverageClass{}
+	for endpoint, cov := range ledger {
+		for class, entries := range map[CoverageClass][]CoveragePath{
+			CoverageRequired:      cov.Required,
+			CoverageStateOptional: cov.StateOptional,
+		} {
+			for _, e := range entries {
+				k := key{endpoint, e.Path}
+				base[k] = class
+				for profile, ov := range e.Profiles {
+					if overrides[k] == nil {
+						overrides[k] = map[string]CoverageClass{}
+					}
+					overrides[k][profile] = ov.Class
+				}
+			}
+		}
+	}
+	if len(overrides) == 0 {
+		t.Fatal("no profile-scoped coverage overrides in the committed ledger — #611 scoped four endpoint groups under prod")
+	}
+
+	for _, profile := range KnownProbeProfiles() {
+		ix := ledger.Index(profile)
+		for k, wantBase := range base {
+			got, _, found := ix.Classify(k.endpoint, k.path)
+			if !found {
+				t.Errorf("profile %q: %s %q vanished from the index", profile, k.endpoint, k.path)
+				continue
+			}
+			want := wantBase
+			if ov, ok := overrides[k][profile]; ok {
+				want = ov
+			}
+			if got != want {
+				t.Errorf("profile %q: %s %q resolved to %q, want %q (overrides: %v)",
+					profile, k.endpoint, k.path, got, want, overrides[k])
+			}
+		}
+	}
+}
+
+// An empty profile - no --profile passed - resolves to the BASE class on every
+// entry. It must never pick up an override: a local run with no target named is
+// not a claim about any target, and silently inheriting one profile's scoping
+// would make an ad-hoc run disagree with CI for no visible reason.
+func TestCoverageIndexEmptyProfileIsBase(t *testing.T) {
+	ledger, err := LoadCoverageLedger(coverageLedgerTestPath)
+	if err != nil {
+		t.Fatalf("LoadCoverageLedger: %v", err)
+	}
+	ix := ledger.Index("")
+	for endpoint, cov := range ledger {
+		for _, e := range cov.Required {
+			if len(e.Profiles) == 0 {
+				continue
+			}
+			class, _, found := ix.Classify(endpoint, e.Path)
+			if !found || class != CoverageRequired {
+				t.Errorf("%s %q with an empty profile = (%q,%v), want (required,true)", endpoint, e.Path, class, found)
+			}
 		}
 	}
 }
@@ -158,6 +309,36 @@ func TestCommittedCoverageLedgerIntegrity(t *testing.T) {
 					}
 					if e.PruneTrigger == "" {
 						t.Errorf("%s stateOptional %q: no prune trigger", endpoint, e.Path)
+					}
+				}
+
+				// A per-profile override carries the SAME burden of proof as a
+				// base stateOptional entry, and for the same reason (#611): the
+				// class exists so it cannot quietly become a dumping ground. An
+				// override with no reason is an unexplained blind spot on one
+				// target, which is harder to notice than a base one because two
+				// other profiles keep verifying the path and the ledger looks
+				// healthy.
+				for profile, ov := range e.Profiles {
+					if !slices.Contains(KnownProbeProfiles(), profile) {
+						t.Errorf("%s %s %q: override names unknown profile %q, want one of %v",
+							endpoint, class, e.Path, profile, KnownProbeProfiles())
+					}
+					switch ov.Class {
+					case CoverageRequired, CoverageStateOptional:
+					default:
+						t.Errorf("%s %s %q: override for %q has class %q, want %q or %q",
+							endpoint, class, e.Path, profile, ov.Class, CoverageRequired, CoverageStateOptional)
+					}
+					if ov.Class == class {
+						t.Errorf("%s %s %q: override for %q re-states the base class %q, so it does nothing",
+							endpoint, class, e.Path, profile, class)
+					}
+					if ov.Reason == "" {
+						t.Errorf("%s %s %q: override for %q has no reason", endpoint, class, e.Path, profile)
+					}
+					if ov.PruneTrigger == "" {
+						t.Errorf("%s %s %q: override for %q has no prune trigger", endpoint, class, e.Path, profile)
 					}
 				}
 			}

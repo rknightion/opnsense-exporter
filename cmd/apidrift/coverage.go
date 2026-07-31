@@ -13,18 +13,29 @@ import (
 // Overridden in tests.
 var coverageLedgerPath = "opnsense/testdata/schemas/coverage.json"
 
-// loadCoverageIndex compiles the committed coverage ledger. A missing file is
-// an empty ledger (every unverified path stays informational, i.e. the
-// behaviour that predates #377); a malformed one is reported on stderr and
-// likewise degrades to empty, because a ledger typo must not take the whole
+// canaryProfile is the probe target this run is reporting on, set from --profile
+// in main alongside generation. It selects the coverage ledger's per-profile
+// overrides (#611); empty means the base ledger, which is what a local run with
+// no target named gets. Overridden in tests.
+//
+// A package var rather than a parameter threaded through aggregate and
+// renderReport, matching how generation and coverageLedgerPath already work in
+// this command — main validates it against opnsense.KnownProbeProfiles() before
+// anything reads it, so an unknown value cannot reach here.
+var canaryProfile string
+
+// loadCoverageIndex compiles the committed coverage ledger for canaryProfile. A
+// missing file is an empty ledger (every unverified path stays informational,
+// i.e. the behaviour that predates #377); a malformed one is reported on stderr
+// and likewise degrades to empty, because a ledger typo must not take the whole
 // drift canary down.
 func loadCoverageIndex() opnsense.CoverageIndex {
 	ledger, err := opnsense.LoadCoverageLedger(coverageLedgerPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "apidrift: coverage ledger %s unusable, treating every unverified path as informational: %v\n", coverageLedgerPath, err)
-		return opnsense.CoverageLedger{}.Index()
+		return opnsense.CoverageLedger{}.Index(canaryProfile)
 	}
-	return ledger.Index()
+	return ledger.Index(canaryProfile)
 }
 
 // coverageFinding is one endpoint/path pair the run could not verify, with the
