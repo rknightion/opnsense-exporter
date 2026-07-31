@@ -143,6 +143,12 @@ var bodyCacheOwners = map[string]string{
 	"keaPdPools6":                   KeaSubsystem,
 	"dnsmasqRanges":                 DnsmasqSubsystem,
 	"captivePortalVoucherProviders": CaptivePortalSubsystem,
+	// The first fast-tier body caches (#572, #573). Both owners are on the 15s tier,
+	// so each also needs a written entry in fastTierBodyCacheJustifications below —
+	// the owner entry alone does not admit them.
+	"netflowGetConfig":   NetflowSubsystem,
+	"netflowIsEnabled":   NetflowSubsystem,
+	"interfacesOverview": InterfacesSubsystem,
 	// The rule-id map is fetched by the syslog enrichment refresher (#248) when a
 	// filterlog line carries an unknown rid, never by a poll timer — which is why
 	// its TTL is deliberately capped at a minute rather than the full cache-ttl.
@@ -174,11 +180,41 @@ const minFastTierJustificationLen = 20
 // still applies unconditionally on top of this map — a justification never
 // excuses a TTL that can never serve a hit.
 //
-// This issue deliberately does not attach a TTL to any fast-tier endpoint (e.g.
-// netflow's static endpoints, #550/#567's motivating example); that is a
-// follow-up with its own freshness argument to make per endpoint, so this map
-// starts empty.
-var fastTierBodyCacheJustifications = map[string]string{}
+// #567 left this map empty on purpose and named the follow-ups; #572 and #573 are
+// those follow-ups, and their entries are the first three. Each states the
+// DEGRADATION, not just the claim that the payload is static — what actually gets
+// worse, and by how much, is the thing a reviewer needs to weigh.
+var fastTierBodyCacheJustifications = map[string]string{
+	// #572. Pure config: the configured capture interface set. #550 measured it
+	// byte-identical (1,080 B) across its whole window. Degradation: an admin adding
+	// or removing a capture interface takes up to one cache-ttl to appear in
+	// opnsense_netflow_capture_enabled. No alert or recording rule reads any
+	// capture-config series. The collector's LIVE half (netflowStatus run-state,
+	// netflowCacheStats counters — the series OPNsenseNetFlowHookDead evaluates)
+	// stays uncached at 15s, so the tier keeps doing the job it was admitted for.
+	"netflowGetConfig": "config-only payload (configured capture interface set), byte-identical over #550's " +
+		"whole measurement window; changes only on an admin edit. Degradation: an interface added to or " +
+		"removed from the capture set surfaces up to one cache-ttl late. No alert or recording rule reads " +
+		"any capture-config series; netflowStatus and netflowCacheStats stay uncached at 15s.",
+	// #572. 23 bytes, and it still pays the full #535 request tax every 15s — the
+	// cost paragraph in collectorTiers calls this endpoint out by name.
+	"netflowIsEnabled": "config-only payload (the netflow enabled and local-capture flags), 23 bytes that still " +
+		"pay the full two-configd-RPC request tax 5,760 times a day. Changes only when an admin toggles the " +
+		"feature. Degradation: opnsense_netflow_enabled reflects a toggle up to one cache-ttl late; nothing " +
+		"alerts on it, and the series itself never disappears.",
+	// #573. The one entry here that is NOT purely config, which is why its TTL is
+	// 60s rather than the global one.
+	"interfacesOverview": "mostly config (admin_up, media/VLAN identity, LAGG and bridge membership), plus two " +
+		"live-ish members held at medium-tier cadence by a 60s TTL rather than the global one: lagg_flapping_total " +
+		"becomes a step function with <=60s detection lag (the counter TOTAL stays exact — under #336 the snapshot " +
+		"is replayed at collection cadence, so under-polling costs detection lag, not rate() samples), and the SFP " +
+		"DOM readings (temperature, voltage, optical power, TX bias) update every 60s instead of 15s. None of those " +
+		"is read at sub-minute resolution by any panel or rule. Critically this does NOT touch the #568 clause (c) " +
+		"case that admits the collector: RX/TX bps and pps come from the uncached 'interfaces' and " +
+		"'interfaceStatistics' endpoints, as does link_state, so link up/down detection and throughput fidelity " +
+		"are unchanged. Only the two recording rules instance:opnsense_interface_{rx,tx}_bits:rate5m read this " +
+		"subsystem at all, and they read the traffic endpoints.",
+}
 
 // bodyCacheRuleViolations checks the two rules for one body-cached endpoint's TTL
 // against its owner's poll interval:
@@ -335,6 +371,36 @@ func TestFastTierBodyCacheJustificationsAreWritten(t *testing.T) {
 			t.Errorf("fastTierBodyCacheJustifications[%q]: justification %q is shorter than %d chars — "+
 				"say why this specific payload cannot go stale in a way that matters",
 				endpoint, justification, minFastTierJustificationLen)
+		}
+	}
+}
+
+// TestInterfaceThroughputEndpointsAreNeverCached pins the distinction #573 rests
+// on. The interfaces collector is on the 15s tier under #568 clause (c) —
+// dashboard THROUGHPUT fidelity, the RX/TX bps and pps graphs — and #573 caches
+// one of its three endpoints. That is only sound because the throughput series do
+// not come from the cached one: rx/tx bytes and packets come from
+// "interfaceStatistics", and link_state and line_rate from "interfaces", both of
+// which must stay uncached at 15s.
+//
+// Without this, a later change could attach a TTL to either and silently flat-line
+// the exact panels the collector's fast tier is paid for, with every other guard
+// still green: bodyCacheOwners would take a written entry, and a plausible-sounding
+// justification would satisfy fastTierBodyCacheJustifications. Freezing throughput
+// is not a freshness tradeoff to weigh — it is the thing the tier exists to prevent
+// — so this is a flat prohibition rather than another justification slot.
+func TestInterfaceThroughputEndpointsAreNeverCached(t *testing.T) {
+	// Probe with generous knobs, not the shipped defaults: a future default of 0
+	// must not hide a TTL added here.
+	ttls := options.BodyCacheTTLs(time.Hour, 12*time.Hour)
+
+	for _, endpoint := range []string{"interfaces", "interfaceStatistics"} {
+		if ttl, cached := ttls[endpoint]; cached {
+			t.Errorf("endpoint %q carries a %v body TTL. It is the source of the interfaces "+
+				"collector's throughput and link-state series, which is the entire #568 clause (c) case "+
+				"for its 15s tier — caching it turns those panels into step functions while every other "+
+				"guard stays green. Cache interfacesOverview (the config+DOM payload) instead; that is "+
+				"what #573 did.", endpoint, ttl)
 		}
 	}
 }

@@ -48,6 +48,16 @@ var (
 // unknown-rid lookups, not to hold the map for the whole cacheTTL window.
 const ruleIDsCacheTTL = time.Minute
 
+// interfacesOverviewCacheTTL bounds the interfaces-overview body cache (#573).
+// Deliberately NOT the full cacheTTL: the payload is mostly config (admin_up,
+// media/VLAN identity, LAGG and bridge membership) but not purely so — it also
+// carries the SFP DOM live readings and the lagg_flapping_total counter, which at
+// the global TTL would freeze to cold-tier granularity. 60s holds them at exactly
+// the cadence every medium-tier collector's counters already update at, while
+// still being 4x the fast-tier poll that fetches it. Capped by cacheTTL so
+// setting the flag lower (or to 0) still disables caching as documented.
+const interfacesOverviewCacheTTL = time.Minute
+
 // EndpointCacheTTLs maps an OPNsense API endpoint name to how long a successful
 // GET response for it may be served from cache instead of re-fetched. Only
 // endpoints whose payload is wholly slow-moving belong here: anything carrying a
@@ -199,6 +209,24 @@ func BodyCacheTTLs(cacheTTL, firmwareCacheTTL time.Duration) EndpointCacheTTLs {
 		// vnstatGetJsonData's ?iface= (#495). captivePortalVouchers stays uncached
 		// regardless: per-state counts and expiry timestamps are live data.
 		ttls["captivePortalVoucherProviders"] = cacheTTL
+
+		// NetFlow static half (#572). #550 measured both byte-identical over its whole
+		// window; they change only on an admin action (the configured capture set,
+		// and the enabled/local flags). Deliberately NOT their two siblings:
+		// netflowStatus carries the service's live run-state and netflowCacheStats its
+		// live counters — including the series OPNsenseNetFlowHookDead alerts on — and
+		// both stay fetched on every 15s poll.
+		ttls["netflowGetConfig"] = cacheTTL
+		ttls["netflowIsEnabled"] = cacheTTL
+
+		// Interfaces overview (#573): the fast-tier interfaces collector's config+DOM
+		// payload, on a short TTL of its own rather than the global one — see
+		// interfacesOverviewCacheTTL. The collector's two THROUGHPUT endpoints
+		// ("interfaces" and "interfaceStatistics", which is where link_state and the
+		// rx/tx counters come from) stay uncached at 15s; caching those is what the
+		// #568 fast-tier steer forbids, and TestInterfaceThroughputEndpointsAreNeverCached
+		// pins the distinction.
+		ttls["interfacesOverview"] = min(cacheTTL, interfacesOverviewCacheTTL)
 
 		// Firewall rule-id map (#248): the rid -> description table log
 		// enrichment resolves filterlog lines against. It changes only when the
