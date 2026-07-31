@@ -13,9 +13,19 @@ serialised as a list of lists), 12 panels behind the repository, while `make das
 Grafana enforces. Its companion dashboard, in the same commit, applied fine, so there
 was not even an obvious symptom.
 
-This closes the loop: wait for GitSync to reach the commit we pushed, then check both
-that Grafana logged no complaint about OUR files and that the live dashboards actually
-match what we committed.
+This closes the loop: wait for GitSync to reach the commit we pushed, then compare each
+live dashboard against what we committed.
+
+**The live comparison is the verdict, and nothing else is.** Sync warnings are collected
+and printed alongside a failure because they name the offending field, but they are not
+themselves a failure condition, for two reasons that both bit during this work:
+
+  - The repository status is EPHEMERAL. A failed pull still advances lastRef, so the
+    next scheduled pull sees "same commit as last time", does nothing, succeeds, and
+    overwrites the status with state=success and an empty message list — reporting a
+    clean sync over a resource it never wrote.
+  - The job history is PERSISTENT, so a warning there may be long fixed. Failing on it
+    would wedge this gate on an error that no longer applies.
 
 Deliberately scoped to our own files. The shared GitSync repository carries other
 projects' resources, and two of them warn permanently (`renovate.json` is not a
@@ -56,8 +66,13 @@ def gcx(*argv: str) -> dict:
        inverse case it would be a false pass.
     3. The payload may be pretty-printed across many lines, so it cannot be parsed
        line-by-line.
+
+    `-o json` is NOT optional. gcx only emits JSON by default when it auto-detects an
+    agent (CLAUDECODE, CURSOR_AGENT and friends); on a bare CI runner it prints a HUMAN
+    TABLE, which parses as nothing. Forcing it also keeps the response inline and
+    sidesteps the spill in (2) entirely — the spill handling stays as a safety net.
     """
-    proc = subprocess.run(["gcx", *argv], capture_output=True, text=True)
+    proc = subprocess.run(["gcx", *argv, "-o", "json"], capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
             f"gcx {' '.join(argv)} failed ({proc.returncode}): {proc.stderr.strip()}")
@@ -165,17 +180,41 @@ def main() -> int:
         waited += args.interval
 
     failures = []
+    our_paths = {repo_path for repo_path, _ in pairs}
 
     # 2. Any warning naming one of OUR files is a rejected write.
+    #
+    # Read the JOB history as well as the repository status, because the repository
+    # status is EPHEMERAL and actively misleading. A failed pull still advances
+    # lastRef, so the next scheduled pull finds "same commit as last time", does
+    # nothing, succeeds — and overwrites the status with state=success and an empty
+    # message list. The repository then reports a clean sync over a resource it never
+    # wrote. Observed within ~10s of the failing pull, which is inside this job's own
+    # polling window. The historic job keeps the real message.
     sync = (repo.get("status") or {}).get("sync") or {}
-    messages = sync.get("message") or []
-    our_paths = {repo_path for repo_path, _ in pairs}
+    messages = list(sync.get("message") or [])
+    try:
+        history = gcx(
+            "api",
+            f"/apis/provisioning.grafana.app/v0alpha1/namespaces/{namespace}/historicjobs")
+        for job in history.get("items", []):
+            status = job.get("status") or {}
+            if status.get("state") not in ("warning", "error"):
+                continue
+            for summary in status.get("summary") or []:
+                messages.extend(summary.get("warnings") or [])
+                messages.extend(summary.get("errors") or [])
+    except Exception as exc:  # noqa: BLE001 - never let the extra signal break the gate
+        print(f"verify-gitsync: could not read job history ({exc}); "
+              f"relying on repository status and the content comparison below")
+    # These are DIAGNOSTICS, not the verdict. A warning may be stale — from a pull that
+    # has since been fixed — and failing on the job history alone would wedge this gate
+    # permanently on an error that no longer applies. The live-content comparison below
+    # is the sole authority; matching warnings are printed with a failure to explain it,
+    # because that message is what actually names the offending field.
+    diagnostics = [m for m in messages if any(p in m for p in our_paths)]
     for message in messages:
-        for repo_path in our_paths:
-            if repo_path in message:
-                failures.append(f"GitSync rejected {repo_path}:\n    {message}")
-    for message in messages:
-        if not any(p in message for p in our_paths):
+        if message not in diagnostics:
             print(f"verify-gitsync: unrelated warning (ignored): {message[:160]}")
 
     # 3. The live dashboard must match what we committed.
@@ -209,6 +248,8 @@ def main() -> int:
     if failures:
         for failure in failures:
             print(f"::error::{failure}")
+        for diagnostic in diagnostics:
+            print(f"::error::GitSync reported: {diagnostic}")
         print("::error::GitSync accepted the commit but did not apply our dashboards. "
               "A green `git push` is not a deploy — see scripts/verify-gitsync.py.")
         return 1

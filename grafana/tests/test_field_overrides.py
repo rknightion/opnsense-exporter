@@ -74,6 +74,72 @@ class TestFieldOverrides(unittest.TestCase):
         self.assertGreater(checked, 0, "walked the dashboards and found no overrides at all")
 
 
+class TestNoRawSequencesInVizConfig(unittest.TestCase):
+    """The generic form of #616, written after the SECOND instance appeared.
+
+    Both bugs were the same mistake — a Python tuple used as shorthand, serialised as a
+    JSON array where Grafana's schema wants an object — in different fields
+    (fieldConfig.overrides, then thresholds.steps). GitSync reports only the first
+    validation failure it hits and stops, so fixing one just reveals the next, one
+    round-trip through CI and a live stack at a time.
+
+    So assert the SHAPE rather than the field: nothing under a panel's vizConfig may be
+    a list whose entries are themselves lists. Every legitimate structure there is a
+    list of objects or a list of scalars.
+    """
+
+    def test_no_list_of_lists_under_vizconfig(self):
+        offenders = []
+        for name in DASHBOARDS:
+            with open(os.path.join(ROOT, name), encoding="utf-8") as fh:
+                doc = json.load(fh)
+            elements = (doc.get("spec") or {}).get("elements") or {}
+            for element_name, element in elements.items():
+                viz = ((element.get("spec") or {}).get("vizConfig") or {})
+                self._walk(viz, f"{name}/{element_name}/vizConfig", offenders)
+        self.assertEqual(
+            [], offenders,
+            "raw sequence(s) found under vizConfig — almost certainly a tuple shorthand "
+            "that was not normalised by a Builder helper, which Grafana rejects on "
+            "unmarshal and GitSync then skips SILENTLY:\n  " + "\n  ".join(offenders))
+
+    def _walk(self, node, path, offenders):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                self._walk(value, f"{path}/{key}", offenders)
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                if isinstance(value, (list, tuple)):
+                    offenders.append(f"{path}[{i}] = {json.dumps(value)}")
+                else:
+                    self._walk(value, f"{path}[{i}]", offenders)
+
+
+class TestBuilderThresholdNormalisation(unittest.TestCase):
+    def setUp(self):
+        import sys
+        if ROOT not in sys.path:
+            sys.path.insert(0, ROOT)
+        from builder import Builder  # noqa: PLC0415
+        self.norm = Builder._thresholds
+
+    def test_tuple_shorthand_expands(self):
+        self.assertEqual(
+            self.norm([(None, "green"), (1, "yellow")]),
+            {"mode": "absolute",
+             "steps": [{"value": None, "color": "green"}, {"value": 1, "color": "yellow"}]})
+
+    def test_full_form_passes_through(self):
+        self.assertEqual(
+            self.norm([{"color": "blue", "value": None}]),
+            {"mode": "absolute", "steps": [{"color": "blue", "value": None}]})
+
+    def test_malformed_raises(self):
+        for bad in ([("only",)], [{"value": 1}], ["nope"], [(1, 2, 3)]):
+            with self.assertRaises(ValueError):
+                self.norm(bad)
+
+
 class TestBuilderOverrideNormalisation(unittest.TestCase):
     def setUp(self):
         import sys

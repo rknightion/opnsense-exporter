@@ -308,7 +308,38 @@ class Builder:
 
     @staticmethod
     def _thresholds(steps):
-        return {"mode": "absolute", "steps": steps}
+        """Normalise threshold steps to the shape Grafana's v2 schema accepts.
+
+        Accepts {"value": ..., "color": ...} or the shorthand 2-tuple (value, color).
+
+        Same failure as Builder._overrides, in a second field and found the same way:
+        one call site used the shorthand, JSON has no tuple, and Grafana rejected the
+        whole dashboard with
+
+            cannot unmarshal array into Go struct field
+            ...fieldConfig.defaults.thresholds.steps of type v2.DashboardThreshold
+
+        This one only surfaced AFTER the overrides fix landed, because GitSync reports
+        the first validation failure it hits and stops. Assume neither is the last of
+        its kind: grafana/tests/test_field_overrides.py has a generic sweep that fails
+        on a raw list anywhere under vizConfig, which catches the shape rather than the
+        field name.
+        """
+        out = []
+        for step in steps or []:
+            if isinstance(step, dict):
+                if "color" not in step:
+                    raise ValueError(f"threshold step needs a 'color': {step!r}")
+                out.append(step)
+                continue
+            if isinstance(step, (tuple, list)) and len(step) == 2:
+                value, color = step
+                out.append({"value": value, "color": color})
+                continue
+            raise ValueError(
+                "threshold step must be {'value':...,'color':...} or a 2-tuple "
+                f"(value, color); got {step!r}")
+        return {"mode": "absolute", "steps": out}
 
     @staticmethod
     def _overrides(overrides) -> list:

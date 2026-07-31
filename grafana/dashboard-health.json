@@ -7492,14 +7492,14 @@
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
-                      [
-                        null,
-                        "green"
-                      ],
-                      [
-                        1,
-                        "yellow"
-                      ]
+                      {
+                        "value": null,
+                        "color": "green"
+                      },
+                      {
+                        "value": 1,
+                        "color": "yellow"
+                      }
                     ]
                   }
                 },
