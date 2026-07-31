@@ -64,10 +64,6 @@
       "kind": "number"
     },
     {
-      "path": "output.endurance_used.threshold_percent",
-      "kind": "number"
-    },
-    {
       "path": "output.model_name",
       "kind": "string"
     },

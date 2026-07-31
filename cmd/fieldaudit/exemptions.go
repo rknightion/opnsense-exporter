@@ -20,7 +20,7 @@ const minReasonLen = 20
 // Regenerate the report with `make fieldaudit`.
 var Exemptions = map[string]string{
 	// opnsense/smart.go:72  json:"threshold_percent"
-	"opnsense.smartWearPercent.ThresholdPercent": "Modelled so the canary does not report it as unmodelled drift, and deliberately " +
+	"opnsense.smartSpareAvailable.ThresholdPercent": "Modelled so the canary does not report it as unmodelled drift, and deliberately " +
 		"not exported yet (#615). smartctl emits it alongside spare_available only — " +
 		"unconditionally on the NVMe path, and on the SATA path when 0 < threshold < 50 " +
 		"(nvmeprint.cpp:505, ataprint.cpp:1206-1208); no emitter writes it for " +

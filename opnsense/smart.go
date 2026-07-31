@@ -45,31 +45,44 @@ type smartInfoOutput struct {
 	// as their own fields rather than left to attribute_raw. Absent on drives
 	// smartctl cannot normalize (most HDDs, some SSD vendors), so both stay
 	// pointers (#577).
-	SpareAvailable *smartWearPercent `json:"spare_available"`
-	EnduranceUsed  *smartWearPercent `json:"endurance_used"`
+	SpareAvailable *smartSpareAvailable `json:"spare_available"`
+	EnduranceUsed  *smartEnduranceUsed  `json:"endurance_used"`
 }
 
-// smartWearPercent is the object smartctl wraps each normalized wear
-// percentage in. EVERY emission site in smartmontools writes an object keyed
-// by current_percent — ataprint.cpp:1206 and :1217 (guessed from the SATA
-// attribute table), ataprint.cpp:1825 (Device Statistics page 7, which
-// overrides the guess) and nvmeprint.cpp:505 and :511 — so a bare number is a
-// shape upstream cannot produce, and modelling one was #615.
+// smartSpareAvailable and smartEnduranceUsed are the objects smartctl wraps
+// each normalized wear percentage in. EVERY emission site in smartmontools
+// writes an OBJECT keyed by current_percent — ataprint.cpp:1206 and :1217
+// (guessed from the SATA attribute table), ataprint.cpp:1825 (Device Statistics
+// page 7, which overrides the guess) and nvmeprint.cpp:505 and :511 — so a bare
+// number is a shape upstream cannot produce, and modelling one was #615.
 //
 // That mismodelling did not merely blank two gauges: json.Unmarshal failed on
 // the whole smartInfo body, which sent FetchSMARTDevices down its per-device
 // error path and cost every per-device SMART metric on the only box in the
 // fleet with a real disk. Silently, at Debug level, with collector_success=1.
 //
-// ThresholdPercent is emitted for spare_available only — unconditionally by
-// the NVMe path, and by the SATA path when 0 < threshold < 50. No emitter
-// writes it for endurance_used; the field is shared here because the wrapper
-// object is the same shape, not as a claim that endurance carries a threshold.
-// Nothing exports it yet (#615 keeps the metric surface unchanged); it is a
-// candidate gauge, not part of that fix.
-type smartWearPercent struct {
-	CurrentPercent   *float64 `json:"current_percent"`
+// THE TWO ARE NOT THE SAME SHAPE, which is why they are two types rather than
+// one. Verified against smartmontools master: threshold_percent is written for
+// spare_available ONLY — unconditionally by the NVMe path (nvmeprint.cpp:505)
+// and by the SATA path when 0 < threshold < 50 (ataprint.cpp:1208). All three
+// endurance_used sites write current_percent and nothing else. Sharing one
+// wrapper type put a threshold_percent in endurance_used's golden schema that no
+// emitter can produce, and the live production run reported it missing on every
+// pass. Nothing exports either threshold yet (#615 kept the metric surface
+// unchanged); they are candidate gauges.
+
+// smartSpareAvailable is smartctl's spare_available wrapper.
+type smartSpareAvailable struct {
+	CurrentPercent *float64 `json:"current_percent"`
+	// ThresholdPercent is conditional even here: the SATA path writes it only for
+	// 0 < threshold < 50, so absent is a normal reading rather than drift.
 	ThresholdPercent *float64 `json:"threshold_percent"`
+}
+
+// smartEnduranceUsed is smartctl's endurance_used wrapper. It carries
+// current_percent and nothing else — see the note above.
+type smartEnduranceUsed struct {
+	CurrentPercent *float64 `json:"current_percent"`
 }
 
 // smartAtaAttributes mirrors the smartctl -a -j SATA attribute table.
