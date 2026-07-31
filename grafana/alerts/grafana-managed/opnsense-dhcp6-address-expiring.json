@@ -26,7 +26,7 @@
       "description": "The valid lifetime of the IA_NA address lease on {{ $labels.interface }} has run out with no refresh. dhcp6c has lost this firewall's own WAN IPv6 address.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6addressexpiring",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "315"
+      "__panelId__": "316"
     },
     "expressions": {
       "A": {

@@ -73,8 +73,9 @@ func TestSMARTCollector_Update_Normal(t *testing.T) {
 	//   ada0:  health + temperature + power_on_hours = 3
 	//   nvme0: health + temperature + power_on_hours = 3
 	//   bad0:  no output → no health/temp/hours = 0
-	//   Total = 1 + 3 + 3 = 7
-	expectedCount := 7
+	//   device_info_errors{reason="failed"|"partial"} = 2 (always emitted, #615)
+	//   Total = 1 + 3 + 3 + 2 = 9
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -197,9 +198,9 @@ func TestSMARTCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Only devices_total = 0
-	if len(metrics) != 1 {
-		t.Errorf("expected 1 metric (devices_total), got %d", len(metrics))
+	// devices_total = 0, plus the two always-on device_info_errors series (#615).
+	if len(metrics) != 3 {
+		t.Errorf("expected 3 metrics (devices_total + 2 info_errors), got %d", len(metrics))
 	}
 	if getMetricValue(metrics[0]) != 0 {
 		t.Errorf("expected devices_total=0, got %v", getMetricValue(metrics[0]))
@@ -233,9 +234,10 @@ func TestSMARTCollector_Update_PartialFields(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// devices_total + device_health = 2 (no temperature, no power_on_hours)
-	if len(metrics) != 2 {
-		t.Errorf("expected 2 metrics, got %d", len(metrics))
+	// devices_total + device_health + 2 info_errors = 4 (no temperature, no
+	// power_on_hours)
+	if len(metrics) != 4 {
+		t.Errorf("expected 4 metrics, got %d", len(metrics))
 	}
 
 	for _, m := range metrics {
@@ -307,8 +309,8 @@ func TestSMARTCollector_Update_WearAndRotation(t *testing.T) {
 					"serial_number": "NVME-SERIAL002",
 					"smart_status": {"passed": true},
 					"rotation_rate": 0,
-					"spare_available": 100,
-					"endurance_used": 7
+					"spare_available": {"current_percent": 100, "threshold_percent": 10},
+					"endurance_used": {"current_percent": 7}
 				}
 			}`))
 		case "usb0":
@@ -521,8 +523,8 @@ func TestSMARTCollector_Update_AttributesAndNVMe(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 	metrics := collectMetrics(t, c, client)
 
-	// devices_total(1) + ada0 base(3) + 2 attrs × 4 series(8) + nvme0 base(3) + nvme(6) = 21
-	if expected := 21; len(metrics) != expected {
+	// devices_total(1) + ada0 base(3) + 2 attrs × 4 series(8) + nvme0 base(3) + nvme(6) + info_errors(2) = 23
+	if expected := 23; len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 	}
 

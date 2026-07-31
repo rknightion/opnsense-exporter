@@ -38,15 +38,38 @@ type smartInfoOutput struct {
 	RotationRate *float64 `json:"rotation_rate"`
 
 	// SpareAvailable and EnduranceUsed are smartctl's own NORMALIZED wear
-	// percentages (ataprint.cpp:1170-1219), derived by regex-matching
-	// vendor-specific attribute names (Spare_Blocks/Reallocated_Sector_Count
-	// family; SSD_Life_Left/Wear_Leveling family). Not reconstructible from
-	// the generic per-attribute dump without reimplementing that matching —
-	// hence tracked as their own fields rather than left to attribute_raw.
-	// Absent on drives smartctl cannot normalize (most HDDs, some SSD
-	// vendors), so both stay pointers (#577).
-	SpareAvailable *float64 `json:"spare_available"`
-	EnduranceUsed  *float64 `json:"endurance_used"`
+	// percentages, derived by regex-matching vendor-specific attribute names
+	// (Spare_Blocks/Reallocated_Sector_Count family; SSD_Life_Left/
+	// Wear_Leveling family). Not reconstructible from the generic
+	// per-attribute dump without reimplementing that matching — hence tracked
+	// as their own fields rather than left to attribute_raw. Absent on drives
+	// smartctl cannot normalize (most HDDs, some SSD vendors), so both stay
+	// pointers (#577).
+	SpareAvailable *smartWearPercent `json:"spare_available"`
+	EnduranceUsed  *smartWearPercent `json:"endurance_used"`
+}
+
+// smartWearPercent is the object smartctl wraps each normalized wear
+// percentage in. EVERY emission site in smartmontools writes an object keyed
+// by current_percent — ataprint.cpp:1206 and :1217 (guessed from the SATA
+// attribute table), ataprint.cpp:1825 (Device Statistics page 7, which
+// overrides the guess) and nvmeprint.cpp:505 and :511 — so a bare number is a
+// shape upstream cannot produce, and modelling one was #615.
+//
+// That mismodelling did not merely blank two gauges: json.Unmarshal failed on
+// the whole smartInfo body, which sent FetchSMARTDevices down its per-device
+// error path and cost every per-device SMART metric on the only box in the
+// fleet with a real disk. Silently, at Debug level, with collector_success=1.
+//
+// ThresholdPercent is emitted for spare_available only — unconditionally by
+// the NVMe path, and by the SATA path when 0 < threshold < 50. No emitter
+// writes it for endurance_used; the field is shared here because the wrapper
+// object is the same shape, not as a claim that endurance carries a threshold.
+// Nothing exports it yet (#615 keeps the metric surface unchanged); it is a
+// candidate gauge, not part of that fix.
+type smartWearPercent struct {
+	CurrentPercent   *float64 `json:"current_percent"`
+	ThresholdPercent *float64 `json:"threshold_percent"`
 }
 
 // smartAtaAttributes mirrors the smartctl -a -j SATA attribute table.
@@ -168,6 +191,22 @@ type SMARTDevices struct {
 	// DeviceCount is the count of device names returned by the list endpoint,
 	// regardless of whether their info calls succeeded.
 	DeviceCount int
+
+	// InfoFailures counts devices whose info call produced nothing usable —
+	// a transport error, a non-2xx, or a body that was not JSON at all. Those
+	// devices are reported by name only.
+	//
+	// InfoPartialDecodes counts devices whose info body was valid JSON that
+	// disagreed with our schema on at least one field. Those devices ARE kept,
+	// carrying every field that did decode; only the mismatched ones are
+	// missing.
+	//
+	// Both are exported so the collector can surface them. #615 was invisible
+	// for as long as it was precisely because the per-device failure path was
+	// a Debug log and nothing else, while the collector went on reporting
+	// success — so shape drift on this endpoint must never again be silent.
+	InfoFailures       int
+	InfoPartialDecodes int
 }
 
 // FetchSMARTDevices calls the os-smart plugin API to enumerate disks and
@@ -224,12 +263,25 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 
 		var infoResp smartInfoResponse
 		if err := c.doForm(infoURL, form, &infoResp); err != nil {
-			c.log.Debug("smart info call failed for device; skipping",
-				"component", "opnsense-client",
-				"device", deviceName,
-				"err", err.Error())
-			data.Devices = append(data.Devices, SMARTDevice{Device: deviceName})
-			continue
+			// A shape disagreement on one field must not cost the device its
+			// health, temperature, power-on hours and whole attribute table
+			// (#615). encoding/json has already written every field it
+			// understood, so keep what decoded and count the drift instead.
+			if err.PartialDecode && infoResp.Output != nil {
+				c.log.Warn("smart info payload disagreed with our schema; keeping the fields that did decode",
+					"component", "opnsense-client",
+					"device", deviceName,
+					"err", err.Error())
+				data.InfoPartialDecodes++
+			} else {
+				c.log.Warn("smart info call failed for device; reporting it by name only",
+					"component", "opnsense-client",
+					"device", deviceName,
+					"err", err.Error())
+				data.InfoFailures++
+				data.Devices = append(data.Devices, SMARTDevice{Device: deviceName})
+				continue
+			}
 		}
 
 		dev := SMARTDevice{Device: deviceName}
@@ -270,12 +322,12 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 				rpm := *out.RotationRate
 				dev.RotationRate = &rpm
 			}
-			if out.SpareAvailable != nil {
-				spare := *out.SpareAvailable
+			if out.SpareAvailable != nil && out.SpareAvailable.CurrentPercent != nil {
+				spare := *out.SpareAvailable.CurrentPercent
 				dev.SpareAvailable = &spare
 			}
-			if out.EnduranceUsed != nil {
-				endurance := *out.EnduranceUsed
+			if out.EnduranceUsed != nil && out.EnduranceUsed.CurrentPercent != nil {
+				endurance := *out.EnduranceUsed.CurrentPercent
 				dev.EnduranceUsed = &endurance
 			}
 			if n := out.NVMeHealth; n != nil {

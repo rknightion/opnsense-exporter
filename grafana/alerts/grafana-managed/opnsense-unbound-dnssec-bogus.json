@@ -26,7 +26,7 @@
       "description": "More than 5 DNSSEC-bogus answers in 15m \u2014 possible misconfiguration or tampering.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseunbounddnssecbogus",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "235"
+      "__panelId__": "236"
     },
     "expressions": {
       "A": {

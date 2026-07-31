@@ -58,7 +58,7 @@ This page provides a summary of all collectors in opnsense2otel.
 | Protocol Statistics | protocol | 77 | Enabled | --exporter.disable-protocol | OPN2OTEL_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPN2OTEL_DISABLE_QFEEDS |
 | Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPN2OTEL_DISABLE_RELAYD |
-| SMART Disk Health | smart | 18 | Disabled | --exporter.enable-smart | OPN2OTEL_ENABLE_SMART |
+| SMART Disk Health | smart | 19 | Disabled | --exporter.enable-smart | OPN2OTEL_ENABLE_SMART |
 | Services | services | 3 | Enabled | --exporter.disable-services | OPN2OTEL_DISABLE_SERVICES |
 | Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPN2OTEL_DISABLE_SIPROXD |
 | Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPN2OTEL_DISABLE_SYSLOG |

@@ -309,7 +309,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 111 total (collector 104 / self_labeled 5 / target_join 2 / global 0)
+### Prometheus sentinels — 112 total (collector 105 / self_labeled 5 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -409,6 +409,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_sfp` | `collector` | existence (series presence) | opnsense2otel > Network > Interfaces > SFP / Optics (DOM) | `label_values(opnsense_interfaces_sfp_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_siproxd` | `collector` | existence (series presence) | opnsense2otel > Services; opnsense2otel > Services > Siproxd; opnsense2otel > Services > Siproxd > Registrations | `label_values(opnsense_siproxd_registrations{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_smart` | `collector` | existence (series presence) | opnsense2otel > System > System & Resources > SMART; opnsense2otel > System > System & Resources > SMART Attributes & NVMe | `label_values(opnsense_smart_device_health{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_smart_plugin` | `collector` | existence (series presence) | opnsense2otel > System > System & Resources > SMART Read Errors | `label_values(opnsense_smart_devices_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_syslog` | `collector` | existence (series presence) | opnsense2otel > Services; opnsense2otel > Services > Syslog; opnsense2otel > Services > Syslog > Syslog-ng Overview; opnsense2otel > Services > Syslog > Syslog-ng Target States; opnsense2otel > Services > Syslog > Syslog-ng Throughput | `label_values(opnsense_syslog_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_syslog_conn_slots` | `self_labeled` | existence (series presence) | opnsense2otel Health > Overview > Syslog Listener Headroom | `label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_tailscale` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access; opnsense2otel > VPN & remote access > Tailscale; opnsense2otel > VPN & remote access > Tailscale > Tailscale Node | `label_values(opnsense_tailscale_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |

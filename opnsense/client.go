@@ -814,10 +814,17 @@ func unmarshalBody(path EndpointPath, body []byte, statusCode int, responseStruc
 		return nil
 	}
 	if err := json.Unmarshal(body, &responseStruct); err != nil {
+		// A type error means the body WAS valid JSON that disagreed with the
+		// struct on some field. encoding/json defers those and carries on, so
+		// responseStruct already holds everything it understood — flag it so a
+		// caller can keep that data rather than discard the payload wholesale
+		// (#615). Syntax errors get no flag: nothing decoded.
+		var typeErr *json.UnmarshalTypeError
 		return &APICallError{
-			Endpoint:   string(path),
-			Message:    fmt.Sprintf("failed to unmarshal response body: %s; body: %s", err.Error(), truncateBody(body)),
-			StatusCode: statusCode,
+			Endpoint:      string(path),
+			Message:       fmt.Sprintf("failed to unmarshal response body: %s; body: %s", err.Error(), truncateBody(body)),
+			StatusCode:    statusCode,
+			PartialDecode: errors.As(err, &typeErr),
 		}
 	}
 	return nil

@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 111,
+    "total": 112,
     "by_scope": {
-      "collector": 104,
+      "collector": 105,
       "self_labeled": 5,
       "target_join": 2,
       "global": 0
@@ -1054,6 +1054,16 @@
         "gates": [
           "opnsense2otel > System > System & Resources > SMART",
           "opnsense2otel > System > System & Resources > SMART Attributes & NVMe"
+        ]
+      },
+      {
+        "name": "has_smart_plugin",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_smart_devices_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel > System > System & Resources > SMART Read Errors"
         ]
       },
       {

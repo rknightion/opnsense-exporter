@@ -57,6 +57,14 @@
     },
     {
       "path": "output.endurance_used",
+      "kind": "object"
+    },
+    {
+      "path": "output.endurance_used.current_percent",
+      "kind": "number"
+    },
+    {
+      "path": "output.endurance_used.threshold_percent",
       "kind": "number"
     },
     {
@@ -117,6 +125,14 @@
     },
     {
       "path": "output.spare_available",
+      "kind": "object"
+    },
+    {
+      "path": "output.spare_available.current_percent",
+      "kind": "number"
+    },
+    {
+      "path": "output.spare_available.threshold_percent",
       "kind": "number"
     },
     {

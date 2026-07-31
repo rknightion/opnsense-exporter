@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 994
-- **Gauges:** 651
+- **Total metrics:** 995
+- **Gauges:** 652
 - **Counters:** 343
 
 ## General
@@ -1140,6 +1140,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_smart_device_spare_available_percent | Gauge | device | SSD spare/reserve blocks remaining, as a percentage of the original spare pool. smartctl derives this by matching vendor-specific reallocated-sector/spare-block attributes, so it is only reported for drives it can normalize — falling toward the drive's own threshold means the wear-leveling reserve is running out (#577). | --exporter.enable-smart |
 | opnsense_smart_device_endurance_used_percent | Gauge | device | SSD endurance used, normalized by smartctl from vendor-specific wear-leveling attributes (0-100+; values above 100 mean the drive has exceeded its rated write endurance and failure risk keeps rising). Only reported for drives smartctl can normalize this from (#577). | --exporter.enable-smart |
 | opnsense_smart_attribute_failed | Gauge | device, attribute_name, attribute_id, when_failed | Emitted with value 1 ONLY for a SATA SMART attribute whose own when_failed marker is non-empty — i.e. that specific attribute, not just the drive's overall smart_status, has failed its threshold now or in the past. when_failed carries the raw smartctl value (\"now\" or \"past\"). A healthy attribute emits no series at all (absence means \"never failed\", not \"unknown\"), so a clean fleet adds ~0 cardinality. This is deliberately a separate metric rather than a new label on attribute_value/worst/threshold/raw: adding a label to those would change their series identity and break continuity of every existing panel/rule reading them (#577). | --exporter.enable-smart |
+| opnsense_smart_device_info_errors | Gauge | reason | Devices whose smartInfo payload could not be fully read in the last poll, by reason (failed = nothing decoded, partial = schema disagreement) | --exporter.enable-smart |
 
 ## Services
 

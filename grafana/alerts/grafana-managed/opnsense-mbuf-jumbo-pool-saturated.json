@@ -26,7 +26,7 @@
       "description": "The {{ $labels.pool }} jumbo mbuf pool has been over 90% of its configured ceiling for 10m. This is headroom BEFORE the pool exhausts and the box starts dropping jumbo-frame traffic, complementing opnsense_mbuf_failures_total (which only reports a failure after it has already happened). Scoped to jumbo9/jumbo16 only - the packet secondary zone has no ceiling series upstream.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensembufjumbopoolsaturated",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "102"
+      "__panelId__": "103"
     },
     "expressions": {
       "A": {

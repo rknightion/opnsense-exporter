@@ -19,6 +19,13 @@ const minReasonLen = 20
 //
 // Regenerate the report with `make fieldaudit`.
 var Exemptions = map[string]string{
+	// opnsense/smart.go:72  json:"threshold_percent"
+	"opnsense.smartWearPercent.ThresholdPercent": "Modelled so the canary does not report it as unmodelled drift, and deliberately " +
+		"not exported yet (#615). smartctl emits it alongside spare_available only — " +
+		"unconditionally on the NVMe path, and on the SATA path when 0 < threshold < 50 " +
+		"(nvmeprint.cpp:505, ataprint.cpp:1206-1208); no emitter writes it for " +
+		"endurance_used. #615 was a decode fix that deliberately left the metric surface " +
+		"unchanged, so a spare-threshold gauge is an opportunity, not part of it.",
 	// opnsense/nginx.go:82  json:"maxIntegerSize"
 	"opnsense.nginxVtsOverCounts.MaxIntegerSize": "Modelled deliberately so the canary does not report it as unmodelled drift, and " +
 		"deliberately never read (#609). It is nginx-module-vts's build-time counter " +

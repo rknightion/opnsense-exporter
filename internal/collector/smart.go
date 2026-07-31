@@ -34,6 +34,8 @@ type smartCollector struct {
 	spareAvailable *prometheus.Desc
 	enduranceUsed  *prometheus.Desc
 
+	infoErrors *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -159,6 +161,21 @@ func (c *smartCollector) Register(namespace, instanceLabel string, log *slog.Log
 			"continuity of every existing panel/rule reading them (#577).",
 		failedLabels,
 	)
+
+	// #615: the per-device info path used to fail at Debug level and nothing
+	// else, so a decode bug that cost EVERY per-device SMART metric on the one
+	// box with a real disk read as perfectly healthy — collector_success=1,
+	// devices_total=1, and not another series in the family. This gauge is the
+	// thing that would have caught it on day one.
+	//
+	// reason="failed" = the device is reported by name only, nothing decoded.
+	// reason="partial" = the payload disagreed with our schema on some field;
+	// the device is kept, but at least one value is missing or degraded to a
+	// zero, which is not distinguishable at the metric it feeds.
+	c.infoErrors = buildPrometheusDesc(c.subsystem, "device_info_errors",
+		"Devices whose smartInfo payload could not be fully read in the last poll, by reason (failed = nothing decoded, partial = schema disagreement)",
+		[]string{"reason"},
+	)
 }
 
 func (c *smartCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -180,6 +197,7 @@ func (c *smartCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.spareAvailable
 	ch <- c.enduranceUsed
 	ch <- c.attributeFailed
+	ch <- c.infoErrors
 }
 
 func (c *smartCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -198,6 +216,24 @@ func (c *smartCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		c.devicesTotal,
 		prometheus.GaugeValue,
 		float64(data.DeviceCount),
+		c.instance,
+	)
+
+	// Always emitted, both reasons, zero included: a series that only appears
+	// when something is wrong cannot be alerted on, and "absent" is exactly
+	// how #615 hid.
+	ch <- prometheus.MustNewConstMetric(
+		c.infoErrors,
+		prometheus.GaugeValue,
+		float64(data.InfoFailures),
+		"failed",
+		c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.infoErrors,
+		prometheus.GaugeValue,
+		float64(data.InfoPartialDecodes),
+		"partial",
 		c.instance,
 	)
 

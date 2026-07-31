@@ -26,7 +26,7 @@
       "description": "Phase2 (child SA) {{ $labels.name }} ({{ $labels.description }}) under phase1 tunnel {{ $labels.phase1_name }} has read established=0 for 5m while that phase1 tunnel is itself connected (status=1). OPNsenseIPsecTunnelDown watches phase1 only and cannot see this: the parent IKE SA is fine, but the child SA for whatever traffic selector this covers has failed or is stuck rekeying, silently blackholing that subnet's traffic while the tunnel looks healthy overall.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseipsecchildsadown",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "342"
+      "__panelId__": "343"
     },
     "expressions": {
       "A": {

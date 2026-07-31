@@ -39,6 +39,11 @@ def build(b: Builder):
     # ---- sentinels ----------------------------------------------------------
     b.sentinel("has_temperature", metric="opnsense_temperature_celsius")
     b.sentinel("has_smart", metric="opnsense_smart_device_health")
+    # Deliberately NOT has_smart: device_health is one of the very series that
+    # went missing in #615, so a decode-error panel gated on it would hide
+    # exactly when it is needed. devices_total comes from the list call, before
+    # any per-device info decode, so it survives that failure mode.
+    b.sentinel("has_smart_plugin", metric="opnsense_smart_devices_total")
     b.sentinel("has_hardware_dmi", metric="opnsense_hardware_dmi_info")
     b.sentinel("has_hardware_psu", metric="opnsense_hardware_psu_status")
 
@@ -954,6 +959,33 @@ def build(b: Builder):
     )
 
     # =========================================================================
+    # Row: SMART Read Errors (gated on the plugin, NOT on has_smart)
+    # =========================================================================
+    smart_info_errors = b.ts(
+        "SMART Read Errors (per device)",
+        [
+            (sel("opnsense_smart_device_info_errors"), "{{reason}}"),
+        ],
+        unit="short",
+        w=24,
+        h=6,
+        desc="opnsense_smart_device_info_errors: devices whose smartInfo payload could not be "
+             "fully read on the last poll. reason=\"failed\" means nothing decoded and the drive "
+             "is reported by name only; reason=\"partial\" means the payload disagreed with our "
+             "schema on some field, so the drive is kept but at least one value is missing or has "
+             "degraded to a plausible-looking zero. Anything above 0 here means the SMART panels "
+             "above are incomplete, and it is the ONLY signal that says so — #615 blanked every "
+             "per-device SMART metric on the production firewall for weeks while the collector "
+             "went on reporting success.",
+    )
+
+    row_smart_errors = b.row(
+        "SMART Read Errors",
+        [smart_info_errors],
+        present="has_smart_plugin",
+    )
+
+    # =========================================================================
     # Row: SMART Attributes & NVMe (gated)
     # =========================================================================
     # NOTE: with multiple exprs the merge transformation names the value
@@ -1464,6 +1496,7 @@ def build(b: Builder):
         row_snapshots,
         row_temp,
         row_smart,
+        row_smart_errors,
         row_smart_detail,
         row_mbuf,
         row_hardware_dmi,
