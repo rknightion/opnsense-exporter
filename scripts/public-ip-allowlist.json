@@ -6,13 +6,8 @@
   },
   {
     "file": "cmd/flowanon/anon_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google), used only as a generic 'this is a public v4 address' test input; not the exporter's own infrastructure."
-  },
-  {
-    "file": "cmd/flowanon/anon_test.go",
-    "value": "2606:4700::1111",
-    "justification": "Public DNS resolver (Cloudflare 1.1.1.1's v6 address), used only as a generic 'this is a public v6 address' test input."
+    "value": "2001:4860:4860::8888",
+    "justification": "Public DNS resolver (Google), used only as a generic 'this is a public v6 address' test input."
   },
   {
     "file": "cmd/flowanon/anon_test.go",
@@ -21,8 +16,13 @@
   },
   {
     "file": "cmd/flowanon/anon_test.go",
-    "value": "2001:4860:4860::8888",
-    "justification": "Public DNS resolver (Google), used only as a generic 'this is a public v6 address' test input."
+    "value": "2606:4700::1111",
+    "justification": "Public DNS resolver (Cloudflare 1.1.1.1's v6 address), used only as a generic 'this is a public v6 address' test input."
+  },
+  {
+    "file": "cmd/flowanon/anon_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google), used only as a generic 'this is a public v4 address' test input; not the exporter's own infrastructure."
   },
   {
     "file": "docs/geoip.md",
@@ -30,94 +30,9 @@
     "justification": "MaxMind's own documented example of an address with no country field in GeoLite2 (referenced by name in MaxMind's docs); a public DNS resolver, not the exporter's infrastructure."
   },
   {
-    "file": "internal/geoip/geoip.go",
+    "file": "internal/collector/gateways_test.go",
     "value": "1.1.1.1",
-    "justification": "MaxMind's own documented example of an address with no country field in GeoLite2; a public DNS resolver, not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "81.2.69.142",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite address (used across MaxMind's own test fixtures industry-wide); not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "89.160.20.128",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "2001:218::1",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "2a02:d500::",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address (no-country-object case); not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "4.4.4.4",
-    "justification": "Deliberately-absent-from-fixture placeholder used to assert a miss; not a real address of anything."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google), used as a generic classification/miss-path test input."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "2001:4860:4860::8888",
-    "justification": "Public DNS resolver (Google), used as a generic classification test input."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "1.0.0.1",
-    "justification": "Public DNS resolver (Cloudflare's secondary), used as a generic ASN-lookup test input."
-  },
-  {
-    "file": "internal/geoip/geoip_test.go",
-    "value": "12.81.96.1",
-    "justification": "MaxMind's published GeoLite2-ASN sample/test-suite address (no-organization case); not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "81.2.69.142",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite address, documented here for fixture provenance; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "89.160.20.128",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "2001:218::1",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "2a02:d500::",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "1.0.0.1",
-    "justification": "Public DNS resolver (Cloudflare's secondary), documented here for fixture provenance."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "12.81.96.1",
-    "justification": "MaxMind's published GeoLite2-ASN sample/test-suite address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/geoip/testdata/README.md",
-    "value": "4.4.4.4",
-    "justification": "Deliberately-absent-from-fixture placeholder documented for fixture provenance; not a real address of anything."
-  },
-  {
-    "file": "internal/geoip/updater_test.go",
-    "value": "81.2.69.142",
-    "justification": "MaxMind's published GeoLite2 sample/test-suite address; not the exporter's infrastructure."
+    "justification": "Public DNS resolver (Cloudflare) used as a generic gateway-monitor target in tests."
   },
   {
     "file": "internal/collector/gateways_test.go",
@@ -130,11 +45,6 @@
     "justification": "Generic placeholder gateway address; not tied to any real firewall."
   },
   {
-    "file": "internal/collector/gateways_test.go",
-    "value": "1.1.1.1",
-    "justification": "Public DNS resolver (Cloudflare) used as a generic gateway-monitor target in tests."
-  },
-  {
     "file": "internal/collector/tor_test.go",
     "value": "1.2.3.4",
     "justification": "Generic placeholder destination host in a synthetic Tor-stream fixture; not a real exit relay or firewall address."
@@ -145,189 +55,14 @@
     "justification": "Generic placeholder destination host in a synthetic Tor-stream fixture; not a real exit relay or firewall address."
   },
   {
-    "file": "opnsense/dyndns_test.go",
-    "value": "1.2.3.4",
-    "justification": "Generic placeholder current_ip in an unrelated sub-test; not tied to any real firewall."
-  },
-  {
-    "file": "opnsense/gateways_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google) used as a generic gateway-monitor target in tests."
-  },
-  {
-    "file": "opnsense/ids_test.go",
-    "value": "52.85.47.113",
-    "justification": "Synthetic IDS/Suricata alert src_ip representing a remote attacker in a fixture; a fabricated example, not the exporter's own network."
-  },
-  {
-    "file": "opnsense/tor.go",
-    "value": "109.73.65.37",
-    "justification": "Illustrative comment mirroring the Tor control-port's own circuit_id example format; a real but arbitrary public Tor relay, not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "1.2.3.4",
-    "justification": "Generic placeholder destination host; not a real exit relay or firewall address."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "5.6.7.8",
-    "justification": "Generic placeholder destination host; not a real exit relay or firewall address."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "194.164.197.45",
-    "justification": "Real public Tor exit-relay address used for fixture realism (the Tor daemon's own stream-status listing); not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "192.42.116.32",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "136.243.147.89",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "109.73.65.37",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "89.47.51.189",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "188.165.136.211",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "148.251.83.53",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "83.228.196.41",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "94.130.142.182",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "135.125.89.25",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "5.9.14.30",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "192.42.116.77",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "192.121.108.118",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "192.42.116.44",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "opnsense/tor_test.go",
-    "value": "194.13.83.131",
-    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/logship/enrich/refresh_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google) used as a generic remote-scope classification input."
-  },
-  {
-    "file": "internal/logship/enrich/snapshot_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google) used as a generic remote-scope classification input."
-  },
-  {
-    "file": "internal/logship/enrich/snapshot_test.go",
-    "value": "2606:4700::1",
-    "justification": "Public DNS resolver (Cloudflare) used as a generic remote-scope classification input."
-  },
-  {
-    "file": "internal/logship/ids_test.go",
-    "value": "52.85.47.113",
-    "justification": "Synthetic IDS/Suricata alert src_ip representing a remote attacker in a fixture; a fabricated example, not the exporter's own network."
-  },
-  {
-    "file": "internal/logship/syslog/suricata_test.go",
-    "value": "52.85.47.113",
-    "justification": "Synthetic IDS/Suricata alert src_ip representing a remote attacker in a fixture; a fabricated example, not the exporter's own network."
-  },
-  {
-    "file": "internal/logship/syslog/enrichgeneric_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google) used as a generic monit-check destination in a fixture."
-  },
-  {
-    "file": "internal/logship/zenarmor/dnsfeed_test.go",
-    "value": "93.184.216.34",
-    "justification": "The historical example.com/example.net IP, the industry-standard 'this is a placeholder DNS answer' address; not the exporter's infrastructure."
-  },
-  {
-    "file": "internal/logship/zenarmor/dnsfeed_test.go",
-    "value": "93.184.216.35",
-    "justification": "Adjacent to the historical example.com/example.net placeholder address, used only as a second DNS answer in the same fixture."
-  },
-  {
-    "file": "internal/logship/zenarmor/fixtures_test.go",
-    "value": "93.184.216.34",
-    "justification": "The historical example.com/example.net placeholder IP, used as a generic connection destination in a fixture."
-  },
-  {
-    "file": "internal/logship/zenarmor/metadata_prune_test.go",
+    "file": "internal/collector/unbound_dns_test.go",
     "value": "1.1.1.1",
-    "justification": "Public DNS resolver (Cloudflare) used as a generic connection destination in a fixture."
+    "justification": "Public DNS resolver (Cloudflare), used as the HEALTHY upstream in the #581 infra-cache fixture: the test asserts lame/dnssec_lame/edns_broken all read 0 for it. A well-known resolver is deliberate - a reader has to be able to tell the healthy row from the broken one at a glance. Not the exporter's own infrastructure and not read at runtime."
   },
   {
-    "file": "internal/logship/zenarmor/self_test.go",
-    "value": "8.8.8.8",
-    "justification": "Public DNS resolver (Google) used as a generic connection destination in a fixture."
-  },
-  {
-    "file": "internal/logship/zenarmor/derive_test.go",
-    "value": "61.145.136.88",
-    "justification": "Synthetic external connection destination in a derive fixture; a fabricated example, not the exporter's own network."
-  },
-  {
-    "file": "internal/logship/zenarmor/fixtures_test.go",
-    "value": "61.145.136.88",
-    "justification": "Synthetic external connection destination in a fixture; a fabricated example, not the exporter's own network."
-  },
-  {
-    "file": "internal/logship/syslog/unbound.go",
-    "value": "162.159.36.20",
-    "justification": "A Cloudflare-operated public DNS infrastructure address named as the upstream in a captured SERVFAIL example; not the exporter's own network."
-  },
-  {
-    "file": "internal/logship/syslog/unbound_test.go",
-    "value": "162.159.36.20",
-    "justification": "A Cloudflare-operated public DNS infrastructure address named as the upstream in a captured SERVFAIL example; not the exporter's own network."
-  },
-  {
-    "file": "todos.txt",
-    "value": "1.2.3.4",
-    "justification": "Generic placeholder address in illustrative sample API payloads (Tailscale/CrowdSec backlog notes); not tied to any real firewall."
+    "file": "internal/collector/unbound_dns_test.go",
+    "value": "9.9.9.9",
+    "justification": "Public DNS resolver (Quad9), used as the DEGRADED upstream in the #581 infra-cache fixture: the test asserts lame/dnssec_lame/edns_broken read 1 for it. Paired with 1.1.1.1 above so the healthy and lame rows are distinguishable on sight. Not the exporter's own infrastructure and not read at runtime."
   },
   {
     "file": "internal/flow/communityid_test.go",
@@ -425,8 +160,298 @@
     "justification": "Public DNS resolver (Google) used as a generic top-talker test destination."
   },
   {
+    "file": "internal/geoip/geoip.go",
+    "value": "1.1.1.1",
+    "justification": "MaxMind's own documented example of an address with no country field in GeoLite2; a public DNS resolver, not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "1.0.0.1",
+    "justification": "Public DNS resolver (Cloudflare's secondary), used as a generic ASN-lookup test input."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "12.81.96.1",
+    "justification": "MaxMind's published GeoLite2-ASN sample/test-suite address (no-organization case); not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "2001:218::1",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "2001:4860:4860::8888",
+    "justification": "Public DNS resolver (Google), used as a generic classification test input."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "2a02:d500::",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address (no-country-object case); not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "4.4.4.4",
+    "justification": "Deliberately-absent-from-fixture placeholder used to assert a miss; not a real address of anything."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google), used as a generic classification/miss-path test input."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "81.2.69.142",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite address (used across MaxMind's own test fixtures industry-wide); not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/geoip_test.go",
+    "value": "89.160.20.128",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "1.0.0.1",
+    "justification": "Public DNS resolver (Cloudflare's secondary), documented here for fixture provenance."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "12.81.96.1",
+    "justification": "MaxMind's published GeoLite2-ASN sample/test-suite address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "2001:218::1",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "2a02:d500::",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite v6 address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "4.4.4.4",
+    "justification": "Deliberately-absent-from-fixture placeholder documented for fixture provenance; not a real address of anything."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "81.2.69.142",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite address, documented here for fixture provenance; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/testdata/README.md",
+    "value": "89.160.20.128",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/geoip/updater_test.go",
+    "value": "81.2.69.142",
+    "justification": "MaxMind's published GeoLite2 sample/test-suite address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/logship/enrich/refresh_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google) used as a generic remote-scope classification input."
+  },
+  {
+    "file": "internal/logship/enrich/snapshot_test.go",
+    "value": "2606:4700::1",
+    "justification": "Public DNS resolver (Cloudflare) used as a generic remote-scope classification input."
+  },
+  {
+    "file": "internal/logship/enrich/snapshot_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google) used as a generic remote-scope classification input."
+  },
+  {
+    "file": "internal/logship/ids_test.go",
+    "value": "52.85.47.113",
+    "justification": "Synthetic IDS/Suricata alert src_ip representing a remote attacker in a fixture; a fabricated example, not the exporter's own network."
+  },
+  {
+    "file": "internal/logship/syslog/enrichgeneric_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google) used as a generic monit-check destination in a fixture."
+  },
+  {
+    "file": "internal/logship/syslog/suricata_test.go",
+    "value": "52.85.47.113",
+    "justification": "Synthetic IDS/Suricata alert src_ip representing a remote attacker in a fixture; a fabricated example, not the exporter's own network."
+  },
+  {
+    "file": "internal/logship/syslog/unbound.go",
+    "value": "162.159.36.20",
+    "justification": "A Cloudflare-operated public DNS infrastructure address named as the upstream in a captured SERVFAIL example; not the exporter's own network."
+  },
+  {
+    "file": "internal/logship/syslog/unbound_test.go",
+    "value": "162.159.36.20",
+    "justification": "A Cloudflare-operated public DNS infrastructure address named as the upstream in a captured SERVFAIL example; not the exporter's own network."
+  },
+  {
+    "file": "internal/logship/zenarmor/derive_test.go",
+    "value": "61.145.136.88",
+    "justification": "Synthetic external connection destination in a derive fixture; a fabricated example, not the exporter's own network."
+  },
+  {
+    "file": "internal/logship/zenarmor/dnsfeed_test.go",
+    "value": "93.184.216.34",
+    "justification": "The historical example.com/example.net IP, the industry-standard 'this is a placeholder DNS answer' address; not the exporter's infrastructure."
+  },
+  {
+    "file": "internal/logship/zenarmor/dnsfeed_test.go",
+    "value": "93.184.216.35",
+    "justification": "Adjacent to the historical example.com/example.net placeholder address, used only as a second DNS answer in the same fixture."
+  },
+  {
+    "file": "internal/logship/zenarmor/fixtures_test.go",
+    "value": "61.145.136.88",
+    "justification": "Synthetic external connection destination in a fixture; a fabricated example, not the exporter's own network."
+  },
+  {
+    "file": "internal/logship/zenarmor/fixtures_test.go",
+    "value": "93.184.216.34",
+    "justification": "The historical example.com/example.net placeholder IP, used as a generic connection destination in a fixture."
+  },
+  {
+    "file": "internal/logship/zenarmor/metadata_prune_test.go",
+    "value": "1.1.1.1",
+    "justification": "Public DNS resolver (Cloudflare) used as a generic connection destination in a fixture."
+  },
+  {
+    "file": "internal/logship/zenarmor/self_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google) used as a generic connection destination in a fixture."
+  },
+  {
+    "file": "opnsense/dyndns_test.go",
+    "value": "1.2.3.4",
+    "justification": "Generic placeholder current_ip in an unrelated sub-test; not tied to any real firewall."
+  },
+  {
+    "file": "opnsense/gateways_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google) used as a generic gateway-monitor target in tests."
+  },
+  {
+    "file": "opnsense/ids_test.go",
+    "value": "52.85.47.113",
+    "justification": "Synthetic IDS/Suricata alert src_ip representing a remote attacker in a fixture; a fabricated example, not the exporter's own network."
+  },
+  {
     "file": "opnsense/network_diagnostics_test.go",
     "value": "8.8.8.8",
     "justification": "Public DNS resolver (Google) used as a generic route destination in a fixture."
+  },
+  {
+    "file": "opnsense/tor.go",
+    "value": "109.73.65.37",
+    "justification": "Illustrative comment mirroring the Tor control-port's own circuit_id example format; a real but arbitrary public Tor relay, not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "1.2.3.4",
+    "justification": "Generic placeholder destination host; not a real exit relay or firewall address."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "109.73.65.37",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "135.125.89.25",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "136.243.147.89",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "148.251.83.53",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "188.165.136.211",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "192.121.108.118",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "192.42.116.32",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "192.42.116.44",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "192.42.116.77",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "194.13.83.131",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "194.164.197.45",
+    "justification": "Real public Tor exit-relay address used for fixture realism (the Tor daemon's own stream-status listing); not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "5.6.7.8",
+    "justification": "Generic placeholder destination host; not a real exit relay or firewall address."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "5.9.14.30",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "83.228.196.41",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "89.47.51.189",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/tor_test.go",
+    "value": "94.130.142.182",
+    "justification": "Real public Tor exit-relay address used for fixture realism; not the exporter's infrastructure."
+  },
+  {
+    "file": "opnsense/unbound_dns_test.go",
+    "value": "1.1.1.1",
+    "justification": "Public DNS resolver (Cloudflare), the healthy upstream in the FetchUnboundInfra decode fixture (#581) - the client-side twin of the collector fixture. Not the exporter's own infrastructure and not read at runtime."
+  },
+  {
+    "file": "opnsense/unbound_dns_test.go",
+    "value": "8.8.8.8",
+    "justification": "Public DNS resolver (Google), the third row in the FetchUnboundInfra fixture that pins TestFetchUnboundInfra_LameKeyIsALiteralNotAFlag: unbound's dump_infra format string emits a bare literal word 'lame' with no operand, so wrapper.py stamps \"lame\": true on EVERY host including healthy ones. A third recognisable resolver makes that all-hosts-true property visible in the fixture. Not the exporter's own infrastructure."
+  },
+  {
+    "file": "opnsense/unbound_dns_test.go",
+    "value": "9.9.9.9",
+    "justification": "Public DNS resolver (Quad9), the degraded upstream in the FetchUnboundInfra decode fixture (#581). Not the exporter's own infrastructure and not read at runtime."
+  },
+  {
+    "file": "todos.txt",
+    "value": "1.2.3.4",
+    "justification": "Generic placeholder address in illustrative sample API payloads (Tailscale/CrowdSec backlog notes); not tied to any real firewall."
   }
 ]
