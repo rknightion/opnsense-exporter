@@ -793,32 +793,37 @@ time() - opnsense_log_events_dhcp6c_address_updated_timestamp_seconds
 ## OPNsenseDHCP6AllocationFailures
 
 **Severity:** warning  
-**Pending window:** 10m0s  
+**Pending window:** 30m0s  
 **Rule name:** `opnsense-dhcp6-alloc-failures`
 
 **Expression:**
 ```promql
-sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[15m]))
+sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[5m]))
 ```
 
 **What it measures:** Rate of DHCPv6 allocation failures reported by kea-dhcp6, by reason. Counted once per failed allocation - kea emits up to three lines per failure sharing a tid, and only the cause line is counted.
 
-**Threshold & window:** gt 0 sustained for 10m. Must be a rate: a single refusal from a client that has since been served is not worth paging on, a sustained one is.
+**Threshold & window:** gt 0 on a 5m window, sustained for 30m. The pending period deliberately EXCEEDS the window (#594): a lone refusal keeps a rate window non-empty for the width of that window, so a pending period shorter than the window fires on a single event. Requiring every rolling 5m window to be non-empty for 30m straight means a real stuck pool fires while an occasional refusal does not.
 
 **Absent / no-data semantics:** Default noDataState (Ok). No series means kea-dhcp6 has refused nothing, which is the normal state.
 
 **First checks:**
-- reason=no_pools: check that the subnet the client is on actually has a v6 pool defined - this one never resolves itself
+- FIRST, establish whether the refusal was for an ADDRESS or a PREFIX - the metric cannot tell you, and the answer changes everything below. Capture a request: `tcpdump -i <lan-if> -n -vv "udp port 547"` and read whether the client SOLICIT carries IA_NA or IA_PD. An ADVERTISE answering with `IA_PD ... status-code NoPrefixAvail` is a prefix-delegation refusal
+- Identify the client. Every kea alloc-fail line carries duid=[...]; the exporter ships it as the dhcp.duid attribute, so group the log events by it. A single DUID at a low steady cadence is usually a border router asking for a prefix, not a subnet full of denied clients
+- reason=no_pools on an IA_PD request: the subnet has no pd-pools entry. Configure one (Services > Kea DHCP > DHCPv6, Prefix Delegation Pools) if the delegation is wanted, and be aware kea installs no route back to a delegated prefix. If it is not wanted, this is cosmetic
+- reason=no_pools on an IA_NA request: check that the subnet the client is on actually has a v6 address pool defined - this one never resolves itself
 - reason=exhausted: check pool utilisation against the lease count on the DHCP tab, and whether the lease time is long enough to be holding addresses for departed clients
 - Check whether the failures correlate with the delegated prefix changing - a re-delegation invalidates the pool the old subnet was carved from
 
 **Likely causes:**
-- The v6 pool is genuinely full
-- No pool is configured for the subnet or client class in question
+- The v6 address pool is genuinely full
+- No address pool is configured for the subnet or client class in question
+- No pd-pools is configured and something on the LAN wants a delegated prefix - commonly a Thread border router or a downstream router. Benign if the delegation is not wanted; the client falls back to a self-generated ULA prefix
 - The delegated prefix changed and the configured pools still reference the old one
 
 **Verify recovery:**
 - The failure rate returns to zero and clients obtain leases again
+- For the IA_PD case, the client SOLICIT is answered with a prefix rather than NoPrefixAvail
 
 ## OPNsenseNetisrQueueDrops
 

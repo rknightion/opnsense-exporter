@@ -905,31 +905,54 @@ RULES = [
                 'An address_lease_created or address_lease_updated event lands and the age drops back to near zero',
             ],
          )),
+    # THE WINDOW MUST STAY SHORTER THAN THE PENDING PERIOD (#594). This rule shipped as
+    # `rate(...[15m])` with `for_min=10`, and a 15m window under a 10m pending period
+    # fires on ONE event: a lone increment keeps the window non-empty for a full 15m,
+    # which outlasts the 10m pending period, so it reached Alerting and resolved ~5m
+    # later. On prod that was one HomePod acting as a Thread border router, soliciting a
+    # prefix delegation once an hour that the box has no `pd-pools` to satisfy - 10
+    # Alerting transitions in 48h, none of them a lease outage.
+    #
+    # The shape is now `OPNsenseEndpointErrors`': a deliberately SHORT inner window under
+    # a LONG pending period, so the condition holds only while EVERY rolling 5m window
+    # stays non-empty. One refusal per hour leaves 55 minutes of zeros that reset the
+    # pending period; a genuinely stuck pool refuses on every request and keeps them all
+    # non-empty. `grafana/tests/test_single_event_sensitivity.py` pins the invariant for
+    # every windowed gt-0 rule, so this cannot silently regress.
     dict(name="opnsense-dhcp6-alloc-failures", title="OPNsenseDHCP6AllocationFailures",
-         A="sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[15m]))",
-         op="gt", params=[0, 0], for_min=10, severity="warning",
+         A="sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[5m]))",
+         op="gt", params=[0, 0], for_min=30, severity="warning",
          summary="OPNsense kea-dhcp6 is refusing IPv6 leases: {{ $labels.reason }} ({{ $labels.opnsense_instance }})",
-         description="This box's own DHCPv6 SERVER has been refusing lease requests for 10m. The "
-                     "opposite direction from the prefix alerts: clients on the LAN are being "
-                     "denied IPv6 addresses. reason=exhausted means the pool is full; "
-                     "reason=no_pools means the subnet has no pool configured for that client at "
-                     "all, which is a configuration fault rather than a capacity one.",
+         description="This box's own DHCPv6 SERVER has been refusing lease requests continuously "
+                     "for 30m. reason=exhausted means the pool it tried is full. reason=no_pools "
+                     "means kea had NO pool of the requested kind to try - which is a "
+                     "configuration fault, but note it does not say WHICH kind: kea reports "
+                     "no_pools both for a missing address pool on an IA_NA request and for a "
+                     "missing pd-pools on an IA_PD (prefix delegation) request, and the log line "
+                     "names neither. An IA_PD refusal denies a downstream router or Thread "
+                     "border router a prefix; it does not deny anyone an address. Confirm which "
+                     "before treating this as a client-facing outage.",
          runbook=dict(
              measures='Rate of DHCPv6 allocation failures reported by kea-dhcp6, by reason. Counted once per failed allocation - kea emits up to three lines per failure sharing a tid, and only the cause line is counted.',
-             threshold='gt 0 sustained for 10m. Must be a rate: a single refusal from a client that has since been served is not worth paging on, a sustained one is.',
+             threshold='gt 0 on a 5m window, sustained for 30m. The pending period deliberately EXCEEDS the window (#594): a lone refusal keeps a rate window non-empty for the width of that window, so a pending period shorter than the window fires on a single event. Requiring every rolling 5m window to be non-empty for 30m straight means a real stuck pool fires while an occasional refusal does not.',
              absent='Default noDataState (Ok). No series means kea-dhcp6 has refused nothing, which is the normal state.',
              checks=[
-                'reason=no_pools: check that the subnet the client is on actually has a v6 pool defined - this one never resolves itself',
+                'FIRST, establish whether the refusal was for an ADDRESS or a PREFIX - the metric cannot tell you, and the answer changes everything below. Capture a request: `tcpdump -i <lan-if> -n -vv "udp port 547"` and read whether the client SOLICIT carries IA_NA or IA_PD. An ADVERTISE answering with `IA_PD ... status-code NoPrefixAvail` is a prefix-delegation refusal',
+                'Identify the client. Every kea alloc-fail line carries duid=[...]; the exporter ships it as the dhcp.duid attribute, so group the log events by it. A single DUID at a low steady cadence is usually a border router asking for a prefix, not a subnet full of denied clients',
+                'reason=no_pools on an IA_PD request: the subnet has no pd-pools entry. Configure one (Services > Kea DHCP > DHCPv6, Prefix Delegation Pools) if the delegation is wanted, and be aware kea installs no route back to a delegated prefix. If it is not wanted, this is cosmetic',
+                'reason=no_pools on an IA_NA request: check that the subnet the client is on actually has a v6 address pool defined - this one never resolves itself',
                 'reason=exhausted: check pool utilisation against the lease count on the DHCP tab, and whether the lease time is long enough to be holding addresses for departed clients',
                 'Check whether the failures correlate with the delegated prefix changing - a re-delegation invalidates the pool the old subnet was carved from',
             ],
              causes=[
-                'The v6 pool is genuinely full',
-                'No pool is configured for the subnet or client class in question',
+                'The v6 address pool is genuinely full',
+                'No address pool is configured for the subnet or client class in question',
+                'No pd-pools is configured and something on the LAN wants a delegated prefix - commonly a Thread border router or a downstream router. Benign if the delegation is not wanted; the client falls back to a self-generated ULA prefix',
                 'The delegated prefix changed and the configured pools still reference the old one',
             ],
              verify=[
                 'The failure rate returns to zero and clients obtain leases again',
+                'For the IA_PD case, the client SOLICIT is answered with a prefix rather than NoPrefixAvail',
             ],
          )),
     dict(name="opnsense-netisr-queue-drops", title="OPNsenseNetisrQueueDrops",

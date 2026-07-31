@@ -14,7 +14,7 @@
     "title": "OPNsenseDHCP6AllocationFailures",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "10m0s",
+    "for": "30m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -23,7 +23,7 @@
     },
     "annotations": {
       "summary": "OPNsense kea-dhcp6 is refusing IPv6 leases: {{ $labels.reason }} ({{ $labels.opnsense_instance }})",
-      "description": "This box's own DHCPv6 SERVER has been refusing lease requests for 10m. The opposite direction from the prefix alerts: clients on the LAN are being denied IPv6 addresses. reason=exhausted means the pool is full; reason=no_pools means the subnet has no pool configured for that client at all, which is a configuration fault rather than a capacity one.",
+      "description": "This box's own DHCPv6 SERVER has been refusing lease requests continuously for 30m. reason=exhausted means the pool it tried is full. reason=no_pools means kea had NO pool of the requested kind to try - which is a configuration fault, but note it does not say WHICH kind: kea reports no_pools both for a missing address pool on an IA_NA request and for a missing pd-pools on an IA_PD (prefix delegation) request, and the log line names neither. An IA_PD refusal denies a downstream router or Thread border router a prefix; it does not deny anyone an address. Confirm which before treating this as a client-facing outage.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6allocationfailures",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "285"
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[15m]))",
+          "expr": "sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[5m]))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
