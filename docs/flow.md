@@ -632,6 +632,30 @@ would be attributed to the LAN. The exporter reconstructs the child device
 (`ixl0` + tag `50` → `ixl0_vlan50`) before resolving the name, so IOT traffic reads
 as `IOT`. On the capture box that is 20.5% of flows.
 
+### `unresolved` is a real interface value
+
+The flow lanes are **push**-based: Zenarmor and ng_netflow send records on their own
+schedule, while the interface descriptions come from the enrichment snapshot, which
+the exporter fetches on its. So there is a window after every restart where a record
+arrives naming a kernel device we cannot yet turn into a description.
+
+Falling back to the raw device there is wrong in a specific way: the box **does** have
+a description, it just had not been read, so `interface="ixl0"` appeared beside the
+`interface="LAN"` the same interface got a minute later - one interface split across
+two series, and every `sum by (interface)` short on both. Those records are now
+labelled `interface="unresolved"` instead, counted by
+`opnsense_flow_interface_unresolved_total`, and the kernel device still travels on the
+log record as `flow.in_device` / `flow.out_device` so nothing is lost.
+
+It is a startup artifact and it closes on its own. Measured over 7 days and 51
+restarts on the reference box, **every** byte ever attributed to a raw kernel device
+landed with the process less than **300 seconds** old, and past that the raw-device
+series were completely flat. A rate that keeps climbing past a few minutes of uptime
+means the interface fetch itself is failing, not that a restart happened.
+
+A device the box genuinely has no description for is a different case and keeps its
+raw name: the sentinel is for "we could not ask", not for "there is no answer".
+
 ### `direction` uses the firewall's own topology
 
 Two sources of truth, each used for what it actually knows. The firewall's

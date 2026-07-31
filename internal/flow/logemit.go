@@ -52,6 +52,17 @@ func (r Record) LogAttributes() map[string]string {
 	if r.Out.Label() != "" {
 		a["flow.out_interface"] = r.Out.Label()
 	}
+	// When the label is the unresolved sentinel the kernel device is still known and
+	// still useful — it is only barred from the metric LABEL, where it would invent a
+	// second series for an interface that already has one (#606). Keeping it here
+	// means nothing is lost, and a record from the cold window can still be joined
+	// against the interface metrics by device.
+	if r.In.Unresolved && r.In.Device != "" {
+		a["flow.in_device"] = r.In.Device
+	}
+	if r.Out.Unresolved && r.Out.Device != "" {
+		a["flow.out_device"] = r.Out.Device
+	}
 	if r.VLANID != "" {
 		a["flow.vlan"] = r.VLANID
 	}

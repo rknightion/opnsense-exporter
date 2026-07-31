@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1001
+- **Total metrics:** 1002
 - **Gauges:** 654
-- **Counters:** 347
+- **Counters:** 348
 
 ## General
 
@@ -400,6 +400,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_packets_total | Counter | interface, direction, transport, category, action, source, scope, country | Packets observed in flow records, by bounded dimension. Same folding, reset and cross-source semantics as opnsense_flow_bytes_total. | --exporter.disable-flow |
 | opnsense_flow_records_total | Counter | interface, direction, transport, category, action, source, scope, country | Flow records observed, by bounded dimension. Counts records, not connections: a Zenarmor conn document is one per connection, but a NetFlow connection produces several records. | --exporter.disable-flow |
 | opnsense_flow_payload_byte_fallback_total | Counter | --- | Flow records whose byte count came from Zenarmor's payload counter because its wire counter read zero. Zenarmor only accumulates wire bytes once it has tracked a flow past its first packets, so short UDP flows (DNS, STUN, SSDP) report zero; without the fallback those records would count toward records_total with no bytes at all. | --exporter.disable-flow |
+| opnsense_flow_interface_unresolved_total | Counter | --- | Flow records emitted with interface=\"unresolved\" because the interface table had not arrived yet. The source states a kernel device; the DESCRIPTION comes from the enrichment snapshot, which lands on the exporter's own schedule, so a push lane can ingest for minutes before it can label anything. Emitting the raw device instead would invent a SECOND series for an interface that already has one and make every `sum by (interface)` under-report both (#606). This is a startup artifact and it closes on its own: on the reference box every such record landed with the process less than 300 seconds old, across 7 days and 51 restarts. A rate that continues past that means the interface fetch itself is failing, not that a restart happened. | --exporter.disable-flow |
 | opnsense_flow_rollup_keys | Gauge | --- | Distinct label combinations currently tracked by the flow rollup accumulator. | --exporter.disable-flow |
 | opnsense_flow_rollup_keys_max | Gauge | --- | Configured ceiling on tracked label combinations (--flow.max-keys); 0 means unbounded. At the ceiling every NEW combination folds into __other__ indefinitely, so compare against opnsense_flow_rollup_keys to see saturation coming. | --exporter.disable-flow |
 | opnsense_flow_rollup_top_n | Gauge | --- | Configured ceiling on emitted series (--flow.top-n); 0 means unbounded. | --exporter.disable-flow |

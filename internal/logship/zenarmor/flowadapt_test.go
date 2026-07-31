@@ -485,3 +485,39 @@ func (s *countingFlowSink) Observe(r flow.Record) {
 }
 
 var _ flow.Sink = (*countingFlowSink)(nil)
+
+// #606: a record ingested BEFORE the first enrichment snapshot must not label its
+// interface with the raw kernel device. Measured on the reference box, every byte
+// ever attributed to a raw device landed with the process less than 300 seconds old,
+// across 7 days and 51 restarts — a startup window, not a lookup failure.
+func TestFlowFromDoc_ColdSnapshotYieldsTheUnresolvedSentinel(t *testing.T) {
+	r, ok := flowFromDoc("flow", flowDoc(t, "flow", flowVLANTagged), nil, nil, time.Now())
+	if !ok {
+		t.Fatal("flowFromDoc refused the document")
+	}
+	if r.In.Device == "" {
+		t.Fatal("In.Device is empty; the device must still travel on the record")
+	}
+	if !r.In.Unresolved {
+		t.Fatal("In.Unresolved = false with no enrichment snapshot at all")
+	}
+	if got := r.In.Label(); got != flow.UnresolvedInterfaceLabel {
+		t.Fatalf("Label() = %q, want %q — the raw device must not reach the metric label",
+			got, flow.UnresolvedInterfaceLabel)
+	}
+}
+
+// A snapshot that HAS the interface table and simply does not name this device is a
+// different, honest case: the box really has no description for it, so the raw device
+// stays the label. Guards the sentinel against swallowing real interfaces.
+func TestFlowFromDoc_PopulatedSnapshotMissingOneDeviceIsNotUnresolved(t *testing.T) {
+	snap := flowSnapshot()
+	delete(snap.IfaceNames, "ixl0_vlan50")
+	r, _ := flowFromDoc("flow", flowDoc(t, "flow", flowVLANTagged), snap, nil, time.Now())
+	if r.In.Unresolved {
+		t.Fatal("In.Unresolved = true against a populated interface table")
+	}
+	if got := r.In.Label(); got != "ixl0_vlan50" {
+		t.Fatalf("Label() = %q, want the raw device", got)
+	}
+}

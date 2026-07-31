@@ -81,7 +81,9 @@ def build(b: Builder):
         [(f'sum {grp(BY_SOURCE)} (rate({sel("opnsense_flow_rollup_capped_total")}[{RATE}]))',
           "records lost to the max-keys cap"),
          (f'rate({sel("opnsense_flow_payload_byte_fallback_total")}[{RATE}])',
-          "records using the payload-byte fallback")],
+          "records using the payload-byte fallback"),
+         (f'rate({sel("opnsense_flow_interface_unresolved_total")}[{RATE}])',
+          "records labelled interface=unresolved")],
         unit="ops",
         desc="Two counters that must never be silent. capped_total rising means new label "
              "combinations are hitting the memory cap, not merely the top-N — raise --flow.max-keys "
@@ -89,7 +91,17 @@ def build(b: Builder):
              "byte figure came from Zenarmor's payload counter because its wire counter read zero, "
              "which it does on short UDP flows (DNS, STUN, SSDP); without the fallback those "
              "records would be counted with no bytes at all, so a steady rate here is normal and "
-             "is the repair working.",
+             "is the repair working. "
+             "interface_unresolved_total is the startup window (#606): the flow lanes are push-based "
+             "and the interface DESCRIPTIONS arrive on the exporter's own schedule, so records "
+             "ingested before the first snapshot name a kernel device we cannot yet translate. They "
+             "are labelled interface=\"unresolved\" rather than with the raw device, which would "
+             "invent a second series for an interface that already has one and leave every "
+             "`sum by (interface)` short on both. Expect one burst per restart and nothing between: "
+             "on the reference box every such record landed inside 300 seconds of process uptime, "
+             "across 7 days and 51 restarts. A rate continuing past that means the interface fetch "
+             "is failing, not that something restarted - correlate against "
+             "changes(process_start_time_seconds).",
     )
 
     # ---- NetFlow lane (phase 2) -------------------------------------------------

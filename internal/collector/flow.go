@@ -61,6 +61,9 @@ type FlowStore struct {
 	// payload counter because its wire counter read zero. A repair nobody can
 	// observe is a repair nobody will trust.
 	payloadByteFallback atomic.Uint64
+	// interfaceUnresolved counts records emitted with the unresolved-interface
+	// sentinel because the enrichment snapshot had not arrived yet (#606).
+	interfaceUnresolved atomic.Uint64
 
 	// dnsCache is the source of the DNS answer-cache self-metrics (#353). nil until
 	// main builds the cache, which it does whenever flow is enabled; published from
@@ -198,6 +201,9 @@ func (s *FlowStore) Observe(r flow.Record) {
 	if r.Repairs.PayloadByteFallback {
 		s.payloadByteFallback.Add(1)
 	}
+	if r.In.Unresolved || r.Out.Unresolved {
+		s.interfaceUnresolved.Add(1)
+	}
 	s.rollup.Observe(r)
 	s.uniqueDests.Observe(r)
 	s.topTalkers.Observe(r)
@@ -243,10 +249,11 @@ type flowCollector struct {
 	instance  string
 	store     *FlowStore
 
-	bytes    *prometheus.Desc
-	packets  *prometheus.Desc
-	records  *prometheus.Desc
-	fallback *prometheus.Desc
+	bytes               *prometheus.Desc
+	packets             *prometheus.Desc
+	records             *prometheus.Desc
+	fallback            *prometheus.Desc
+	interfaceUnresolved *prometheus.Desc
 
 	rollupKeys    *prometheus.Desc
 	rollupKeysMax *prometheus.Desc
@@ -376,6 +383,18 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		nil,
 	)
 
+	c.interfaceUnresolved = buildPrometheusDesc(c.subsystem, "interface_unresolved_total",
+		"Flow records emitted with interface=\"unresolved\" because the interface table had not "+
+			"arrived yet. The source states a kernel device; the DESCRIPTION comes from the "+
+			"enrichment snapshot, which lands on the exporter's own schedule, so a push lane can "+
+			"ingest for minutes before it can label anything. Emitting the raw device instead would "+
+			"invent a SECOND series for an interface that already has one and make every "+
+			"`sum by (interface)` under-report both (#606). This is a startup artifact and it "+
+			"closes on its own: on the reference box every such record landed with the process less "+
+			"than 300 seconds old, across 7 days and 51 restarts. A rate that continues past that "+
+			"means the interface fetch itself is failing, not that a restart happened.",
+		nil,
+	)
 	c.rollupKeys = buildPrometheusDesc(c.subsystem, "rollup_keys",
 		"Distinct label combinations currently tracked by the flow rollup accumulator.", nil)
 	c.rollupKeysMax = buildPrometheusDesc(c.subsystem, "rollup_keys_max",
@@ -943,6 +962,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.packets
 	ch <- c.records
 	ch <- c.fallback
+	ch <- c.interfaceUnresolved
 	ch <- c.rollupKeys
 	ch <- c.rollupKeysMax
 	ch <- c.rollupTopN
@@ -1019,6 +1039,8 @@ func (c *flowCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- 
 	// operator needs to know whether it has ever fired.
 	ch <- prometheus.MustNewConstMetric(c.fallback, prometheus.CounterValue,
 		float64(c.store.payloadByteFallback.Load()), c.instance)
+	ch <- prometheus.MustNewConstMetric(c.interfaceUnresolved, prometheus.CounterValue,
+		float64(c.store.interfaceUnresolved.Load()), c.instance)
 
 	st := c.store.rollup.Stats()
 	ch <- prometheus.MustNewConstMetric(c.rollupKeys, prometheus.GaugeValue, float64(st.Keys), c.instance)

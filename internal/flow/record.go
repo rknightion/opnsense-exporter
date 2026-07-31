@@ -121,7 +121,31 @@ type Iface struct {
 	Name      string // OPNsense description, e.g. "IOT"; empty when unmapped
 	Index     uint32 // NetFlow ifIndex; 0 for Zenarmor
 	Corrected bool
+	// Unresolved marks an interface whose DEVICE the record's source stated but whose
+	// description could not be looked up, because the enrichment snapshot had not
+	// arrived yet (#606).
+	//
+	// It exists because Label()'s device fallback is right for a device the box
+	// genuinely has no description for, and WRONG here: the box has a description, we
+	// simply had not loaded it, so falling back produced a SECOND series
+	// (interface="ixl0") for an interface that already had one (interface="LAN"), and
+	// every `sum by (interface)` under-reported both. Measured on the reference box:
+	// every byte ever attributed to a raw kernel device landed with the process less
+	// than 300 seconds old, across 7 days and 51 restarts.
+	//
+	// The device is NOT discarded — it still travels on the record and reaches the log
+	// as flow.in_device / flow.out_device. What changes is that the metric label says
+	// "unresolved" instead of impersonating a distinct interface.
+	Unresolved bool
 }
+
+// UnresolvedInterfaceLabel is the metric-label value for an interface whose
+// description could not be resolved (see Iface.Unresolved).
+//
+// A named sentinel rather than "": an empty label is absent to Prometheus, so the
+// bytes would vanish from `sum by (interface)` entirely rather than showing up as a
+// bucket an operator can see, alert on, and watch drain after a restart.
+const UnresolvedInterfaceLabel = "unresolved"
 
 // Label returns the value to use as a metric label: the friendly name when
 // enrichment resolved one, else the raw device. Never a guessed name — an unmapped
@@ -129,6 +153,12 @@ type Iface struct {
 func (i Iface) Label() string {
 	if i.Name != "" {
 		return i.Name
+	}
+	if i.Unresolved && i.Device != "" {
+		// The box HAS a description for this device; we just could not read it yet.
+		// Returning the device here would invent a second series for an interface that
+		// already has one (#606).
+		return UnresolvedInterfaceLabel
 	}
 	return i.Device
 }

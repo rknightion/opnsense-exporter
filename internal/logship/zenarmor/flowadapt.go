@@ -104,9 +104,30 @@ func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, cache *flow.DN
 	zenGeoInto(&r.Geo.Src, d.SrcGeoIP)
 	zenGeoInto(&r.Geo.Dst, d.DstGeoIP)
 
+	// The interface description, and the ONE case where its absence is not honest
+	// silence (#606). Zenarmor states a kernel device; the description comes from the
+	// enrichment snapshot, which arrives on the exporter's own schedule. Until it
+	// does, Iface.Label()'s device fallback would emit interface="ixl0" beside the
+	// interface="LAN" the same interface gets a minute later — two series for one
+	// interface, so every `sum by (interface)` under-reports both. Marking it
+	// unresolved makes the label say so instead of impersonating a distinct interface.
+	//
+	// Holding the record instead was measured and rejected: the window runs to 300
+	// seconds of process uptime and this lane carries ~96,600 records/h, so a hold
+	// would buffer ~8,000 records per restart on a push lane.
+	//
+	// The mark is set ONLY when the interface table could not be consulted at all —
+	// no snapshot, or one that names no interfaces yet. A snapshot that HAS the table
+	// and simply does not name this device is a different and honest case: the box
+	// really has no description for it, and the raw device is then the best true
+	// label there is.
+	if r.In.Device != "" && (snap == nil || len(snap.IfaceNames) == 0) {
+		r.In.Unresolved = true
+	}
 	if snap != nil {
 		if name, ok := snap.InterfaceName(r.In.Device); ok {
 			r.In.Name = name
+			r.In.Unresolved = false
 		}
 		r.Enrich.SrcScope = snap.Scope(d.SrcIP)
 		r.Enrich.DstScope = snap.Scope(d.DstIP)
