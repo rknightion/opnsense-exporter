@@ -70,6 +70,13 @@ func (r Record) LogAttributes() map[string]string {
 	if r.Repairs.VLANSubnetAttributed {
 		a["flow.vlan_subnet_attributed"] = "true"
 	}
+	// And for the policy-route correction (#603): this record's egress is the one pf's
+	// state table named, not the one ng_netflow's FIB lookup did. On a multi-WAN box
+	// that is the difference between WAN1 and WAN2 on a single flow, which is exactly
+	// the claim an operator will want to check against `pfctl -ss`.
+	if r.Repairs.PolicyRouteCorrected {
+		a["flow.policy_route_corrected"] = "true"
+	}
 	if r.Fragments > 1 {
 		a["flow.fragments"] = strconv.Itoa(r.Fragments)
 	}

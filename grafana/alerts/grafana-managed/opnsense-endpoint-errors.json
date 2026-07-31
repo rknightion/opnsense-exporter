@@ -26,7 +26,7 @@
       "description": "The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m (at least one error in every rolling 2m window for the full 15m). A brief router reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. One alert per endpoint. SCOPE (#382): this rule is the FAST/MEDIUM-tier signal and the one that names the failing endpoint. It structurally cannot fire for a collector on the slow (5m) or cold (15m) poll tier, because such a collector increments the counter only once per tier and the 2m window is empty in between, resetting the 15m pending clock every eval. Widening the window to cover those tiers would reintroduce the #94 false page (a window as long as `for` keeps the condition true for a full window after recovery), so the window is deliberately left at 2m and every tier is covered instead by OPNsenseCollectorDataStale, which is driven by the data clock and scales its tolerance with each collector's own interval.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseendpointerrors",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "52"
+      "__panelId__": "53"
     },
     "expressions": {
       "A": {

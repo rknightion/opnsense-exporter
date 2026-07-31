@@ -125,6 +125,17 @@ func (f *rpIfMap) HasVLANChildren(device string) bool {
 
 func (f *rpIfMap) IsWAN(device string) bool { return f.wanDevs[device] }
 
+// IfaceForDevice mirrors *IfMap's contract: only devices the enumeration listed
+// resolve, and an unknown one misses rather than being synthesised.
+func (f *rpIfMap) IfaceForDevice(device string) (Iface, bool) {
+	for _, i := range []Iface{rpIfLAN, rpIfIOT, rpIfWAN1, rpIfWAN2} {
+		if i.Device == device {
+			return i, true
+		}
+	}
+	return Iface{}, false
+}
+
 // rpBlindBox is the same topology with IsWAN withheld, which is the shape of the
 // seam as it is specified today. It exists so the address-echo fallback in
 // ifaceIsWAN is exercised for real rather than being dead code behind the optional

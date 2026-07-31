@@ -202,6 +202,39 @@ def build(b: Builder):
              "two children's subnets overlap.",
     )
 
+    policy_route = b.ts(
+        "Multi-WAN Policy-Route Attribution",
+        [(f'rate({sel("opnsense_flow_policy_route_corrected_total")}[{RATE}])',
+          "policy-route corrections/sec"),
+         (f'sum {grp("reason")} (rate({sel("opnsense_flow_policy_route_refused_total")}[{RATE}]))',
+          "refused: {{reason}}"),
+         (f'sum {grp("kind")} ({sel("opnsense_flow_pf_state_entries")})', "pf states: {{kind}}"),
+         (f'{sel("opnsense_flow_pf_state_age_seconds")}', "pf state age (s)")],
+        unit="short",
+        overrides=[{"matcher": {"id": "byRegexp", "options": "^pf state age \\(s\\)$"},
+                    "properties": [{"id": "unit", "value": "s"}]}],
+        desc="This is the PRE-NAT half of the multi-WAN problem, and it is a different repair from "
+             "egress_corrected on the panel beside it. egress_corrected resolves the POST-NAT copy "
+             "from its source address; the pre-NAT copy carries a private LAN address, so that repair "
+             "cannot see it at all - yet the pre-NAT copy is the ONLY one that can ever correlate "
+             "with a Zenarmor conn document. Left alone it inherits ng_netflow's OUTPUT_SNMP, which "
+             "is a FIB lookup and therefore always names the default-route WAN. On the reference box "
+             "that put every inspected byte that actually left by WAN2 onto WAN1, and WAN2's "
+             "correlated series read empty against 11.1 GB of real traffic. The correction reads pf's "
+             "own state table, whose route-to field IS the routing decision. "
+             "refused reason=\"no_state\" is the genuine miss window - the flow ended and its pf "
+             "state expired before the NetFlow record arrived, which is short flows, and NO poll "
+             "interval closes it; those records are emitted exactly as reported rather than guessed. "
+             "reason=\"unresolved_device\" means pf named an egress device the interface enumeration "
+             "does not know, so the fix is the enumeration. pf states kind=\"policy_routed\" is the "
+             "subset of states that can change anything: a flat zero there on a box with policy-route "
+             "rules means the mechanism has nothing to work with. kind=\"conflict\" measured zero on "
+             "the reference box, so any non-zero value means the pre-NAT 5-tuple stopped being unique "
+             "upstream and every correction from this table wants re-checking. pf state age rising "
+             "past a few multiples of the 5-minute poll means the fetch is failing and corrections "
+             "are being made against a stale routing picture.",
+    )
+
     ifindex = b.ts(
         "NetFlow ifIndex Map",
         [(f'{sel("opnsense_flow_ifindex_entries")}', "entries"),
@@ -349,7 +382,7 @@ def build(b: Builder):
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("NetFlow Receiver", [ingest, ingest_bytes, funnel, decoder],
               present="has_flow_netflow"),
-        b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_flow_netflow"),
+        b.row("NetFlow Repairs & Topology", [repairs, policy_route, ifindex], present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs]),
         b.row("GeoIP Enrichment", [geoip_lookups, geoip_freshness, geoip_agreement],
               present="has_flow_geoip"),

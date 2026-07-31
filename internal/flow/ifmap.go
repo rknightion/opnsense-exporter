@@ -68,9 +68,13 @@ const vlanInfix = "_vlan"
 // values.
 type IfMap struct {
 	byIndex map[uint32]Iface
-	wanAddr map[netip.Addr]Iface
-	wanDev  map[string]bool
-	parents map[string]string
+	// byDevice resolves a kernel device name back to the whole interface. It backs
+	// the policy-route repair (#603), whose evidence — pf's `route-to` — names a
+	// DEVICE and nothing else, while every metric label wants the description.
+	byDevice map[string]Iface
+	wanAddr  map[netip.Addr]Iface
+	wanDev   map[string]bool
+	parents  map[string]string
 	// trunks is the inverse of parents: every device that at least one VLAN child
 	// names as its parent. Derived rather than stored per row, because a child may
 	// name a parent the interface list itself never contained.
@@ -262,6 +266,7 @@ type IfMapInput struct {
 func BuildIfMap(in IfMapInput) *IfMap {
 	m := &IfMap{
 		byIndex:       make(map[uint32]Iface, len(in.Order)+1+len(in.Override)),
+		byDevice:      make(map[string]Iface, len(in.Order)),
 		wanAddr:       make(map[netip.Addr]Iface),
 		wanDev:        make(map[string]bool),
 		parents:       make(map[string]string),
@@ -294,7 +299,7 @@ func BuildIfMap(in IfMapInput) *IfMap {
 		}
 	}
 
-	byDevice := make(map[string]Iface, len(in.Order))
+	byDevice := m.byDevice
 	listed := make(map[string]bool, len(in.Order))
 
 	for i, device := range in.Order {
@@ -497,6 +502,21 @@ func (m *IfMap) IsWAN(device string) bool {
 		return false
 	}
 	return m.wanDev[device]
+}
+
+// IfaceForDevice resolves a kernel device name to the interface it names, with
+// whatever description the enumeration carried.
+//
+// It answers ONLY for devices the interface ordering listed, exactly like every
+// other lookup here: a device we cannot corroborate yields a miss rather than a
+// synthesised Iface, because a caller that then labels a record with a raw kernel
+// name has invented a second series for an interface that already has one (#606).
+func (m *IfMap) IfaceForDevice(device string) (Iface, bool) {
+	if m == nil || device == "" {
+		return Iface{}, false
+	}
+	iface, ok := m.byDevice[device]
+	return iface, ok
 }
 
 // ParentOf resolves a VLAN child device to its parent device. It answers only for

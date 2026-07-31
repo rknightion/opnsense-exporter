@@ -266,6 +266,10 @@ type flowCollector struct {
 	nfUnidentified *prometheus.Desc
 
 	egressCorrected    *prometheus.Desc
+	policyRouteCorr    *prometheus.Desc
+	policyRouteRefused *prometheus.Desc
+	pfStateEntries     *prometheus.Desc
+	pfStateAge         *prometheus.Desc
 	dedupeEntries      *prometheus.Desc
 	dedupeDropped      *prometheus.Desc
 	vlanChildPreferred *prometheus.Desc
@@ -724,6 +728,44 @@ func (c *flowCollector) registerNetflow() {
 			"multi-WAN box means the correction is not firing and per-WAN volume is wrong.",
 		nil,
 	)
+	c.policyRouteCorr = buildPrometheusDesc(c.subsystem, "policy_route_corrected_total",
+		"Flow records whose egress interface was replaced by the device pf's own state table says "+
+			"the traffic left by. This is the PRE-NAT copy of a policy-routed flow - the only copy "+
+			"that can correlate with Zenarmor - which inherits ng_netflow's OUTPUT_SNMP and therefore "+
+			"names the default-route WAN whatever pf did. It is distinct from egress_corrected_total, "+
+			"which resolves the POST-NAT copy from its source address and cannot see this case at all. "+
+			"A zero rate on a single-WAN box is expected; a zero rate on a policy-routed multi-WAN box "+
+			"means correlated per-WAN volume is still misattributed.",
+		nil,
+	)
+	c.policyRouteRefused = buildPrometheusDesc(c.subsystem, "policy_route_refused_total",
+		"Pre-NAT WAN-egress records the policy-route repair REFUSED to correct, by reason. "+
+			"reason=\"no_state\" is the mechanism's genuine miss window: the flow ended and its pf "+
+			"state expired before the NetFlow record arrived (short flows; the reference box runs "+
+			"inactiveTimeout=15). NO poll interval closes it, and the traffic is left exactly as "+
+			"ng_netflow reported it rather than guessed. reason=\"unresolved_device\" means pf named "+
+			"an egress device the interface enumeration does not know - the fix is the enumeration, "+
+			"and labelling the record with the raw kernel name would split one interface across two "+
+			"series.",
+		[]string{"reason"},
+	)
+	c.pfStateEntries = buildPrometheusDesc(c.subsystem, "pf_state_entries",
+		"Pre-NAT pf states the policy-route repair can resolve against, by kind. kind=\"total\" is "+
+			"every direction=\"in\" state that could be keyed; kind=\"policy_routed\" is the subset "+
+			"carrying a route-to, i.e. the ones that can actually change a record's egress. "+
+			"kind=\"skipped\" is rows that could not be keyed at all (an unmodelled protocol, an "+
+			"unparseable address or port) and kind=\"conflict\" is keys that were already taken - "+
+			"measured zero on the reference box, so a non-zero value means the tuple stopped being "+
+			"unique upstream and every answer from this table wants re-checking.",
+		[]string{"kind"},
+	)
+	c.pfStateAge = buildPrometheusDesc(c.subsystem, "pf_state_age_seconds",
+		"Age of the pf state snapshot the policy-route repair resolves against. It is polled on the "+
+			"cold tier (the full table is ~3 MB and ~650 ms on the reference box), so a value rising "+
+			"past a few multiples of that interval means the fetch is failing and corrections are "+
+			"being made against a stale routing picture.",
+		nil,
+	)
 	c.dedupeEntries = buildPrometheusDesc(c.subsystem, "dedupe_entries",
 		"Flow instances currently held in the VLAN de-duplication table.",
 		nil,
@@ -891,6 +933,10 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.nfUnexpected
 	ch <- c.nfUnidentified
 	ch <- c.egressCorrected
+	ch <- c.policyRouteCorr
+	ch <- c.policyRouteRefused
+	ch <- c.pfStateEntries
+	ch <- c.pfStateAge
 	ch <- c.dedupeEntries
 	ch <- c.dedupeDropped
 	ch <- c.vlanChildPreferred
@@ -1063,6 +1109,14 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	counter(c.nfUnidentified, nf.Decoder.UnknownFlowsets, "unknown_flowset")
 
 	counter(c.egressCorrected, nf.Repair.EgressCorrected)
+	counter(c.policyRouteCorr, nf.Repair.PolicyRouteCorrected)
+	counter(c.policyRouteRefused, nf.Repair.PolicyRouteNoState, "no_state")
+	counter(c.policyRouteRefused, nf.Repair.PolicyRouteUnresolvedDevice, "unresolved_device")
+	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableEntries), "total")
+	gauge(c.pfStateEntries, float64(nf.Repair.RouteTablePolicyRouted), "policy_routed")
+	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableSkipped), "skipped")
+	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableConflicts), "conflict")
+	gauge(c.pfStateAge, nf.Repair.RouteTableAge.Seconds())
 	gauge(c.dedupeEntries, float64(nf.Repair.DedupeEntries))
 	counter(c.dedupeDropped, nf.Repair.DedupeEvicted, "ttl")
 	counter(c.dedupeDropped, nf.Repair.DedupeCapped, "capacity")

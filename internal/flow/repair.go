@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
@@ -28,6 +29,13 @@ import (
 //  3. Direction inference. Field 61 (DIRECTION) is not exported by this box at all,
 //     so direction is deduced — by the same rules the Zenarmor lane already uses,
 //     because both lanes feed one metric family and a dashboard splits on the label.
+//  4. Policy-route egress correction (#603). Repair 2 can only fix the POST-NAT copy,
+//     because it keys on the source address and a pre-NAT record's source is a private
+//     LAN address. The pre-NAT copy is the only one that can ever correlate with a
+//     Zenarmor conn document, and on the reference box every byte Zenarmor inspected
+//     that actually left by WAN2 was reported as WAN1. This repair resolves it from
+//     pf's own state table, which carries the routing decision verbatim; see
+//     routetable.go for why that beats every inferential join.
 
 // dedupeTTL bounds how long an instance stays in the de-dup table.
 //
@@ -111,6 +119,35 @@ type RepairStats struct {
 	// healthy housekeeping — an instance that old cannot still have a duplicate in
 	// flight.
 	DedupeEvicted uint64
+	// PolicyRouteCorrected counts records whose egress was replaced by the device
+	// pf's own state table says the traffic left by (#603). A zero rate on a
+	// single-WAN box is expected; a zero rate on a policy-routed multi-WAN box means
+	// the mechanism is not firing and per-WAN volume on the correlatable copy is
+	// wrong.
+	PolicyRouteCorrected uint64
+	// PolicyRouteNoState counts pre-NAT egress records for which NO pf state exists.
+	// This is the mechanism's genuine miss window: a short flow whose state expired
+	// before its NetFlow record arrived (the reference box runs inactiveTimeout=15).
+	// It is kept apart from PolicyRouteCorrected because the two call for opposite
+	// responses — corrections rising is the repair working, misses rising is
+	// attribution that cannot be recovered at all, and NO poll interval fixes it.
+	PolicyRouteNoState uint64
+	// PolicyRouteUnresolvedDevice counts states whose route-to named a device the
+	// interface map does not know. Kept apart again: the fix is the interface
+	// enumeration, not the poll cadence. The record is left alone rather than
+	// labelled with a raw kernel device, which would split one interface across two
+	// series exactly as #606 describes.
+	PolicyRouteUnresolvedDevice uint64
+
+	// RouteTableEntries, RouteTablePolicyRouted and RouteTableAge describe the pf
+	// state snapshot the repair resolves against. A lookup table nobody can size or
+	// age is one nobody will trust the day it starts answering "no".
+	RouteTableEntries      int
+	RouteTablePolicyRouted int
+	RouteTableSkipped      int
+	RouteTableConflicts    int
+	RouteTableAge          time.Duration
+
 	// DedupeCapped counts entries forced out EARLY because the table was at
 	// maxDedupeEntries. This is not housekeeping: a capped instance can no longer be
 	// deduped, so a non-zero rate here means duplicates are reaching the rollup and
@@ -149,6 +186,17 @@ type ifTopology interface {
 // from enrich.IfaceInfo, which already carries IsWAN) and would close that gap.
 type wanKnower interface {
 	IsWAN(device string) bool
+}
+
+// deviceResolver turns a kernel device name back into the whole interface.
+//
+// Repair 4's evidence is pf's `route-to`, which names a DEVICE and nothing else,
+// while the metric label wants the description. It is an OPTIONAL assertion for the
+// same reason wanKnower is: the frozen ifTopology contract does not include it, and
+// a map that cannot answer must leave the record alone rather than label it with a
+// raw kernel name.
+type deviceResolver interface {
+	IfaceForDevice(device string) (Iface, bool)
 }
 
 // instanceKey identifies ONE export of one flow: the DIRECTIONAL 5-tuple, the flow's
@@ -261,6 +309,10 @@ type Repairer struct {
 	// was full. The next Release emits them.
 	dueEarly []*heldRecord
 
+	// routes is the pf state snapshot repair 4 resolves against, swapped wholesale by
+	// the cold-tier poller. Readers take no lock; the table is immutable after build.
+	routes atomic.Pointer[RouteTable]
+
 	maxEntries int
 	maxHeld    int
 
@@ -272,7 +324,19 @@ type Repairer struct {
 	holdOverflow    uint64
 	subnetAttrib    uint64
 	lateChildCopies uint64
+
+	policyRouteCorrected  uint64
+	policyRouteNoState    uint64
+	policyRouteUnresolved uint64
 }
+
+// SetRouteTable publishes a new pf state snapshot. Safe to call while records are
+// in flight; a nil table (the window before the first poll) makes repair 4 inert
+// rather than failing, and counts nothing — the mechanism is absent, not missing.
+func (r *Repairer) SetRouteTable(t *RouteTable) { r.routes.Store(t) }
+
+// RouteTable returns the current pf state snapshot, which may be nil.
+func (r *Repairer) RouteTable() *RouteTable { return r.routes.Load() }
 
 // RepairVerdict is what the repair stage decided about one record. It is NOT
 // Verdict, which is the firewall's own disposition on a flow (record.go:68-77) and
@@ -390,6 +454,7 @@ func (r *Repairer) release(now time.Time, all bool) []Record {
 	out := make([]Record, 0, len(due))
 	for _, h := range due {
 		r.correctEgress(&h.rec, h.m)
+		r.correctPolicyRoute(&h.rec, h.m)
 		r.setDirection(&h.rec, h.m, h.snap)
 		out = append(out, h.rec)
 	}
@@ -416,12 +481,18 @@ func (r *Repairer) repairWith(rec *Record, m ifTopology, snap *enrich.Snapshot, 
 		return v
 	}
 	r.correctEgress(rec, m)
+	r.correctPolicyRoute(rec, m)
 	r.setDirection(rec, m, snap)
 	return RepairEmit
 }
 
 // Stats reports the repair stage's own accounting.
-func (r *Repairer) Stats() RepairStats {
+func (r *Repairer) Stats() RepairStats { return r.StatsAt(time.Now()) }
+
+// StatsAt is Stats with the clock injected, so the table-age gauge is testable
+// without sleeping.
+func (r *Repairer) StatsAt(now time.Time) RepairStats {
+	rt := r.routes.Load().Stats()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return RepairStats{
@@ -430,6 +501,16 @@ func (r *Repairer) Stats() RepairStats {
 		VLANChildPreferred:    r.childPreferred,
 		VLANSubnetAttributed:  r.subnetAttrib,
 		VLANLateChildCopies:   r.lateChildCopies,
+
+		PolicyRouteCorrected:        r.policyRouteCorrected,
+		PolicyRouteNoState:          r.policyRouteNoState,
+		PolicyRouteUnresolvedDevice: r.policyRouteUnresolved,
+
+		RouteTableEntries:      rt.Entries,
+		RouteTablePolicyRouted: rt.PolicyRouted,
+		RouteTableSkipped:      rt.Skipped,
+		RouteTableConflicts:    rt.Conflicts,
+		RouteTableAge:          r.routes.Load().Age(now),
 		// dueEarly counts as held: those records have left the buffer but not yet the
 		// stage, and a gauge that dropped them would make the accounting look short for
 		// as long as they sat there.
@@ -883,6 +964,76 @@ func (r *Repairer) correctEgress(rec *Record, m ifTopology) {
 
 	r.mu.Lock()
 	r.egressCorrected++
+	r.mu.Unlock()
+}
+
+// correctPolicyRoute is repair 4 (#603).
+//
+// It runs AFTER repair 2 and BEFORE repair 3, and both halves of that order are
+// load-bearing. After repair 2, because a post-NAT record repair 2 has already
+// resolved from its source address needs nothing from pf and must not be looked up.
+// Before repair 3, because direction inference reads the corrected egress.
+//
+// THE CANDIDATE SET is deliberately narrow, and narrowing it is what makes the miss
+// counter mean anything. A record is a candidate only when:
+//
+//   - ng_netflow named a WAN as its egress — the population where OUTPUT_SNMP's FIB
+//     answer can be wrong at all; and
+//   - its SOURCE is not one of the firewall's own WAN addresses — i.e. it is the
+//     PRE-NAT copy. The post-NAT copy's tuple appears in no direction="in" state, so
+//     consulting the table for it would turn every WAN record into a phantom "no
+//     state" and bury the real miss window.
+//
+// THE THREE OUTCOMES are counted apart because they have three different fixes: a
+// correction (working as intended), no state at all (the expiry miss window, which
+// no poll interval closes), and a route-to naming a device the interface map does
+// not know (the enumeration is wrong). Nothing is ever guessed: a record whose
+// answer is not exact is emitted exactly as ng_netflow reported it.
+//
+// Iface.Corrected is deliberately NOT set. ifaceIsWAN reads that flag as proof that
+// an interface is a WAN BY CONSTRUCTION, an invariant repair 2 owns and direction
+// inference depends on; a route-to device is a WAN in practice, but widening the flag
+// here would silently widen that invariant. The marker lives on Repairs instead, and
+// the direction rules learn the device through IfMap.IsWAN like any other WAN.
+func (r *Repairer) correctPolicyRoute(rec *Record, m ifTopology) {
+	table := r.routes.Load()
+	if table == nil || m == nil || !rec.SrcAddr.IsValid() {
+		return
+	}
+	if !ifaceIsWAN(m, rec.Out, rec.SrcAddr) {
+		return // not leaving by a WAN; the FIB answer cannot be the multi-WAN bug
+	}
+	if _, isPostNAT := m.WANFor(rec.SrcAddr); isPostNAT {
+		return // repair 2's population, resolved from the source address already
+	}
+
+	device, ok := table.Egress(rec.Proto, rec.SrcAddr, rec.SrcPort, rec.DstAddr, rec.DstPort)
+	if !ok {
+		r.mu.Lock()
+		r.policyRouteNoState++
+		r.mu.Unlock()
+		return
+	}
+	if device == "" || device == rec.Out.Device {
+		return // pf used the FIB, or it agrees with what was reported
+	}
+
+	resolver, canResolve := m.(deviceResolver)
+	if !canResolve {
+		return
+	}
+	iface, known := resolver.IfaceForDevice(device)
+	if !known {
+		r.mu.Lock()
+		r.policyRouteUnresolved++
+		r.mu.Unlock()
+		return
+	}
+
+	rec.Out = iface
+	rec.Repairs.PolicyRouteCorrected = true
+	r.mu.Lock()
+	r.policyRouteCorrected++
 	r.mu.Unlock()
 }
 

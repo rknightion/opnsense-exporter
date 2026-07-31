@@ -124,6 +124,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"systemDisk":                 "api/diagnostics/system/systemDisk",
 		"systemSwap":                 "api/diagnostics/system/systemSwap",
 		"systemTemperature":          "api/diagnostics/system/systemTemperature",
+		"firewallStates":             "api/diagnostics/firewall/query_states",
 		"pfStates":                   "api/diagnostics/firewall/pf_states/1",
 		"firewallRuleStats":          "api/firewall/filter_util/rule_stats",
 		"firewallRules":              "api/firewall/filter/search_rule",

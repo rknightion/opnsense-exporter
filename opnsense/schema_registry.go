@@ -494,6 +494,7 @@ var schemaRegistry = map[EndpointName]any{
 	"nutUpsStatus":            nutUpsStatusResponse{},
 	"openVPNInstances":        openVPNSearchResponse{},
 	"openVPNSessions":         openVPNSearchSessionsResponse{},
+	"firewallStates":          firewallStatesResponse{},
 	"pfStates":                pfStatesResponse{},
 	"pfStatisticsByInterface": firewallPFStatsResponse{},
 	"pfStatsInfo":             pfStatsInfoResponse{},

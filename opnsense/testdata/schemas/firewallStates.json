@@ -1,0 +1,62 @@
+{
+  "endpoint": "firewallStates",
+  "method": "POST",
+  "path": "api/diagnostics/firewall/query_states",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].direction",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].dst_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].dst_port",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].proto",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].route-to",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].src_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].src_port",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

@@ -187,6 +187,16 @@ type Repairs struct {
 	// interface is a WAN by construction — setting that on a VLAN child would make the
 	// direction rules treat an IOT interface as an uplink.
 	VLANSubnetAttributed bool
+	// PolicyRouteCorrected is set when the repair stage replaced this record's egress
+	// with the device pf's own state table says the traffic left by (#603). ng_netflow
+	// derives OUTPUT_SNMP from a FIB lookup, and on a policy-routed multi-WAN box the
+	// PRE-NAT copy — the only one that can correlate with Zenarmor — therefore names
+	// the default-route WAN whatever pf actually did.
+	//
+	// It lives here and NOT on Iface.Corrected for the same reason
+	// VLANSubnetAttributed does: ifaceIsWAN reads that flag as proof that an interface
+	// is a WAN by construction, an invariant only the phase-2 repair may assert.
+	PolicyRouteCorrected bool
 }
 
 // Record is one normalized flow. Both lanes produce it; the rollup, the correlator

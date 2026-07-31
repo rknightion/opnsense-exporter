@@ -749,6 +749,14 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-filter-api", Name: "Firewall: Rules [new]", Origin: "core", Pattern: "api/firewall/filter/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"firewallStates": {
+		Consumer:  "flow",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Privileges: []ACLPrivilege{
+			{Key: "page-diagnostics-showstates", Name: "Diagnostics: Show States", Origin: "core", Pattern: "api/diagnostics/firewall/query_states*", Scope: ACLScopeWildcard},
+		},
+	},
 	"firewallStats": {
 		Consumer:  "firewall",
 		Component: "core",

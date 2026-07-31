@@ -132,6 +132,14 @@ var Exemptions = map[string]string{
 		"decision rather than a dropped payload dimension. Worth a follow-up, not a silent " +
 		"drop.",
 	// opnsense/arp_table.go:22  json:"current"
+	// opnsense/firewall_states.go:34  json:"current"
+	"opnsense.firewallStatesResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
+		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
+		"so the live-box schema canary keeps validating the envelope's shape.",
+	// opnsense/firewall_states.go:33  json:"rowCount"
+	"opnsense.firewallStatesResponse.RowCount": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
+		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
+		"so the live-box schema canary keeps validating the envelope's shape.",
 	"opnsense.arpSearchResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
 		"so the live-box schema canary keeps validating the envelope's shape.",

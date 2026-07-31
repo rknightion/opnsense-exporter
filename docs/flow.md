@@ -125,6 +125,39 @@ the export said; corrections are counted by `opnsense_flow_egress_corrected_tota
 and the correction only fires when the two actually disagree, so it cannot mask
 ng_netflow starting to get it right.
 
+**The pre-NAT copy of a policy-routed flow needs pf itself.** The correction above
+keys on the record's *source* address, so it can only ever fix the **post-NAT** copy
+- and that copy's 5-tuple is the firewall's own WAN address, which matches nothing
+Zenarmor ever saw. The **pre-NAT** copy is the only one that can correlate, and its
+source is a private LAN address, so it inherits `OUTPUT_SNMP` untouched and is
+labelled with the default-route WAN whatever pf did. On the reference box that put
+every inspected byte that actually left by WAN2 onto WAN1, while WAN2's correlated
+series stayed empty against 11.1 GB of real traffic.
+
+The exporter resolves this from **pf's own state table**
+(`api/diagnostics/firewall/query_states`, polled every 5 minutes and held as a lookup
+map - never a per-flow call). pf keeps both states for a NAT'd conversation, and the
+`direction: "in"` state is the pre-NAT view: its 5-tuple *is* the pre-NAT record's
+5-tuple, and it already carries pf's `route-to` - the routing decision verbatim, not
+an inference about it. Corrections are counted by
+`opnsense_flow_policy_route_corrected_total`, and the record carries
+`flow.policy_route_corrected` so a single flow can be checked against `pfctl -ss`.
+
+Its limits, which are counted rather than hidden:
+
+- **A state that carries no `route-to` is left alone.** That means pf used the FIB,
+  which is precisely when `OUTPUT_SNMP` is already right.
+- **A short flow may have no state left.** OPNsense's `inactiveTimeout` lets a record
+  arrive 15-30 s after the conversation ended, by which point a short state is gone.
+  Those records are emitted exactly as reported and counted under
+  `opnsense_flow_policy_route_refused_total{reason="no_state"}`. No poll interval
+  closes that window; the flows this repair recovers are long ones, whose states live
+  for hours.
+- **Ambiguity cannot arise.** The key is the tuple pf itself keys states by, so two
+  LAN hosts to the same destination over different WANs get their own answers. A
+  duplicate key would be a signal, not an input: it is counted as
+  `opnsense_flow_pf_state_entries{kind="conflict"}` and the first row wins.
+
 **Direction is not exported at all.** Field 61 is absent, so direction is inferred
 from the firewall's own topology and the ifIndex evidence, by the same rules the
 Zenarmor lane uses. `unknown` is emitted honestly rather than guessed.

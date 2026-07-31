@@ -103,6 +103,19 @@ const ifIndexRefreshInterval = 60 * time.Second
 // second to close it, and it stops the moment a map lands (#365).
 const ifIndexColdRetryInterval = time.Second
 
+// pfStateRefreshInterval rebuilds the pf state snapshot the policy-route repair
+// resolves against (#603).
+//
+// Five minutes — the COLD tier — because the whole table is a real request: measured
+// against the production firewall it is 3.3 MB and ~650 ms for 6,602 rows. A shorter
+// interval buys nothing the repair can use, because the flows the repair recovers are
+// long ones (state ages in the live table run to 36 hours) while the ones it misses
+// are short flows whose state is already gone by the time their record arrives — a
+// window no poll cadence closes. It is deliberately not a flag: the only thing tuning
+// it changes is firewall API load, and the staleness it trades against is bounded by
+// the state lifetimes, not by us.
+const pfStateRefreshInterval = 5 * time.Minute
+
 // ifIndexNamelessDeadline bounds the cold retry when the map keeps arriving with
 // indices but no interface NAMES.
 //
@@ -1692,6 +1705,55 @@ func main() {
 				case <-nfCtx.Done():
 					return
 				case <-ticker.C:
+				}
+			}
+		}()
+
+		// Refresh the pf state snapshot on the cold tier (#603). ng_netflow's
+		// OUTPUT_SNMP is a FIB lookup while OPNsense's multi-WAN policy routing
+		// happens in pf, so the PRE-NAT copy of a policy-routed flow — the only copy
+		// that can correlate with Zenarmor — names the default-route WAN whatever pf
+		// actually did. pf's own state table carries the decision verbatim.
+		//
+		// A failed fetch leaves the PREVIOUS table published rather than clearing it:
+		// a stale routing picture is bounded by pf's own state lifetimes and still
+		// beats no picture at all, and pf_state_age_seconds is what makes the
+		// staleness visible. The first fetch runs immediately so the repair is live
+		// well inside the first tick.
+		go func() {
+			refresh := func() {
+				states, ferr := opnsenseClient.FetchFirewallStates()
+				if ferr != nil {
+					logger.Warn("pf state fetch failed; policy-route repair is resolving against the previous snapshot",
+						"err", ferr.Error())
+					return
+				}
+				rows := make([]flow.StateRow, 0, len(states.States))
+				for _, st := range states.States {
+					rows = append(rows, flow.StateRow{
+						Proto:         st.Proto,
+						Direction:     st.Direction,
+						SrcAddr:       st.SrcAddr,
+						SrcPort:       st.SrcPort,
+						DstAddr:       st.DstAddr,
+						DstPort:       st.DstPort,
+						RouteToDevice: st.RouteToDevice,
+					})
+				}
+				repairer.SetRouteTable(flow.BuildRouteTable(flow.RouteTableInput{
+					Rows:  rows,
+					Built: time.Now(),
+				}))
+			}
+			refresh()
+			ticker := time.NewTicker(pfStateRefreshInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-nfCtx.Done():
+					return
+				case <-ticker.C:
+					refresh()
 				}
 			}
 		}()

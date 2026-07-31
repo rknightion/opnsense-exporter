@@ -30,6 +30,7 @@ var postEndpoints = map[EndpointName]struct{}{
 	"crowdsecAppsecConfigs":   {},
 	"crowdsecAppsecRules":     {},
 	"firewallRules":           {},
+	"firewallStates":          {},
 	"quaggaOspfNeighbors":     {},
 	"hasyncServices":          {},
 	"ipsecPhase2":             {},
