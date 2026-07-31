@@ -1,0 +1,14 @@
+[Unit]
+Description=OPNsense production release-channel schema canary (#490)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# systemd gives a service no HOME, and the Go toolchain refuses to run without
+# a build cache location. Without these, `go run` dies before probing anything.
+Environment=HOME=/root
+Environment=GOCACHE=/var/cache/opnsense-canary/go-build
+Environment=GOMODCACHE=/var/cache/opnsense-canary/go-mod
+ExecStart=/usr/local/bin/opnsense-prod-canary.sh
+TimeoutStartSec=1800

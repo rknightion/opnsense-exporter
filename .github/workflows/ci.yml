@@ -163,6 +163,12 @@ jobs:
       - name: Run testbed tooling tests
         run: make testbed-test
 
+      # Checks for camden's prod canary decision logic (#612). The script needs the
+      # production firewall, an admin credential and a GitHub token, so only its
+      # open-vs-closed decision is exercised here, via its --decide-only seam.
+      - name: Run prod canary tooling tests
+        run: make canary-test
+
   grafana:
     name: Grafana artifacts up-to-date
     runs-on: ubuntu-24.04

@@ -146,6 +146,14 @@ deployment-test: tools-kubeconform
 testbed-test:
 	cd scripts/testbed && python3 -m unittest discover -p '*_test.py' -q
 
+# Unit tests for camden's prod canary decision logic (scripts/canary, #612). The
+# script needs the production firewall, an admin credential and a GitHub token, so
+# CI cannot run it end to end — these drive its --decide-only seam, which is the
+# open-vs-closed decision on its own and touches no box and no GitHub.
+canary-test:
+	bash -n scripts/canary/opnsense-prod-canary.sh
+	cd scripts/canary && python3 -m unittest discover -p '*_test.py' -q
+
 install-hooks:
 	cp scripts/hooks/pre-commit .git/hooks/pre-commit
 	chmod +x .git/hooks/pre-commit
