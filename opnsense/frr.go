@@ -52,7 +52,9 @@ import (
 //
 //   - bgpsummary: per-AF field set, numeric types (remoteAs may exceed int32) — verified
 //   - bgpneighbors: per-peer flap/message/AF-prefix detail — verified (#197)
-//   - ospfoverview: areas key structure, nbrFullAdjacencyCount vs nbrFullAdjacentCounter — verified
+//   - ospfoverview: areas key structure; nbrFullAdjacentCounter is the sole
+//     spelling FRR has ever emitted — the "nbrFullAdjacencyCount" it was once
+//     paired against was a phantom, pruned by #598 (see frrOSPFAreaData)
 //   - ospfinterface: per-interface detail — verified ("interfaces"-wrapped shape, FRR>=8, this box's FRR 10.3); older flat top-level shape is decoded tolerantly but unverified live
 //   - ospfv3overview/ospfv3interface: field names VERIFIED against a live v3 adjacency 2026-07-25 (#377); canary-visible since #459
 //   - searchOspfneighbor: old vs new field names (state/nbrState, address/ifaceAddress) — verified
@@ -334,13 +336,41 @@ type frrOSPFNeighborSearch struct {
 }
 
 // frrOSPFAreaData holds a single area's statistics from ospfoverview.
+//
+// NbrFullAdjacentCounter has NO tolerant alternate spelling, and adding one back
+// would be a regression — #598 settled this from full upstream history, so it is
+// not re-derived a fourth time:
+//
+//	$ git log -S nbrFullAdjacencyCount --oneline --all   # FRRouting/frr, full clone
+//	(zero hits: 54,797 commits, 254 tags, 543 refs, root 718e374419 2002-12-13)
+//	$ git log -S nbrFullAdjacentCounter --oneline --all
+//	35490676eb ospf-topo1-vrf: setup with OSPF VRF
+//	43b15bc431 ospf: add 'show ip ospf json' test
+//	3ac237f89a Added json formating support to several show-...-detail ospf commands.
+//
+// The control proves the search works in that clone. nbrFullAdjacentCounter
+// arrived with OSPF JSON support itself (3ac237f89a, 2015-08-07) and is present
+// in all 98 frr-* release tags, frr-2.0 through frr-10.7.0 — there is no
+// generation of FRR to be backwards-compatible WITH. Quagga is ruled out as an
+// origin too (the `quagga*` endpoint names here are just the plugin's old name):
+// its ospfd has zero occurrences of "json" and the whole tree at quagga-1.2.4,
+// its final release, has no json_object usage, so Quagga could never emit any
+// JSON key. Nor is OPNsense the origin — the plugin is a pure passthrough
+// (`ospfoverviewAction` returns `configdJson("ospf","overview")` verbatim) and
+// names neither spelling anywhere in opnsense/plugins.
+//
+// So a "nbrFullAdjacencyCount" field paired with this one was a #284-class
+// phantom: modelled as the newer upstream shape, never populated on any release,
+// a permanently dead fallback branch. It also actively corrupted the reading it
+// was meant to protect — the `if fullAdj == 0` resolution could not distinguish
+// absent from legitimately zero, so an area with no adjacency at Full (the state
+// an operator most needs to see) read the phantom key instead of 0. Pinned by
+// TestFetchFRROSPF_FullAdjacentCounterIsTheOnlySpelling.
 type frrOSPFAreaData struct {
 	AreaIfActiveCounter    float64 `json:"areaIfActiveCounter"`
 	NbrFullAdjacentCounter float64 `json:"nbrFullAdjacentCounter"`
-	// Some FRR versions use a slightly different field name:
-	NbrFullAdjacencyCount float64 `json:"nbrFullAdjacencyCount"`
-	LsaNumber             float64 `json:"lsaNumber"`
-	SpfExecutedCounter    float64 `json:"spfExecutedCounter"`
+	LsaNumber              float64 `json:"lsaNumber"`
+	SpfExecutedCounter     float64 `json:"spfExecutedCounter"`
 }
 
 // frrOSPFAreaMap is the ospfoverview `areas` map. It tolerates the OPNsense PHP
@@ -478,14 +508,10 @@ func (c *Client) FetchFRROSPF() (FRROSPF, *APICallError) {
 			}
 		}
 		for areaID, areaData := range overview.Areas {
-			fullAdj := areaData.NbrFullAdjacentCounter
-			if fullAdj == 0 {
-				fullAdj = areaData.NbrFullAdjacencyCount
-			}
 			data.Areas = append(data.Areas, FRROSPFArea{
 				Area:                  areaID,
 				InterfacesActive:      areaData.AreaIfActiveCounter,
-				NeighborsFullAdjacent: fullAdj,
+				NeighborsFullAdjacent: areaData.NbrFullAdjacentCounter,
 				LSACount:              areaData.LsaNumber,
 				SPFExecuted:           areaData.SpfExecutedCounter,
 			})

@@ -29,6 +29,17 @@ When a release drops out of the support window, the shims that carried its paylo
 pruned. That is a normal release change, not a breaking one, because by then no supported
 firewall sends the old shape.
 
+A shim also gets pruned when it turns out never to have been needed. Reading whichever field a
+firewall actually sends only works if both spellings are real, so each alternate field name is
+checked against upstream's own history before it is trusted, and one that no release ever emitted
+is deleted rather than carried. The OSPF per-area fully-adjacent-neighbour count was one: it was
+read from `nbrFullAdjacentCounter` with a fallback to `nbrFullAdjacencyCount`, and the second name
+appears nowhere in FRR's history - `nbrFullAdjacentCounter` has been the only spelling since OSPF
+JSON output was added in 2015, present in every FRR release the `os-frr` plugin has ever shipped.
+Removing that fallback changes no metric, because the branch could never run. It does fix one
+reading: an area with interfaces up but no neighbour reaching `Full` now reports 0 rather than
+falling through to the fallback, and 0 is the number that matters there.
+
 ## Version-dependent data availability
 
 Some data is gone from the OPNsense API. Where upstream stopped serving a field, the

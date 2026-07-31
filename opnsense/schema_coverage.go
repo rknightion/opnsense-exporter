@@ -21,6 +21,52 @@ import (
 // classes and nothing else is reclassified: an unledgered unverified path stays
 // informational, as it was.
 //
+// THE COST OF THAT OPT-IN, and why the ledger is HAND-MAINTAINED (#599). The
+// seam above cuts both ways: a path that backs an exported metric and is not
+// ledgered is reported as informational noise rather than as required coverage.
+// #599 audited all 100 paths the #531 canary run left in that bucket against
+// the collectors; 67 backed a metric and are now ledgered, 33 did not and were
+// deliberately left informational. Four kinds of "did not", recorded so the
+// verdicts are not re-litigated: array/element CONTAINERS (rows[], items[],
+// items[].flows[]) carry no value and resolve with the leaves under them; DEAD
+// fields decoded and never read (cmd/fieldaudit already names these); fields
+// consumed only by the LOG pipeline, not by a metric (idsQueryAlerts' seven
+// eve-record fields, unboundSearchQueries' uuid) — this ledger's required class
+// means "backs an emitted METRIC", and widening it to log attributes would be a
+// change to its contract, not an audit finding; and fields whose consumer is
+// CALL-SITE-GATED off (keaLeases4's rows[].type, whose v4 call site passes a nil
+// descriptor; keaSubnets4's rows[].uuid, read only on the v6 PD-pool join).
+//
+// That audit is NOT automated, and deliberately so. Deriving "this JSON path
+// backs metric X" mechanically means tracing a schema path to a struct field in
+// this package, through Fetch* normalisation, into internal/collector, and on to
+// a *prometheus.Desc built in Register from a subsystem constant — and the two
+// tractable approximations both fail in a way that forces the ledger to lie:
+//
+//   - A dataflow/taint analysis MISSES the highest-value cases outright, because
+//     several fields reach no metric by dataflow at all. They are row-validity
+//     PREDICATES: openVPNSessions' is_client, ipsecSad's spi, wireguardClients'
+//     and trafficShaperStatistics' type, trafficShaperStatistics' template. Each
+//     decides whether a row becomes a metric at all, so a rename makes an entire
+//     metric family silently read zero on a healthy firewall. Those are exactly
+//     the entries worth having, and a dataflow gate reports them clean.
+//   - Making it sound instead OVER-claims, because whole-struct conversions
+//     (`data.Rows = append(data.Rows, Sessions{...})`) make every field of a
+//     struct reachable from every metric that reads any field of it —
+//     cmd/fieldaudit documents that same sharp edge for its own analysis. The
+//     only ways to keep such a gate green are to weaken it or to write entries
+//     naming metrics they do not back, and an entry that names no real metric is
+//     worse than no entry.
+//
+// It is also genuinely semantic in places: the call-site-gated verdicts above
+// invert if the analysis is not per-call-site sensitive. So the derivation stays
+// a documented manual step, run when a canary report names paths in the
+// unclassified bucket. What IS automated is the honest half — verifying the
+// human's claim rather than deriving it: TestCoverageLedgerNamesRealMetrics
+// (cmd/apidrift) resolves every metric name in this ledger against the live
+// collector registry, so a required entry can no longer protect a family that
+// was renamed, deleted or mistyped.
+//
 //   - required — the path backs an emitted metric, so the canary is EXPECTED to
 //     exercise it. While it is unverified the run warns, and the report names
 //     the metric it protects, how to exercise it on the testbed, and the current

@@ -197,13 +197,36 @@ var subsystems = map[string]string{
 	// "everything DHCP" should reach it — and its records are told apart from the
 	// server families by their dhcp_client.* attributes, not by the subsystem (#541).
 	// Before this entry existed its lines shipped with a BLANK subsystem.
-	"dhclient":        "dhcp",
-	"radvd":           "dhcp",
-	"charon":          "ipsec",
-	"openvpn":         "vpn",
-	"wireguard":       "vpn",
-	"netbird":         "vpn",
-	"tailscaled":      "vpn",
+	"dhclient":  "dhcp",
+	"radvd":     "dhcp",
+	"charon":    "ipsec",
+	"openvpn":   "vpn",
+	"wireguard": "vpn",
+	// `netbird` has NO parser, and that is a blocked finding rather than a gap waiting
+	// for someone with an afternoon (#596). This entry only ever reaches the THREE lines
+	// the FreeBSD port's rc script emits with `logger -s -t netbird` ("Starting
+	// netbird.", the orphaned-interface destroy, the poststop destroy) — none of which is
+	// a tunnel transition.
+	//
+	// The daemon's own lines do not arrive under this program name at all. OPNsense's
+	// plugin starts it with `netbird_logfile="syslog"`, netbird then calls
+	// `lSyslog.NewSyslogHook("", "", syslog.LOG_INFO, "")` with an EMPTY tag
+	// (util/syslog_nonwindows.go), and Go's log/syslog substitutes `os.Args[0]` for an
+	// empty tag — which the rc script sets to the full path — so the app-name on the wire
+	// is `/usr/local/bin/netbird`. Neither an exact nor a prefix registration on
+	// `netbird` can reach it. (Verified in the Go standard library, not inferred.)
+	// Registering the full path would be guessing at PREFIX and argv, and would need a
+	// live capture first; see #596 for the rest of the reasoning, including why netbird's
+	// peer open/close lines are idle-driven churn rather than lifecycle edges.
+	"netbird":    "vpn",
+	"tailscaled": "vpn",
+	// The Tailscale plugin puts TWO app-names on the wire: the daemon logs as
+	// `tailscaled`, and its rc script logs as `tailscale` via `logger -s -t
+	// tailscale` ("Enabling Exit node mode", "Opting out of client logging
+	// telemetry."). Only the first had an entry, so the rc lines shipped with an
+	// empty subsystem. Attribution only — neither line is a tunnel transition, so
+	// there is deliberately no parser for this program.
+	"tailscale":       "vpn",
 	"suricata":        "ids",
 	"crowdsec":        "ids",
 	"haproxy":         "proxy",

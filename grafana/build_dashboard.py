@@ -777,9 +777,23 @@ def build_diagnostics(b: Builder):
 
     # The one number worth alerting a human to. Counting the actionable combination
     # directly beats asking someone to read the table above and spot it.
+    #
+    # #597 triaged this tile: it is a DECLARED fleet total (see FLEET_TOTAL_PANELS in
+    # tests/test_instance_identity.py), not a per-instance one. It matches that list's
+    # stated shape exactly — a 4x4 inventory count whose only job is "is there anything
+    # actionable", with the per-instance detail one panel away in the same row (the
+    # Plugin Availability table above names the box and the feature). One tile per box
+    # was considered and rejected for the same reason as the other sixteen: the tile is
+    # read as a single number, and splitting it makes the healthy case N green cards.
+    #
+    # What #597 did fix is that it was fleet-wide by OMISSION: the bare selector had no
+    # sel(), so it counted every instance in the datasource, including boxes
+    # $opnsense_instance does not select. A declaration has to be true — the count now
+    # spans exactly the selection, which is what the description claims.
+    unscraped_sel = sel("opnsense_feature_available", 'enabled="false"')
     feature_unscraped = b.stat(
         "Plugins Installed But Not Scraped",
-        'count(opnsense_feature_available{enabled="false"} == 1)',
+        f"count({unscraped_sel} == 1)",
         graph="none",
         thresholds=[(None, "green"), (1, "yellow")],
         desc="Features whose plugin IS installed but whose collector is switched off, so the "
@@ -788,7 +802,10 @@ def build_diagnostics(b: Builder):
              "exposing usernames) and a default-on one may have been disabled deliberately. "
              "The exporter also names each one in a startup log line with the flag that would "
              "turn it on. --exporter.enable-all-available turns on every one whose plugin the "
-             "startup probe found present.")
+             "startup probe found present. Fleet total: this is a deliberate count across "
+             "every instance $opnsense_instance selects (#597), so with two boxes picked a 3 "
+             "may be three features on one box or two plus one across both - the Plugin "
+             "Availability table above says which.")
 
     scrape_dur = b.ts("Collector Poll Duration",
                       [(sel("opnsense_exporter_scrape_collector_duration_seconds"), "{{collector}}")],

@@ -452,6 +452,57 @@ Every shipped line then carries a `sampled="true"` attribute so a consumer knows
 stream is incomplete and must use the counters for totals. Turn that stamp off with
 `--logs.syslog.sampled-attribute=false` if you would rather not have it.
 
+### WireGuard and Tailscale tunnel lifecycle attributes
+
+`wireguard` and `tailscaled` lines also carry `vpn.backend`, `vpn.event` and
+`vpn.result`, so the dashboard's **Tunnel lifecycle** annotation layer marks them the
+same way it marks IPsec and OpenVPN. They are **not counted into
+`opnsense_log_events_vpn_total`**: that counter's `backend` label stays `ipsec` or
+`openvpn`, and its `connection` label is resolved from an IPsec or OpenVPN id that
+these lines do not contain. The records are unaffected, and because they are not
+counted, sampling never drops them.
+
+The granularity is different and it matters when you read a marker: these are
+**service-level** events for a tunnel instance or for the whole node, never per peer.
+
+| Program | Line | `vpn.event` |
+| --- | --- | --- |
+| `wireguard` | `wireguard instance <name> (<dev>) started` | `established` |
+| `wireguard` | `wireguard instance <name> (<dev>) stopped` | `terminated` |
+| `wireguard` | `wireguard instance <name> (<dev>) switching to UP` (CARP promotion) | `established` |
+| `wireguard` | `wireguard instance <name> (<dev>) switching to DOWN` (CARP demotion) | `terminated` |
+| `tailscaled` | `Switching ipn state <from> -> Running (WantRunning=…, nm=…)` | `established` |
+| `tailscaled` | `Switching ipn state Running -> <to> (WantRunning=…, nm=…)` | `terminated` |
+| `tailscaled` | `Destroying <dev> adapter` (the rc script's service-stop teardown) | `terminated` |
+
+`vpn.result` is always `success`: neither app-name states an authentication,
+certificate or liveness verdict.
+
+Three things to know before expecting these to appear:
+
+- **WireGuard's per-peer handshakes are not events, and they are not even here.** They
+  come from the FreeBSD kernel driver, so they arrive under program `kernel`, and they
+  are behind the per-instance **Debug Log** flag, which is off by default. They also
+  repeat roughly every two minutes for a *healthy* peer, and there is no
+  "handshake completed" line at all — so the tunnel-up edge is not expressible from
+  them, and treating them as one would paint the dashboard with markers. The exporter's
+  WireGuard **peer** handshake data comes from the API poll lane instead.
+- **Tailscale's own log is not routed to syslog on a stock box.** The FreeBSD rc script
+  runs `tailscaled` under `daemon(8)` and only forwards its output to syslog when
+  `tailscaled_syslog_output_enable="YES"`, which defaults to NO and which the OPNsense
+  plugin does not set. Until you set it (in `/etc/rc.conf.local`, which survives
+  OPNsense's config regeneration), the only line you will see is the service-stop
+  teardown. The two never double-count one event: a `service tailscaled stop` produces
+  no ipn state line, and `tailscale down` produces no teardown line.
+- **`netbird` still has no parser**, and that is a finding rather than a to-do. Its
+  daemon publishes to syslog under the app-name `/usr/local/bin/netbird` — Go's
+  `log/syslog` substitutes `argv[0]` when the tag is empty, and NetBird passes an empty
+  tag — so nothing registered for `netbird` can reach it; only the three lines the rc
+  script writes with `logger -t netbird` really carry that app-name, and none is a
+  tunnel transition. Its per-peer open/close lines are also driven by the
+  lazy-connection idle timer (15 minutes by default, toggled by a server-side feature
+  flag the exporter cannot see), so they say nothing about tunnel health.
+
 ## TLS transport (optional)
 
 The receiver can take syslog over TLS in addition to (or instead of) plain UDP/TCP -
@@ -494,6 +545,7 @@ record with its message body verbatim and its envelope as metadata.
 | `kernel` | FreeBSD CARP transitions only: `carp.event`, `carp.state.previous`, `carp.state.current`, `carp.interface`, `carp.vhid`, `carp.reason`, `carp.demotion.delta`, `carp.demotion.total`. **Every other kernel line stays a generic record** - link state, watchdogs, ZFS, USB and the rest are not claimed. |
 | `miniupnpd` | UPnP/NAT-PMP mapping expiries and failures: `upnp.event`, `upnp.result`, `upnp.protocol`, `upnp.port.external`, `upnp.port.internal`. **No successful add or delete, and no active-mapping count** - see above. Request, response and daemon-lifecycle lines stay generic records. |
 | `charon`, `openvpn_*` | IPsec and OpenVPN tunnel lifecycle: `vpn.backend`, `vpn.event`, `vpn.result` and nothing else - no username, certificate subject, IKE identity, address or port is extracted. `openvpn_*` is matched by PREFIX because OPNsense names one program per configured instance. Only the captured grammar above is parsed; everything else stays a generic record. |
+| `wireguard`, `tailscaled` | The same three `vpn.*` attributes, at **service** granularity rather than per peer: a WireGuard instance started/stopped/switched by CARP, and this node's own Tailscale ipn state entering or leaving `Running`. **Not counted** into `opnsense_log_events_vpn_total` - see [WireGuard and Tailscale tunnel lifecycle attributes](#wireguard-and-tailscale-tunnel-lifecycle-attributes). No instance name, device, node key or peer is extracted. |
 | `suricata` | Suricata EVE **alerts only**, when the `syslog_eve` setting is forwarding them: `event_type`, `signature`, `alert_sid`, `alert_action`, `alert_category`, `alert_severity`, resolved `src`/`dest` endpoints. See [Suricata alerts](#suricata-alerts-pick-one-path) below. Non-JSON `suricata` lines (engine text) stay generic. |
 | `cron`, `/usr/sbin/cron` | `cron.user`, `cron.action` (`cmd`/`mail`), `cron.command` (CMD lines only, never set for MAIL). |
 | `radvd` | `radvd.event` (`polling`/`timer`), `interface`, `interface.name`, `radvd.interval_seconds` (polling lines only). |
@@ -538,8 +590,8 @@ So the line above arrives looking like this:
 
 Every other program OPNsense routes through syslog-ng - the bare `configd` daemon (as
 opposed to `configd.py`'s authorisation/RPC lines, parsed above), routing daemons
-(`bgpd`, `ospfd`, `zebra`), VPN backends with no parser yet (`wireguard`, `netbird`,
-`tailscaled`), package installs, `su`, `sudo`, and a catch-all for everything else -
+(`bgpd`, `ospfd`, `zebra`), `netbird` (the one VPN backend with no parser, for the
+reasons above), package installs, `su`, `sudo`, and a catch-all for everything else -
 ships as a generic record with its raw body and its envelope attributes.
 
 ## Querying it in Loki

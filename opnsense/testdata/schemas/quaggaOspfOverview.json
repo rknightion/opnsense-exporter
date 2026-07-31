@@ -28,10 +28,6 @@
       "kind": "number"
     },
     {
-      "path": "response.areas.*.nbrFullAdjacencyCount",
-      "kind": "number"
-    },
-    {
       "path": "response.areas.*.nbrFullAdjacentCounter",
       "kind": "number"
     },

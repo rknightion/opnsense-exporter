@@ -25,6 +25,10 @@ build the clause so the label cannot be forgotten, and this file fails on any
 built query where one is missing. Both allowlists ship SMALL and each entry
 carries its reason.
 
+Scanned across the WHOLE dashboard family since #597, not just the main dashboard —
+see `setUpClass`. Panel titles in failure messages carry their dashboard uid, because
+the two files have different readers and one shared title ("Overview").
+
 Deliberately behavioural as well as structural: `test_two_instance_fixture_*`
 evaluates every real aggregation clause against a two-instance fixture whose
 interface names, mountpoints and service names deliberately COLLIDE (`LAN`,
@@ -97,6 +101,15 @@ FLEET_TOTAL_PANELS = {
     "Total Streams": "Tor stream inventory",
     "OpenVPN Instances Enabled": "OpenVPN instance inventory",
     "Unhealthy Subsystems": "count of unhealthy subsystems anywhere in the selection",
+    # The only panel the #597 widening surfaced on the health dashboard, and the sole
+    # reason this list grew: plugin-availability inventory, "is there anything actionable
+    # anywhere in the selection". Kept fleet-wide rather than split per box because the
+    # per-instance answer is the Plugin Availability table immediately above it, which
+    # already carries an Instance column. Its query gained `sel()` in the same commit —
+    # it was previously counting instances the variable does not even select, which is
+    # fleet-wide by omission, not the declaration this entry makes.
+    "Plugins Installed But Not Scraped": "plugin-availability inventory; the per-instance "
+                                        "breakdown is the table in the same row",
 }
 
 # The phrase every fleet-total panel must carry, so the label is greppable and
@@ -214,36 +227,89 @@ def output_series(samples, kind, labels):
 
 
 class InstanceIdentityTest(unittest.TestCase):
+    # The WHOLE dashboard family, not `build_all()` (#597). `build_all()` returns the
+    # MAIN dashboard's Builder alone, so no panel on `dashboard-health.json` — where 79
+    # metrics live exclusively — was checked for instance identity at all, and the one
+    # live offender behind that blind spot ("Plugins Installed But Not Scraped", a bare
+    # `count()`) sat there passing every gate in the repo.
+    #
+    # Iterating `build_family()` rather than adding a second hardcoded builder is the
+    # same shape of fix `coverage()` took in #431: the scan follows `DASHBOARDS`, so a
+    # third dashboard is covered the day it is registered rather than the day someone
+    # remembers this file exists. `test_the_scan_covers_every_dashboard_the_family_builds`
+    # fails if that stops being true.
     @classmethod
     def setUpClass(cls):
-        cls.builder = build_dashboard.build_all()
-        cls.targets = panel_targets(cls.builder)
+        cls.built = build_dashboard.build_family()
+        cls.builders = [b for _, b in cls.built]
+        cls.targets_by_uid = {spec.uid: panel_targets(b) for spec, b in cls.built}
+        # Flat, but carrying the uid: a failure message has to name the dashboard, or
+        # the reader greps a title that exists on the other file.
+        cls.targets = [(uid, title, is_loki, expr)
+                       for uid, targets in cls.targets_by_uid.items()
+                       for title, is_loki, expr in targets]
+
+    def panels(self):
+        """Every panel element across the family, as (uid, element)."""
+        return [(spec.uid, element)
+                for spec, b in self.built
+                for element in b.elements.values()
+                if element["kind"] == "Panel"]
 
     def _offenders(self, is_loki: bool):
         label = LOKI_LABEL if is_loki else PROM_LABEL
         found = {}
-        for title, loki, expr in self.targets:
+        for uid, title, loki, expr in self.targets:
             if loki is not is_loki or title in FLEET_TOTAL_PANELS:
                 continue
             for op, kind, labels in aggregations(expr):
                 if destroys_identity(op, kind, labels, label):
                     clause = f"{op} {kind or 'no-clause'}({','.join(sorted(labels))})"
-                    found.setdefault(title, set()).add(clause)
+                    found.setdefault(f"{title} [{uid}]", set()).add(clause)
         return {k: sorted(v) for k, v in found.items()}
 
     def test_the_scan_sees_a_realistic_number_of_targets(self):
         """Guards the guard. A structural change to the panel dict would otherwise
         make every assertion below vacuously pass on an empty scan."""
         self.assertGreater(len(self.targets), 900)
-        self.assertTrue(any(loki for _, loki, _ in self.targets))
+        self.assertTrue(any(loki for _, _, loki, _ in self.targets))
         self.assertTrue(any(tuple(aggregations(expr))
-                            for _, _, expr in self.targets))
+                            for _, _, _, expr in self.targets))
+
+    def test_the_scan_covers_every_dashboard_the_family_builds(self):
+        """The guard for the #597 bug itself: a fixture that silently sees less than
+        the family builds.
+
+        The floor above is family-WIDE, so it stayed comfortably true while an entire
+        dashboard went unscanned — 1078 main-dashboard targets drown out 144 health
+        ones. This is per dashboard and derived from `DASHBOARDS`, so narrowing the
+        fixture back to one builder, or registering a third dashboard whose panels this
+        scan cannot read, fails here instead of quietly halving the guard's reach.
+
+        It also catches two specs sharing a uid, which would collapse `targets_by_uid`
+        and hide one dashboard's panels behind the other's key — the same silent
+        narrowing by a different route.
+        """
+        self.assertEqual(
+            sorted(self.targets_by_uid),
+            sorted(spec.uid for spec in build_dashboard.DASHBOARDS),
+            "the instance-identity scan no longer covers every dashboard the family "
+            "builds — every assertion in this file is blind to the missing one",
+        )
+        for uid, targets in self.targets_by_uid.items():
+            with self.subTest(dashboard=uid):
+                self.assertTrue(targets, f"{uid}: no panel targets scanned")
+                self.assertTrue(
+                    any(tuple(aggregations(expr)) for _, _, expr in targets),
+                    f"{uid}: not one aggregation clause scanned, so every offender "
+                    "assertion below is vacuous for this dashboard",
+                )
 
     def test_the_query_wrapper_is_not_mistaken_for_a_merge(self):
         """The trap #425 named: every target is wrapped in `max without (job, ...)`,
         which PRESERVES the instance. If WRAPPER ever stops matching, this file
         would flag all ~970 targets and be switched off rather than fixed."""
-        wrapped = [expr for _, loki, expr in self.targets if not loki]
+        wrapped = [expr for _, _, loki, expr in self.targets if not loki]
         self.assertTrue(wrapped)
         for expr in wrapped[:50]:
             self.assertFalse(
@@ -259,43 +325,41 @@ class InstanceIdentityTest(unittest.TestCase):
     def test_no_logql_panel_aggregation_drops_instance_identity(self):
         self.assertEqual(self._offenders(is_loki=True), {})
 
+    def _hidden(self):
+        return {t for b in self.builders for t in hidden_instance_tables(b)}
+
     def test_no_table_hides_the_instance_column(self):
-        hidden = sorted(t for t in hidden_instance_tables(self.builder)
-                        if t not in TABLE_HIDE_EXCEPTIONS)
+        hidden = sorted(t for t in self._hidden() if t not in TABLE_HIDE_EXCEPTIONS)
         self.assertEqual(hidden, [])
 
     def test_table_hide_exceptions_are_not_stale(self):
         """An exception left behind after a table is fixed blinds the check for a
         title that no longer offends — the same stale-allowlist mistake the
         bar-gauge and sentinel guards protect against."""
-        hidden = set(hidden_instance_tables(self.builder))
-        self.assertEqual(set(TABLE_HIDE_EXCEPTIONS) - hidden, set())
+        self.assertEqual(set(TABLE_HIDE_EXCEPTIONS) - self._hidden(), set())
 
     def test_declared_fleet_totals_say_so_on_the_panel(self):
         """#425 criterion 3. Zero panels were labelled as fleet totals when the
         audit ran; a deliberate merge is only acceptable if the panel admits it."""
         missing = []
-        for element in self.builder.elements.values():
-            if element["kind"] != "Panel":
-                continue
+        for uid, element in self.panels():
             title = element["spec"]["title"]
             if title not in FLEET_TOTAL_PANELS:
                 continue
             text = element["spec"].get("description", "") or ""
             if FLEET_TOTAL_PHRASE.lower() not in text.lower():
-                missing.append(title)
+                missing.append(f"{title} [{uid}]")
         self.assertEqual(sorted(missing), [])
 
     def test_fleet_total_allowlist_is_not_stale(self):
         """Every allow-listed title must still exist AND still aggregate. A panel
         that gained a per-instance clause should leave the list, or the next reader
         believes a merge is happening that no longer is."""
-        titles = {e["spec"]["title"] for e in self.builder.elements.values()
-                  if e["kind"] == "Panel"}
+        titles = {e["spec"]["title"] for _, e in self.panels()}
         self.assertEqual(set(FLEET_TOTAL_PANELS) - titles, set(),
                          "allowlisted panel titles that no longer exist")
         for title in FLEET_TOTAL_PANELS:
-            exprs = [e for t, loki, e in self.targets if t == title and not loki]
+            exprs = [e for _, t, loki, e in self.targets if t == title and not loki]
             with self.subTest(title=title):
                 self.assertTrue(
                     any(destroys_identity(op, kind, labels, PROM_LABEL)
@@ -319,22 +383,30 @@ class InstanceIdentityTest(unittest.TestCase):
         # checked only the 14 recording rules while claiming to cover all 55.
         exprs = [(r["metric"], r["expr"]) for r in RECORDING]
         exprs += [(r["name"], r["A"]) for r in RULES]
-        self.assertEqual(len(exprs), len(RECORDING) + len(RULES))
-        # 64 alerts + 14 recording. Bump deliberately when a rule is added — the
-        # literal is here so an accidentally emptied RULES/RECORDING cannot make the
-        # offender scan below pass by having nothing to scan. 71 -> 73 when #560 added
-        # OPNsenseDHCP6AddressExpiring and OPNsenseDHCP6AddressNotRefreshing, the IA_NA
-        # twins of the prefix pair. 73 -> 78 when the #593 Phase 3 wave added the four
-        # Phase 4 alert candidates (#578 IPsec child SA, #579 jumbo mbuf pool, #581
-        # unbound lame upstream, #582 OSPF LSA retransmission) plus
-        # OPNsenseFlowSourceDivergence, which is how #592 item 2 ships its divergence
-        # MARKER: a Grafana-managed rule annotates the panel it names, and the metric is
-        # a cumulative histogram with no instant value for an annotation Watch to diff.
+        # Derived, not a hand-bumped literal (#597). This used to read
+        # `assertEqual(len(exprs), 78)` with five lines of changelog, and every rule that
+        # landed anywhere in the repo failed this file until someone edited a number they
+        # had no reason to read. What the literal was actually protecting is narrow and
+        # says so in its own comment: an emptied or half-read RULES/RECORDING would make
+        # the offender scan below pass by having nothing to scan. Three assertions cover
+        # that without a number that moves:
         #
-        # NOTE (#597): this fixture is build_all() only, so no health-dashboard panel is
-        # checked for instance identity — a known blind spot, tracked separately. Do not
-        # read a passing run here as covering the whole family.
-        self.assertEqual(len(exprs), 78)
+        # * the sum proves BOTH lists were read — the shape bug the docstring records (a
+        #   first cut looked for "expr" on both and silently checked only the 14 recording
+        #   rules while claiming all 55) fails here, because 14 != 14 + 64;
+        # * the floors break the circularity, so two empty lists cannot satisfy the sum.
+        #   They are floors, not equalities, so a rule landing never touches this file.
+        #
+        # The EXACT counts are pinned deliberately in tests/test_runbooks.py
+        # (test_exact_alert_count_is_64 / test_exact_recording_count_is_14), which owns
+        # that number and carries its changelog, and test_build_rules.py checks the
+        # emitted manifests against the same lists. A second copy here only ever meant
+        # two files to bump for one change.
+        self.assertEqual(len(exprs), len(RECORDING) + len(RULES))
+        self.assertGreater(len(RULES), 50, "RULES looks emptied or truncated; the "
+                                          "offender scan below would pass vacuously")
+        self.assertGreater(len(RECORDING), 10, "RECORDING looks emptied or truncated; the "
+                                              "offender scan below would pass vacuously")
         offenders = {
             name: f"{op} {kind or 'no-clause'}({','.join(sorted(labels))})"
             for name, expr in exprs
@@ -351,7 +423,7 @@ class InstanceIdentityTest(unittest.TestCase):
         identity yields two output series; a merging one yields a single fused
         series that looks exactly like one healthy box.
         """
-        for title, is_loki, expr in self.targets:
+        for uid, title, is_loki, expr in self.targets:
             if title in FLEET_TOTAL_PANELS:
                 continue
             label = LOKI_LABEL if is_loki else PROM_LABEL
@@ -359,7 +431,7 @@ class InstanceIdentityTest(unittest.TestCase):
             for op, kind, labels in aggregations(expr):
                 if (op, kind, labels) == WRAPPER or kind is None:
                     continue
-                with self.subTest(panel=title, clause=f"{op} {kind}"):
+                with self.subTest(dashboard=uid, panel=title, clause=f"{op} {kind}"):
                     series = output_series(fixture, kind, labels)
                     self.assertEqual(
                         len(series), 2,

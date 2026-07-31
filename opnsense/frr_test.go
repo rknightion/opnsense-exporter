@@ -160,6 +160,11 @@ func TestFetchFRRBGP_DualSAFI(t *testing.T) {
 // spfLastExecutedMsecs/spfLastDurationMsecs (#582) are genuine numeric FRR
 // fields (ospf_vty.c ~3451-3463, verified against FRRouting/frr master) —
 // 5000ms "ago" and a 42ms last-run duration.
+//
+// #598: this fixture used to carry "nbrFullAdjacencyCount" alongside
+// "nbrFullAdjacentCounter", which no FRR release has ever emitted, so it encoded
+// a shape upstream cannot produce — the same fabricated-fixture failure as #480's
+// invented bfdcounters names. Do not add it back.
 const ospfOverviewFixture = `{
   "response": {
     "routerId": "10.0.0.1",
@@ -177,7 +182,6 @@ const ospfOverviewFixture = `{
         "areaIfTotalCounter": 2,
         "areaIfActiveCounter": 2,
         "nbrCount": 2,
-        "nbrFullAdjacencyCount": 1,
         "nbrFullAdjacentCounter": 1,
         "lsaNumber": 7,
         "spfExecutedCounter": 12,
@@ -632,6 +636,61 @@ func TestFetchFRROSPF_SPFTimingAbsentBeforeFirstRun(t *testing.T) {
 	}
 	if data.HasSPFLastDuration {
 		t.Error("expected HasSPFLastDuration=false before the instance's first SPF run")
+	}
+}
+
+// TestFetchFRROSPF_FullAdjacentCounterIsTheOnlySpelling pins the #598 verdict:
+// "nbrFullAdjacentCounter" is the ONLY key FRR has ever emitted for the
+// per-area count of fully-adjacent neighbours, so there is no second spelling
+// to fall back to and a zero reading is a real zero.
+//
+// This existed as a tolerant PAIR (a "nbrFullAdjacencyCount" field resolved
+// new-wins-else-legacy) until the #598 history sweep proved the second spelling
+// a phantom of the #284 class — see the frrOSPFAreaData comment in frr.go for
+// the verbatim evidence. Two behaviours broke while the phantom branch lived,
+// and both are asserted here so the pair cannot be reintroduced:
+//
+//   - a payload carrying ONLY the phantom key must read 0, not fabricate a
+//     value from a key no FRR release sends;
+//   - an area with a genuine zero (up interfaces, no adjacency reaching Full —
+//     exactly the state an operator needs to see) must stay 0. The old
+//     `if fullAdj == 0` fallback could not tell "absent" from "legitimately
+//     zero", so a real zero fell through to the phantom key.
+func TestFetchFRROSPF_FullAdjacentCounterIsTheOnlySpelling(t *testing.T) {
+	cases := []struct {
+		name    string
+		areaFmt string
+		want    float64
+	}{
+		{"frr_spelling_is_read", `{"nbrFullAdjacentCounter":3}`, 3},
+		{"phantom_spelling_alone_is_ignored", `{"nbrFullAdjacencyCount":3}`, 0},
+		{"genuine_zero_stays_zero", `{"nbrFullAdjacentCounter":0,"nbrFullAdjacencyCount":7}`, 0},
+		{"both_absent_reads_zero", `{"lsaNumber":5}`, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, mux, client := newTestClientWithMux(t)
+			defer server.Close()
+
+			mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"response":{"routerId":"10.0.0.1","areas":{"0.0.0.0":` + tc.areaFmt + `}}}`))
+			})
+			mux.HandleFunc("/api/quagga/diagnostics/searchOspfneighbor", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(ospfNeighborsEmptyFixture))
+			})
+
+			data, err := client.FetchFRROSPF()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Areas) != 1 {
+				t.Fatalf("areas: want 1, got %d", len(data.Areas))
+			}
+			if got := data.Areas[0].NeighborsFullAdjacent; got != tc.want {
+				t.Errorf("NeighborsFullAdjacent: want %v, got %v", tc.want, got)
+			}
+		})
 	}
 }
 

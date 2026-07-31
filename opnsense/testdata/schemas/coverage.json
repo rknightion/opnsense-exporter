@@ -104,6 +104,15 @@
         ],
         "exercise": "Same as rows[].prefix_len; both operands of the capacity computation need one human read of a real capture.",
         "verified": "VALUES HUMAN-READ 2026-07-25: see rows[].prefix_len."
+      },
+      {
+        "path": "rows[].%subnet",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp6_pd_pool_size"
+        ],
+        "exercise": "Same PD pool as the already-ledgered rows[].prefix - the row's mere existence makes the key present. Exercising the CODE path behind it is a second, harder thing: pdPoolSubnetLabel prefers the rows[].subnet UUID join against keaSubnets6 and only falls back to this display string when that join misses, so reaching the fallback needs a PD pool whose subnet reference is stale (delete the parent subnet6 record, or point the pool at a UUID that no longer exists). Worth doing once by hand rather than leaving to chance: this is a \"<interface-description> <cidr>\" string and the label takes only the token after the last space, so a format change silently mislabels rather than empties.",
+        "blocker": "searchPdPool returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. flexString (KindAny) as well, so even a populated run can only ever prove the key exists."
       }
     ]
   },
@@ -281,7 +290,7 @@
         "verified": "LIVE-VERIFIED 2026-07-28 (#460): present on 6 of 38 rows - two OpenVPN instances keyed by config UUID, three dpinger rows keyed by gateway name, and the Kea control agent. It is the id label on opnsense_hasync_remote_service_running, and the real values are UUIDs and names, NOT the small integer the previous synthetic fixture implied."
       }
     ],
-    "note": "REACHED 2026-07-28 by #460, which built the second OPNsense this endpoint always needed (a clone of the devel box attached to the isolated host-internal bridge only, stripped of the cloned production-adjacent config and given its own identity and API credentials). rows[].description is decoded into hasyncServiceRow but backs no metric, so it is deliberately NOT ledgered as required - it is present on every row and would only add an entry nothing consumes. REGRESSION TRIGGER: the list is a CACHE of the peer's services, so stopping the second VM leaves these paths unverified rather than missing. KNOWN OPEN, and NOT drift - do not lab-chase either of these: with the endpoint finally populated the canary now reports (a) rows[].running as a MISSING path and (b) eight unmodelled nested keys (configd, dns_ports, locked, mwexec, nocheck, php, pidfile, uid). rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow that upstream has never emitted on any release - list_services_xmlrpc sets 'status' only - so it can never be present on any box and wants a missingOK entry in exemptions.json, not a testbed change. The eight extras are #457 baseline material."
+    "note": "REACHED 2026-07-28 by #460, which built the second OPNsense this endpoint always needed (a clone of the devel box attached to the isolated host-internal bridge only, stripped of the cloned production-adjacent config and given its own identity and API credentials). rows[].description is decoded into hasyncServiceRow but backs no metric, so it is deliberately NOT ledgered as required - it is present on every row and would only add an entry nothing consumes. REGRESSION TRIGGER: the list is a CACHE of the peer's services, so stopping the second VM leaves these paths unverified rather than missing. KNOWN OPEN, and NOT drift - do not lab-chase either of these: with the endpoint finally populated the canary now reports (a) rows[].running as a MISSING path and (b) eight unmodelled nested keys (configd, dns_ports, locked, mwexec, nocheck, php, pidfile, uid). rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow that upstream has never emitted on any release - list_services_xmlrpc sets 'status' only - so it can never be present on any box. RESOLVED - that missingOK entry already EXISTS in exemptions.json (hasyncServices.missingOK = [\"rows[].running\"]), verified 2026-07-31, so this is NOT an open item and #599's hand-off asking for one was a no-op. The 'wants a missingOK' wording above was written 2026-07-28 before the entry landed and was read as still-open three days later - a stale TODO in a ledger note is worse than none, because the next reader spends the trip to exemptions.json to find out. Not a testbed change either way. The eight extras are #457 baseline material. AUDIT ADDENDUM 2026-07-31 (#599): both remaining unclassified paths here stay informational, and for DIFFERENT reasons. rows[].description is a dead field (cmd/fieldaudit exempt, as the note above already says). rows[].running IS read - hasync.go resolves service state as `row.Status.Bool() || row.Running.Bool()`, so it would back opnsense_hasync_remote_service_running if it ever arrived - but upstream's list_services_xmlrpc sets 'status' only and has never emitted it on any release, so a required entry here would be a warning no live run and no testbed change could ever clear, which is the permanent noise this ledger exists to avoid. Its sibling rows[].status is already ledgered required and carries the same metric. STILL OPEN and unchanged by #599: the correct home for it is a missingOK entry in exemptions.json, not this file."
   },
   "carpStatus": {
     "required": [
@@ -364,7 +373,7 @@
         "verified": "LIVE-VERIFIED 2026-07-28 (#460): \"1\" on both boxes in every state INCLUDING while demoted - entering maintenance does not clear allow, so a dashboard cannot use carp_allow as a proxy for 'this node is serving'."
       }
     ],
-    "note": "REACHED 2026-07-28 by #460. The endpoint was always populated on the single-node testbed - one CARP VIP existed - but every interesting VALUE was pinned: status could only be MASTER, advskew could only be 0, demotion could only be 0 and maintenancemode could only be false. The second OPNsense makes all four vary, which is why these are ledgered now rather than when the endpoint first answered. LIVE ANSWER to the rows[].mode question the carpStatus note in exemptions.json parks for #457: mode is served as the string \"carp\" and is REDUNDANT, not a VIP-type discriminator. get_vip_status returns vhid-bearing CARP VIPs only - the devel box also carries an ipalias VIP on the loopback and it does NOT appear in rows at all - so mode is constant for every row this endpoint can ever emit, and belongs in carpStatus.knownExtraPaths beside vhid_txt. SECOND CORRECTION to that same note: it claims carp.status_msg \"only appears in the 'no CARP interfaces configured' case\". That is WRONG. status_msg was present as an empty string in all twelve captures taken across MASTER, BACKUP, maintenance and failback on two boxes that each had a configured VIP. It is always present, and merely empty when there is nothing to say. REGRESSION TRIGGER: stop the second VM and status pins back to MASTER and advskew to 0 on the survivor. The paths stay verified but stop VARYING, which no canary can detect - only this note."
+    "note": "REACHED 2026-07-28 by #460. The endpoint was always populated on the single-node testbed - one CARP VIP existed - but every interesting VALUE was pinned: status could only be MASTER, advskew could only be 0, demotion could only be 0 and maintenancemode could only be false. The second OPNsense makes all four vary, which is why these are ledgered now rather than when the endpoint first answered. LIVE ANSWER to the rows[].mode question the carpStatus note in exemptions.json parks for #457: mode is served as the string \"carp\" and is REDUNDANT, not a VIP-type discriminator. get_vip_status returns vhid-bearing CARP VIPs only - the devel box also carries an ipalias VIP on the loopback and it does NOT appear in rows at all - so mode is constant for every row this endpoint can ever emit, and belongs in carpStatus.knownExtraPaths beside vhid_txt. SECOND CORRECTION to that same note: it claims carp.status_msg \"only appears in the 'no CARP interfaces configured' case\". That is WRONG. status_msg was present as an empty string in all twelve captures taken across MASTER, BACKUP, maintenance and failback on two boxes that each had a configured VIP. It is always present, and merely empty when there is nothing to say. REGRESSION TRIGGER: stop the second VM and status pins back to MASTER and advskew to 0 on the survivor. The paths stay verified but stop VARYING, which no canary can detect - only this note. AUDIT ADDENDUM 2026-07-31 (#599): rows[].status_txt is deliberately NOT ledgered. It is decoded and never read - cmd/fieldaudit lists carpVIPRow.StatusTxt as an exempt dead field, localised presentation copy of the rows[].status this endpoint already exports - so it backs no metric. rows[] itself is the element container and is left informational alongside the nine children above."
   },
   "keaLeases4": {
     "required": [
@@ -421,9 +430,43 @@
         ],
         "exercise": "Same as rows[].address.",
         "verified": "LIVE-VERIFIED 2026-07-28 (#460): the interface description, matching the label carp.go and kea.go both use."
+      },
+      {
+        "path": "rows[].expire",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info"
+        ],
+        "exercise": "Same as the already-ledgered rows[].address: the traffgen LXC's DHCPv4 lease on the Kea-served testbed VLAN. All four of these additional paths sit on the details-gated opnsense_kea_dhcp4_lease_info series, so the canary needs the lease AND the exporter needs --exporter.enable-kea-details for the metric to exist at all. expire is the VALUE of lease_info (every other field on it is a label), so it is the one path here whose drift changes a number rather than a label.",
+        "blocker": "kea/leases4/search returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. On the devel box the same paths resolve (see the 2026-07-28 verification on rows[].address). Check that kea-dhcp4 and not the legacy dhcpd owns UDP/67 before calling an empty list drift - that collision has broken this twice. flexInt (KindAny), so a populated run can only ever prove the key exists; note it is Kea's cltt+valid-lft sum and cltt is never exposed, so valid_lifetime cannot be re-derived from it."
+      },
+      {
+        "path": "rows[].valid_lifetime",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info"
+        ],
+        "exercise": "Same as the already-ledgered rows[].address: the traffgen LXC's DHCPv4 lease on the Kea-served testbed VLAN. All four of these additional paths sit on the details-gated opnsense_kea_dhcp4_lease_info series, so the canary needs the lease AND the exporter needs --exporter.enable-kea-details for the metric to exist at all. Kea's valid-lft, stringified into a label. Not derivable from expire (see that entry), which is why it is modelled separately.",
+        "blocker": "kea/leases4/search returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. On the devel box the same paths resolve (see the 2026-07-28 verification on rows[].address). Check that kea-dhcp4 and not the legacy dhcpd owns UDP/67 before calling an empty list drift - that collision has broken this twice. flexInt (KindAny), so a populated run can only ever prove the key exists."
+      },
+      {
+        "path": "rows[].client_id",
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info"
+        ],
+        "exercise": "Same as the already-ledgered rows[].address: the traffgen LXC's DHCPv4 lease on the Kea-served testbed VLAN. All four of these additional paths sit on the details-gated opnsense_kea_dhcp4_lease_info series, so the canary needs the lease AND the exporter needs --exporter.enable-kea-details for the metric to exist at all. The client must actually send DHCP option 61: dhclient does by default, systemd-networkd with ClientIdentifier=mac does NOT, and Kea's lease6 records have no client-id concept at all, which is why this label is added on the v4 call site only (includeClientID). A client that omits option 61 leaves it an empty string, which is indistinguishable from a rename.",
+        "blocker": "kea/leases4/search returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. On the devel box the same paths resolve (see the 2026-07-28 verification on rows[].address). Check that kea-dhcp4 and not the legacy dhcpd owns UDP/67 before calling an empty list drift - that collision has broken this twice."
+      },
+      {
+        "path": "rows[].mac_info",
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info"
+        ],
+        "exercise": "Same as the already-ledgered rows[].address: the traffgen LXC's DHCPv4 lease on the Kea-served testbed VLAN. All four of these additional paths sit on the details-gated opnsense_kea_dhcp4_lease_info series, so the canary needs the lease AND the exporter needs --exporter.enable-kea-details for the metric to exist at all. This is PHP-side enrichment, not wire data: LeasesController.php looks the first three hwaddr octets up in the OPNsense macdb and returns a vendor NAME. It is empty whenever the OUI is unknown, and a Proxmox LXC's veth gets a random locally-administered address by default, so the traffgen LXC's MAC must be pinned to a real vendor OUI or this path stays empty even with a healthy lease.",
+        "blocker": "kea/leases4/search returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. On the devel box the same paths resolve (see the 2026-07-28 verification on rows[].address). Check that kea-dhcp4 and not the legacy dhcpd owns UDP/67 before calling an empty list drift - that collision has broken this twice."
       }
     ],
-    "note": "CLOSED 2026-07-28 by #460. ROOT CAUSE of the long-standing empty lease list, recorded so nobody re-investigates it: the traffgen LXC held a STATIC address, so nothing on the Kea-served VLAN ever asked for a lease. Switching it to DHCP was NOT sufficient on its own - the legacy ISC dhcpd had restarted and was wildcard-binding UDP/67, silently starving kea-dhcp4 of its socket, so DHCPDISCOVER drew no offers at all. Stopping dhcpd and restarting Kea produced an offer immediately. This is the same dhcpd-versus-Kea collision recorded on 2026-07-13, and it recurs because dhcpd is only STOPPED, never disabled in config. REGRESSION TRIGGERS, likeliest first: (1) the firewall reboots and brings dhcpd back, re-breaking Kea DHCPv4 - check that kea-dhcp4 and not dhcpd owns UDP/67 before calling this drift; (2) the lease expires if the traffgen LXC stops renewing."
+    "note": "CLOSED 2026-07-28 by #460. ROOT CAUSE of the long-standing empty lease list, recorded so nobody re-investigates it: the traffgen LXC held a STATIC address, so nothing on the Kea-served VLAN ever asked for a lease. Switching it to DHCP was NOT sufficient on its own - the legacy ISC dhcpd had restarted and was wildcard-binding UDP/67, silently starving kea-dhcp4 of its socket, so DHCPDISCOVER drew no offers at all. Stopping dhcpd and restarting Kea produced an offer immediately. This is the same dhcpd-versus-Kea collision recorded on 2026-07-13, and it recurs because dhcpd is only STOPPED, never disabled in config. REGRESSION TRIGGERS, likeliest first: (1) the firewall reboots and brings dhcpd back, re-breaking Kea DHCPv4 - check that kea-dhcp4 and not dhcpd owns UDP/67 before calling this drift; (2) the lease expires if the traffgen LXC stops renewing. AUDIT ADDENDUM 2026-07-31 (#599): rows[].type is deliberately NOT ledgered. It is decoded and read, but Kea has no lease-type concept on v4 so it is permanently the empty string, fetchKeaLeases excludes empty types from LeasesByType, and the v4 call site passes nil for the leases_by_type descriptor - so no v4 series can ever depend on it. Its v6 twin IS ledgered on keaLeases6. rows[] itself is the element container and is left informational."
   },
   "wireguardClients": {
     "required": [
@@ -451,8 +494,763 @@
         ],
         "exercise": "Same as rows[].transfer-rx.",
         "verified": "LIVE-VERIFIED 2026-07-29 on both testbeds (#502). VM 102 had WireGuard enabled and served peer rows; VM 106 was enabled=0 from the clone strip and reported all three paths missing in the first release-vm canary run (#508). Enabling it on 106 produced peer rows carrying all three within 15s. Fixed on the box rather than exempted, per the triage rule that a field backing an exported metric should have the testbed fixed instead — an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].type",
+        "metrics": [
+          "opnsense_wireguard_interfaces_status",
+          "opnsense_wireguard_peer_status",
+          "opnsense_wireguard_peer_received_bytes_total",
+          "opnsense_wireguard_peer_transmitted_bytes_total",
+          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_handshake_age_seconds"
+        ],
+        "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. type is the device_type label on every series AND the interface/peer discriminator: a row is sorted into the interface or the peer list purely on this field, and a row matching neither is dropped. A rename therefore empties every WireGuard series at once.",
+        "blocker": "wireguardClients returned an EMPTY rows array on the release-channel testbed, which is a stronger regression than the enabled=0 state #508 found: per this endpoint's own note a box with WireGuard merely disabled still returns its type=\"interface\" rows, so an empty array means the wgtest1/wgtest2 INSTANCES are gone from that box, not just switched off. Re-create them, and re-check the standing \"WireGuard is enabled on BOTH testbeds and must stay that way\" note below - it is currently untrue."
+      },
+      {
+        "path": "rows[].if",
+        "metrics": [
+          "opnsense_wireguard_interfaces_status",
+          "opnsense_wireguard_peer_status",
+          "opnsense_wireguard_peer_received_bytes_total",
+          "opnsense_wireguard_peer_transmitted_bytes_total",
+          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_handshake_age_seconds"
+        ],
+        "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. The device label on every interface and peer series.",
+        "blocker": "wireguardClients returned an EMPTY rows array on the release-channel testbed, which is a stronger regression than the enabled=0 state #508 found: per this endpoint's own note a box with WireGuard merely disabled still returns its type=\"interface\" rows, so an empty array means the wgtest1/wgtest2 INSTANCES are gone from that box, not just switched off. Re-create them, and re-check the standing \"WireGuard is enabled on BOTH testbeds and must stay that way\" note below - it is currently untrue."
+      },
+      {
+        "path": "rows[].ifname",
+        "metrics": [
+          "opnsense_wireguard_interfaces_status",
+          "opnsense_wireguard_peer_status",
+          "opnsense_wireguard_peer_received_bytes_total",
+          "opnsense_wireguard_peer_transmitted_bytes_total",
+          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_handshake_age_seconds"
+        ],
+        "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. The device_name label on every interface and peer series.",
+        "blocker": "wireguardClients returned an EMPTY rows array on the release-channel testbed, which is a stronger regression than the enabled=0 state #508 found: per this endpoint's own note a box with WireGuard merely disabled still returns its type=\"interface\" rows, so an empty array means the wgtest1/wgtest2 INSTANCES are gone from that box, not just switched off. Re-create them, and re-check the standing \"WireGuard is enabled on BOTH testbeds and must stay that way\" note below - it is currently untrue."
+      },
+      {
+        "path": "rows[].status",
+        "metrics": [
+          "opnsense_wireguard_interfaces_status"
+        ],
+        "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. This is the VALUE of the interfaces_status gauge, read only on interface rows, and it is a TRANSLATED string - parseWGInterfaceStatus matches \"up\"/\"down\" and logs a warning for anything else, reporting 2 (unknown). Both branches occur naturally: an instance that is configured but not enabled reports down.",
+        "blocker": "wireguardClients returned an EMPTY rows array on the release-channel testbed, which is a stronger regression than the enabled=0 state #508 found: per this endpoint's own note a box with WireGuard merely disabled still returns its type=\"interface\" rows, so an empty array means the wgtest1/wgtest2 INSTANCES are gone from that box, not just switched off. Re-create them, and re-check the standing \"WireGuard is enabled on BOTH testbeds and must stay that way\" note below - it is currently untrue."
+      },
+      {
+        "path": "rows[].name",
+        "metrics": [
+          "opnsense_wireguard_peer_status",
+          "opnsense_wireguard_peer_received_bytes_total",
+          "opnsense_wireguard_peer_transmitted_bytes_total",
+          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_handshake_age_seconds"
+        ],
+        "exercise": "The peer_name label on every peer series, from type=\"peer\" rows only. The wgtest1/wgtest2 loopback pair provides them. Note peer_name is free-form user config that OPNsense does not force to be unique per interface, so the collector skips a peer whose (device, device_type, device_name, peer_name) tuple repeats (#85) rather than failing the scrape - two identically named peers on one device silently lose one.",
+        "blocker": "wireguardClients returned an EMPTY rows array on the release-channel testbed, which is a stronger regression than the enabled=0 state #508 found: per this endpoint's own note a box with WireGuard merely disabled still returns its type=\"interface\" rows, so an empty array means the wgtest1/wgtest2 INSTANCES are gone from that box, not just switched off. Re-create them, and re-check the standing \"WireGuard is enabled on BOTH testbeds and must stay that way\" note below - it is currently untrue."
+      },
+      {
+        "path": "rows[].peer-status",
+        "metrics": [
+          "opnsense_wireguard_peer_status"
+        ],
+        "exercise": "The VALUE of the peer_status gauge, on type=\"peer\" rows only - the wgtest1/wgtest2 loopback pair with its short persistent-keepalive gives the online branch within seconds. Like the interface status it is a TRANSLATED string: parseWGPeerStatus matches \"online\"/\"offline\"/\"stale\" and reports 2 (unknown) with a log warning for anything else, so drift degrades to a permanent 2 rather than a failed scrape. The stale branch needs a peer idle for more than 300s, and offline needs the peer instance stopped.",
+        "blocker": "wireguardClients returned an EMPTY rows array on the release-channel testbed, which is a stronger regression than the enabled=0 state #508 found: per this endpoint's own note a box with WireGuard merely disabled still returns its type=\"interface\" rows, so an empty array means the wgtest1/wgtest2 INSTANCES are gone from that box, not just switched off. Re-create them, and re-check the standing \"WireGuard is enabled on BOTH testbeds and must stay that way\" note below - it is currently untrue."
       }
     ],
-    "note": "WireGuard is enabled on BOTH testbeds as of 2026-07-29 and must stay that way, or the release box silently loses these three paths again while still answering the endpoint with its interface rows."
+    "note": "WireGuard is enabled on BOTH testbeds as of 2026-07-29 and must stay that way, or the release box silently loses these three paths again while still answering the endpoint with its interface rows. AUDIT ADDENDUM 2026-07-31 (#599): #599's counter-check that rows[].peer-status has no collector consumer is WRONG and is corrected here. opnsense/wireguard.go:133 passes it through parseWGPeerStatus into WireguardPeers.Status, which internal/collector/wireguard.go:126 emits as the VALUE of opnsense_wireguard_peer_status - it is not a spare presentation field, it is the entire peer health signal. All six of this endpoint's remaining unclassified paths back a metric; rows[] itself is the element container and is left informational."
+  },
+  "captivePortalSessions": {
+    "required": [
+      {
+        "path": "rows[].zoneid",
+        "opaque": true,
+        "metrics": [
+          "opnsense_captiveportal_zone_sessions"
+        ],
+        "exercise": "Configure one captive-portal zone (Services > Captive Portal > Administration: add a zone, enable it, bind it to the interface the traffgen LXC sits on) and then authenticate one client through the portal, so api/captiveportal/session/search returns a row. BOTH steps are needed and the second is the easy one to skip: a configured portal with nobody logged in still answers {total:0,rows:[]}, and because captiveportal.go emits a zero-valued zone_sessions series for every configured zone, the metric reads a perfectly correct 0 while this path stays unexercised.",
+        "blocker": "no captive-portal zone exists on either testbed and no client has ever authenticated through one. This is the field the per-zone attribution turns on: if zoneid is renamed upstream, every session falls into the synthetic \"unknown\" zone, so every configured zone's series silently reads 0 while opnsense_captiveportal_sessions_total stays correct (it comes from the envelope's own count, not from these rows) - a drift that looks like an idle portal rather than a bug."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). rows[] itself is the array element container, not a value: it carries no metric and its warning would resolve with the leaf above, so it is left informational - the same treatment carpStatus's rows[] already gets alongside nine ledgered children. Per-session PII (userName/macAddress/ipAddress) is deliberately not modelled at all (D10), so it cannot appear here."
+  },
+  "captivePortalVoucherProviders": {
+    "required": [
+      {
+        "path": "[]",
+        "metrics": [
+          "opnsense_captiveportal_vouchers",
+          "opnsense_captiveportal_voucher_group_next_expiry_seconds"
+        ],
+        "exercise": "Create one voucher-type authentication server (System > Access > Servers, type \"Voucher\"). api/captiveportal/voucher/list_providers IS the list of those servers, so one is enough to make the array non-empty. Configuration only: no voucher needs to be generated and none needs to be redeemed.",
+        "blocker": "no voucher auth server exists on either testbed, so list_providers returns [] and the whole voucher fetch short-circuits before it ever calls list_voucher_groups or list_vouchers - which is also why captivePortalVoucherGroups and captivePortalVouchers sit in the canary's skipped-parameterized list. Note this path is the ELEMENT of a bare string array, so unlike a rows[] container it is the value itself: each element becomes the provider label on both metrics and the path segment of the two downstream calls."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). One provider unlocks three endpoints: the group and voucher calls are parameterized by this array's elements, so an empty list leaves that whole subtree unprobed rather than merely unlabelled."
+  },
+  "firmware": {
+    "required": [
+      {
+        "path": "product.product_check.upgrade_needs_reboot",
+        "metrics": [
+          "opnsense_firmware_upgrade_needs_reboot"
+        ],
+        "exercise": "Make the box store an update check (System > Firmware > Updates \"Check for updates\", or `configctl firmware check`), then re-poll. FirmwareController.php:126-127 does `$response = $product['product_check']; $response['product'] = $product;` - the top level IS product_check and `product` re-serves the same object - so the nested copy appears at the same moment the top-level superset does. A box that has not checked since boot serves the bare three-key envelope and product.product_check arrives as PHP's empty-array-for-empty-object, which the validator files as unverified rather than missing.",
+        "blocker": "the canary probes whatever state the box is in and this run caught it pre-check. Sharper than a plain box-state gap, though: this nested copy is the FALLBACK arm of a tolerant reader - firmwareStatusResponse.upgradeNeedsReboot() prefers the top-level upgrade_needs_reboot pointer and only reads this path when that key is absent. So on a box that sends the top-level key the metric is right while this path goes unchecked, and on a box that does not, the metric is computed entirely from an unverified path. The fallback exists for exactly the latter kind of box, which is why it is required coverage and not decoration."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). product.product_check (the object itself) is left informational: it is the parent container of the one leaf modelled under it, carries no value of its own, and resolves at the same instant that leaf does. Everything else under product.* is exempted in exemptions.json as duplicate-representation identity metadata, so no other path here is a candidate."
+  },
+  "idsQueryAlerts": {
+    "required": [
+      {
+        "path": "rows[].timestamp",
+        "opaque": true,
+        "metrics": [
+          "opnsense_ids_recent_alerts"
+        ],
+        "exercise": "Requires --exporter.enable-ids-alerts AND at least one Suricata alert inside --exporter.ids-alert-lookback at the moment the canary polls. Enable IDS (Services > Intrusion Detection > Administration: enabled=1, at least one ruleset downloaded and enabled, on the interface the traffgen LXC's traffic crosses), then trip a rule from that LXC - one HTTP request matching an ET-open signature is enough. The window is the catch: alerts age out of the lookback, so this path is verifiable only while traffic is being generated, and query_alerts is itself a windowed saturating read (a floor above 500 alerts). parseIDSAlertTime is what turns this into the in-window test, so a format change here silently empties the window rather than failing.",
+        "blocker": "api/ids/service/query_alerts returned an empty rows array on the release-channel testbed - either Suricata is not enabled there or nothing has alerted inside the retained eve window. Check `configctl service status suricata` and the eve log inventory before treating a regression here as drift. Both paths are flex types (KindAny), so even a populated run can only ever prove the key exists; the value evidence is ids_test.go's fixtures."
+      },
+      {
+        "path": "rows[].alert_action",
+        "opaque": true,
+        "metrics": [
+          "opnsense_ids_recent_alerts"
+        ],
+        "exercise": "Requires --exporter.enable-ids-alerts AND at least one Suricata alert inside --exporter.ids-alert-lookback at the moment the canary polls. Enable IDS (Services > Intrusion Detection > Administration: enabled=1, at least one ruleset downloaded and enabled, on the interface the traffgen LXC's traffic crosses), then trip a rule from that LXC - one HTTP request matching an ET-open signature is enough. The window is the catch: alerts age out of the lookback, so this path is verifiable only while traffic is being generated, and query_alerts is itself a windowed saturating read (a floor above 500 alerts). Both label values are pre-seeded to 0 so the series never disappears on a quiet scrape, and only \"allowed\"/\"blocked\" are counted - an unrecognised action is dropped, not bucketed as unknown, so a renamed value reads as zero alerts rather than as drift. Exercising the blocked branch needs IPS mode on and a drop rule.",
+        "blocker": "api/ids/service/query_alerts returned an empty rows array on the release-channel testbed - either Suricata is not enabled there or nothing has alerted inside the retained eve window. Check `configctl service status suricata` and the eve log inventory before treating a regression here as drift. Both paths are flex types (KindAny), so even a populated run can only ever prove the key exists; the value evidence is ids_test.go's fixtures."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). Only these two of the nine modelled row fields back a metric. alert, alert_sid, dest_ip, flow_id, in_iface, proto and src_ip are consumed ONLY by FetchIDSAlertRecords, which feeds the logs.ids LOG source (cursor dedupe plus bounded structured-metadata attributes) - FetchIDSRecentAlerts, the metrics path, ignores them outright, as idsAlertRow's own field comment says. They are deliberately left informational: this ledger's required class means \"backs an emitted METRIC\", and stretching it to cover log attributes would be a scope change to the ledger's contract, not an audit finding. #599's counter-check that rows[].alert_sid has no collector consumer is CONFIRMED."
+  },
+  "ipsecPhase1": {
+    "required": [
+      {
+        "path": "rows[].phase1desc",
+        "metrics": [
+          "opnsense_ipsec_phase1_status",
+          "opnsense_ipsec_phase1_install_time",
+          "opnsense_ipsec_phase1_bytes_in_total",
+          "opnsense_ipsec_phase1_bytes_out_total",
+          "opnsense_ipsec_phase1_packets_in_total",
+          "opnsense_ipsec_phase1_packets_out_total"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. This is the description label on every phase1 series.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].name",
+        "metrics": [
+          "opnsense_ipsec_phase1_status",
+          "opnsense_ipsec_phase1_install_time",
+          "opnsense_ipsec_phase1_bytes_in_total",
+          "opnsense_ipsec_phase1_bytes_out_total",
+          "opnsense_ipsec_phase1_packets_in_total",
+          "opnsense_ipsec_phase1_packets_out_total",
+          "opnsense_ipsec_phase2_established",
+          "opnsense_ipsec_phase2_install_time",
+          "opnsense_ipsec_phase2_bytes_in_total",
+          "opnsense_ipsec_phase2_bytes_out_total",
+          "opnsense_ipsec_phase2_packets_in_total",
+          "opnsense_ipsec_phase2_packets_out_total",
+          "opnsense_ipsec_phase2_rekey_time",
+          "opnsense_ipsec_phase2_life_time"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. It is the name label on every phase1 series AND the phase1_name label that joins every phase2 series back to its parent tunnel.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].connected",
+        "metrics": [
+          "opnsense_ipsec_phase1_status"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. Both branches need the tunnel to go down as well as up: drop the bridge link or stop the peer VM for the 0 branch. Note this is an IKE-SA-level aggregate - it says nothing about any individual child SA, which is what phase2_established exists for.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].install-time",
+        "metrics": [
+          "opnsense_ipsec_phase1_install_time"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. Served as a numeric STRING and parsed with strconv.Atoi, falling back to 0 on any parse failure - so a representation change reads as a freshly installed SA rather than as an error.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].bytes-in",
+        "metrics": [
+          "opnsense_ipsec_phase1_bytes_in_total"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. Real JSON numbers here (unlike phase2's string counters), decoded as int64 so a counter above 2^31 survives on 32-bit builds (#103).",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].bytes-out",
+        "metrics": [
+          "opnsense_ipsec_phase1_bytes_out_total"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. Same as rows[].bytes-in.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].packets-in",
+        "metrics": [
+          "opnsense_ipsec_phase1_packets_in_total"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. Same as rows[].bytes-in.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].packets-out",
+        "metrics": [
+          "opnsense_ipsec_phase1_packets_out_total"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. Same as rows[].bytes-in.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].ikeid",
+        "metrics": [
+          "opnsense_ipsec_phase2_established",
+          "opnsense_ipsec_phase2_install_time",
+          "opnsense_ipsec_phase2_bytes_in_total",
+          "opnsense_ipsec_phase2_bytes_out_total",
+          "opnsense_ipsec_phase2_packets_in_total",
+          "opnsense_ipsec_phase2_packets_out_total",
+          "opnsense_ipsec_phase2_rekey_time",
+          "opnsense_ipsec_phase2_life_time"
+        ],
+        "exercise": "One site-to-site IPsec tunnel between the two testbed OPNsense boxes across the isolated bridge (VPN > IPsec, matching PSK and proposals on both, one phase2 traffic selector each side), then traffic through it so the byte/packet counters are non-zero. api/ipsec/sessions/search_phase1 reports LIVE IKE SAs, not configured connections - every field on the row is live-SA state (connected, install-time, cumulative bytes) - so a tunnel that is configured but has never been initiated leaves rows[] empty and looks identical to no config at all. Initiate it from one side and confirm with `swanctl --list-sas` on the box before treating an empty array as drift. ikeid is NOT a label on any series - it is the id FetchIPsecPhase1 POSTs to api/ipsec/sessions/searchPhase2 once per phase1 row, so it is the only route to phase2 data at all. If it is renamed, the POST goes out with an empty id and every opnsense_ipsec_phase2_* series vanishes while phase1 keeps reporting a healthy tunnel; the fetch logs an error and continues by design (partial-failure tolerance), so nothing about the scrape looks wrong.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). All nine modelled row fields back a metric; rows[] itself is the element container and is left informational. Note phase1's byte/packet counters are the aggregate of the child SAs, so they are typed as Counters to match the phase2 counters they sum (#106)."
+  },
+  "ipsecSad": {
+    "required": [
+      {
+        "path": "rows[].satype",
+        "metrics": [
+          "opnsense_ipsec_sad_entries"
+        ],
+        "exercise": "Same tunnel as ipsecPhase1: the kernel SAD (setkey -D, via api/ipsec/sad/search) populates the moment a child SA installs, so no extra step beyond a tunnel that has actually come up. satype is both the grouping label on sad_entries and half of the placeholder-row test: FetchIPsecSAD discards any row whose spi or satype is empty, which is how the synthetic \"No SAD entries.\" row (both null) is dropped. A rename therefore does not mislabel the series, it deletes every row.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].spi",
+        "metrics": [
+          "opnsense_ipsec_sad_entries",
+          "opnsense_ipsec_sa_age_seconds",
+          "opnsense_ipsec_sa_lifetime_hard_seconds",
+          "opnsense_ipsec_sa_lifetime_soft_seconds",
+          "opnsense_ipsec_sa_bytes_current_total",
+          "opnsense_ipsec_sa_bytes_soft_limit",
+          "opnsense_ipsec_sa_bytes_hard_limit",
+          "opnsense_ipsec_sa_allocated_current_total",
+          "opnsense_ipsec_sa_allocated_soft_limit",
+          "opnsense_ipsec_sa_allocated_hard_limit",
+          "opnsense_ipsec_sad_nat_traversal"
+        ],
+        "exercise": "Same tunnel as ipsecPhase1: the kernel SAD (setkey -D, via api/ipsec/sad/search) populates the moment a child SA installs, so no extra step beyond a tunnel that has actually come up. spi is deliberately never a label (it churns on every rekey, so it would explode cardinality). It is ledgered because it is the other half of the placeholder-row discriminator: if upstream renames it, every row reads as the synthetic placeholder and is discarded, and the entire kernel-SA metric family silently disappears from a firewall with healthy tunnels. That is the worst failure shape this ledger exists to catch, and it has no label or value to notice it by.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].ikeid",
+        "opaque": true,
+        "metrics": [
+          "opnsense_ipsec_sad_entries",
+          "opnsense_ipsec_sa_age_seconds",
+          "opnsense_ipsec_sa_lifetime_hard_seconds",
+          "opnsense_ipsec_sa_lifetime_soft_seconds",
+          "opnsense_ipsec_sa_bytes_current_total",
+          "opnsense_ipsec_sa_bytes_soft_limit",
+          "opnsense_ipsec_sa_bytes_hard_limit",
+          "opnsense_ipsec_sa_allocated_current_total",
+          "opnsense_ipsec_sa_allocated_soft_limit",
+          "opnsense_ipsec_sa_allocated_hard_limit",
+          "opnsense_ipsec_sad_nat_traversal"
+        ],
+        "exercise": "Same tunnel as ipsecPhase1: the kernel SAD (setkey -D, via api/ipsec/sad/search) populates the moment a child SA installs, so no extra step beyond a tunnel that has actually come up. The ikeid label on all three families, and the grouping key for sad_nat_traversal. It comes back null on the live box more often than not, which is precisely why reqid (bounded and rekey-stable) is the series anchor and this is context.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. Flex type (KindAny), so a populated run can only ever prove the key exists."
+      },
+      {
+        "path": "rows[].phase1desc",
+        "opaque": true,
+        "metrics": [
+          "opnsense_ipsec_sad_entries"
+        ],
+        "exercise": "Same tunnel as ipsecPhase1: the kernel SAD (setkey -D, via api/ipsec/sad/search) populates the moment a child SA installs, so no extra step beyond a tunnel that has actually come up. The phase1desc label on sad_entries; like ikeid it is frequently null on the wire and adds human context rather than identity.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. Flex type (KindAny), so a populated run can only ever prove the key exists."
+      },
+      {
+        "path": "rows[].phase2desc",
+        "opaque": true,
+        "metrics": [
+          "opnsense_ipsec_sa_age_seconds",
+          "opnsense_ipsec_sa_lifetime_hard_seconds",
+          "opnsense_ipsec_sa_lifetime_soft_seconds",
+          "opnsense_ipsec_sa_bytes_current_total",
+          "opnsense_ipsec_sa_bytes_soft_limit",
+          "opnsense_ipsec_sa_bytes_hard_limit",
+          "opnsense_ipsec_sa_allocated_current_total",
+          "opnsense_ipsec_sa_allocated_soft_limit",
+          "opnsense_ipsec_sa_allocated_hard_limit"
+        ],
+        "exercise": "Same tunnel as ipsecPhase1: the kernel SAD (setkey -D, via api/ipsec/sad/search) populates the moment a child SA installs, so no extra step beyond a tunnel that has actually come up. The phase2desc label on every per-reqid SA series.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. Flex type (KindAny), so a populated run can only ever prove the key exists."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). src/dst/state are decoded and never read (cmd/fieldaudit lists all three as exempt dead fields), so they are correctly informational; reqid, addtime_diff, addtime_hard/soft, nat and the bytes/allocated fields were already verified live in this run and never entered the unclassified bucket."
+  },
+  "ipsecSpd": {
+    "required": [
+      {
+        "path": "rows[].dir",
+        "metrics": [
+          "opnsense_ipsec_spd_policies"
+        ],
+        "exercise": "Same tunnel as ipsecPhase1: api/ipsec/spd/search (setkey -DP) lists one policy per direction as soon as a child SA installs, so an established tunnel exercises the in/out pair without further work; fwd needs a transport-mode or forwarded selector.",
+        "blocker": "no IPsec tunnel is up on the release-channel testbed: search_phase1 returned an empty rows array, so nothing under rows[] has ever been checked there. ipsecPhase2 cannot be probed at all without a live ikeid (it is in the canary's skipped-parameterized list and is covered by the e2e smoke instead), so phase1 rows are also the only route to an ikeid. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. dir is the ONLY field of this row modelled at all - reqid, spid, seq and pid are deliberately not decoded (they would churn as labels) - so an empty rows array leaves the endpoint's entire consumed surface unchecked. It is also both the label and, by count, the value of spd_policies, and a row with an empty dir is skipped, so a rename empties the metric family rather than mislabelling it."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). rows[] itself is the element container and is left informational."
+  },
+  "keaSubnets4": {
+    "required": [
+      {
+        "path": "rows[].subnet",
+        "metrics": [
+          "opnsense_kea_dhcp4_pool_size",
+          "opnsense_kea_dhcp4_pool_used"
+        ],
+        "exercise": "Configure one Kea DHCPv4 subnet with a pool range on the testbed VLAN (Services > Kea DHCP > DHCPv4 > Subnets) so api/kea/dhcpv4/searchSubnet returns a row. Configuration only - no client needs to take a lease, though the same subnet is what the traffgen LXC's lease comes from, so this resolves alongside keaLeases4. It is the subnet label on pool_size and BOTH the label and the grouping key of pool_used, which KeaPoolUsedBySubnet computes by parsing this value as a CIDR and matching lease addresses into it client-side (Kea lease records carry no subnet id). A representation change that still parses as a CIDR would silently re-bucket utilisation instead of failing.",
+        "blocker": "searchSubnet returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].pools",
+        "metrics": [
+          "opnsense_kea_dhcp4_pool_size"
+        ],
+        "exercise": "Configure one Kea DHCPv4 subnet with a pool range on the testbed VLAN (Services > Kea DHCP > DHCPv4 > Subnets) so api/kea/dhcpv4/searchSubnet returns a row. Configuration only - no client needs to take a lease, though the same subnet is what the traffgen LXC's lease comes from, so this resolves alongside keaLeases4. pools is the VALUE of pool_size: poolSpecSize parses the configured pool SPEC (range or CIDR form) and sums the address capacity. A subnet configured with no pool at all yields 0, which is a real state, so make sure the testbed subnet actually carries a range or this path proves nothing.",
+        "blocker": "searchSubnet returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].%interface",
+        "metrics": [
+          "opnsense_kea_dhcp4_pool_size"
+        ],
+        "exercise": "Configure one Kea DHCPv4 subnet with a pool range on the testbed VLAN (Services > Kea DHCP > DHCPv4 > Subnets) so api/kea/dhcpv4/searchSubnet returns a row. Configuration only - no client needs to take a lease, though the same subnet is what the traffgen LXC's lease comes from, so this resolves alongside keaLeases4. The interface label on pool_size, and the reason it exists: it carries the same display name as the lease rows' if_descr, which is what makes pool_size joinable against opnsense_kea_dhcp4_leases_by_interface in PromQL. A drift here breaks the join, not the series.",
+        "blocker": "searchSubnet returned an empty rows array on the release-channel testbed: the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). rows[].uuid is deliberately NOT ledgered: KeaSubnet.UUID is read at exactly one place, building the subnet6ByUUID map for the DHCPv6 PD-pool join, and that map is built from FetchKeaSubnets6 only - the v4 subnets never enter it, so no metric depends on the v4 uuid. keaSubnets6's uuid is a different matter and is covered by keaPdPools6's join. rows[] itself is the element container and is left informational."
+  },
+  "natOneToOneRules": {
+    "required": [
+      {
+        "path": "rows[].enabled",
+        "opaque": true,
+        "metrics": [
+          "opnsense_firewall_nat_rules"
+        ],
+        "exercise": "Add one 1:1 NAT (BINAT) rule through the MVC UI (Firewall > NAT > One-to-One) and apply. The search_rule endpoints only see MVC-managed rows, so a rule that predates the MVC NAT backend is invisible here no matter how it is configured. Requires --exporter.enable-firewall-nat-counts (four extra GETs per poll). Config only, no traffic. To exercise both branches of isEnabled() the testbed needs one enabled AND one disabled rule of this type: only the literal string \"1\" counts as enabled, and every other value - including an absent key - falls into the disabled bucket, so a rename reports every rule as disabled rather than failing.",
+        "blocker": "no 1:1 NAT (BINAT) rule is configured on either testbed, so search_rule returns an empty rows array and both label values of opnsense_firewall_nat_rules report a legitimate 0 for this type. flexString (KindAny), so even a populated run can only ever prove the key exists. Note the sibling d_nat endpoint inverts the encoding into a \"disabled\" field and has its own row struct, so nothing here covers that one."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). enabled is the ONLY field of this row modelled at all, so an empty rows array leaves the endpoint's entire consumed surface unchecked. rows[] itself is the element container and is left informational."
+  },
+  "natNPTRules": {
+    "required": [
+      {
+        "path": "rows[].enabled",
+        "opaque": true,
+        "metrics": [
+          "opnsense_firewall_nat_rules"
+        ],
+        "exercise": "Add one NPTv6 rule through the MVC UI (Firewall > NAT > NPTv6) and apply. The search_rule endpoints only see MVC-managed rows, so a rule that predates the MVC NAT backend is invisible here no matter how it is configured. Requires --exporter.enable-firewall-nat-counts (four extra GETs per poll). Config only, no traffic. To exercise both branches of isEnabled() the testbed needs one enabled AND one disabled rule of this type: only the literal string \"1\" counts as enabled, and every other value - including an absent key - falls into the disabled bucket, so a rename reports every rule as disabled rather than failing.",
+        "blocker": "no NPTv6 rule is configured on either testbed, so search_rule returns an empty rows array and both label values of opnsense_firewall_nat_rules report a legitimate 0 for this type. flexString (KindAny), so even a populated run can only ever prove the key exists. Note the sibling d_nat endpoint inverts the encoding into a \"disabled\" field and has its own row struct, so nothing here covers that one."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). Same shape as natOneToOneRules - one modelled field, sharing the natRuleRow struct and the same enabled encoding. rows[] itself is the element container and is left informational."
+  },
+  "openVPNInstances": {
+    "required": [
+      {
+        "path": "rows[].enabled",
+        "metrics": [
+          "opnsense_openvpn_instances"
+        ],
+        "exercise": "Configure one OpenVPN instance (VPN > OpenVPN > Instances: role=server, dev_type=tun, enabled=1) on a testbed box. api/openvpn/instances/search is pure config, so the instance does not need to start and nothing needs to connect - which makes this the cheapest of the two OpenVPN endpoints to cover and a prerequisite for the other. enabled is the VALUE of the instances gauge. It is parsed with parseStringToInt and a parse failure aborts the WHOLE fetch with an API error rather than defaulting - so unlike most fields here, drift on this one is loud.",
+        "blocker": "no OpenVPN instance is configured on the release-channel testbed: instances/search returned an empty rows array. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].uuid",
+        "metrics": [
+          "opnsense_openvpn_instances",
+          "opnsense_openvpn_instance_max_clients"
+        ],
+        "exercise": "Configure one OpenVPN instance (VPN > OpenVPN > Instances: role=server, dev_type=tun, enabled=1) on a testbed box. api/openvpn/instances/search is pure config, so the instance does not need to start and nothing needs to connect - which makes this the cheapest of the two OpenVPN endpoints to cover and a prerequisite for the other. The uuid label on both series.",
+        "blocker": "no OpenVPN instance is configured on the release-channel testbed: instances/search returned an empty rows array. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].description",
+        "metrics": [
+          "opnsense_openvpn_instances",
+          "opnsense_openvpn_instance_max_clients"
+        ],
+        "exercise": "Configure one OpenVPN instance (VPN > OpenVPN > Instances: role=server, dev_type=tun, enabled=1) on a testbed box. api/openvpn/instances/search is pure config, so the instance does not need to start and nothing needs to connect - which makes this the cheapest of the two OpenVPN endpoints to cover and a prerequisite for the other. The description label on both series. It is also the join key an operator uses to divide sessions_by_instance by instance_max_clients for a utilisation ratio, but note that label comes from the SESSIONS endpoint's own description field, not from this one - the join is across two endpoints agreeing on a string.",
+        "blocker": "no OpenVPN instance is configured on the release-channel testbed: instances/search returned an empty rows array. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].role",
+        "metrics": [
+          "opnsense_openvpn_instances",
+          "opnsense_openvpn_instance_max_clients"
+        ],
+        "exercise": "Configure one OpenVPN instance (VPN > OpenVPN > Instances: role=server, dev_type=tun, enabled=1) on a testbed box. api/openvpn/instances/search is pure config, so the instance does not need to start and nothing needs to connect - which makes this the cheapest of the two OpenVPN endpoints to cover and a prerequisite for the other. The role label on both series, lowercased by the client. It also explains max_clients' presence gating: a client-role instance has no maxclients concept, so it emits no instance_max_clients series at all rather than a fabricated 0.",
+        "blocker": "no OpenVPN instance is configured on the release-channel testbed: instances/search returned an empty rows array. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].dev_type",
+        "metrics": [
+          "opnsense_openvpn_instances",
+          "opnsense_openvpn_instance_max_clients"
+        ],
+        "exercise": "Configure one OpenVPN instance (VPN > OpenVPN > Instances: role=server, dev_type=tun, enabled=1) on a testbed box. api/openvpn/instances/search is pure config, so the instance does not need to start and nothing needs to connect - which makes this the cheapest of the two OpenVPN endpoints to cover and a prerequisite for the other. The device_type label on both series; tun and tap are both worth having on the testbed only if the label ever drives a decision - one is enough to verify the path.",
+        "blocker": "no OpenVPN instance is configured on the release-channel testbed: instances/search returned an empty rows array. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). All five modelled row fields back a metric. maxclients does too and is not listed here because this run verified it live rather than leaving it unverified. rows[] itself is the element container and is left informational."
+  },
+  "openVPNSessions": {
+    "required": [
+      {
+        "path": "rows[].is_client",
+        "opaque": true,
+        "metrics": [
+          "opnsense_openvpn_sessions_total",
+          "opnsense_openvpn_sessions_by_instance",
+          "opnsense_openvpn_instance_received_bytes_total",
+          "opnsense_openvpn_instance_transmitted_bytes_total",
+          "opnsense_openvpn_sessions",
+          "opnsense_openvpn_session_received_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total",
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). is_client is the row-inclusion gate: FetchOpenVPNSessions drops every row without it, which is how the synthetic idle-server and stopped-server rows are kept out of the session count (#88). It is therefore not a label or a value anywhere - it decides which rows become sessions - and because it defaults to false when absent, a rename makes EVERY session vanish and sessions_total read 0 on a server full of clients.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. flexBool (KindAny), so even a populated run can only ever prove the key exists."
+      },
+      {
+        "path": "rows[].description",
+        "metrics": [
+          "opnsense_openvpn_sessions_total",
+          "opnsense_openvpn_sessions_by_instance",
+          "opnsense_openvpn_instance_received_bytes_total",
+          "opnsense_openvpn_instance_transmitted_bytes_total",
+          "opnsense_openvpn_sessions",
+          "opnsense_openvpn_session_received_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total",
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). The description label on the always-on per-instance aggregates AND the grouping key they are summed by, so a drift here collapses every instance into one series rather than emptying them.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].bytes_received",
+        "metrics": [
+          "opnsense_openvpn_instance_received_bytes_total",
+          "opnsense_openvpn_session_received_bytes_total"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). Summed per instance into the always-on aggregate and emitted per session behind --exporter.enable-openvpn-details. Decoded as json.Number so both the quoted-numeric-string shape the box actually sends and a bare JSON number work.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].bytes_sent",
+        "metrics": [
+          "opnsense_openvpn_instance_transmitted_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). Same as rows[].bytes_received.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].connected_since__time_t_",
+        "metrics": [
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). Requires --exporter.enable-openvpn-details. The double underscore is upstream's PHP field-name mangling, not a typo, and it is unix seconds - an unparseable value yields 0, which reads as 1970 on a dashboard.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].status",
+        "metrics": [
+          "opnsense_openvpn_sessions"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). The VALUE of the sessions gauge (1 = ok), via parseOpenVPNsessionStatusToInt, behind --exporter.enable-openvpn-details.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].username",
+        "metrics": [
+          "opnsense_openvpn_sessions"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). The username label on the sessions gauge, and the fallback arm of Sessions.Identity() for the other three detail series. A cert-only session sends the literal \"UNDEF\" here, which is why Identity() prefers common_name; both need a client to exist.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].common_name",
+        "opaque": true,
+        "metrics": [
+          "opnsense_openvpn_session_received_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total",
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). Needs a CERT-authenticated client specifically: a username/password-only session sends null here and Identity() falls back to username, so a password-auth testbed client exercises the fallback and never this path.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field. flexString (KindAny), so even a populated run can only ever prove the key exists."
+      },
+      {
+        "path": "rows[].real_address",
+        "metrics": [
+          "opnsense_openvpn_sessions",
+          "opnsense_openvpn_session_received_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total",
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). A label on all four detail series (--exporter.enable-openvpn-details).",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].virtual_address",
+        "metrics": [
+          "opnsense_openvpn_sessions",
+          "opnsense_openvpn_session_received_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total",
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). A label on all four detail series (--exporter.enable-openvpn-details).",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].virtual_ipv6_address",
+        "metrics": [
+          "opnsense_openvpn_sessions",
+          "opnsense_openvpn_session_received_bytes_total",
+          "opnsense_openvpn_session_transmitted_bytes_total",
+          "opnsense_openvpn_session_connected_since_timestamp_seconds"
+        ],
+        "exercise": "Needs a real client SESSION, not just a configured instance: stand the server instance up (see openVPNInstances) and connect a client to it, then push traffic so the byte counters move. The cheapest arrangement is the wgtest1/wgtest2 model from #460 - a second instance in client role on the same box, pointed at the server over the loopback - which needs no external peer and no second VM. Alternatively run an openvpn client on the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). Empty for a v4-only session, so exercising it needs a dual-stack or v6-only tunnel (#483) - and on this hypervisor that means the client must be a VM, since the host kernel is booted with ipv6.disable=1 and no LXC on it has an IPv6 stack at all (the same root cause recorded on keaLeases6). It is a separate label alongside virtual_address, not a replacement.",
+        "blocker": "api/openvpn/service/search_sessions returned an empty rows array on the release-channel testbed, which means no instance exists at all: searchSessionsAction emits a synthetic row for a running server with zero clients and a stub row per enabled-but-stopped server, so a box with any configured instance answers with rows even when nobody is connected. the release-channel testbed is a stripped clone of the devel box, so a feature configured only on the devel box reads as unverified on every release-channel run - the same divergence #508 found for WireGuard. Fix the box, not the ledger: this field backs an exported metric, so an exemption here would blind the canary to real drift on a consumed field."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). All eleven modelled row fields back a metric - four of them the always-on aggregates, the rest the --exporter.enable-openvpn-details series. rows[] itself is the element container and is left informational. #599's proof case, rows[].bytes_received, is CONFIRMED: it is summed into the per-instance aggregate and emitted per session."
+  },
+  "trafficShaperStatistics": {
+    "required": [
+      {
+        "path": "items[].type",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_pipes_total",
+          "opnsense_trafficshaper_queues_total"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. type is the pipe/queue discriminator: it decides which entity list a row joins, so it directly values both totals AND gates the existence of every opnsense_trafficshaper_pipe_* and queue_* series. An item whose type is neither is skipped outright, so a rename empties the whole subsystem rather than mislabelling it.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].id",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_pipe_active_flows",
+          "opnsense_trafficshaper_pipe_packets",
+          "opnsense_trafficshaper_pipe_bytes",
+          "opnsense_trafficshaper_pipe_drop_packets",
+          "opnsense_trafficshaper_pipe_drop_bytes",
+          "opnsense_trafficshaper_pipe_configured_bandwidth_bps",
+          "opnsense_trafficshaper_pipe_configured_burst_bytes",
+          "opnsense_trafficshaper_pipe_configured_delay_milliseconds",
+          "opnsense_trafficshaper_pipe_configured_queue_size",
+          "opnsense_trafficshaper_pipe_configured_weight",
+          "opnsense_trafficshaper_queue_active_flows",
+          "opnsense_trafficshaper_queue_packets",
+          "opnsense_trafficshaper_queue_bytes",
+          "opnsense_trafficshaper_queue_drop_packets",
+          "opnsense_trafficshaper_queue_drop_bytes",
+          "opnsense_trafficshaper_queue_configured_queue_size",
+          "opnsense_trafficshaper_queue_configured_weight"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. The pipe/queue id label on every one of these series, and the fallback join key (via its dot-prefix) when a queue row carries no pipe field. A pipe item with an empty id is skipped entirely.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].description",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_pipe_active_flows",
+          "opnsense_trafficshaper_pipe_packets",
+          "opnsense_trafficshaper_pipe_bytes",
+          "opnsense_trafficshaper_pipe_drop_packets",
+          "opnsense_trafficshaper_pipe_drop_bytes",
+          "opnsense_trafficshaper_pipe_configured_bandwidth_bps",
+          "opnsense_trafficshaper_pipe_configured_burst_bytes",
+          "opnsense_trafficshaper_pipe_configured_delay_milliseconds",
+          "opnsense_trafficshaper_pipe_configured_queue_size",
+          "opnsense_trafficshaper_pipe_configured_weight",
+          "opnsense_trafficshaper_queue_active_flows",
+          "opnsense_trafficshaper_queue_packets",
+          "opnsense_trafficshaper_queue_bytes",
+          "opnsense_trafficshaper_queue_drop_packets",
+          "opnsense_trafficshaper_queue_drop_bytes",
+          "opnsense_trafficshaper_queue_configured_queue_size",
+          "opnsense_trafficshaper_queue_configured_weight"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. The description label on every pipe and queue series.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].pipe",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_queue_active_flows",
+          "opnsense_trafficshaper_queue_packets",
+          "opnsense_trafficshaper_queue_bytes",
+          "opnsense_trafficshaper_queue_drop_packets",
+          "opnsense_trafficshaper_queue_drop_bytes",
+          "opnsense_trafficshaper_queue_configured_queue_size",
+          "opnsense_trafficshaper_queue_configured_weight",
+          "opnsense_trafficshaper_pipe_active_flows",
+          "opnsense_trafficshaper_pipe_packets",
+          "opnsense_trafficshaper_pipe_bytes",
+          "opnsense_trafficshaper_pipe_drop_packets",
+          "opnsense_trafficshaper_pipe_drop_bytes",
+          "opnsense_trafficshaper_pipe_configured_bandwidth_bps",
+          "opnsense_trafficshaper_pipe_configured_burst_bytes",
+          "opnsense_trafficshaper_pipe_configured_delay_milliseconds",
+          "opnsense_trafficshaper_pipe_configured_queue_size",
+          "opnsense_trafficshaper_pipe_configured_weight"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. The pipe label on the queue series, and the link that attributes a template queue's flow stats and queue_size/weight to its owning pipe - so it feeds the pipe series too. When absent the code falls back to the id prefix before the first dot, which means a rename degrades to a plausible-looking wrong attribution rather than an error.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].template",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_pipe_active_flows",
+          "opnsense_trafficshaper_pipe_packets",
+          "opnsense_trafficshaper_pipe_bytes",
+          "opnsense_trafficshaper_pipe_drop_packets",
+          "opnsense_trafficshaper_pipe_drop_bytes",
+          "opnsense_trafficshaper_pipe_configured_bandwidth_bps",
+          "opnsense_trafficshaper_pipe_configured_burst_bytes",
+          "opnsense_trafficshaper_pipe_configured_delay_milliseconds",
+          "opnsense_trafficshaper_pipe_configured_queue_size",
+          "opnsense_trafficshaper_pipe_configured_weight",
+          "opnsense_trafficshaper_rule_packets_total",
+          "opnsense_trafficshaper_rule_bytes_total",
+          "opnsense_trafficshaper_rule_last_match_timestamp_seconds"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. statisticsAction moves every pipe's flows onto a synthetic template:true queue item, so configuring a single pipe already produces one. It is a discriminator twice over: template rows are EXCLUDED from the queue metrics (or their flows would be double-counted) and their flows are attributed to the pipe instead, and it also sets the target_type label on every rule series.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].flows[].pkt",
+        "metrics": [
+          "opnsense_trafficshaper_pipe_packets",
+          "opnsense_trafficshaper_queue_packets"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. Summed across the item's flow rows. TIMING MATTERS: dnctl reports LIVE flows, so an idle shaper serves its pipe and queue items with an empty flows array - active_flows reads a correct 0 and the four flow counters stay unexercised. Traffic has to be moving at the moment the canary polls.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      },
+      {
+        "path": "items[].flows[].bytes",
+        "metrics": [
+          "opnsense_trafficshaper_pipe_bytes",
+          "opnsense_trafficshaper_queue_bytes"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. Summed across the item's flow rows. TIMING MATTERS: dnctl reports LIVE flows, so an idle shaper serves its pipe and queue items with an empty flows array - active_flows reads a correct 0 and the four flow counters stay unexercised. Traffic has to be moving at the moment the canary polls.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      },
+      {
+        "path": "items[].flows[].drop_pkt",
+        "metrics": [
+          "opnsense_trafficshaper_pipe_drop_packets",
+          "opnsense_trafficshaper_queue_drop_packets"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. Summed across the item's flow rows, and only non-zero once the pipe is actually saturated - so the bandwidth limit needs to be low enough that the generated traffic exceeds it. TIMING MATTERS: dnctl reports LIVE flows, so an idle shaper serves its pipe and queue items with an empty flows array - active_flows reads a correct 0 and the four flow counters stay unexercised. Traffic has to be moving at the moment the canary polls.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      },
+      {
+        "path": "items[].flows[].drop_bytes",
+        "metrics": [
+          "opnsense_trafficshaper_pipe_drop_bytes",
+          "opnsense_trafficshaper_queue_drop_bytes"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. Same as items[].flows[].drop_pkt.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      },
+      {
+        "path": "items[].rules[].rule",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_rule_packets_total",
+          "opnsense_trafficshaper_rule_bytes_total",
+          "opnsense_trafficshaper_rule_last_match_timestamp_seconds"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. Needs a shaper RULE, not just a pipe and a queue: an unattached pipe serves an empty rules array. This is the rule label on all three rule series.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].rules[].attached_to",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_rule_packets_total",
+          "opnsense_trafficshaper_rule_bytes_total",
+          "opnsense_trafficshaper_rule_last_match_timestamp_seconds"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. The attached_to label on all three rule series; needs a shaper rule as above.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].rules[].description",
+        "opaque": true,
+        "metrics": [
+          "opnsense_trafficshaper_rule_packets_total",
+          "opnsense_trafficshaper_rule_bytes_total",
+          "opnsense_trafficshaper_rule_last_match_timestamp_seconds"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. The description label on all three rule series; needs a shaper rule as above.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."
+      },
+      {
+        "path": "items[].rules[].pkts",
+        "metrics": [
+          "opnsense_trafficshaper_rule_packets_total"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. The ipfw rule's own packet counter - unlike the flow counters this one is cumulative and survives an idle moment, so it only needs the rule to have matched traffic at some point, not to be matching right now.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      },
+      {
+        "path": "items[].rules[].bytes",
+        "metrics": [
+          "opnsense_trafficshaper_rule_bytes_total"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. Same as items[].rules[].pkts.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      },
+      {
+        "path": "items[].rules[].accessed_epoch",
+        "metrics": [
+          "opnsense_trafficshaper_rule_last_match_timestamp_seconds"
+        ],
+        "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. 0 until the rule first matches traffic - a sentinel, not the Unix epoch (#224) - and the metric is presence-gated on a value above 0, so the series does not exist at all until real traffic has crossed the rule. Generating traffic is therefore mandatory for this path, not merely for a non-zero value.",
+        "blocker": "the traffic shaper is not configured on either testbed, so items[] is empty and NOTHING under it has ever been checked - this is the largest single unexercised surface in the ledger, 15 consumed paths behind one configuration step."
+      }
+    ],
+    "note": "AUDITED 2026-07-31 (#599). 15 of the 19 unclassified paths on this endpoint back a metric; the other four - items[], items[].flows, items[].flows[], items[].rules, items[].rules[] - are array or element containers carrying no value and are left informational, resolving with the leaves above. One nuance recorded so it is not mistaken for a gap: the CARDINALITY of items[].flows[] is itself the value of pipe_active_flows/queue_active_flows (the code counts flow rows), but an empty flows array is a legitimate zero rather than a blind spot, so it still does not warrant an entry. bw/delay/burst/queue_size/weight are absent from this list because they were only modelled in #584 and are covered by their own paths, which this run reported under the same empty items[] - if they appear in a future unclassified bucket they belong here too, on the same reasoning as their siblings."
   }
 }
