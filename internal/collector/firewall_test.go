@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
@@ -279,6 +280,62 @@ func TestFirewallCollector_CounterMetricsEndInTotal(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("expected at least one CounterValue metric from the firewall collector")
+	}
+}
+
+// TestFirewallCollector_PFCountersClearedTimestamp guards #580: pf's own
+// per-interface "counters reset at" marker must be exported as a Gauge in Unix
+// seconds, and — critically — an interface the box reports no parseable
+// "cleared" value for must emit NO series at all, never a fabricated epoch 0
+// (which would misreport a healthy counter history as reset at 1970).
+func TestFirewallCollector_PFCountersClearedTimestamp(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/interfaces", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"interfaces": {
+				"igb0": {"references": 1, "cleared": "2026-07-31T09:15:23"},
+				"igb1": {"references": 1}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/pf_states/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"current":"1","limit":"2"}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &firewallCollector{subsystem: FirewallSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	got := map[string]float64{}
+	for _, m := range collectMetrics(t, c, client) {
+		if !strings.Contains(m.Desc().String(), "pf_counters_cleared_timestamp_seconds") {
+			continue
+		}
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		if d.Gauge == nil {
+			t.Fatalf("pf_counters_cleared_timestamp_seconds must be a Gauge holding Unix seconds, not a Counter; got %v", d)
+		}
+		got[getMetricLabels(m)["interface"]] = d.Gauge.GetValue()
+	}
+
+	wantUnix := float64(time.Date(2026, 7, 31, 9, 15, 23, 0, time.UTC).Unix())
+	v, ok := got["igb0"]
+	if !ok {
+		t.Fatalf("expected a pf_counters_cleared_timestamp_seconds series for igb0, got %v", got)
+	}
+	if v != wantUnix {
+		t.Errorf("igb0 value = %v, want %v", v, wantUnix)
+	}
+
+	if _, ok := got["igb1"]; ok {
+		t.Error(`igb1 reported no "cleared" value and must emit NO series — a fabricated epoch 0 ` +
+			`would misreport a healthy counter history as reset at 1970`)
 	}
 }
 

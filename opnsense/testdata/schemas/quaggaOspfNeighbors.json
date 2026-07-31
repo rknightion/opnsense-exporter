@@ -31,11 +31,27 @@
       "kind": "any"
     },
     {
+      "path": "rows[].converged",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].databaseSummaryListCounter",
+      "kind": "any"
+    },
+    {
       "path": "rows[].ifaceAddress",
       "kind": "any"
     },
     {
       "path": "rows[].ifaceName",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].linkStateRequestListCounter",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].linkStateRetransmissionListCounter",
       "kind": "any"
     },
     {
@@ -55,8 +71,16 @@
       "kind": "any"
     },
     {
+      "path": "rows[].routerDeadIntervalTimerDueMsec",
+      "kind": "any"
+    },
+    {
       "path": "rows[].state",
       "kind": "any"
+    },
+    {
+      "path": "rows[].upTimeInMsec",
+      "kind": "number"
     },
     {
       "path": "total",

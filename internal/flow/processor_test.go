@@ -133,6 +133,23 @@ func TestNormalizeNetflow_CarriesTheVLANTagAndTreatsZeroAsUntagged(t *testing.T)
 	}
 }
 
+// #585: the decoder has read element 6 since phase 2 and the normalizer dropped it on
+// the floor, so the flag byte reached nothing outside package netflow. If this stops
+// copying, every downstream flag attribute silently reads as "no flags reported" —
+// which is exactly the value a UDP flow has, so nothing looks broken.
+func TestNormalizeNetflow_CarriesTheTCPFlagByte(t *testing.T) {
+	got, ok := normalizeNetflow(netflow.Record{
+		Proto: 6, SrcAddr: mustAddr(t, "10.0.50.4"), DstAddr: mustAddr(t, "203.0.113.5"),
+		SrcPort: 40000, DstPort: 443, TCPFlags: 0x12,
+	}, time.Now())
+	if !ok {
+		t.Fatal("normalize rejected a well-formed record")
+	}
+	if got.TCPFlags != 0x12 {
+		t.Errorf("TCPFlags = %#02x, want 0x12", got.TCPFlags)
+	}
+}
+
 // The label names the WAN-FACING side, which is what makes per-WAN volume — and
 // therefore the policy-routing repair — answerable at all.
 func TestInterfaceLabel_NamesTheWANFacingSide(t *testing.T) {

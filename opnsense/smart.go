@@ -28,6 +28,25 @@ type smartInfoOutput struct {
 	PowerOnTime        *smartPowerOnTime   `json:"power_on_time"`
 	AtaSmartAttributes *smartAtaAttributes `json:"ata_smart_attributes"`
 	NVMeHealth         *smartNVMeHealthLog `json:"nvme_smart_health_information_log"`
+
+	// RotationRate is ATA IDENTIFY word 217 (ataprint.cpp:725): 0 explicitly
+	// means solid-state, any other value is the platter's RPM. A pointer so a
+	// present-but-zero SSD reading (0, true) never collapses into the same
+	// nil an omitted field produces (#577, mirrors the AttachOrStatResetUptime
+	// presence-gating rule in interfaces.go) — reporting 0 for a drive that
+	// simply didn't send this field would misclassify it as SSD.
+	RotationRate *float64 `json:"rotation_rate"`
+
+	// SpareAvailable and EnduranceUsed are smartctl's own NORMALIZED wear
+	// percentages (ataprint.cpp:1170-1219), derived by regex-matching
+	// vendor-specific attribute names (Spare_Blocks/Reallocated_Sector_Count
+	// family; SSD_Life_Left/Wear_Leveling family). Not reconstructible from
+	// the generic per-attribute dump without reimplementing that matching —
+	// hence tracked as their own fields rather than left to attribute_raw.
+	// Absent on drives smartctl cannot normalize (most HDDs, some SSD
+	// vendors), so both stay pointers (#577).
+	SpareAvailable *float64 `json:"spare_available"`
+	EnduranceUsed  *float64 `json:"endurance_used"`
 }
 
 // smartAtaAttributes mirrors the smartctl -a -j SATA attribute table.
@@ -44,6 +63,13 @@ type smartAtaAttribute struct {
 	Raw    struct {
 		Value float64 `json:"value"`
 	} `json:"raw"`
+
+	// WhenFailed is smartctl's own attribute-level failed marker
+	// (ataprint.cpp:1334): "now", "past", or "" for an attribute that has
+	// never crossed its threshold. Always emitted per attribute row (not
+	// conditional), so a plain string is enough — no presence-gating needed
+	// here, unlike RotationRate above.
+	WhenFailed string `json:"when_failed"`
 }
 
 // smartNVMeHealthLog mirrors the smartctl -a -j NVMe health information log.
@@ -79,6 +105,9 @@ type SMARTAttribute struct {
 	// Raw is the raw attribute value; float64 because values like
 	// Total_LBAs_Written exceed int32 (and float64 precision is ample).
 	Raw float64
+	// WhenFailed is "now", "past", or "" (never failed). See smartAtaAttribute
+	// for why this is a plain string rather than presence-gated (#577).
+	WhenFailed string
 }
 
 // SMARTNVMe holds the NVMe health information log fields we export.
@@ -112,6 +141,16 @@ type SMARTDevice struct {
 
 	// NVMe is the NVMe health log (nil for SATA drives).
 	NVMe *SMARTNVMe
+
+	// RotationRate is nil when the drive didn't report ATA IDENTIFY word 217
+	// at all. 0 is a real, meaningful reading (SSD), not an absence (#577).
+	RotationRate *float64
+
+	// SpareAvailable and EnduranceUsed are smartctl's normalized SSD wear
+	// percentages. Nil when smartctl couldn't derive them for this drive
+	// (#577).
+	SpareAvailable *float64
+	EnduranceUsed  *float64
 }
 
 // SMARTDevices holds the aggregated result of FetchSMARTDevices.
@@ -217,14 +256,27 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 			if out.AtaSmartAttributes != nil {
 				for _, a := range out.AtaSmartAttributes.Table {
 					dev.Attributes = append(dev.Attributes, SMARTAttribute{
-						ID:        a.ID,
-						Name:      a.Name,
-						Value:     a.Value,
-						Worst:     a.Worst,
-						Threshold: a.Thresh,
-						Raw:       a.Raw.Value,
+						ID:         a.ID,
+						Name:       a.Name,
+						Value:      a.Value,
+						Worst:      a.Worst,
+						Threshold:  a.Thresh,
+						Raw:        a.Raw.Value,
+						WhenFailed: a.WhenFailed,
 					})
 				}
+			}
+			if out.RotationRate != nil {
+				rpm := *out.RotationRate
+				dev.RotationRate = &rpm
+			}
+			if out.SpareAvailable != nil {
+				spare := *out.SpareAvailable
+				dev.SpareAvailable = &spare
+			}
+			if out.EnduranceUsed != nil {
+				endurance := *out.EnduranceUsed
+				dev.EnduranceUsed = &endurance
 			}
 			if n := out.NVMeHealth; n != nil {
 				dev.NVMe = &SMARTNVMe{

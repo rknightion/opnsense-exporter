@@ -3,6 +3,8 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/opnsense"
@@ -60,9 +62,22 @@ type unboundDNSCollector struct {
 	blocklistEnabled *prometheus.Desc
 	serviceRunning   *prometheus.Desc
 
+	// Reply-time histogram + the DNSSEC validator's workload (#581). Both are
+	// extended-statistics sourced; the histogram carries its own presence flag
+	// from the client rather than riding ExtendedPresent.
+	recursionHistogram   *prometheus.Desc
+	validationOperations *prometheus.Desc
+
 	// Infra cache descriptors — only emitted when infraEnabled.
 	infraRTT *prometheus.Desc
 	infraRTO *prometheus.Desc
+
+	// Per-upstream health flags (#581) — same opt-in switch as the RTT/RTO pair
+	// above, because they have the same shape and the same per-upstream
+	// cardinality.
+	infraHostLame       *prometheus.Desc
+	infraHostDNSSECLame *prometheus.Desc
+	infraHostEDNSBroken *prometheus.Desc
 
 	infraEnabled bool
 
@@ -83,9 +98,54 @@ type unboundDNSCollector struct {
 
 	qstatsEnabled bool
 
+	// Top-domain leaderboards (#587), each behind its own bounded inventory. See
+	// the const block below for why they are two inventories and one metric.
+	qstatsTopDomains *prometheus.Desc
+	cardinalityCap   *prometheus.Desc
+
+	topPassed  *boundedInventory[string, int64]
+	topBlocked *boundedInventory[string, int64]
+
+	// now is the clock the leaderboard inventories age against, injectable so a
+	// test can drive retirement without sleeping.
+	now func() time.Time
+
 	subsystem string
 	instance  string
 }
+
+// Bounds on the top-domain leaderboards (#587).
+//
+// The KEY CAP is not stated here: it is opnsense.UnboundTopDomainsMax, which is
+// also the {max} row limit in the endpoint URL. One number, because {max} binds
+// straight to the backend's SQL LIMIT and is therefore a hard ceiling on what can
+// ever reach us — a second, larger cap here would be decorative. See that const
+// for the full reasoning, including why neither is a CLI flag.
+const (
+	// unboundTopDomainTTL retires a domain that has not appeared in the
+	// leaderboard for five minutes — deliberately much shorter than
+	// zenarmorDeviceTTL's 24h, because the two inventories answer different
+	// questions. The Zenarmor one is a device PICKER, where an entry that visited
+	// this morning is still worth offering tonight. This one mirrors a payload
+	// that arrives complete and pre-truncated on every poll, so a long TTL would
+	// not preserve anything useful; it would OSSIFY the budget, letting the first
+	// poll's 512 domains hold every slot while genuinely-top newcomers are refused
+	// for the rest of the day. Five minutes is roughly five polls at the default
+	// interval: long enough that a domain oscillating around the cut-off does not
+	// flap its series every scrape, short enough that the budget turns over.
+	//
+	// A domain still in the inventory but absent from the current payload keeps
+	// its last count for up to this long. That staleness is deliberate and cheap:
+	// the value is an aggregate over a SEVEN-DAY rolling window, so five minutes
+	// is 0.05% of it.
+	unboundTopDomainTTL = 5 * time.Minute
+
+	// Family label values for the refusal counter. Code-defined constants, never
+	// wire values — a label value must never come off the wire on the one metric
+	// whose job is to report that wire values are being refused.
+	unboundFamilyTopPassed  = "top_domain_passed"
+	unboundFamilyTopBlocked = "top_domain_blocked"
+)
 
 func init() {
 	collectorInstances = append(collectorInstances, &unboundDNSCollector{
@@ -101,6 +161,11 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 	c.log = log
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
+
+	if c.now == nil {
+		c.now = time.Now
+	}
+	c.setTopDomainBounds(opnsense.UnboundTopDomainsMax, unboundTopDomainTTL)
 
 	c.uptime = buildPrometheusDesc(c.subsystem, "uptime_seconds",
 		"Uptime of the unbound DNS service in seconds",
@@ -255,12 +320,73 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		nil,
 	)
 
+	// Reply-time histogram (#581). A real histogram, not per-bucket gauges:
+	// unbound's buckets are cumulative-since-start counters and the client has
+	// already made them cumulative in the ascending sense Prometheus needs, so
+	// histogram_quantile() over rate(..._bucket[...]) answers "what is my DNS p99"
+	// correctly. _sum is real too — see UnboundRecursionHistogram for how it is
+	// recovered from the mean unbound divides it out of.
+	c.recursionHistogram = buildPrometheusDesc(c.subsystem, "recursion_time_seconds",
+		"How long Unbound's recursive lookups took, bucketed - the p50/p99 companion to the "+
+			"recursion_time_avg_seconds and recursion_time_median_seconds gauges. Buckets are "+
+			"unbound's own: exponential, doubling from 1us to 2^19s. Cumulative since the "+
+			"resolver started, so query it through rate(). "+
+			"ONLY EXISTS WHEN THE RESOLVER RUNS WITH extended-statistics: yes, which is OFF by "+
+			"default from OPNsense 26.7 - unbound does not compute the histogram's output at all "+
+			"otherwise, and the exporter emits no series rather than a fabricated empty one. "+
+			"The _sum is reconstructed by multiplying unbound's reported mean back by this "+
+			"histogram's own count, which is exact to the microsecond that mean is printed at; "+
+			"unbound never publishes the accumulated total directly.",
+		nil,
+	)
+	c.validationOperations = buildPrometheusDesc(c.subsystem, "validation_operations_total",
+		"RRSIG verification operations the DNSSEC validator has attempted, counted whether they "+
+			"passed or failed (unbound's num.valops). This is the denominator answers_secure_total "+
+			"and answers_bogus_total lack: a validator doing heavy work for few secure answers is a "+
+			"different problem from one doing none at all, and the two are indistinguishable "+
+			"without it. Extended-statistics sourced, so absent when the box runs "+
+			"extended-statistics: no (the OPNsense 26.7 default).",
+		nil,
+	)
+
 	c.infraRTT = buildPrometheusDesc(c.subsystem, "infra_rtt_seconds",
 		"Smoothed round-trip time to an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set.",
 		[]string{"ip", "host"},
 	)
 	c.infraRTO = buildPrometheusDesc(c.subsystem, "infra_rto_seconds",
 		"Retransmission timeout for an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set.",
+		[]string{"ip", "host"},
+	)
+
+	// Per-upstream health flags (#581). These answer the failure the RTT/RTO pair
+	// above structurally CANNOT: once Unbound marks an upstream lame it stops
+	// asking it, so that upstream's timing series stays perfect precisely because
+	// it is no longer being used.
+	c.infraHostLame = buildPrometheusDesc(c.subsystem, "infra_host_lame",
+		"Whether Unbound has marked an upstream server lame - not authoritative for the zone it "+
+			"was asked about - by lameness kind (1 = lame, 0 = fine). kind=recursion means the "+
+			"server answers by recursing on our behalf instead of serving the zone; kind=type_a and "+
+			"kind=other split lameness by query type, because a server can serve A records fine and "+
+			"be lame for everything else. THIS IS THE SIGNAL RTT CANNOT CARRY: Unbound stops "+
+			"querying a lame server, so its RTT stays healthy while resolution through it fails. "+
+			"Only emitted when --exporter.enable-unbound-infra is set.",
+		[]string{"ip", "host", "kind"},
+	)
+	c.infraHostDNSSECLame = buildPrometheusDesc(c.subsystem, "infra_host_dnssec_lame",
+		"Whether Unbound has marked an upstream server DNSSEC-lame (1 = lame, 0 = fine): it "+
+			"answers the zone but will not serve the DNSSEC records needed to validate those "+
+			"answers. Tracked separately from infra_host_lame because Unbound tracks it separately "+
+			"and it fails differently - queries succeed, validation does not. Only emitted when "+
+			"--exporter.enable-unbound-infra is set.",
+		[]string{"ip", "host"},
+	)
+	c.infraHostEDNSBroken = buildPrometheusDesc(c.subsystem, "infra_host_edns_broken",
+		"Whether Unbound has determined that EDNS queries or replies are being dropped in transit "+
+			"to an upstream server (1 = broken, 0 = fine), from its cached EDNS version for that "+
+			"host. Distinct from lameness: the server answers, but every EDNS-bearing exchange with "+
+			"it is eaten somewhere on the path, which silently disables DNSSEC and forces "+
+			"fallbacks. Usually a middlebox or MTU problem rather than the server itself. Only "+
+			"emitted when --exporter.enable-unbound-infra is set.",
 		[]string{"ip", "host"},
 	)
 
@@ -299,6 +425,47 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		"Number of domains configured as DNSSEC-insecure in Unbound. Only emitted when --exporter.enable-unbound-qstats is set.",
 		nil,
 	)
+
+	// Top-domain leaderboards (#587). ONE metric with a result label rather than
+	// two metrics, mirroring the qstats_queries_7d{result} totals it is the
+	// per-domain breakdown of, so the two can be divided against each other
+	// without a join across metric names.
+	c.qstatsTopDomains = buildPrometheusDesc(c.subsystem, "qstats_top_domain_queries_7d",
+		"Queries for one domain over Unbound's rolling query-stats window (typically 7 days), for "+
+			"the busiest domains only, split by outcome: result=passed is the top-N of queries "+
+			"Unbound answered, result=blocked the top-N a DNSBL policy blocked - the pi-hole-style "+
+			"leaderboard. A domain can appear under both, since some queries for it may predate the "+
+			"policy that now blocks it. Gauge, not a counter: the window is truncated hourly and a "+
+			"qstats reset empties it, so these totals decrease. "+
+			"BOUNDED ON BOTH AXES and truncated by design - the API is asked for at most 512 rows "+
+			"per outcome, at most 512 domains are tracked per outcome, and a domain is retired 5 "+
+			"minutes after it last appeared. This is the busiest domains, never all of them, and "+
+			"summing it does not reconstruct qstats_queries_7d. Domains carry unbound's trailing "+
+			"root dot. Refusals past the cap surface as cardinality_capped_total; a rising refusal "+
+			"count means something is minting domains faster than the cap allows (random-subdomain "+
+			"or DNS-tunnelling traffic does exactly this) and the leaderboard below it is no longer "+
+			"the real top-N. Only emitted when --exporter.enable-unbound-qstats is set and "+
+			"query-stats logging is on.",
+		[]string{"domain", "result"},
+	)
+	c.cardinalityCap = buildPrometheusDesc(c.subsystem, "cardinality_capped_total",
+		"Domains refused their own series because the leaderboard already held its full key "+
+			"budget when they were first seen. Non-zero and rising means the top-N is saturated "+
+			"and no longer reflects the real busiest domains - the usual cause is "+
+			"random-subdomain or DNS-tunnelling traffic churning the leaderboard, which is worth "+
+			"looking at in its own right. There is deliberately no companion gauge for the live "+
+			"key count: count() over qstats_top_domain_queries_7d derives it exactly.",
+		[]string{"family"},
+	)
+}
+
+// setTopDomainBounds (re)builds the leaderboard inventories with the given key
+// budget and retirement window. Called from Register with the production values;
+// exists as a seam so a test can drive the cap and the TTL without a 512-domain
+// fixture or a five-minute sleep.
+func (c *unboundDNSCollector) setTopDomainBounds(max int, ttl time.Duration) {
+	c.topPassed = newBoundedInventory[string, int64](max, ttl, strings.Compare)
+	c.topBlocked = newBoundedInventory[string, int64](max, ttl, strings.Compare)
 }
 
 // SetInfraEnabled toggles the per-upstream infra cache metrics
@@ -348,8 +515,13 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.tcpUsage
 	ch <- c.blocklistEnabled
 	ch <- c.serviceRunning
+	ch <- c.recursionHistogram
+	ch <- c.validationOperations
 	ch <- c.infraRTT
 	ch <- c.infraRTO
+	ch <- c.infraHostLame
+	ch <- c.infraHostDNSSECLame
+	ch <- c.infraHostEDNSBroken
 	ch <- c.qstatsEnabledDesc
 	ch <- c.dnsblBlocklistSize
 	ch <- c.qstatsQueries7d
@@ -358,6 +530,8 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.localZones
 	ch <- c.localDataRecords
 	ch <- c.insecureDomains
+	ch <- c.qstatsTopDomains
+	ch <- c.cardinalityCap
 }
 
 // emitServiceRunning fetches the unbound service running-state and emits the
@@ -396,6 +570,10 @@ func (c *unboundDNSCollector) updateExtended(data opnsense.UnboundDNSOverview, c
 	ch <- prometheus.MustNewConstMetric(
 		c.rrsetBogusTotal, prometheus.CounterValue,
 		float64(data.RrsetBogusTotal), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.validationOperations, prometheus.CounterValue,
+		float64(data.ValidationOperations), c.instance,
 	)
 
 	// Queries by type (data.num.query.type)
@@ -579,6 +757,16 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.updateExtended(data, ch)
 	}
 
+	// Reply-time histogram. Gated on ITS OWN presence flag rather than on
+	// ExtendedPresent: it is a separate section on the wire (data.histogram, not
+	// data.num), and borrowing a sibling section's flag is exactly how an all-zero
+	// 40-bucket histogram gets published for a resolver that never reported one.
+	if h := data.RecursionHistogram; h.Present {
+		ch <- prometheus.MustNewConstHistogram(
+			c.recursionHistogram, h.Count, h.Sum, h.Buckets, c.instance,
+		)
+	}
+
 	// Gauges without extra labels
 	ch <- prometheus.MustNewConstMetric(
 		c.requestListAvg, prometheus.GaugeValue,
@@ -656,6 +844,30 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 					c.infraRTO, prometheus.GaugeValue,
 					h.RTOMilliseconds/1000.0, h.IP, h.Host, c.instance,
 				)
+
+				// Health flags (#581). Emitted for every host, including a healthy
+				// one reading 0 - an omitted series and a healthy series look
+				// identical on a graph and only one of them is true, and a lameness
+				// flag that appears only once it fires has no baseline to alert
+				// against.
+				for kind, lame := range map[string]bool{
+					"recursion": h.RecursionLame,
+					"type_a":    h.TypeALame,
+					"other":     h.OtherLame,
+				} {
+					ch <- prometheus.MustNewConstMetric(
+						c.infraHostLame, prometheus.GaugeValue,
+						boolToFloat64(lame), h.IP, h.Host, kind, c.instance,
+					)
+				}
+				ch <- prometheus.MustNewConstMetric(
+					c.infraHostDNSSECLame, prometheus.GaugeValue,
+					boolToFloat64(h.DNSSECLame), h.IP, h.Host, c.instance,
+				)
+				ch <- prometheus.MustNewConstMetric(
+					c.infraHostEDNSBroken, prometheus.GaugeValue,
+					boolToFloat64(h.EDNSBroken), h.IP, h.Host, c.instance,
+				)
 			}
 		}
 	}
@@ -715,8 +927,22 @@ func (c *unboundDNSCollector) updateQStats(_ context.Context, client *opnsense.C
 					float64(count), result, c.instance,
 				)
 			}
+
+			c.updateTopDomains(stats, ch)
 		}
 	}
+
+	// Refusal counters are emitted whether or not this poll produced a payload:
+	// they are in-process state, and a counter that disappears while the box has
+	// query-stats logging switched off would read as a reset when it came back.
+	ch <- prometheus.MustNewConstMetric(
+		c.cardinalityCap, prometheus.CounterValue,
+		c.topPassed.refused(), unboundFamilyTopPassed, c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.cardinalityCap, prometheus.CounterValue,
+		c.topBlocked.refused(), unboundFamilyTopBlocked, c.instance,
+	)
 
 	// Rider metrics (#209): cheap, slow-moving unbound-control diagnostics,
 	// independent of whether query-stats logging is on.
@@ -740,4 +966,51 @@ func (c *unboundDNSCollector) updateQStats(_ context.Context, client *opnsense.C
 		c.insecureDomains, prometheus.GaugeValue,
 		float64(localData.InsecureDomains), c.instance,
 	)
+}
+
+// updateTopDomains folds this poll's two leaderboards into their bounded
+// inventories and emits what is currently live (#587).
+//
+// The inventories are what make this safe to ship default-on where #209 refused
+// it. The payload itself is already truncated to UnboundTopDomainsMax rows, so a
+// single scrape could never mint more than that many series - but over TIME an
+// untracked leaderboard mints a fresh series set on every poll the moment anything
+// churns the top-N, which is what random-subdomain and DNS-tunnelling traffic does
+// by construction. The inventory bounds the series set ACROSS polls, not within
+// one, and counts what it turns away so the truncation is visible rather than
+// looking like a quiet network.
+//
+// The residual risk is real and deliberately accepted: under that churn the budget
+// fills with junk and a genuinely busy domain can be refused a series. The refusal
+// counter is what makes that state legible - a rising cardinality_capped_total on
+// this family means "the leaderboard below is no longer the real top-N", not "the
+// exporter is broken".
+func (c *unboundDNSCollector) updateTopDomains(stats opnsense.UnboundQueryStats, ch chan<- prometheus.Metric) {
+	now := c.now()
+	for _, board := range []struct {
+		result string
+		rows   map[string]int64
+		inv    *boundedInventory[string, int64]
+	}{
+		{"passed", stats.TopPassedDomains, c.topPassed},
+		{"blocked", stats.TopBlockedDomains, c.topBlocked},
+	} {
+		// PRUNE BEFORE ADMITTING, and the discarded return value is the point.
+		// boundedInventory frees a retired key's budget slot inside live(), not on
+		// a timer, so admitting first would have every new domain refused against a
+		// budget still held by entries that expired minutes ago - the inventory
+		// would fill once at startup and never turn over again, which is the exact
+		// failure TestUnboundDNSCollector_TopDomainsRetired pins. There is no
+		// prune-only entry point on the primitive; this is it.
+		board.inv.live(now)
+		for domain, count := range board.rows {
+			board.inv.seen(domain, count, now)
+		}
+		for _, entry := range board.inv.live(now) {
+			ch <- prometheus.MustNewConstMetric(
+				c.qstatsTopDomains, prometheus.GaugeValue,
+				float64(entry.val), entry.key, board.result, c.instance,
+			)
+		}
+	}
 }

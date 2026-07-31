@@ -1,13 +1,26 @@
 package collector
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 )
+
+// unboundTotalsPattern registers the api/unbound/overview/totals handler as a
+// SUBTREE pattern rather than an exact path. The {max} row limit is baked into the
+// endpoint URL in opnsense/client.go, and #587 raises it from 1 to the leaderboard
+// cap; an exact "/api/unbound/overview/totals/1" pattern would start 404ing every
+// totals call the moment that lands, and each of these tests would silently begin
+// asserting against an empty payload instead of failing on the real change. The
+// sibling overview endpoints stay on exact patterns, which ServeMux prefers over
+// this prefix.
+const unboundTotalsPattern = "/api/unbound/overview/totals/"
 
 // unboundTestMux registers the stats, blocklist and service-status handlers
 // shared by all unbound collector tests.
@@ -128,8 +141,14 @@ func unboundTestMux(t *testing.T) *http.ServeMux {
 						"secure": "100",
 						"bogus": "0"
 					},
-					"rrset": {"bogus": "0"}
+					"rrset": {"bogus": "0"},
+					"valops": "640"
 				},
+				"histogram": [
+					{"from": [0, 0], "to": [0, 1024], "value": "0"},
+					{"from": [0, 1024], "to": [0, 2048], "value": "120"},
+					{"from": [0, 2048], "to": [0, 4096], "value": "70"}
+				],
 				"unwanted": {
 					"queries": "0",
 					"replies": "0"
@@ -188,8 +207,10 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 	// 1 tcpUsage
 	// 1 blocklistEnabled
 	// 1 serviceRunning
-	// Total: 1+11+4+14+6+7+2+8+2+4+4+6+3+2+1+1+1 = 77
-	expectedCount := 77
+	// 1 validationOperations (#581, extended-only like the DNSSEC counters above)
+	// 1 recursionHistogram (#581, one histogram metric carrying all its buckets)
+	// Total: 1+11+4+14+6+7+2+8+2+4+4+6+3+2+1+1+1+1+1 = 79
+	expectedCount := 79
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -433,11 +454,11 @@ func unboundQStatsMuxHandlers(t *testing.T, mux *http.ServeMux, enabled bool, to
 			w.Write([]byte(`{"enabled":"0"}`))
 		}
 	})
-	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
 		if totalsCalled != nil {
 			*totalsCalled = true
 		}
-		w.Write([]byte(`{"total":16236,"blocklist_size":528587,"passed":10396,"resolved":{"total":3197,"pcnt":"19.69"},"blocked":{"total":13,"pcnt":"0.08"},"local":{"total":145,"pcnt":"0.89"},"start_time":1783872391,"top":{},"top_blocked":{}}`))
+		w.Write([]byte(`{"total":16236,"blocklist_size":528587,"passed":10396,"resolved":{"total":3197,"pcnt":"19.69"},"blocked":{"total":13,"pcnt":"0.08"},"local":{"total":145,"pcnt":"0.89"},"start_time":1783872391,"top":{"example.com.":{"total":2780,"pcnt":"26.74"},"news.example.":{"total":41,"pcnt":"0.39"}},"top_blocked":{"ade.googlesyndication.com.":{"total":4,"pcnt":"30.77","blocklist":"AdGuard List","latest_policy_uuid":"6b882f48-abe5-4a80-9670-5d7a6b81c66f","category":"General Blocklists"}}}`))
 	})
 	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"ok","data":[{"zone":"home.arpa.","type":"static"},{"zone":"example.lan","type":"transparent"}]}`))
@@ -458,7 +479,7 @@ func TestUnboundDNSCollector_Update_QStatsDisabledByDefault(t *testing.T) {
 	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
 		t.Error("is_enabled must not be called when qstats metrics are disabled")
 	})
-	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
 		t.Error("totals must not be called when qstats metrics are disabled")
 	})
 	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
@@ -596,5 +617,397 @@ func TestUnboundDNSCollector_Update_QStatsEnabled_Full(t *testing.T) {
 	insecure := metricsByDesc(metrics, "opnsense_unbound_dns_insecure_domains")
 	if len(insecure) != 1 || getMetricValue(insecure[0]) != 0 {
 		t.Errorf("expected insecure_domains=0 (degenerate single-empty-string shape), got %v", insecure)
+	}
+}
+
+// --- #581: infra host health flags -------------------------------------------
+
+// unboundInfraHealthPayload is one healthy and one thoroughly broken upstream, in
+// the shape wrapper.py produces from unbound's dump_infra line. Both carry the
+// literal "lame": true, because every dump_infra record does.
+const unboundInfraHealthPayload = `{"status":"ok","data":[
+	{"ip":"1.1.1.1","host":"example.com.","ttl":"900","rtt":"70","rto":"376",
+	 "ednsknown":"1","edns":"0","lame":true,"dnssec":"0","rec":"0","A":"0","other":"0"},
+	{"ip":"9.9.9.9","host":"broken.example.","ttl":"900","rtt":"400","rto":"1200",
+	 "ednsknown":"1","edns":"-1","lame":true,"dnssec":"1","rec":"1","A":"1","other":"0"}
+]}`
+
+// TestUnboundDNSCollector_InfraHealthFlags checks the operator scenario #581 was
+// filed for: an upstream unbound has quietly stopped trusting, whose RTT still
+// looks perfect precisely BECAUSE unbound stopped asking it. The lameness kinds
+// must arrive as separate series, and a healthy host must read 0 rather than being
+// omitted — a missing series and a healthy one are the same picture on a graph,
+// and only one of them is true.
+func TestUnboundDNSCollector_InfraHealthFlags(t *testing.T) {
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/diagnostics/dumpinfra", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(unboundInfraHealthPayload))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetInfraEnabled(true)
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	lame := metricsByDesc(metrics, "opnsense_unbound_dns_infra_host_lame")
+	// 2 hosts x 3 lameness kinds.
+	if len(lame) != 6 {
+		t.Fatalf("expected 6 infra_host_lame series (2 hosts x 3 kinds), got %d", len(lame))
+	}
+	want := map[string]float64{
+		"1.1.1.1|recursion": 0, "1.1.1.1|type_a": 0, "1.1.1.1|other": 0,
+		"9.9.9.9|recursion": 1, "9.9.9.9|type_a": 1, "9.9.9.9|other": 0,
+	}
+	for _, m := range lame {
+		d := &dto.Metric{}
+		if err := m.Write(d); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		labels := map[string]string{}
+		for _, lp := range d.GetLabel() {
+			labels[lp.GetName()] = lp.GetValue()
+		}
+		key := labels["ip"] + "|" + labels["kind"]
+		expected, ok := want[key]
+		if !ok {
+			t.Errorf("unexpected infra_host_lame series %s", key)
+			continue
+		}
+		if got := d.GetGauge().GetValue(); got != expected {
+			t.Errorf("infra_host_lame{%s}: expected %v, got %v", key, expected, got)
+		}
+		delete(want, key)
+	}
+	if len(want) != 0 {
+		t.Errorf("missing infra_host_lame series: %v", want)
+	}
+
+	for name, byIP := range map[string]map[string]float64{
+		"opnsense_unbound_dns_infra_host_dnssec_lame": {"1.1.1.1": 0, "9.9.9.9": 1},
+		"opnsense_unbound_dns_infra_host_edns_broken": {"1.1.1.1": 0, "9.9.9.9": 1},
+	} {
+		series := metricsByDesc(metrics, name)
+		if len(series) != len(byIP) {
+			t.Errorf("expected %d %s series, got %d", len(byIP), name, len(series))
+		}
+		for _, m := range series {
+			d := &dto.Metric{}
+			_ = m.Write(d)
+			var ip string
+			for _, lp := range d.GetLabel() {
+				if lp.GetName() == "ip" {
+					ip = lp.GetValue()
+				}
+			}
+			if got := d.GetGauge().GetValue(); got != byIP[ip] {
+				t.Errorf("%s{ip=%q}: expected %v, got %v", name, ip, byIP[ip], got)
+			}
+		}
+	}
+}
+
+// TestUnboundDNSCollector_InfraHealthFlagsGatedWithRTT keeps the health flags on
+// the same opt-in switch as the timing series they explain. They are per-upstream,
+// so they scale with the infra cache exactly like infra_rtt_seconds does; letting
+// them default on would quietly reintroduce the cardinality --exporter.enable-
+// unbound-infra exists to keep opt-in.
+func TestUnboundDNSCollector_InfraHealthFlagsGatedWithRTT(t *testing.T) {
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/diagnostics/dumpinfra", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("dumpinfra must not be called when infra metrics are disabled")
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	for _, name := range []string{
+		"opnsense_unbound_dns_infra_host_lame",
+		"opnsense_unbound_dns_infra_host_dnssec_lame",
+		"opnsense_unbound_dns_infra_host_edns_broken",
+	} {
+		if got := metricsByDesc(metrics, name); len(got) != 0 {
+			t.Errorf("expected no %s series without --exporter.enable-unbound-infra, got %d", name, len(got))
+		}
+	}
+}
+
+// --- #581: reply-time histogram ----------------------------------------------
+
+// TestUnboundDNSCollector_RecursionHistogram checks the collector ships a REAL
+// Prometheus histogram — cumulative _bucket counts plus _sum and _count — rather
+// than a pile of per-bucket gauges. histogram_quantile() is the entire point of
+// the metric and it reads nothing else.
+func TestUnboundDNSCollector_RecursionHistogram(t *testing.T) {
+	mux := unboundTestMux(t)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	series := metricsByDesc(metrics, "opnsense_unbound_dns_recursion_time_seconds")
+	if len(series) != 1 {
+		t.Fatalf("expected exactly 1 recursion_time_seconds histogram, got %d", len(series))
+	}
+	d := &dto.Metric{}
+	if err := series[0].Write(d); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	h := d.GetHistogram()
+	if h == nil {
+		t.Fatal("recursion_time_seconds must be emitted as a histogram (TYPE histogram), not a gauge")
+	}
+	// Fixture buckets are 0, 120, 70 -> cumulative 0, 120, 190.
+	if h.GetSampleCount() != 190 {
+		t.Errorf("expected sample count 190, got %d", h.GetSampleCount())
+	}
+	wantCumulative := map[float64]uint64{0.001024: 0, 0.002048: 120, 0.004096: 190}
+	if len(h.GetBucket()) != len(wantCumulative) {
+		t.Fatalf("expected %d buckets, got %d", len(wantCumulative), len(h.GetBucket()))
+	}
+	for _, b := range h.GetBucket() {
+		want, ok := wantCumulative[b.GetUpperBound()]
+		if !ok {
+			t.Errorf("unexpected bucket le=%g", b.GetUpperBound())
+			continue
+		}
+		if b.GetCumulativeCount() != want {
+			t.Errorf("bucket le=%g: expected cumulative %d, got %d",
+				b.GetUpperBound(), want, b.GetCumulativeCount())
+		}
+	}
+	// avg 0.012s x 190 replies. Guard the two failure modes that read as valid
+	// data downstream: a zero sum (average latency graphs flatline at 0s) and a
+	// sum in milliseconds (out by 1000, and nothing says so).
+	if want := 0.012 * 190; h.GetSampleSum() < want-1e-9 || h.GetSampleSum() > want+1e-9 {
+		t.Errorf("expected sample sum %v (avg 0.012s x 190), got %v", want, h.GetSampleSum())
+	}
+}
+
+// TestUnboundDNSCollector_RecursionHistogramAbsent is the box-state path and the
+// default on OPNsense 26.7: with `extended-statistics: no` the payload has no
+// data.histogram, and the metric must simply not exist. An all-zero 40-bucket
+// histogram would publish a sub-microsecond p99 for a resolver nobody is
+// measuring — the same class of lie as #90's zero counters, on a metric operators
+// would page on.
+func TestUnboundDNSCollector_RecursionHistogramAbsent(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/unbound/diagnostics/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "4321", "cachehits": "3000", "cachemiss": "1321", "recursivereplies": "1300"},
+					"requestlist": {"avg": "2.25", "max": "17", "overwritten": "4", "exceeded": "1",
+						"current": {"all": "6", "user": "2", "replies": "4"}},
+					"recursion": {"time": {"avg": "0.031", "median": "0.019"}},
+					"tcpusage": "0.75"
+				},
+				"time": {"now": "1800000000", "up": "12345.5", "elapsed": "12345.5"}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/unbound/overview/get_policies", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{}`))
+	})
+	mux.HandleFunc("/api/unbound/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	if got := metricsByDesc(metrics, "opnsense_unbound_dns_recursion_time_seconds"); len(got) != 0 {
+		t.Errorf("expected no recursion_time_seconds histogram when the box omits data.histogram, got %d", len(got))
+	}
+	if got := metricsByDesc(metrics, "opnsense_unbound_dns_validation_operations_total"); len(got) != 0 {
+		t.Errorf("expected no validation_operations_total when extended statistics are absent, got %d", len(got))
+	}
+}
+
+// --- #587: top / top_blocked domain leaderboards ------------------------------
+
+// TestUnboundDNSCollector_TopDomainLeaderboards covers the headline pi-hole number
+// #587 reopened #209 for. One metric with a result label rather than two metrics,
+// mirroring the sibling qstats_queries_7d{result} it is the per-domain breakdown of.
+func TestUnboundDNSCollector_TopDomainLeaderboards(t *testing.T) {
+	mux := unboundTestMux(t)
+	unboundQStatsMuxHandlers(t, mux, true, nil)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetQStatsEnabled(true)
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	got := map[string]float64{}
+	for _, m := range metricsByDesc(metrics, "opnsense_unbound_dns_qstats_top_domain_queries_7d") {
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		labels := map[string]string{}
+		for _, lp := range d.GetLabel() {
+			labels[lp.GetName()] = lp.GetValue()
+		}
+		if d.GetGauge() == nil {
+			t.Fatalf("leaderboard series must be a gauge: the qstats window is truncated hourly "+
+				"and a reset would read as a counter rollover on every domain at once (%v)", labels)
+		}
+		got[labels["result"]+"|"+labels["domain"]] = d.GetGauge().GetValue()
+	}
+	want := map[string]float64{
+		"passed|example.com.":                2780,
+		"passed|news.example.":               41,
+		"blocked|ade.googlesyndication.com.": 4,
+	}
+	for key, v := range want {
+		if got[key] != v {
+			t.Errorf("expected %s = %v, got %v", key, v, got[key])
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("expected %d leaderboard series, got %d (%v)", len(want), len(got), got)
+	}
+
+	// The refusal counter must exist from the first scrape, at zero. A counter that
+	// only appears once it is non-zero cannot be alerted on with rate() and reads as
+	// a fresh series (i.e. a reset) the moment it does appear.
+	capped := metricsByDesc(metrics, "opnsense_unbound_dns_cardinality_capped_total")
+	if len(capped) != 2 {
+		t.Fatalf("expected a cardinality_capped_total series per leaderboard family, got %d", len(capped))
+	}
+	assertMetricsAreCounters(t, metrics, "opnsense_unbound_dns_cardinality_capped_total")
+}
+
+// TestUnboundDNSCollector_TopDomainsCapped is the cardinality control #209
+// rejected these metrics for want of. It drives more distinct domains at the
+// collector than the cap allows and requires both that the series set stops
+// growing AND that the overflow is COUNTED — a quietly truncated leaderboard is
+// indistinguishable from a quiet network, which is precisely how DNS-tunnelling
+// traffic would hide.
+func TestUnboundDNSCollector_TopDomainsCapped(t *testing.T) {
+	const cap = 3
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":10,"blocklist_size":0,"passed":10,"resolved":{"total":10},
+			"blocked":{"total":0},"local":{"total":0},"start_time":1,
+			"top":{"a.":{"total":5},"b.":{"total":4},"c.":{"total":3},"d.":{"total":2},"e.":{"total":1}},
+			"top_blocked":[]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocaldata", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[""]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetQStatsEnabled(true)
+	c.setTopDomainBounds(cap, time.Hour)
+	metrics := collectMetrics(t, c, client)
+
+	if got := len(metricsByDesc(metrics, "opnsense_unbound_dns_qstats_top_domain_queries_7d")); got != cap {
+		t.Errorf("expected the leaderboard to stop at the %d-key cap, got %d series", cap, got)
+	}
+	for _, m := range metricsByDesc(metrics, "opnsense_unbound_dns_cardinality_capped_total") {
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		var family string
+		for _, lp := range d.GetLabel() {
+			if lp.GetName() == "family" {
+				family = lp.GetValue()
+			}
+		}
+		if family != "top_domain_passed" {
+			continue
+		}
+		if got := d.GetCounter().GetValue(); got != 2 {
+			t.Errorf("expected 2 refusals recorded for the 5-domain payload at a %d cap, got %v", cap, got)
+		}
+	}
+}
+
+// TestUnboundDNSCollector_TopDomainsRetired pins the half of the bound that is easy
+// to leave out and impossible to notice: expiry has to hand its budget slot BACK.
+// Without it the first burst of domains owns the inventory for the life of the
+// process and a genuinely new top domain never appears again — the leaderboard
+// would freeze on whatever the exporter happened to see at startup.
+func TestUnboundDNSCollector_TopDomainsRetired(t *testing.T) {
+	payload := `{"total":1,"blocklist_size":0,"passed":1,"resolved":{"total":1},
+		"blocked":{"total":0},"local":{"total":0},"start_time":1,
+		"top":{"%s":{"total":5}},"top_blocked":[]}`
+	domain := "first."
+
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, payload, domain)
+	})
+	for _, p := range []string{"listlocalzones", "listlocaldata"} {
+		mux.HandleFunc("/api/unbound/diagnostics/"+p, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"status":"ok","data":[]}`))
+		})
+	}
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[""]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	now := time.Unix(1700000000, 0)
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetQStatsEnabled(true)
+	// A cap of one, so the second domain can only be admitted if the first freed
+	// its slot.
+	c.setTopDomainBounds(1, 5*time.Minute)
+	c.now = func() time.Time { return now }
+
+	collectMetrics(t, c, client)
+
+	domain = "second."
+	now = now.Add(6 * time.Minute)
+	metrics := collectMetrics(t, c, client)
+
+	series := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_top_domain_queries_7d")
+	if len(series) != 1 {
+		t.Fatalf("expected exactly 1 leaderboard series after retirement, got %d", len(series))
+	}
+	d := &dto.Metric{}
+	_ = series[0].Write(d)
+	for _, lp := range d.GetLabel() {
+		if lp.GetName() == "domain" && lp.GetValue() != "second." {
+			t.Errorf("expected the retired domain's budget slot to be reused by %q, still holding %q",
+				"second.", lp.GetValue())
+		}
 	}
 }

@@ -16,6 +16,10 @@
       "kind": "object"
     },
     {
+      "path": "interfaces.*.cleared",
+      "kind": "any"
+    },
+    {
       "path": "interfaces.*.in4_block_bytes",
       "kind": "number"
     },

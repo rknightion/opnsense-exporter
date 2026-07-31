@@ -24,12 +24,28 @@
       "kind": "number"
     },
     {
+      "path": "response.areas.*.spfLastExecutedMicroSecs",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.spfLastExecutedSecs",
+      "kind": "number"
+    },
+    {
       "path": "response.numberOfAsScopedLsa",
       "kind": "number"
     },
     {
       "path": "response.routerId",
       "kind": "string"
+    },
+    {
+      "path": "response.spfLastDurationMsecs",
+      "kind": "number"
+    },
+    {
+      "path": "response.spfLastDurationSecs",
+      "kind": "number"
     }
   ]
 }

@@ -3,7 +3,138 @@ package opnsense
 import (
 	"bytes"
 	"encoding/json"
+	"sort"
 )
+
+// unboundHistogramBucket is one bucket of unbound's reply-time histogram, in the
+// shape OPNsense's wrapper.py reshapes it into. unbound-control emits the
+// histogram as 40 flat keys
+//
+//	histogram.<from_sec>.<from_usec>.to.<to_sec>.<to_usec>=<count>
+//
+// and wrapper.py special-cases that prefix into an ARRAY of {from,to,value}
+// objects instead of folding it into the dotted-key tree the rest of the payload
+// uses (src/opnsense/scripts/unbound/wrapper.py, the args.stats branch). from and
+// to are python tuples, so they arrive as two-element JSON arrays of [seconds,
+// microseconds]; value is that bucket's own count, as a string.
+//
+// THE COUNTS ARE NOT CUMULATIVE ON THE WIRE — each bucket holds only its own
+// observations, which is the opposite of what a Prometheus _bucket series means.
+// buildUnboundRecursionHistogram is what accumulates them.
+type unboundHistogramBucket struct {
+	From  []flexInt `json:"from"`
+	To    []flexInt `json:"to"`
+	Value flexInt   `json:"value"`
+}
+
+// UnboundRecursionHistogram is unbound's reply-time histogram in the exact shape
+// prometheus.MustNewConstHistogram consumes: Buckets maps each finite upper bound
+// (in seconds) to the CUMULATIVE count at or below it, and Count is the implicit
+// +Inf bucket. unbound's top bucket ends at 2^19 seconds, so nothing can land past
+// the last finite bound and Count always equals the top cumulative bucket.
+//
+// Present is false when the box did not report data.histogram at all — the OPNsense
+// 26.7 default, `extended-statistics: no`. That is BOX STATE, not drift, and the
+// metric simply does not exist there. Synthesising 40 empty buckets instead would
+// be strictly worse than no metric: it publishes a sub-microsecond p99 for a
+// resolver nobody is actually measuring.
+//
+// SUM IS RECONSTRUCTED, AND THAT IS SOUND RATHER THAN A GUESS. unbound never prints
+// its accumulated wait total; it prints the MEAN,
+// total.recursion.time.avg = mesh->replies_sum_wait / mesh->replies_sent
+// (daemon/remote.c print_stats, via timeval_divide). Multiplying that mean back by
+// the histogram's own count inverts exactly that division, so this is algebra on
+// two numbers describing one population, not an estimate — mesh_send_reply
+// increments replies_sent, adds the duration into replies_sum_wait and inserts it
+// into the histogram in three consecutive statements (services/mesh.c), and the
+// histogram insert is NOT gated on stat_extended, only its printing is. The single
+// loss is unbound printing the mean at microsecond resolution, which caps the error
+// at half a microsecond per observation.
+//
+// Emitting Sum as 0 instead was rejected: rate(_sum)/rate(_count) would then read a
+// flat zero-second average latency, a lie with no tell. Dropping the histogram for
+// want of a sum was rejected too — histogram_quantile() never reads _sum.
+type UnboundRecursionHistogram struct {
+	Present bool
+	Count   uint64
+	Sum     float64
+	Buckets map[float64]uint64
+}
+
+// buildUnboundRecursionHistogram turns unbound's per-bucket counts into cumulative
+// ones and reconstructs the sum from the mean. avgSeconds is
+// data.total.recursion.time.avg.
+func buildUnboundRecursionHistogram(raw []unboundHistogramBucket, avgSeconds float64) UnboundRecursionHistogram {
+	type bound struct {
+		ge, le float64
+		count  uint64
+	}
+	bounds := make([]bound, 0, len(raw))
+	for _, b := range raw {
+		le, ok := unboundHistogramUpperBound(b.To)
+		if !ok {
+			return UnboundRecursionHistogram{}
+		}
+		ge, ok := unboundHistogramUpperBound(b.From)
+		if !ok {
+			return UnboundRecursionHistogram{}
+		}
+		n := b.Value.Int()
+		if n < 0 {
+			n = 0
+		}
+		bounds = append(bounds, bound{ge: ge, le: le, count: uint64(n)})
+	}
+	if len(bounds) == 0 {
+		return UnboundRecursionHistogram{}
+	}
+
+	// Accumulate in upper-bound order, never wire order. unbound prints ascending
+	// today, so folding in wire order passes against every real payload and would
+	// go wrong SILENTLY the day upstream reorders: the resulting _bucket series
+	// still parses, still has monotonicity Prometheus never checks, and still
+	// answers histogram_quantile() — with garbage.
+	sort.Slice(bounds, func(i, j int) bool { return bounds[i].le < bounds[j].le })
+
+	// The buckets must TILE — each one's lower bound is the previous one's upper
+	// bound, which is what makes a running sum over them the count "at or below
+	// this le" that a Prometheus _bucket series means. That is why `from` is read
+	// at all: it is redundant on a well-formed payload and is exactly the thing
+	// that stops being redundant if upstream ever reshapes the histogram (a
+	// coarser bucket set, or a set that no longer starts at zero). A gap or an
+	// overlap makes every cumulative count and therefore every quantile wrong, and
+	// nothing downstream could tell — so refuse the whole histogram instead. No
+	// metric is a visible absence; a plausible wrong p99 is not.
+	if bounds[0].ge != 0 {
+		return UnboundRecursionHistogram{}
+	}
+	for i := 1; i < len(bounds); i++ {
+		if bounds[i].ge != bounds[i-1].le {
+			return UnboundRecursionHistogram{}
+		}
+	}
+
+	out := UnboundRecursionHistogram{Present: true, Buckets: make(map[float64]uint64, len(bounds))}
+	var cum uint64
+	for _, b := range bounds {
+		cum += b.count
+		out.Buckets[b.le] = cum
+	}
+	out.Count = cum
+	out.Sum = avgSeconds * float64(cum)
+	return out
+}
+
+// unboundHistogramUpperBound converts a [seconds, microseconds] pair into seconds.
+// A pair that is not exactly two elements is refused rather than guessed at: the
+// alternative is a bucket silently landing at the wrong `le`, which moves every
+// quantile above it.
+func unboundHistogramUpperBound(pair []flexInt) (float64, bool) {
+	if len(pair) != 2 {
+		return 0, false
+	}
+	return float64(pair[0].Int()) + float64(pair[1].Int())/1e6, true
+}
 
 type unboundDNSStatusResponse struct {
 	Status string `json:"status"`
@@ -159,8 +290,21 @@ type unboundDNSStatusResponse struct {
 			Rrset struct {
 				Bogus string `json:"bogus"`
 			} `json:"rrset"`
+			// Valops is unbound's num.valops: RRSIG verification operations attempted,
+			// counted regardless of outcome (#581). print_ext writes it unconditionally
+			// (unbound daemon/remote.c, immediately after num.rrset.bogus) and
+			// stat_inhibit_zero never suppresses it, so its presence tracks
+			// `extended-statistics` exactly like the rest of data.num and it needs no
+			// presence gate of its own.
+			Valops string `json:"valops"`
 		} `json:"num"`
-		Unwanted *struct {
+		// Histogram is unbound's reply-time histogram, served under the same
+		// `extended-statistics: yes` switch as the sections around it: remote.c reaches
+		// print_hist only from inside `if(daemon->cfg->stat_extended)`. It needs no
+		// pointer to be presence-gated - a nil slice already tells "the box did not
+		// report this" apart from "reported as empty".
+		Histogram []unboundHistogramBucket `json:"histogram"`
+		Unwanted  *struct {
 			Queries string `json:"queries"`
 			Replies string `json:"replies"`
 		} `json:"unwanted"`
@@ -256,6 +400,20 @@ type UnboundDNSOverview struct {
 	AnswerSecureTotal int64
 	AnswerBogusTotal  int64
 	RrsetBogusTotal   int64
+
+	// ValidationOperations is data.num.valops: RRSIG verifications attempted,
+	// counted whether they passed or failed (#581). It is the DENOMINATOR the
+	// existing secure/bogus counters lack — a validator doing a lot of work and
+	// producing few secure answers is a different problem from one doing none.
+	// Extended-statistics sourced, so it rides ExtendedPresent.
+	ValidationOperations int64
+
+	// RecursionHistogram is data.histogram: how long recursive lookups took,
+	// bucketed (#581). Same extended-statistics gate as the fields above, but it
+	// carries its own Present flag rather than borrowing ExtendedPresent — the
+	// section is separate on the wire, and gating a histogram on a sibling
+	// section's presence is how a fabricated all-zero histogram gets published.
+	RecursionHistogram UnboundRecursionHistogram
 
 	// Cache entry counts
 	CacheRrsetCount   int64
@@ -383,6 +541,7 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 		data.AnswerSecureTotal = safeAtoi(num.Answer.Secure)
 		data.AnswerBogusTotal = safeAtoi(num.Answer.Bogus)
 		data.RrsetBogusTotal = safeAtoi(num.Rrset.Bogus)
+		data.ValidationOperations = safeAtoi(num.Valops)
 
 		// Query flags
 		data.FlagsByFlag = map[string]int64{
@@ -447,6 +606,19 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	// TCP usage
 	data.TCPUsage = safeParseFloat(response.Data.Total.Tcpusage)
 
+	// Reply-time histogram. Built last because its reconstructed sum needs the
+	// recursion mean parsed just above. A nil/empty data.histogram leaves the
+	// zero value, whose Present is false — the box-state path.
+	data.RecursionHistogram = buildUnboundRecursionHistogram(
+		response.Data.Histogram, data.RecursionTimeAvg)
+	if len(response.Data.Histogram) > 0 && !data.RecursionHistogram.Present {
+		// Distinguish "the box sent no histogram" (silent, expected, the 26.7
+		// default) from "the box sent one we refused to read as a histogram"
+		// (loud: it means the payload's shape changed under us).
+		c.log.Warn("unbound reply-time histogram buckets do not tile; skipping the histogram",
+			"buckets", len(response.Data.Histogram))
+	}
+
 	return data, nil
 }
 
@@ -459,6 +631,36 @@ type unboundInfraResponse struct {
 		Host string `json:"host"`
 		RTT  string `json:"rtt"`
 		RTO  string `json:"rto"`
+
+		// Host-health state (#581). unbound-control dump_infra prints one line per
+		// host from a single fixed format string ending
+		//
+		//	... ednsknown %d edns %d delay %d lame dnssec %d rec %d A %d other %d
+		//
+		// (unbound daemon/remote.c, dump_infra_host), and wrapper.py pairs each
+		// "<key> <value>" into a JSON key.
+		//
+		// THERE IS DELIBERATELY NO `lame` FIELD HERE AND ADDING ONE WOULD BE A BUG.
+		// `lame` in that format string is a bare LITERAL WORD introducing the four
+		// lameness values that follow it; it has no operand. wrapper.py special-cases
+		// exactly that token (`if key == 'lame': record['lame'] = True`), so every
+		// host in every payload carries "lame": true — a healthy forwarder included.
+		// A metric fed from it would pin every upstream at 1 forever and read as a
+		// total resolution outage. The real state is the four flags below;
+		// TestFetchUnboundInfra_LameKeyIsALiteralNotAFlag holds this line.
+		DNSSEC flexInt `json:"dnssec"`
+		Rec    flexInt `json:"rec"`
+		TypeA  flexInt `json:"A"`
+		Other  flexInt `json:"other"`
+
+		// EDNS is unbound's cached edns_version for this host and is NOT a boolean.
+		// The infra cache initialises it to 0 ("EDNS0 assumed") and only
+		// infra_edns_update ever writes -1, unbound's marker for "EDNS queries or
+		// replies are dropped in transit to this server" (services/cache/infra.h).
+		// A negative value is therefore always a determined probe result and never
+		// "not yet probed", which is what makes reading it as a boolean safe without
+		// also modelling the ednsknown companion.
+		EDNS flexInt `json:"edns"`
 	} `json:"data"`
 }
 
@@ -469,6 +671,26 @@ type UnboundInfraHost struct {
 	Host            string
 	RTTMilliseconds float64
 	RTOMilliseconds float64
+
+	// Health state (#581). These are what makes "resolution is intermittently
+	// failing but every RTT looks fine" diagnosable: unbound stops asking a server
+	// it has marked lame, so the timing series for that upstream stays healthy
+	// precisely because it is no longer being used.
+	//
+	// The three lameness flags are separate because unbound tracks them separately
+	// and they mean different things: a server can serve A records fine and be lame
+	// for everything else. DNSSECLame is the fourth and distinct — the server answers
+	// the zone but will not serve DNSSEC data for it.
+	RecursionLame bool // not authoritative, but sets RA: answers by recursing itself
+	TypeALame     bool // not authoritative for A records
+	OtherLame     bool // not authoritative for other query types
+	DNSSECLame    bool // serves the zone but not its DNSSEC data
+
+	// EDNSBroken is true when unbound has determined EDNS is dropped in transit to
+	// this server (edns_version < 0). Distinct from lameness: the server is
+	// answering, but every EDNS-bearing exchange with it is being eaten, which
+	// silently disables DNSSEC and forces fallbacks.
+	EDNSBroken bool
 }
 
 // UnboundInfra holds the parsed dumpinfra output. The number of entries
@@ -504,6 +726,11 @@ func (c *Client) FetchUnboundInfra() (UnboundInfra, *APICallError) {
 			Host:            h.Host,
 			RTTMilliseconds: safeParseFloat(h.RTT),
 			RTOMilliseconds: safeParseFloat(h.RTO),
+			RecursionLame:   h.Rec.Int() != 0,
+			TypeALame:       h.TypeA.Int() != 0,
+			OtherLame:       h.Other.Int() != 0,
+			DNSSECLame:      h.DNSSEC.Int() != 0,
+			EDNSBroken:      h.EDNS.Int() < 0,
 		})
 	}
 
@@ -589,10 +816,17 @@ type unboundIsEnabledResponse struct {
 // representation too, matching the tolerant-reader convention used
 // everywhere else numeric fields cross OPNsense API generations.
 //
-// top/top_blocked are intentionally NOT modelled: they are per-domain query
-// counts keyed by domain name, which is unbounded cardinality (#209) — never
-// turn them into metrics or struct fields, and see
-// testdata/schemas/exemptions.json for the matching knownExtraTopKeys entry.
+// top/top_blocked ARE modelled as of #587, reversing #209's rejection. That
+// rejection ("per-domain query counts keyed by domain name, which is unbounded
+// cardinality") was correct for its time and is superseded rather than refuted:
+// the bounded-inventory primitive (#474 — hard key cap, last-seen retirement, a
+// counted refusal total) did not exist then, and the same primitive now carries an
+// equally open, equally adversarial-adjacent set in Zenarmor device names. See
+// UnboundTopDomainsMax and the collector's leaderboard inventories.
+//
+// The derivable fields stay unmodelled. `pcnt` on each row, like the sibling
+// blocked/local/resolved `.pcnt`, is the row's count over a total this struct
+// already carries — arithmetic, not information.
 type unboundOverviewTotalsResponse struct {
 	Total         flexInt `json:"total"`
 	BlocklistSize flexInt `json:"blocklist_size"`
@@ -606,7 +840,63 @@ type unboundOverviewTotalsResponse struct {
 	Local struct {
 		Total flexInt `json:"total"`
 	} `json:"local"`
-	StartTime flexInt `json:"start_time"`
+	StartTime  flexInt           `json:"start_time"`
+	Top        unboundTopDomains `json:"top"`
+	TopBlocked unboundTopDomains `json:"top_blocked"`
+}
+
+// UnboundTopDomainsMax is the {max} row limit in the overview/totals endpoint URL
+// AND the leaderboard key cap the collector enforces, deliberately the same number
+// in one place (#587).
+//
+// It has to be one constant, not two knobs. {max} binds straight to the backend's
+// `LIMIT ?` (src/opnsense/scripts/unbound/stats.py, handle_top), so it is a hard
+// ceiling on how many domains can ever reach the exporter — a separately
+// configurable in-process cap above this value would be inert while looking
+// adjustable, which is the worst shape a cardinality control can have. That is also
+// why the cap is a constant rather than a flag: a flag could not raise the ceiling
+// without rewriting the endpoint URL, which the response cache, the contract
+// manifest and the schema canary all key on.
+//
+// 512 is #587's decision, and matches maxZenarmorDevices for the same reason: high
+// enough that a normal resolver's real working set fits, low enough that a churning
+// source cannot grow the series set without bound. TestUnboundQueryStatsTotalsMax-
+// MatchesLeaderboardCap pins it against the endpoint URL.
+const UnboundTopDomainsMax = 512
+
+// unboundTopDomainEntry is one leaderboard row. Only the count crosses over.
+// `pcnt` is derivable; `blocklist`, `latest_policy_uuid` and the controller-added
+// `category` describe WHY a domain was blocked and are deliberately left on the
+// wire — they are attributes of the domain, not of its count, and per #476 an
+// attribute that can change while the entity stays the same entity must never
+// become part of a series' identity: a domain moving between blocklists would fork
+// into two series and the stale one would sit out its full retirement.
+type unboundTopDomainEntry struct {
+	Total flexInt `json:"total"`
+}
+
+// unboundTopDomains is the by-domain leaderboard map. Like unboundPoliciesResponse
+// above it tolerates a JSON array where an object is expected, and for the same
+// reason: stats.py emits `{}` for an empty leaderboard, but
+// OverviewController::totalsAction round-trips the whole payload through
+// json_decode($response, true) — which turns an empty JSON object into an empty PHP
+// ARRAY — before it is re-encoded, so an idle box serves "top": []. A plain map
+// would fail the decode outright and take every other qstats field down with it.
+type unboundTopDomains map[string]unboundTopDomainEntry
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (m *unboundTopDomains) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] == '[' || string(trimmed) == "null" {
+		*m = nil
+		return nil
+	}
+	var raw map[string]unboundTopDomainEntry
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return err
+	}
+	*m = raw
+	return nil
 }
 
 // UnboundQueryStats holds the DNSBL query-stats totals reported by Unbound's
@@ -656,6 +946,20 @@ type UnboundQueryStats struct {
 	// from. A jump forward (other than the expected daily roll-off) signals the
 	// underlying qstats database was reset.
 	StartTimeSeconds int64
+
+	// TopPassedDomains and TopBlockedDomains are the by-domain leaderboards over
+	// the same rolling window, each already truncated by the backend to
+	// UnboundTopDomainsMax rows (#587). Gauges like everything else here.
+	//
+	// The two are NOT the same population split two ways: the backend selects
+	// `top` over action == 0 (passed) and `top_blocked` over action == 1, so a
+	// domain can appear in both — some queries for it passed, some were blocked by
+	// a policy that arrived later. Domain keys are unbound's own, which means they
+	// carry the trailing root dot ("ads.example."); left exactly as the wire sends
+	// them, since stripping it is a transformation that has to be undone by anyone
+	// correlating against the raw query log.
+	TopPassedDomains  map[string]int64
+	TopBlockedDomains map[string]int64
 }
 
 // FetchUnboundQueryStats reports Unbound DNSBL query-stats totals and the
@@ -708,8 +1012,25 @@ func (c *Client) FetchUnboundQueryStats() (UnboundQueryStats, *APICallError) {
 	data.BlockedTotal7d = int64(totals.Blocked.Total.Int())
 	data.LocalTotal7d = int64(totals.Local.Total.Int())
 	data.StartTimeSeconds = int64(totals.StartTime.Int())
+	data.TopPassedDomains = flattenUnboundTopDomains(totals.Top)
+	data.TopBlockedDomains = flattenUnboundTopDomains(totals.TopBlocked)
 
 	return data, nil
+}
+
+// flattenUnboundTopDomains drops each leaderboard row down to its count. A nil or
+// empty map yields nil rather than an empty map, so "the box reported no
+// leaderboard" and "the box reported an empty one" stay indistinguishable — they
+// genuinely are the same thing here, and the caller has one case to handle.
+func flattenUnboundTopDomains(rows unboundTopDomains) map[string]int64 {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make(map[string]int64, len(rows))
+	for domain, row := range rows {
+		out[domain] = int64(row.Total.Int())
+	}
+	return out
 }
 
 // unboundLocalZonesResponse is the api/unbound/diagnostics/listlocalzones

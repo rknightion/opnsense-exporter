@@ -8,6 +8,23 @@ import (
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
+// saLimitMin folds a newly observed hard/soft byte or allocation limit into an
+// aggregate, preferring the smallest CONFIGURED (non-zero) value seen. A limit
+// of 0 means "unlimited" (#578), not "already exhausted" — a naive min() would
+// let a single unlimited row (0) in a reqid group permanently mask a real
+// configured limit reported by its sibling row, even though in practice both
+// rows in a group share the same static child-SA policy and should already
+// agree.
+func saLimitMin(current, next int64) int64 {
+	if next == 0 {
+		return current
+	}
+	if current == 0 || next < current {
+		return next
+	}
+	return current
+}
+
 type ipsecCollector struct {
 	log                 *slog.Logger
 	phase1              *prometheus.Desc
@@ -24,10 +41,13 @@ type ipsecCollector struct {
 	phase2_packets_out  *prometheus.Desc
 	phase2_rekey_time   *prometheus.Desc
 	phase2_life_time    *prometheus.Desc
-	serviceRunning      *prometheus.Desc
-	poolOnline          *prometheus.Desc
-	poolOffline         *prometheus.Desc
-	poolSize            *prometheus.Desc
+	// #578: per-child-SA established state, the only phase2-level health signal
+	// (Connected lives solely at phase1/IKE-SA level).
+	phase2_established *prometheus.Desc
+	serviceRunning     *prometheus.Desc
+	poolOnline         *prometheus.Desc
+	poolOffline        *prometheus.Desc
+	poolSize           *prometheus.Desc
 
 	// #213 kernel (setkey) tables, per-lease detail, pending-config flag.
 	sadEntries     *prometheus.Desc
@@ -39,6 +59,20 @@ type ipsecCollector struct {
 	leaseOnline    *prometheus.Desc
 	configDirty    *prometheus.Desc
 	legacyEnabled  *prometheus.Desc
+
+	// #578: per-reqid (child-SA) byte/allocation usage + rekey limits, same
+	// label set and aggregation granularity as saAge/saLifetimeHard/saLifetimeSoft
+	// above. *Current are Counters (they reset to 0 on every rekey, exactly like
+	// the already-Counter phase1/phase2 bytes-in/out — see the _total comment on
+	// phase1_bytes_in below); *Limit are Gauges (a static configured ceiling, not
+	// a count of anything) and are only emitted when the box actually configured
+	// one — see the emission-site comment in Update for why 0 is gated out.
+	saBytesCurrent       *prometheus.Desc
+	saBytesSoftLimit     *prometheus.Desc
+	saBytesHardLimit     *prometheus.Desc
+	saAllocatedCurrent   *prometheus.Desc
+	saAllocatedSoftLimit *prometheus.Desc
+	saAllocatedHardLimit *prometheus.Desc
 
 	// detailsEnabled gates the per-lease opnsense_ipsec_lease_online series,
 	// whose `user` label is unbounded road-warrior identity (#213). Off by
@@ -128,6 +162,16 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"IPsec phase2 life time",
 		[]string{"description", "name", "phase1_name"},
 	)
+	// #578: Connected only exists at phase1 (IKE SA), so a tunnel with phase1 up
+	// and one dead child SA reads fully healthy without this. 1 only for the
+	// vici child-SA state "INSTALLED" (fully up and passing traffic); every
+	// other state (CREATED/ROUTED/INSTALLING/UPDATING/REKEYING/REKEYED/RETRYING/
+	// DELETING/DELETED/DESTROYING) reads 0 — deliberately conservative, since a
+	// child mid-rekey handoff is not yet the SA an operator should trust.
+	c.phase2_established = buildPrometheusDesc(c.subsystem, "phase2_established",
+		"Whether the IPsec phase2 (child SA) is fully installed and passing traffic (1 = INSTALLED, 0 = any other transitional/rekeying/deleting state). Phase1 being connected does not guarantee every child SA is up; check this alongside opnsense_ipsec_phase1_status to catch a tunnel where the parent IKE SA is fine but one traffic selector's child SA has failed or is stuck rekeying.",
+		[]string{"description", "name", "phase1_name"},
+	)
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
 		"Whether the service is running (1 = running, 0 = stopped/disabled)",
@@ -170,6 +214,39 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"Soonest soft-expiry (rekey) lifetime in seconds across the kernel SAs in each reqid group",
 		saLabels,
 	)
+	// #578: byte/allocation (packet-count) usage and rekey limits, the volume-based
+	// sibling of the time-based age/lifetime metrics above. Counter/_total for the
+	// usage fields: like phase1/phase2 bytes-in/out, they reset to 0 on every
+	// rekey (a new SPI starts counting from zero), which is exactly what a
+	// Prometheus Counter models — a monotonic value that occasionally resets, not
+	// a value that never goes down. Limit gauges are only emitted when the box
+	// actually configured one (see the >0 gate in Update); a value of 0 in
+	// setkey/strongSwan's own convention means "unlimited", not "zero budget
+	// left", so a bare 0 gauge would misinform rather than clarify.
+	c.saBytesCurrent = buildPrometheusDesc(c.subsystem, "sa_bytes_current_total",
+		"Cumulative bytes processed by the most-utilized installed kernel SA in each reqid (child-SA) group (the higher of the two during a brief rekey overlap). Resets to a small value on every rekey (a new SPI starts counting from zero) — compare against sa_bytes_soft_limit to see how close the group is to its next byte-triggered rekey.",
+		saLabels,
+	)
+	c.saBytesSoftLimit = buildPrometheusDesc(c.subsystem, "sa_bytes_soft_limit",
+		"Configured soft (rekey-triggering) byte-count limit for the kernel SAs in each reqid group. Only present when the box configures a byte-count lifetime for this child SA; a limit of 0 means unlimited and is not exported as a fabricated zero.",
+		saLabels,
+	)
+	c.saBytesHardLimit = buildPrometheusDesc(c.subsystem, "sa_bytes_hard_limit",
+		"Configured hard (forced-expiry) byte-count limit for the kernel SAs in each reqid group. Only present when the box configures a byte-count lifetime for this child SA; a limit of 0 means unlimited and is not exported as a fabricated zero.",
+		saLabels,
+	)
+	c.saAllocatedCurrent = buildPrometheusDesc(c.subsystem, "sa_allocated_current_total",
+		"Cumulative packets (\"allocations\") processed by the most-utilized installed kernel SA in each reqid (child-SA) group (the higher of the two during a brief rekey overlap). The packet-count equivalent of sa_bytes_current_total; some child SAs are configured with a packet-count rekey margin instead of, or alongside, a byte-count one.",
+		saLabels,
+	)
+	c.saAllocatedSoftLimit = buildPrometheusDesc(c.subsystem, "sa_allocated_soft_limit",
+		"Configured soft (rekey-triggering) packet-count limit for the kernel SAs in each reqid group. Only present when the box configures a packet-count lifetime for this child SA; a limit of 0 means unlimited and is not exported as a fabricated zero.",
+		saLabels,
+	)
+	c.saAllocatedHardLimit = buildPrometheusDesc(c.subsystem, "sa_allocated_hard_limit",
+		"Configured hard (forced-expiry) packet-count limit for the kernel SAs in each reqid group. Only present when the box configures a packet-count lifetime for this child SA; a limit of 0 means unlimited and is not exported as a fabricated zero.",
+		saLabels,
+	)
 	c.sadNat = buildPrometheusDesc(c.subsystem, "sad_nat_traversal",
 		"Whether any kernel SA for the IKE SA is NAT-traversed (1 = NAT-T detected, 0 = not)",
 		[]string{"ikeid"},
@@ -209,6 +286,7 @@ func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.phase2_packets_out
 	ch <- c.phase2_rekey_time
 	ch <- c.phase2_life_time
+	ch <- c.phase2_established
 	ch <- c.serviceRunning
 	ch <- c.poolOnline
 	ch <- c.poolOffline
@@ -218,6 +296,12 @@ func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.saAge
 	ch <- c.saLifetimeHard
 	ch <- c.saLifetimeSoft
+	ch <- c.saBytesCurrent
+	ch <- c.saBytesSoftLimit
+	ch <- c.saBytesHardLimit
+	ch <- c.saAllocatedCurrent
+	ch <- c.saAllocatedSoftLimit
+	ch <- c.saAllocatedHardLimit
 	ch <- c.sadNat
 	ch <- c.spdPolicies
 	ch <- c.leaseOnline
@@ -365,6 +449,22 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 				phase1.Name,
 				c.instance,
 			)
+			// #578: 1 only for the vici "INSTALLED" state — see the Desc comment
+			// in Register for why every other state (including REKEYING/REKEYED,
+			// which do carry live traffic briefly) reads 0.
+			established := 0.0
+			if phase2.State == "INSTALLED" {
+				established = 1.0
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.phase2_established,
+				prometheus.GaugeValue,
+				established,
+				phase2.Phase2desc,
+				phase2.Name,
+				phase1.Name,
+				c.instance,
+			)
 		}
 	}
 
@@ -440,6 +540,18 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		type saKey struct{ ikeid, phase2, reqid string }
 		type saAgg struct {
 			maxAge, minHard, minSoft int
+
+			// #578: byte/allocation usage + rekey limits, aggregated across the
+			// group the same way age/lifetime are above. "current" usage takes
+			// the max across the group's raw rows: during the brief window a
+			// rekey overlaps two SAs for one reqid, the about-to-be-replaced SA
+			// is the one closer to its limit and is what an operator needs to
+			// see, and summing (as the phase1-level aggregate does across ALL
+			// child SAs of a connection) would double-count one logical flow's
+			// traffic here. "limit" fields take the min of the non-zero values
+			// seen — see saLimitMin below for why zero must not win outright.
+			maxBytesCurrent, maxAllocatedCurrent                           int64
+			minBytesHard, minBytesSoft, minAllocatedHard, minAllocatedSoft int64
 		}
 		groups := make(map[saKey]*saAgg)
 
@@ -460,11 +572,27 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 				if sa.LifetimeSoft < g.minSoft {
 					g.minSoft = sa.LifetimeSoft
 				}
+				if sa.BytesCurrent > g.maxBytesCurrent {
+					g.maxBytesCurrent = sa.BytesCurrent
+				}
+				if sa.AllocatedCurrent > g.maxAllocatedCurrent {
+					g.maxAllocatedCurrent = sa.AllocatedCurrent
+				}
+				g.minBytesHard = saLimitMin(g.minBytesHard, sa.BytesHardLimit)
+				g.minBytesSoft = saLimitMin(g.minBytesSoft, sa.BytesSoftLimit)
+				g.minAllocatedHard = saLimitMin(g.minAllocatedHard, sa.AllocatedHardLimit)
+				g.minAllocatedSoft = saLimitMin(g.minAllocatedSoft, sa.AllocatedSoftLimit)
 			} else {
 				groups[k] = &saAgg{
-					maxAge:  sa.AgeSeconds,
-					minHard: sa.LifetimeHard,
-					minSoft: sa.LifetimeSoft,
+					maxAge:              sa.AgeSeconds,
+					minHard:             sa.LifetimeHard,
+					minSoft:             sa.LifetimeSoft,
+					maxBytesCurrent:     sa.BytesCurrent,
+					maxAllocatedCurrent: sa.AllocatedCurrent,
+					minBytesHard:        sa.BytesHardLimit,
+					minBytesSoft:        sa.BytesSoftLimit,
+					minAllocatedHard:    sa.AllocatedHardLimit,
+					minAllocatedSoft:    sa.AllocatedSoftLimit,
 				}
 			}
 
@@ -490,6 +618,47 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 				c.saLifetimeSoft, prometheus.GaugeValue,
 				float64(g.minSoft), k.ikeid, k.phase2, k.reqid, c.instance,
 			)
+
+			// #578: current usage is always real (0 legitimately means "just
+			// installed, no traffic yet") and always emitted. Limits are gated:
+			// a 0 here means "no cap configured" per setkey/strongSwan's own
+			// convention, not "already exhausted" — emitting it as a literal 0
+			// gauge would misreport an unlimited SA as one out of budget, so no
+			// series is emitted at all (matches the "absent field -> no series"
+			// convention used everywhere else in this exporter, applied here to
+			// an absent CONFIGURATION rather than an absent wire field).
+			ch <- prometheus.MustNewConstMetric(
+				c.saBytesCurrent, prometheus.CounterValue,
+				float64(g.maxBytesCurrent), k.ikeid, k.phase2, k.reqid, c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.saAllocatedCurrent, prometheus.CounterValue,
+				float64(g.maxAllocatedCurrent), k.ikeid, k.phase2, k.reqid, c.instance,
+			)
+			if g.minBytesSoft > 0 {
+				ch <- prometheus.MustNewConstMetric(
+					c.saBytesSoftLimit, prometheus.GaugeValue,
+					float64(g.minBytesSoft), k.ikeid, k.phase2, k.reqid, c.instance,
+				)
+			}
+			if g.minBytesHard > 0 {
+				ch <- prometheus.MustNewConstMetric(
+					c.saBytesHardLimit, prometheus.GaugeValue,
+					float64(g.minBytesHard), k.ikeid, k.phase2, k.reqid, c.instance,
+				)
+			}
+			if g.minAllocatedSoft > 0 {
+				ch <- prometheus.MustNewConstMetric(
+					c.saAllocatedSoftLimit, prometheus.GaugeValue,
+					float64(g.minAllocatedSoft), k.ikeid, k.phase2, k.reqid, c.instance,
+				)
+			}
+			if g.minAllocatedHard > 0 {
+				ch <- prometheus.MustNewConstMetric(
+					c.saAllocatedHardLimit, prometheus.GaugeValue,
+					float64(g.minAllocatedHard), k.ikeid, k.phase2, k.reqid, c.instance,
+				)
+			}
 		}
 		for ike, natOn := range natByIke {
 			v := 0.0

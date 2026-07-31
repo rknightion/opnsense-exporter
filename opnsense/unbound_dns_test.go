@@ -1,10 +1,17 @@
 package opnsense
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 )
 
+// The fixture below is a box with `extended-statistics: yes`, and it carries
+// data.num.valops and data.histogram for that reason rather than for the
+// assertions: unbound prints all three from the same
+// `if(daemon->cfg->stat_extended)` block (daemon/remote.c), so a payload with
+// data.num but no histogram is a shape upstream cannot produce, and a fixture that
+// encodes an impossible shape is how a parser gets "verified" against nothing.
 func TestFetchUnboundOverview_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -140,8 +147,14 @@ func TestFetchUnboundOverview_Success(t *testing.T) {
 					},
 					"rrset": {
 						"bogus": "3"
-					}
+					},
+					"valops": "12345"
 				},
+				"histogram": [
+					{"from": [0, 0], "to": [0, 1024], "value": "0"},
+					{"from": [0, 1024], "to": [0, 2048], "value": "1200"},
+					{"from": [0, 2048], "to": [0, 4096], "value": "800"}
+				],
 				"unwanted": {
 					"queries": "20",
 					"replies": "10"
@@ -865,6 +878,16 @@ func TestFetchUnboundInfra_ServerError(t *testing.T) {
 	}
 }
 
+// unboundTotalsPattern registers the api/unbound/overview/totals handler as a
+// SUBTREE pattern rather than an exact path. The {max} row limit is baked into the
+// endpoint URL in opnsense/client.go, and #587 raises it from 1 to the leaderboard
+// cap; an exact "/api/unbound/overview/totals/1" pattern would start 404ing every
+// totals call the moment that lands, and each of these tests would silently begin
+// asserting against an empty payload instead of failing on the real change. The
+// sibling overview endpoints stay on exact patterns, which ServeMux prefers over
+// this prefix.
+const unboundTotalsPattern = "/api/unbound/overview/totals/"
+
 // TestFetchUnboundQueryStats_StatsDisabled verifies the #209 gate: when
 // is_enabled reports off, FetchUnboundQueryStats must NOT call the expensive
 // totals endpoint at all — captured ground truth
@@ -879,7 +902,7 @@ func TestFetchUnboundQueryStats_StatsDisabled(t *testing.T) {
 	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"enabled":"0"}`))
 	})
-	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
 		totalsCalled = true
 		w.Write([]byte(`{"total":1,"blocklist_size":1,"passed":1,"resolved":{"total":1,"pcnt":"1"},"blocked":{"total":1,"pcnt":"1"},"local":{"total":1,"pcnt":"1"},"start_time":1,"top":{},"top_blocked":{}}`))
 	})
@@ -913,7 +936,7 @@ func TestFetchUnboundQueryStats_Success(t *testing.T) {
 	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"enabled":"1"}`))
 	})
-	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
@@ -960,7 +983,7 @@ func TestFetchUnboundQueryStats_EmptyDB(t *testing.T) {
 	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"enabled":"1"}`))
 	})
-	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total":0,"blocklist_size":0,"passed":0,"resolved":{"total":0,"pcnt":"0.00"},"blocked":{"total":0,"pcnt":"0.00"},"local":{"total":0,"pcnt":"0.00"},"start_time":0,"top":{},"top_blocked":{}}`))
 	})
 
@@ -1000,7 +1023,7 @@ func TestFetchUnboundQueryStats_TotalsError(t *testing.T) {
 	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"enabled":"1"}`))
 	})
-	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("error"))
 	})
@@ -1111,5 +1134,356 @@ func TestFetchUnboundLocalData_PartialFailure(t *testing.T) {
 	_, err := client.FetchUnboundLocalData()
 	if err == nil {
 		t.Fatal("expected error when one sub-fetch fails")
+	}
+}
+
+// --- #581: reply-time histogram + valops -------------------------------------
+
+// TestFetchUnboundOverview_RecursionHistogram pins the three things that would
+// each produce a histogram that LIES to histogram_quantile() rather than one that
+// obviously fails:
+//
+//  1. unbound's buckets are per-bucket counts, not cumulative. Handing them to
+//     Prometheus unaccumulated makes every quantile read low.
+//  2. the accumulation must be ordered by upper bound, not by wire order.
+//  3. _sum must be the real accumulated wait, reconstructed from the mean
+//     unbound already divided it out of, not a zero or an invention.
+//
+// The wire order is deliberately shuffled here: unbound prints ascending today, so
+// an implementation that folds in wire order passes on real data and silently
+// corrupts the day upstream reorders.
+func TestFetchUnboundOverview_RecursionHistogram(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "10", "recursivereplies": "10"},
+					"requestlist": {"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0", "current": {"all": "0", "user": "0"}},
+					"recursion": {"time": {"avg": "0.250000", "median": "0.2"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "1700000000", "up": "100", "elapsed": "100"},
+				"histogram": [
+					{"from": [0, 512], "to": [0, 1024], "value": "3"},
+					{"from": [1, 0], "to": [2, 0], "value": "1"},
+					{"from": [0, 0], "to": [0, 512], "value": "6"},
+					{"from": [0, 1024], "to": [1, 0], "value": "0"}
+				]
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	h := data.RecursionHistogram
+	if !h.Present {
+		t.Fatal("expected RecursionHistogram.Present with data.histogram on the wire")
+	}
+	// Cumulative, ascending by upper bound: 6, 6+3, 9+0, 9+1.
+	want := map[float64]uint64{
+		0.000512: 6,
+		0.001024: 9,
+		1:        9,
+		2:        10,
+	}
+	if len(h.Buckets) != len(want) {
+		t.Fatalf("expected %d buckets, got %d (%v)", len(want), len(h.Buckets), h.Buckets)
+	}
+	for le, count := range want {
+		if got := h.Buckets[le]; got != count {
+			t.Errorf("bucket le=%g: expected cumulative %d, got %d", le, count, got)
+		}
+	}
+	if h.Count != 10 {
+		t.Errorf("expected Count=10 (the top cumulative bucket), got %d", h.Count)
+	}
+	// _sum is unbound's own accumulator recovered by multiplying the mean back by
+	// the count it was divided by: 0.25s * 10 = 2.5s.
+	if h.Sum != 2.5 {
+		t.Errorf("expected Sum=2.5 (avg 0.25s x 10 replies), got %v", h.Sum)
+	}
+}
+
+// TestFetchUnboundOverview_RecursionHistogramAbsent covers the box state that is
+// the DEFAULT on OPNsense 26.7: `extended-statistics: no`, under which unbound's
+// print_hist is never reached (daemon/remote.c calls it only inside
+// `if(daemon->cfg->stat_extended)`) and data.histogram is simply not in the
+// payload. A fabricated 40-bucket histogram of zeros would be far worse than no
+// metric: it publishes a p99 of "under a microsecond" for a resolver nobody is
+// measuring.
+func TestFetchUnboundOverview_RecursionHistogramAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "10", "recursivereplies": "10"},
+					"requestlist": {"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0", "current": {"all": "0", "user": "0"}},
+					"recursion": {"time": {"avg": "0.25", "median": "0.2"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "1700000000", "up": "100", "elapsed": "100"}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.RecursionHistogram.Present {
+		t.Error("expected RecursionHistogram.Present=false when the box omits data.histogram")
+	}
+	if data.RecursionHistogram.Count != 0 || len(data.RecursionHistogram.Buckets) != 0 {
+		t.Errorf("expected an entirely empty histogram, got %+v", data.RecursionHistogram)
+	}
+}
+
+// TestFetchUnboundOverview_ValidationOperations pins num.valops, which unbound
+// prints unconditionally inside print_ext (daemon/remote.c, immediately after
+// num.rrset.bogus) — so its presence tracks extended-statistics exactly, and it is
+// read under the same ExtendedPresent gate as its siblings.
+func TestFetchUnboundOverview_ValidationOperations(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "10"},
+					"requestlist": {"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0", "current": {"all": "0", "user": "0"}},
+					"recursion": {"time": {"avg": "0", "median": "0"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "1700000000", "up": "100", "elapsed": "100"},
+				"num": {"answer": {"secure": "5", "bogus": "0"}, "rrset": {"bogus": "0"}, "valops": "417"},
+				"histogram": [{"from": [0, 0], "to": [0, 1], "value": "0"}]
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.ExtendedPresent {
+		t.Fatal("expected ExtendedPresent with data.num on the wire")
+	}
+	if data.ValidationOperations != 417 {
+		t.Errorf("expected ValidationOperations=417, got %d", data.ValidationOperations)
+	}
+}
+
+// --- #581: infra host health flags -------------------------------------------
+
+// TestFetchUnboundInfra_HealthFlags decodes the lameness/EDNS state out of a
+// dump_infra record shaped exactly as unbound's fixed print layout produces it
+// (daemon/remote.c dump_infra_host: "... ednsknown %d edns %d delay %d lame
+// dnssec %d rec %d A %d other %d"), after wrapper.py's key/value pairing.
+func TestFetchUnboundInfra_HealthFlags(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[
+			{"ip":"1.1.1.1","host":"example.com.","ttl":"900","ping":"0","var":"94","rtt":"70","rto":"376",
+			 "tA":"0","tAAAA":"0","tother":"0","ednsknown":"1","edns":"0","delay":"0","lame":true,
+			 "dnssec":"0","rec":"0","A":"0","other":"0"},
+			{"ip":"9.9.9.9","host":"broken.example.","ttl":"900","ping":"0","var":"94","rtt":"400","rto":"1200",
+			 "tA":"2","tAAAA":"0","tother":"0","ednsknown":"1","edns":"-1","delay":"0","lame":true,
+			 "dnssec":"1","rec":"1","A":"1","other":"1"}
+		]}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundInfra()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Hosts) != 2 {
+		t.Fatalf("expected 2 hosts, got %d", len(data.Hosts))
+	}
+
+	healthy := data.Hosts[0]
+	if healthy.DNSSECLame || healthy.RecursionLame || healthy.TypeALame || healthy.OtherLame {
+		t.Errorf("expected no lameness on the healthy upstream, got %+v", healthy)
+	}
+	if healthy.EDNSBroken {
+		t.Error("expected EDNSBroken=false for edns=0 (EDNS0 supported)")
+	}
+
+	broken := data.Hosts[1]
+	if !broken.DNSSECLame || !broken.RecursionLame || !broken.TypeALame || !broken.OtherLame {
+		t.Errorf("expected every lameness flag set on the broken upstream, got %+v", broken)
+	}
+	if !broken.EDNSBroken {
+		t.Error("expected EDNSBroken=true for edns=-1 (unbound's marker for EDNS dropped in transit)")
+	}
+}
+
+// TestFetchUnboundInfra_LameKeyIsALiteralNotAFlag is the whole reason #581's
+// proposal was reshaped, and it must never be "simplified" away.
+//
+// `lame` in unbound's dump_infra line is a bare LITERAL WORD introducing the four
+// lameness values that follow it — it has no operand of its own. wrapper.py
+// special-cases exactly that token (`if key == 'lame': record['lame'] = True`), so
+// EVERY host in EVERY payload carries "lame": true, including a perfectly healthy
+// forwarder. Exporting a metric from it would pin every upstream at 1 forever and
+// look like a total resolution outage. This fixture is a completely healthy host,
+// and nothing about it may read as lame.
+func TestFetchUnboundInfra_LameKeyIsALiteralNotAFlag(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[
+			{"ip":"8.8.8.8","host":"google.com.","ttl":"900","rtt":"20","rto":"120",
+			 "ednsknown":"1","edns":"0","lame":true,"dnssec":"0","rec":"0","A":"0","other":"0"}
+		]}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundInfra()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	h := data.Hosts[0]
+	if h.DNSSECLame || h.RecursionLame || h.TypeALame || h.OtherLame || h.EDNSBroken {
+		t.Fatalf("a healthy host whose payload carries the literal \"lame\": true must report "+
+			"no health problem; got %+v", h)
+	}
+}
+
+// --- #587: top / top_blocked domain leaderboards ------------------------------
+
+// TestFetchUnboundQueryStats_TopDomains decodes both leaderboards from the shape
+// stats.py produces (handle_top: two DuckDB LIMIT ? queries indexed by domain).
+// The derivable pcnt and the per-row blocklist/uuid/category attribution are
+// deliberately not modelled; only the count crosses into the exporter.
+func TestFetchUnboundQueryStats_TopDomains(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":100,"blocklist_size":5,"passed":80,
+			"resolved":{"total":60,"pcnt":"60.00"},"blocked":{"total":15,"pcnt":"15.00"},
+			"local":{"total":5,"pcnt":"5.00"},"start_time":1783872391,
+			"top":{"example.com.":{"total":40,"pcnt":"50.00"},"news.example.":{"total":12,"pcnt":"15.00"}},
+			"top_blocked":{"ads.example.":{"total":9,"pcnt":"60.00","blocklist":"AdGuard List",
+				"latest_policy_uuid":"6b882f48-abe5-4a80-9670-5d7a6b81c66f","category":"General Blocklists"}}}`))
+	})
+
+	data, err := client.FetchUnboundQueryStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := data.TopPassedDomains["example.com."]; got != 40 {
+		t.Errorf("expected example.com.=40 passed, got %d", got)
+	}
+	if got := data.TopPassedDomains["news.example."]; got != 12 {
+		t.Errorf("expected news.example.=12 passed, got %d", got)
+	}
+	if len(data.TopPassedDomains) != 2 {
+		t.Errorf("expected 2 passed-domain rows, got %d", len(data.TopPassedDomains))
+	}
+	if got := data.TopBlockedDomains["ads.example."]; got != 9 {
+		t.Errorf("expected ads.example.=9 blocked, got %d", got)
+	}
+	if len(data.TopBlockedDomains) != 1 {
+		t.Errorf("expected 1 blocked-domain row, got %d", len(data.TopBlockedDomains))
+	}
+}
+
+// TestFetchUnboundQueryStats_TopDomainsEmptyArrayShape covers the empty
+// leaderboard as OPNsense actually serves it. stats.py emits `{}`, but
+// OverviewController::totalsAction round-trips the payload through
+// json_decode($response, true) — which turns an empty JSON object into an empty
+// PHP ARRAY — before Phalcon re-encodes it, so the wire shape is `[]`. Exactly the
+// quirk unboundPoliciesResponse already documents; a plain map[string]... here
+// fails the whole decode on it and takes every other qstats field down with it.
+func TestFetchUnboundQueryStats_TopDomainsEmptyArrayShape(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc(unboundTotalsPattern, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":7,"blocklist_size":0,"passed":7,"resolved":{"total":7,"pcnt":"100.00"},
+			"blocked":{"total":0,"pcnt":"0"},"local":{"total":0,"pcnt":"0"},"start_time":1,
+			"top":[],"top_blocked":[]}`))
+	})
+
+	data, err := client.FetchUnboundQueryStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.TotalsPresent || data.QueriesTotal7d != 7 {
+		t.Fatalf("the rest of the payload must still decode past an empty-array leaderboard, got %+v", data)
+	}
+	if len(data.TopPassedDomains) != 0 || len(data.TopBlockedDomains) != 0 {
+		t.Errorf("expected both leaderboards empty, got %+v / %+v",
+			data.TopPassedDomains, data.TopBlockedDomains)
+	}
+}
+
+// TestUnboundQueryStatsTotalsMaxMatchesLeaderboardCap pins the one invariant that
+// makes #587's cap real rather than decorative: the {max} row limit in the
+// endpoint URL is what the backend's `LIMIT ?` binds to (stats.py handle_top), so
+// the exporter can never track more domains than that number no matter what the
+// in-process cap says.
+//
+// FAILS UNTIL opnsense/client.go's "unboundQueryStatsTotals" entry is changed from
+// "api/unbound/overview/totals/1" to "api/unbound/overview/totals/512". That file
+// is owned by a different lane in this change, so the edit is deliberately not
+// made here — this test is the handoff. Regenerate
+// testdata/schemas/unboundQueryStatsTotals.json (make schemas) and docs/security.md
+// (make docs) with it; both record the URL.
+func TestUnboundQueryStatsTotalsMaxMatchesLeaderboardCap(t *testing.T) {
+	url := string(defaultEndpoints()["unboundQueryStatsTotals"])
+	want := fmt.Sprintf("api/unbound/overview/totals/%d", UnboundTopDomainsMax)
+	if url != want {
+		t.Errorf("unboundQueryStatsTotals endpoint is %q, want %q: the backend LIMIT and the "+
+			"exporter's leaderboard cap must be the same number, or the cap is a lie in one "+
+			"direction and the payload is truncated in the other", url, want)
+	}
+}
+
+// TestFetchUnboundOverview_RecursionHistogramNonContiguous covers the reshape case
+// the `from` bound exists to catch. A running sum over buckets that do not tile is
+// not "the count at or below this le" — it is a smaller number that still looks
+// like a histogram, still satisfies every check Prometheus makes, and moves every
+// quantile. There is no downstream signal for it, so the only safe answer is to
+// publish nothing.
+func TestFetchUnboundOverview_RecursionHistogramNonContiguous(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "10"},
+					"requestlist": {"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0", "current": {"all": "0", "user": "0"}},
+					"recursion": {"time": {"avg": "0.1", "median": "0.1"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "1700000000", "up": "100", "elapsed": "100"},
+				"histogram": [
+					{"from": [0, 0], "to": [0, 1024], "value": "5"},
+					{"from": [0, 4096], "to": [0, 8192], "value": "5"}
+				]
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.RecursionHistogram.Present {
+		t.Errorf("a histogram whose buckets leave a gap must not be published, got %+v",
+			data.RecursionHistogram)
 	}
 }

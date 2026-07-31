@@ -39,6 +39,13 @@ type ipsecPhase2 struct {
 	BytesOut   int64
 	PacketsIn  int64
 	PacketsOut int64
+	// State is the vici child-SA state name (CREATED/ROUTED/INSTALLING/INSTALLED/
+	// UPDATING/REKEYING/REKEYED/RETRYING/DELETING/DELETED/DESTROYING, per
+	// strongSwan's child_sa_state_names) — #578. Phase1's Connected flag is an
+	// IKE-SA-level aggregate and says nothing about any one child SA, so a
+	// tunnel can read fully healthy while one child SA is dead; this is the
+	// only field that exposes per-child-SA health.
+	State string
 }
 
 type ipsecPhase2SearchResponse struct {
@@ -52,6 +59,10 @@ type ipsecPhase2SearchResponse struct {
 		BytesOut    string `json:"bytes-out"`
 		PacketsIn   string `json:"packets-in"`
 		PacketsOut  string `json:"packets-out"`
+		// State: see ipsecPhase2.State above (#578). Always a plain JSON string
+		// in every capture seen so far (vici's add_kv "%N" enum formatter), unlike
+		// several sibling fields on this same endpoint that need flex tolerance.
+		State string `json:"state"`
 	} `json:"rows"`
 }
 
@@ -161,6 +172,7 @@ func (c *Client) FetchIPsecPhase1() (IPsecPhase1, *APICallError) {
 					BytesOut:    bytesOut,
 					PacketsIn:   packetsIn,
 					PacketsOut:  packetsOut,
+					State:       v2.State,
 				})
 			}
 		}
@@ -319,20 +331,42 @@ func (c *Client) FetchIPsecPools() (IPsecPools, *APICallError) {
 //   - nat is present ONLY under NAT-T; absent otherwise (not null/false).
 //   - addtime_diff is the SA age in seconds; addtime_hard/soft are the hard/soft
 //     rekey lifetimes in seconds.
+//   - bytes_current/bytes_hard/bytes_soft and allocated/allocated_hard/
+//     allocated_soft (#578) are the byte-count and packet-count ("allocations")
+//     rekey mechanism siblings of addtime_*: byte/packet usage since the SA was
+//     installed, and the hard/soft thresholds that trigger a rekey when hit.
+//     Wire shape is inconsistent across releases the same way reqid/addtime are
+//     (bare number on some, quoted string on others), hence flexString here too.
+//     A hard/soft value of 0 is setkey/strongSwan's own convention for "no limit
+//     configured" — NOT a real ceiling of zero — so the collector gates it out
+//     of the emitted series rather than exporting a fabricated zero.
+//   - usetime_hard/usetime_last/usetime_soft (idle-timeout rekey margins,
+//     measured from last packet rather than from install) are deliberately NOT
+//     decoded: idle-based lifetimes are a rarely-configured third clock next to
+//     the already-modeled addtime (wall-clock) and the byte/allocated (volume)
+//     ones, so they were dropped from scope rather than adding three more
+//     near-always-zero series per child SA. Revisit if a real deployment turns
+//     out to configure margintime.
 type ipsecSadRow struct {
-	Src         string     `json:"src"`
-	Dst         string     `json:"dst"`
-	SAType      string     `json:"satype"`
-	SPI         string     `json:"spi"`
-	ReqID       flexInt    `json:"reqid"`
-	State       string     `json:"state"`
-	AddtimeDiff flexInt    `json:"addtime_diff"`
-	AddtimeHard flexInt    `json:"addtime_hard"`
-	AddtimeSoft flexInt    `json:"addtime_soft"`
-	NAT         flexString `json:"nat"`
-	IkeID       flexString `json:"ikeid"`
-	Phase1desc  flexString `json:"phase1desc"`
-	Phase2desc  flexString `json:"phase2desc"`
+	Src           string     `json:"src"`
+	Dst           string     `json:"dst"`
+	SAType        string     `json:"satype"`
+	SPI           string     `json:"spi"`
+	ReqID         flexInt    `json:"reqid"`
+	State         string     `json:"state"`
+	AddtimeDiff   flexInt    `json:"addtime_diff"`
+	AddtimeHard   flexInt    `json:"addtime_hard"`
+	AddtimeSoft   flexInt    `json:"addtime_soft"`
+	NAT           flexString `json:"nat"`
+	IkeID         flexString `json:"ikeid"`
+	Phase1desc    flexString `json:"phase1desc"`
+	Phase2desc    flexString `json:"phase2desc"`
+	BytesCurrent  flexString `json:"bytes_current"`
+	BytesHard     flexString `json:"bytes_hard"`
+	BytesSoft     flexString `json:"bytes_soft"`
+	Allocated     flexString `json:"allocated"`
+	AllocatedHard flexString `json:"allocated_hard"`
+	AllocatedSoft flexString `json:"allocated_soft"`
 }
 
 type ipsecSadResponse struct {
@@ -350,6 +384,18 @@ type IPsecSA struct {
 	LifetimeHard int
 	LifetimeSoft int
 	NATTraversal bool
+	// Byte/packet usage + rekey limits (#578). int64 for the same reason
+	// phase1/phase2 bytes-in/out are (#103): a busy or long-lived SA's cumulative
+	// counters exceed 2^31 well within normal operation. A *Limit field of 0
+	// means "unconfigured", not "already exhausted" — see ipsecSadRow's doc
+	// comment; this struct makes no gating decision, it just carries the wire
+	// value through.
+	BytesCurrent       int64
+	BytesHardLimit     int64
+	BytesSoftLimit     int64
+	AllocatedCurrent   int64
+	AllocatedHardLimit int64
+	AllocatedSoftLimit int64
 }
 
 // IPsecSAD holds the live kernel SA entries (placeholder rows discarded).
@@ -393,6 +439,14 @@ func (c *Client) FetchIPsecSAD() (IPsecSAD, *APICallError) {
 			LifetimeHard: r.AddtimeHard.Int(),
 			LifetimeSoft: r.AddtimeSoft.Int(),
 			NATTraversal: r.NAT.String() != "",
+			// safeAtoi (int64), same reasoning as phase1/phase2 bytes-in/out (#103):
+			// these are cumulative-since-install counters that can exceed 2^31.
+			BytesCurrent:       safeAtoi(r.BytesCurrent.String()),
+			BytesHardLimit:     safeAtoi(r.BytesHard.String()),
+			BytesSoftLimit:     safeAtoi(r.BytesSoft.String()),
+			AllocatedCurrent:   safeAtoi(r.Allocated.String()),
+			AllocatedHardLimit: safeAtoi(r.AllocatedHard.String()),
+			AllocatedSoftLimit: safeAtoi(r.AllocatedSoft.String()),
 		})
 	}
 

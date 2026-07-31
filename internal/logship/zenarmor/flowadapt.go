@@ -62,6 +62,12 @@ func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, cache *flow.DN
 		},
 		L7: flow.L7{
 			AppName: d.AppName, AppProto: d.AppProto, AppCategory: d.AppCategory,
+			// Verbatim, unmapped (#585). "Clear" and "TLS-Encrypted" are the two values
+			// the live capture carried, and normalising them into a spelling of our own
+			// would put a second vocabulary next to the one the conn record already
+			// ships under `encryption` — the same field, two names, on two records
+			// describing one flow.
+			Encryption: d.Encryption,
 		},
 		Repairs: flow.Repairs{PayloadByteFallback: txFell || rxFell},
 	}

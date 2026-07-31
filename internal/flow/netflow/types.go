@@ -215,5 +215,14 @@ const (
 	FieldIPv6DstAddr   = 28
 	FieldSrcVLAN       = 58
 	FieldDstVLAN       = 59
-	FieldDirection     = 61 // NOT exported by this box (#346); handled if it appears
+	// FieldDirection is NOT modelled and NOT handled — readRecord has no case for it
+	// and modelledFields deliberately omits it, so a template declaring it is stepped
+	// over by its declared width and REPORTED as an unknown_field. The constant exists
+	// only to give the id a name in a log line or a debug capture; ng_netflow does not
+	// export the element at all (#346), so nothing has ever exercised it.
+	//
+	// The comment here used to read "handled if it appears", which was wrong in a way
+	// that mattered: it invited a reader to trust a switch case that does not exist
+	// (#586).
+	FieldDirection = 61
 )

@@ -89,6 +89,82 @@ func TestLogAttributes_OmitsAbsentFields(t *testing.T) {
 	}
 }
 
+// The flag set is rendered in a FIXED wire-bit order (LSB first), so one flag
+// combination has exactly one spelling and `netflow.tcp_flags="SYN,ACK"` is a usable
+// Loki matcher. An order derived from a map, or from the order bits happen to be
+// tested in, would give the same flow two spellings and make every exact-match query
+// miss a share of its records — silently, since both spellings look right.
+func TestTCPFlagsString_StableWireOrder(t *testing.T) {
+	cases := []struct {
+		flags uint8
+		want  string
+	}{
+		{0x00, ""},                // nothing reported
+		{0x02, "SYN"},             // the opening SYN of a scan with no reply
+		{0x12, "SYN,ACK"},         // the peer accepted
+		{0x04, "RST"},             // the peer refused
+		{0x14, "RST,ACK"},         // refused, acknowledging the SYN
+		{0x18, "PSH,ACK"},         // mid-session data
+		{0x1b, "FIN,SYN,PSH,ACK"}, // a complete short session, folded
+		{0xff, "FIN,SYN,RST,PSH,ACK,URG,ECE,CWR"}, // every bit, in wire order
+	}
+	for _, c := range cases {
+		if got := tcpFlagsString(c.flags); got != c.want {
+			t.Errorf("tcpFlagsString(%#02x) = %q, want %q", c.flags, got, c.want)
+		}
+	}
+}
+
+// #585: the flag byte is decoded and was then dropped before the log record, which is
+// what makes a port scan (SYN, no reply) indistinguishable from a refused service
+// (RST) on a WAN burst. Zenarmor's verdict is the FIREWALL's answer, not the peer's,
+// so nothing else in the pipeline carries this.
+func TestLogAttributes_CarriesTCPFlags(t *testing.T) {
+	r := sampleMerged()
+	r.TCPFlags = 0x14
+	if got := r.LogAttributes()["netflow.tcp_flags"]; got != "RST,ACK" {
+		t.Errorf("netflow.tcp_flags = %q, want RST,ACK", got)
+	}
+}
+
+// A flow with no flags reported — every UDP record, and any v5/v9 export that leaves
+// element 6 at zero — must emit NO key at all rather than an empty one. An empty
+// attribute on every UDP line is pure per-line ingest cost across the whole flow
+// stream, and Loki reads "absent" and "" differently, so the empty value would also
+// make `netflow.tcp_flags=""` match records that reported nothing.
+//
+// Zero needs no separate presence bit to mean this: no legal TCP segment carries an
+// empty flag byte, so "the exporter reported 0" and "the exporter reported nothing"
+// are the same fact.
+func TestLogAttributes_OmitsTCPFlagsWhenNoneReported(t *testing.T) {
+	r := Record{
+		Source:  SourceNetflow,
+		Proto:   17,
+		SrcAddr: netip.MustParseAddr("192.0.2.1"),
+		DstAddr: netip.MustParseAddr("192.0.2.2"),
+		NF:      Counters{TxBytes: 5, Present: true},
+	}
+	if v, ok := r.LogAttributes()["netflow.tcp_flags"]; ok {
+		t.Errorf("netflow.tcp_flags = %q on a record that reported no flags; the key must be absent", v)
+	}
+}
+
+// #585: Zenarmor parses `encryption` and the adapter dropped it, so "which internal
+// hosts still send cleartext to the internet" could not be answered against NetFlow
+// volume on one record. Absent must stay absent — a NetFlow-only flow has no Zenarmor
+// side and must not claim one.
+func TestLogAttributes_CarriesZenarmorEncryption(t *testing.T) {
+	r := sampleMerged()
+	if v, ok := r.LogAttributes()["zenarmor.encryption"]; ok {
+		t.Errorf("zenarmor.encryption = %q on a record Zenarmor stated nothing for", v)
+	}
+
+	r.L7.Encryption = "TLS-Encrypted"
+	if got := r.LogAttributes()["zenarmor.encryption"]; got != "TLS-Encrypted" {
+		t.Errorf("zenarmor.encryption = %q, want TLS-Encrypted", got)
+	}
+}
+
 func TestLogBody_Summary(t *testing.T) {
 	got := sampleMerged().LogBody()
 	want := "192.0.2.10:40000 -> 203.0.113.5:443 tcp google block"

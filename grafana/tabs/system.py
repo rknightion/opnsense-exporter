@@ -9,7 +9,9 @@ Covers:
   - CPU subsystem (6 metrics) — cumulative counters + SSE stream health (#559)
   - Mbuf subsystem (14 metrics)
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
-  - SMART subsystem (4 metrics) — gated by has_smart sentinel
+  - SMART subsystem (18 metrics) — gated by has_smart sentinel; includes smartctl's own
+    normalized SSD wear percentages (spare_available/endurance_used), the HDD/SSD rotation-rate
+    discriminator, and a per-attribute failed-state gauge distinct from the drive-wide health (#577)
   - Firmware subsystem (15 metrics) — including update-check health (#373) and
     pending download size (#380)
   - Backup subsystem (3 metrics) — config backup freshness
@@ -874,7 +876,24 @@ def build(b: Builder):
         desc="opnsense_smart_device_power_on_hours: total powered-on hours per device.",
     )
 
-    row_smart = b.row("SMART", [smart_total, smart_health, smart_temp, smart_hours], present="has_smart")
+    smart_rotation = b.ts(
+        "Drive Rotation Rate (0 = SSD)",
+        [
+            (sel("opnsense_smart_device_rotation_rate_rpm"), "{{device}}"),
+        ],
+        unit="short",
+        w=12,
+        h=7,
+        desc="opnsense_smart_device_rotation_rate_rpm: 0 explicitly means solid-state, any other "
+             "value is the platter's actual RPM. A device with no line here didn't report this "
+             "field at all — that is NOT the same as 0/SSD (#577).",
+    )
+
+    row_smart = b.row(
+        "SMART",
+        [smart_total, smart_health, smart_temp, smart_hours, smart_rotation],
+        present="has_smart",
+    )
 
     # =========================================================================
     # Row: SMART Attributes & NVMe (gated)
@@ -913,6 +932,28 @@ def build(b: Builder):
         unit="short", w=8, h=10,
         desc="opnsense_smart_attribute_raw for reallocated/uncorrectable/pending/"
              "offline-uncorrectable/CRC error counters. Any sustained rise is a failing disk.",
+    )
+
+    # attribute_failed is a SEPARATE metric from attribute_value/worst/threshold/raw above,
+    # not a new label on them (#577) — a label would change those series' identity and break
+    # this table's neighbour panel plus smart_attr_critical's continuity. No rows here is the
+    # healthy, expected state; a row appearing means one specific attribute (not just the
+    # drive-wide opnsense_smart_device_health) has actually failed its threshold.
+    smart_attr_failed = b.table(
+        "Failing SMART Attributes",
+        [sel("opnsense_smart_attribute_failed")],
+        w=8, h=10,
+        excludes=["__name__", "job", "instance", "Value"],
+        renames={
+            "device": "Device",
+            "attribute_id": "ID",
+            "attribute_name": "Attribute",
+            "when_failed": "When Failed",
+        },
+        sort_by="Device",
+        desc="opnsense_smart_attribute_failed: one row per SATA SMART attribute whose own "
+             "when_failed marker is non-empty (\"now\" or \"past\"). Empty table means no "
+             "attribute on any monitored drive has ever failed.",
     )
 
     nvme_spare = b.gauge(
@@ -967,9 +1008,47 @@ def build(b: Builder):
         desc="1 data unit = 1000 x 512 bytes, hence x 512000 for bytes/s.",
     )
 
+    # spare_available/endurance_used (#577) are smartctl's own SATA-side equivalent of the
+    # NVMe spare/used pair above — same polarity convention (spare LOW is bad, used HIGH is
+    # bad), but derived by regex-matching vendor attribute names rather than a standard NVMe
+    # log, so only reported for drives smartctl can normalize. Only ATA SSDs emit these; both
+    # panels are simply empty for HDDs and unsupported vendors.
+    smart_spare = b.gauge(
+        "SATA SSD Spare Available",
+        sel("opnsense_smart_device_spare_available_percent"),
+        unit="percent", w=4, h=6,
+        thresholds=[
+            {"color": "red", "value": None},
+            {"color": "yellow", "value": 10},
+            {"color": "green", "value": 50},
+        ],
+        desc=(
+            "opnsense_smart_device_spare_available_percent — LOW IS BAD, same polarity as "
+            "NVMe Available Spare. Only reported for drives smartctl can normalize this "
+            "wear figure from."
+        ))
+    smart_endurance = b.gauge(
+        "SATA SSD Endurance Used",
+        sel("opnsense_smart_device_endurance_used_percent"),
+        unit="percent", w=4, h=6, mx=120,
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 80},
+            {"color": "red", "value": 100},
+        ],
+        desc=(
+            "opnsense_smart_device_endurance_used_percent — HIGH IS BAD, same polarity as "
+            "NVMe Life Used. 100% is the rated endurance, not a hard failure; drives usually "
+            "run past it."
+        ))
+
     row_smart_detail = b.row(
         "SMART Attributes & NVMe",
-        [smart_attr_table, smart_attr_critical, nvme_spare, nvme_used, nvme_errors, nvme_throughput],
+        [
+            smart_attr_table, smart_attr_critical, smart_attr_failed,
+            nvme_spare, nvme_used, nvme_errors, nvme_throughput,
+            smart_spare, smart_endurance,
+        ],
         present="has_smart",
     )
 

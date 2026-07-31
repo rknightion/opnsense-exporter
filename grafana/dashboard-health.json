@@ -156,6 +156,32 @@
           "builtIn": false,
           "enable": true,
           "hide": false,
+          "iconColor": "light-orange",
+          "name": "pf counter reset",
+          "placement": "inControlsMenu",
+          "legacyOptions": {
+            "expr": "opnsense_firewall_pf_counters_cleared_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
+            "titleFormat": "pf counters cleared (pfctl -z)",
+            "tagKeys": "opnsense_instance,interface",
+            "useValueForTime": "on"
+          },
+          "query": {
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "group": "prometheus",
+            "kind": "DataQuery",
+            "spec": {},
+            "version": "v0"
+          }
+        }
+      },
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "builtIn": false,
+          "enable": true,
+          "hide": false,
           "iconColor": "purple",
           "name": "Boot environment created",
           "placement": "inControlsMenu",

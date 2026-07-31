@@ -157,6 +157,42 @@ func TestFetchIPsecPhase1_Success(t *testing.T) {
 	}
 }
 
+// #578: ipsecPhase2SearchResponse rows also carry a `state` field (vici
+// child-SA state names, per strongSwan's child_sa_state_names enum --
+// CREATED/ROUTED/INSTALLING/INSTALLED/UPDATING/REKEYING/REKEYED/RETRYING/
+// DELETING/DELETED/DESTROYING). Phase1's Connected flag is an IKE-SA-level
+// aggregate, so a tunnel with phase1 up and one dead child SA reads fully
+// healthy without this. Pins that FetchIPsecPhase1 carries State through to
+// IPsec.Phase2[] instead of silently dropping it.
+func TestFetchIPsecPhase1_Phase2State(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"phase1desc":"Office VPN","connected":true,"ikeid":"100","name":"office-vpn","install-time":"3600","bytes-in":1,"bytes-out":1,"packets-in":1,"packets-out":1}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/ipsec/sessions/search_phase2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[
+			{"phase2desc":"Tunnel 1","name":"tunnel-1","install-time":"100","rekey-time":"50","life-time":"200","bytes-in":"1","bytes-out":"1","packets-in":"1","packets-out":"1","state":"INSTALLED"},
+			{"phase2desc":"Tunnel 2","name":"tunnel-2","install-time":"100","rekey-time":"50","life-time":"200","bytes-in":"1","bytes-out":"1","packets-in":"1","packets-out":"1","state":"DELETING"}
+		]}`))
+	})
+
+	data, err := client.FetchIPsecPhase1()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rows) != 1 || len(data.Rows[0].Phase2) != 2 {
+		t.Fatalf("expected 1 phase1 row with 2 phase2 rows, got %+v", data)
+	}
+	if data.Rows[0].Phase2[0].State != "INSTALLED" {
+		t.Errorf("expected State=INSTALLED, got %q", data.Rows[0].Phase2[0].State)
+	}
+	if data.Rows[0].Phase2[1].State != "DELETING" {
+		t.Errorf("expected State=DELETING, got %q", data.Rows[0].Phase2[1].State)
+	}
+}
+
 func TestFetchIPsecPhase1_ServerError(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -403,6 +439,88 @@ func TestFetchIPsecSAD_NATTraversal(t *testing.T) {
 	}
 	if !data.Entries[0].NATTraversal {
 		t.Error("expected NAT-T true when the nat field is present")
+	}
+}
+
+// #578: kernel SAD rows also carry per-SA byte/packet usage counters and their
+// configured hard/soft rekey limits (bytes_current/hard/soft, allocated/hard/
+// soft) -- none were decoded before this, so a tunnel rekeying every 90s
+// because bytes_current keeps hitting bytes_soft was invisible. bytes_hard and
+// allocated_hard arrive as quoted strings here while bytes_soft/allocated are
+// bare numbers, mirroring the same reqid/addtime_* wire-shape inconsistency
+// ipsecSadRow's doc comment already documents -- both shapes must decode
+// identically.
+const ipsecSadByteLimitsFixture = `{"rows":[
+	{"src":"172.16.9.1","dst":"172.16.9.100","satype":"esp","spi":"c6524517","reqid":1,"state":"mature","addtime_diff":45,"addtime_hard":3960,"addtime_soft":3306,"ikeid":null,"phase1desc":null,"phase2desc":null,
+	 "bytes_current":123456789012,"bytes_hard":"500000000000","bytes_soft":400000000000,"allocated":42,"allocated_hard":"1000000","allocated_soft":800000}
+]}`
+
+func TestFetchIPsecSAD_ByteAndAllocationLimits(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/sad/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ipsecSadByteLimitsFixture))
+	})
+
+	data, err := client.FetchIPsecSAD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Entries) != 1 {
+		t.Fatalf("expected 1 SA entry, got %d", len(data.Entries))
+	}
+	e := data.Entries[0]
+	// bytes_current is a bare JSON number here and exceeds 2^31 -- a plain int
+	// would wrap on a 32-bit build (the same failure mode #103 fixed for
+	// phase1/phase2 bytes-in/out), silently corrupting the very value the "is
+	// this SA about to rekey" ratio depends on.
+	if e.BytesCurrent != 123456789012 {
+		t.Errorf("expected BytesCurrent=123456789012, got %d", e.BytesCurrent)
+	}
+	if e.BytesHardLimit != 500000000000 {
+		t.Errorf("expected BytesHardLimit=500000000000 (quoted-string wire shape), got %d", e.BytesHardLimit)
+	}
+	if e.BytesSoftLimit != 400000000000 {
+		t.Errorf("expected BytesSoftLimit=400000000000 (bare-number wire shape), got %d", e.BytesSoftLimit)
+	}
+	if e.AllocatedCurrent != 42 {
+		t.Errorf("expected AllocatedCurrent=42, got %d", e.AllocatedCurrent)
+	}
+	if e.AllocatedHardLimit != 1000000 {
+		t.Errorf("expected AllocatedHardLimit=1000000, got %d", e.AllocatedHardLimit)
+	}
+	if e.AllocatedSoftLimit != 800000 {
+		t.Errorf("expected AllocatedSoftLimit=800000, got %d", e.AllocatedSoftLimit)
+	}
+}
+
+// A hard/soft limit of 0 is setkey/strongSwan's own convention for "no limit
+// configured", not "the SA already has zero budget left". FetchIPsecSAD itself
+// makes no presence/absence judgment call -- it decodes the wire value exactly
+// as reported (0 stays 0); gating a 0 limit out of the emitted series is the
+// collector's job (internal/collector/ipsec.go), not this package's.
+func TestFetchIPsecSAD_ZeroLimitsDecodeAsZero(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/sad/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"src":"a","dst":"b","satype":"esp","spi":"deadbeef","reqid":3,"addtime_diff":5,"addtime_hard":0,"addtime_soft":0,"ikeid":null,"phase1desc":null,"phase2desc":null,"bytes_current":777,"bytes_hard":0,"bytes_soft":0,"allocated":3,"allocated_hard":0,"allocated_soft":0}]}`))
+	})
+
+	data, err := client.FetchIPsecSAD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Entries) != 1 {
+		t.Fatalf("expected 1 SA entry, got %d", len(data.Entries))
+	}
+	e := data.Entries[0]
+	if e.BytesCurrent != 777 || e.AllocatedCurrent != 3 {
+		t.Errorf("expected current usage decoded as-is, got bytes=%d allocated=%d", e.BytesCurrent, e.AllocatedCurrent)
+	}
+	if e.BytesHardLimit != 0 || e.BytesSoftLimit != 0 || e.AllocatedHardLimit != 0 || e.AllocatedSoftLimit != 0 {
+		t.Errorf("expected unconfigured limits to decode as literal 0, got %+v", e)
 	}
 }
 

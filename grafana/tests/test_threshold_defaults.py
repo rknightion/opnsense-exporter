@@ -77,6 +77,12 @@ EXPLICIT_GAUGE_TITLES = {
     "PF States Used %",             # percent, mx=100 — already explicit 70/90
     "NVMe Available Spare",         # percent, low-is-bad: red -> yellow@10 -> green@50
     "NVMe Life Used",               # percent, wear indicator: yellow@80 -> red@100
+    # The SATA twins of the two NVMe entries above (#577), on exactly the same
+    # bounded scales and with matching boundaries. smartctl derives both with its
+    # own vendor-attribute matching, which is why they are separate fields rather
+    # than reconstructible from the generic attribute dump.
+    "SATA SSD Spare Available",     # percent, low-is-bad: red -> yellow@10 -> green@50
+    "SATA SSD Endurance Used",      # percent, wear indicator: yellow@80 -> red@100
     "Table Utilization",            # percent of the configured alias table limit
     "Cache Hit Ratio",              # percent, low-is-bad: red -> yellow@50 -> green@75
     "TCP Usage Ratio",              # percentunit of the configured TCP limit
@@ -224,8 +230,9 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
     def test_true_bargauge_panel_count(self):
         """Pins the real count so a stale '39' in old planning docs/issues cannot
         silently drift further from what the builder actually produces. 40 -> 41 when
-        #557 added the Kea server-reported lease pool accounting bargauge."""
-        self.assertEqual(len(_bargauge_panels(self.builder)), 41)
+        #557 added the Kea server-reported lease pool accounting bargauge; 41 -> 43
+        when #587 added the top-resolved and top-blocked domain leaderboards."""
+        self.assertEqual(len(_bargauge_panels(self.builder)), 43)
 
     def test_neutral_bytes_panel_has_no_severity_boundary(self):
         panel = self._panel("eve Log File Sizes")
@@ -251,8 +258,9 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
     def test_gauge_panel_count(self):
         """Pins the gauge count for the same reason as the bar-gauge one: #467's
         measurement (17 gauges, 2 carrying the synthetic triple) has to stay
-        checkable against what the builder actually produces."""
-        self.assertEqual(len(_gauge_panels(self.builder)), 17)
+        checkable against what the builder actually produces. 17 -> 19 when #577
+        added the SATA SSD spare/endurance pair alongside the NVMe ones."""
+        self.assertEqual(len(_gauge_panels(self.builder)), 19)
 
     def test_memory_used_percent_keeps_its_boundary_now_stated_explicitly(self):
         """#467's no-visual-change criterion for the one panel that INHERITED the

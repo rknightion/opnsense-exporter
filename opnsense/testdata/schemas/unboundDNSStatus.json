@@ -37,6 +37,34 @@
       "kind": "string"
     },
     {
+      "path": "data.histogram",
+      "kind": "array"
+    },
+    {
+      "path": "data.histogram[]",
+      "kind": "object"
+    },
+    {
+      "path": "data.histogram[].from",
+      "kind": "array"
+    },
+    {
+      "path": "data.histogram[].from[]",
+      "kind": "any"
+    },
+    {
+      "path": "data.histogram[].to",
+      "kind": "array"
+    },
+    {
+      "path": "data.histogram[].to[]",
+      "kind": "any"
+    },
+    {
+      "path": "data.histogram[].value",
+      "kind": "any"
+    },
+    {
       "path": "data.infra",
       "kind": "object"
     },
@@ -342,6 +370,10 @@
     },
     {
       "path": "data.num.rrset.bogus",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.valops",
       "kind": "string"
     },
     {

@@ -53,6 +53,13 @@ COVERAGE_EXEMPT = {
     # Same histogram case (#426): the /metrics handler's own request-duration histogram
     # is charted via its _bucket series in build_diagnostics, never the bare base.
     "opnsense_exporter_server_metrics_request_duration_seconds",
+    # Same histogram case (#581): unbound's recursion-time histogram is charted as
+    # p50/p90/p99 via histogram_quantile over its _bucket series on the DNS tab, never
+    # the bare base name. Note this one is additionally absent entirely on a box
+    # running extended-statistics: no (the 26.7 default), which is box state rather
+    # than a gap — but the exemption is needed for the same reason as the three above,
+    # not for that.
+    "opnsense_unbound_dns_recursion_time_seconds",
 }
 
 # The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's

@@ -671,8 +671,8 @@ settings:
   # this is the EXACT set written, overriding the defaults in both directions. Unset writes
   # every kind except the default-off ones, which are excluded for their cadence rather than
   # their importance: threat-feed-update. Known kinds: reboot, config-change,
-  # interface-reset, upgrade, certificate-renewal, geoip-update, nginx-reload,
-  # public-ip-change, ids-ruleset-update, threat-feed-update.
+  # interface-reset, pf-counter-reset, upgrade, certificate-renewal, geoip-update,
+  # nginx-reload, public-ip-change, ids-ruleset-update, threat-feed-update.
   # annotations.kinds: []  # LIST -- one --annotations.kinds=value arg per element
   #
   # How old an event may be and still be worth annotating, and how far back the startup

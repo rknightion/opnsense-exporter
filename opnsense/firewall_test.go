@@ -3,6 +3,7 @@ package opnsense
 import (
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestFetchPFStatsByInterface_Success(t *testing.T) {
@@ -156,6 +157,95 @@ func TestFetchPFStatsByInterface_SkipToggleStableLabel(t *testing.T) {
 	}
 	if a, b := fetch("lo0"), fetch("lo0 (skip)"); a != b {
 		t.Errorf("interface label changed on skip toggle: %q vs %q", a, b)
+	}
+}
+
+// TestFetchPFStatsByInterface_ClearedTimestamp guards #580: pf's own
+// "counters reset at" field must be decoded into Unix seconds when present and
+// parseable, and must NEVER fabricate epoch 0 when absent or malformed — a
+// fabricated 0 would misreport a healthy interface's counter history as reset
+// at 1970 instead of simply "unknown".
+//
+// The fixture value "2026-07-31T09:15:23" is the exact shape produced by
+// OPNsense's pfstatistics.py: datetime.datetime.strptime(line, "%b %d %H:%M:%S
+// %Y").isoformat() — whole seconds, no fractional part, and NO timezone marker
+// at all (verified against upstream source, not guessed).
+func TestFetchPFStatsByInterface_ClearedTimestamp(t *testing.T) {
+	tests := []struct {
+		name       string
+		clearedRaw string // raw JSON value for the "cleared" key, or "" to omit the key entirely
+		wantHas    bool
+		wantUnix   int64
+	}{
+		{
+			name:       "present and parseable",
+			clearedRaw: `"2026-07-31T09:15:23"`,
+			wantHas:    true,
+			wantUnix:   time.Date(2026, 7, 31, 9, 15, 23, 0, time.UTC).Unix(),
+		},
+		{
+			name:       "key absent entirely (box has never reset this interface's counters)",
+			clearedRaw: "",
+			wantHas:    false,
+		},
+		{
+			name:       "empty string",
+			clearedRaw: `""`,
+			wantHas:    false,
+		},
+		{
+			name:       "JSON null",
+			clearedRaw: `null`,
+			wantHas:    false,
+		},
+		{
+			name:       "JSON empty array (the flexString PHP-quirk shape)",
+			clearedRaw: `[]`,
+			wantHas:    false,
+		},
+		{
+			name:       "unparseable garbage must not panic and must not synthesize a timestamp",
+			clearedRaw: `"not-a-date"`,
+			wantHas:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `{"interfaces": {"igb0": {"references": 1`
+			if tt.clearedRaw != "" {
+				body += `, "cleared": ` + tt.clearedRaw
+			}
+			body += `}}}`
+
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(body))
+			})
+			defer server.Close()
+
+			data, err := client.FetchPFStatsByInterface()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			got := data.Interfaces[0]
+
+			if got.HasClearedTimestamp != tt.wantHas {
+				t.Errorf("HasClearedTimestamp = %v, want %v (ClearedTimestamp=%v)",
+					got.HasClearedTimestamp, tt.wantHas, got.ClearedTimestamp)
+			}
+			if tt.wantHas && int64(got.ClearedTimestamp) != tt.wantUnix {
+				t.Errorf("ClearedTimestamp = %v, want %v", got.ClearedTimestamp, tt.wantUnix)
+			}
+			if !tt.wantHas && got.ClearedTimestamp != 0 {
+				// Not itself a bug (0 is a valid zero-value float), but a non-zero
+				// value here alongside HasClearedTimestamp=false would indicate the
+				// gating logic disagreed with itself.
+				t.Errorf("expected ClearedTimestamp=0 when HasClearedTimestamp=false, got %v", got.ClearedTimestamp)
+			}
+		})
 	}
 }
 

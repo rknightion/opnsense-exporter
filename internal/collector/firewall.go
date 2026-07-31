@@ -34,6 +34,12 @@ type firewallCollector struct {
 	pfStatesLimit   *prometheus.Desc
 	pfInterfaceRefs *prometheus.Desc
 
+	// pfCountersClearedTimestamp is pf's own per-interface "counters reset at"
+	// marker (#580): without it, every pass/block rate() series above shows a
+	// bogus negative delta or spurious plateau across a `pfctl -z`/filter
+	// reload with nothing to explain it.
+	pfCountersClearedTimestamp *prometheus.Desc
+
 	interfaceLogEntries *prometheus.Desc
 
 	// GeoIP alias-database freshness (#221): cheap, cache-eligible, and always
@@ -212,6 +218,24 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 		nil,
 	)
 
+	// #580: pf's own "counters reset at" timestamp per interface. Absent until
+	// the API reports a parseable value — a fresh box, or an interface pf has
+	// never zeroed, legitimately has none (see ClearedUnixSeconds in
+	// opnsense/firewall.go for why absent/unparseable is never epoch 0).
+	c.pfCountersClearedTimestamp = buildPrometheusDesc(c.subsystem, "pf_counters_cleared_timestamp_seconds",
+		"Unix timestamp (UTC) of pf's last counters reset for this interface — pfctl's own "+
+			"\"Cleared\" marker, the same instant a `pfctl -z` or a filter/rule reload zeroed the "+
+			"pass/block packet and byte counters above for that interface. OPNsense reports this "+
+			"timestamp with no timezone marker at all, so it is decoded assuming UTC and can be off "+
+			"by the firewall's real UTC offset — treat this as \"a reset happened\" (a step change, "+
+			"or a value newer than your rate() window), not a to-the-minute clock. A rate()/increase() "+
+			"query spanning a reset already reads a bogus negative delta or spurious plateau on the "+
+			"pass/block counters above; use this timestamp to explain that away rather than chase it "+
+			"as a real traffic drop. Absent entirely when the box has never reported a parseable value "+
+			"for this interface.",
+		[]string{"interface"},
+	)
+
 	c.natRules = buildPrometheusDesc(c.subsystem, "nat_rules",
 		"Number of MVC-managed NAT rules by type and enabled state (source_nat, d_nat, one_to_one, npt). Rules created before an admin migrated to the MVC-managed NAT backend are not counted.",
 		[]string{"type", "enabled"},
@@ -242,6 +266,7 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pfStatesCurrent
 	ch <- c.pfStatesLimit
 	ch <- c.pfInterfaceRefs
+	ch <- c.pfCountersClearedTimestamp
 
 	ch <- c.interfaceLogEntries
 
@@ -313,6 +338,17 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 		}
 		ch <- prometheus.MustNewConstMetric(c.pfInterfaceRefs, prometheus.GaugeValue,
 			float64(v.References), v.InterfaceName, skipped, c.instance)
+
+		// #580: a Gauge holding Unix seconds, never a self-reported "age" — see
+		// LastRefresh in internal/logship/enrich/metrics.go for why an age value
+		// set once and never touched again would read as stale-forever. Emitted
+		// only when the box reported a parseable value: an absent series and a
+		// counter history that has genuinely never been reset must not look the
+		// same as a fabricated epoch-0 "reset in 1970".
+		if v.HasClearedTimestamp {
+			ch <- prometheus.MustNewConstMetric(c.pfCountersClearedTimestamp, prometheus.GaugeValue,
+				v.ClearedTimestamp, v.InterfaceName, c.instance)
+		}
 	}
 
 	pfStates, pfErr := client.FetchPFStates()

@@ -1,7 +1,7 @@
 {
   "endpoint": "unboundQueryStatsTotals",
   "method": "GET",
-  "path": "api/unbound/overview/totals/1",
+  "path": "api/unbound/overview/totals/512",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
     "blocked",
@@ -10,6 +10,8 @@
     "passed",
     "resolved",
     "start_time",
+    "top",
+    "top_blocked",
     "total"
   ],
   "fields": [
@@ -47,6 +49,14 @@
     },
     {
       "path": "start_time",
+      "kind": "any"
+    },
+    {
+      "path": "top",
+      "kind": "any"
+    },
+    {
+      "path": "top_blocked",
       "kind": "any"
     },
     {

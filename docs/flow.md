@@ -525,6 +525,35 @@ and `flow.end_time` themselves are still reported since each is independently a 
 directly-observed timestamp. Nothing here is ever fabricated - an absent time or
 interval means the data was not there, not that the exporter guessed a value.
 
+**Connection-shape attributes.** Two more, on the same terms - structured metadata,
+never a label:
+
+| Attribute | Present when | Value |
+|---|---|---|
+| `netflow.tcp_flags` | any TCP flag bit was set on the flow | comma-separated set in wire bit order, e.g. `SYN`, `SYN,ACK`, `RST,ACK` |
+| `zenarmor.encryption` | Zenarmor reported it | Zenarmor's own string, e.g. `Clear`, `TLS-Encrypted` |
+
+`netflow.tcp_flags` is what separates a port scan (SYN, nothing back, no bytes) from
+a refused service (RST) from a clean short session - a distinction nothing else in
+the pipeline expresses, since Zenarmor's `IsBlocked` is the *firewall's* verdict
+rather than the peer's response. The flags are **OR-unioned across every NetFlow
+fragment of a connection-window**, not taken from the first: each direction is a
+separate record and a long flow re-reports on the inactive timeout, so a single
+fragment would render `SYN` on practically every TCP flow and destroy the
+distinction. That union is not an invention - FreeBSD's `ng_netflow` already ORs the
+flag byte per packet within a fragment, so extending it across the window keeps the
+field meaning one thing.
+
+A flow with no flags set emits **no attribute at all** rather than an empty one. Zero
+is unambiguous here (no legal TCP segment carries an empty flag byte), so an empty
+value would cost bytes on every UDP line and, because Loki distinguishes absent from
+`""`, would also match records that reported nothing.
+
+`zenarmor.encryption` answers "which internal hosts still send cleartext to the
+internet" as one query joined against NetFlow volume. It rides the correlated record
+specifically, that being the only one carrying both a Zenarmor verdict and NetFlow
+byte counts.
+
 ## The label set, and why each dimension is on it
 
 Every flow metric carries exactly these, and nothing else:

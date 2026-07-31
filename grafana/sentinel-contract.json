@@ -353,6 +353,8 @@
           "OPNsense Exporter > Network > FRR Routing > FRR Service & Summary",
           "OPNsense Exporter > Network > FRR Routing > OSPF",
           "OPNsense Exporter > Network > FRR Routing > OSPF Interface Detail",
+          "OPNsense Exporter > Network > FRR Routing > OSPF Neighbor Adjacency Stability",
+          "OPNsense Exporter > Network > FRR Routing > OSPF/OSPFv3 SPF-Run Timing",
           "OPNsense Exporter > Network > FRR Routing > OSPFv3 (ospf6) Parity"
         ]
       },

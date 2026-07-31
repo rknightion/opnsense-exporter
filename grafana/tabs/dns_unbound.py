@@ -122,7 +122,26 @@ def build(b: Builder):
              "The 'replies' scope (#237) is a base statistic present on all supported releases.",
     )
 
-    row_cache = b.row("Cache & Recursion", [cache_activity, recursion_ts, recursion_times, req_list_ts])
+    # #581. Queried only through its _bucket series — the base name
+    # opnsense_unbound_dns_recursion_time_seconds is in build_dashboard.py's
+    # COVERAGE_EXEMPT for that reason, like every other histogram on this dashboard.
+    recursion_quantiles = b.ts(
+        "Recursion Time Distribution",
+        [(f'histogram_quantile({q}, sum {grp("le")} '
+          f'(rate({sel("opnsense_unbound_dns_recursion_time_seconds_bucket")}[{RATE}])))', label)
+         for q, label in ((0.5, "p50"), (0.9, "p90"), (0.99, "p99"))],
+        unit="s", w=12, h=8,
+        desc="opnsense_unbound_dns_recursion_time_seconds: percentiles of how long recursive "
+             "lookups took, from Unbound's own exponential histogram. This is the tail the "
+             "Recursion Time panel's mean and median hide - a p99 climbing while the mean stays "
+             "flat is a subset of upstreams going slow, which is what the Upstream Infra Cache "
+             "row diagnoses. EMPTY UNLESS the resolver runs with extended-statistics: yes; that "
+             "is OFF by default from OPNsense 26.7 and Unbound does not compute the data at all "
+             "in that state, so no data here means not enabled, not zero latency.",
+    )
+
+    row_cache = b.row("Cache & Recursion",
+                      [cache_activity, recursion_ts, recursion_times, req_list_ts, recursion_quantiles])
 
     # =====================================================================
     # Row 3: DNSSEC & Anomalies
@@ -154,7 +173,19 @@ def build(b: Builder):
              "statistics, so they populate even with extended-statistics: no).",
     )
 
-    row_dnssec = b.row("DNSSEC & Anomalies", [dnssec_ts, anomalies_ts])
+    validation_ops = b.ts(
+        "DNSSEC Validation Work",
+        [(r("validation_operations_total"), "RRSIG verifications/s"),
+         (r("answers_secure_total"), "secure answers/s")],
+        unit="ops", w=12, h=8,
+        desc="opnsense_unbound_dns_validation_operations_total: RRSIG verifications the validator "
+             "attempted, pass or fail. Plotted against secure answers because the ratio is the "
+             "point: heavy verification work producing few secure answers means the validator is "
+             "burning CPU on zones that will not validate, which the secure/bogus counters alone "
+             "cannot distinguish from doing no work at all. Extended-statistics only.",
+    )
+
+    row_dnssec = b.row("DNSSEC & Anomalies", [dnssec_ts, anomalies_ts, validation_ops])
 
     # =====================================================================
     # Row 4: Query Breakdowns
@@ -267,7 +298,42 @@ def build(b: Builder):
              "upstream server/zone.",
     )
 
-    row_infra = b.row("Upstream Infra Cache", [infra_rtt, infra_rto], present="has_unbound_infra")
+    # #581. The whole point of these three is that RTT CANNOT show them: Unbound
+    # stops querying an upstream it has marked lame, so that upstream's RTT stays
+    # healthy exactly while resolution through it fails. Sum rather than topk - a
+    # single lame upstream is the event, so the count must not be truncated away.
+    infra_health = b.ts(
+        "Unhealthy Upstreams",
+        [(f'sum {grp("kind")} ({sel("opnsense_unbound_dns_infra_host_lame")})', "lame: {{kind}}"),
+         (f'sum {grp()} ({sel("opnsense_unbound_dns_infra_host_dnssec_lame")})', "DNSSEC-lame"),
+         (f'sum {grp()} ({sel("opnsense_unbound_dns_infra_host_edns_broken")})', "EDNS broken")],
+        unit="short", w=12, h=8,
+        desc="Upstream servers Unbound currently considers unhealthy, counted by problem. Any "
+             "non-zero value on a configured forwarder is worth investigating: lame means the "
+             "server is not authoritative for what it was asked, DNSSEC-lame means it answers but "
+             "will not serve validation records, EDNS broken means EDNS traffic to it is being "
+             "dropped in transit (usually a middlebox or MTU problem, not the server). These stay "
+             "invisible in the RTT panels above because Unbound stops asking a server it has "
+             "written off. Requires --exporter.enable-unbound-infra.",
+    )
+    infra_health_table = b.table(
+        "Upstream Health Detail",
+        [sel("opnsense_unbound_dns_infra_host_lame", 'kind="recursion"'),
+         sel("opnsense_unbound_dns_infra_host_dnssec_lame"),
+         sel("opnsense_unbound_dns_infra_host_edns_broken")],
+        w=12, h=8,
+        excludes=["__name__", "job", "instance", "kind"],
+        renames={"ip": "Upstream IP", "host": "Zone"},
+        sort_by="Upstream IP", sort_desc=False,
+        desc="Which upstream server has which problem: one row per infra-cache entry, 1 = "
+             "affected. The recursion-lameness column is shown; the type_a and other kinds are on "
+             "opnsense_unbound_dns_infra_host_lame's kind label and are summarised in the panel "
+             "beside this one.",
+    )
+
+    row_infra = b.row("Upstream Infra Cache",
+                      [infra_rtt, infra_rto, infra_health, infra_health_table],
+                      present="has_unbound_infra")
 
     # =====================================================================
     # Row 7: DNSBL / Query Stats (opt-in, gated on has_unbound_qstats)
@@ -350,11 +416,56 @@ def build(b: Builder):
              "DNSSEC-insecure.",
     )
 
+    # #587: the pi-hole-style leaderboards, reversing #209's rejection now that the
+    # bounded-inventory primitive exists. topk on top of an already-truncated,
+    # already-capped series set - the metric is at most 512 domains per outcome, and
+    # 15 rows is what fits a panel.
+    BLOCKED, PASSED = 'result="blocked"', 'result="passed"'
+
+    def top_domains(result_selector):
+        return u("qstats_top_domain_queries_7d", result_selector)
+
+    top_blocked_domains = b.bargauge(
+        "Top Blocked Domains (7d window)",
+        [(f'topk {grp()} (15, {top_domains(BLOCKED)})', "{{domain}}")],
+        unit="short", w=12, h=10,
+        orient="horizontal",
+        desc="opnsense_unbound_dns_qstats_top_domain_queries_7d{result=\"blocked\"}: the domains a "
+             "DNSBL policy blocked most over Unbound's rolling query-stats window. Gauge over the "
+             "whole window, NOT a rate - the window is truncated hourly, so these counts fall as "
+             "well as rise. Truncated by design at 512 domains; if Leaderboard Refusals below is "
+             "rising, this is no longer the true top-N. Requires --exporter.enable-unbound-qstats.",
+    )
+    top_passed_domains = b.bargauge(
+        "Top Resolved Domains (7d window)",
+        [(f'topk {grp()} (15, {top_domains(PASSED)})', "{{domain}}")],
+        unit="short", w=12, h=10,
+        orient="horizontal",
+        desc="opnsense_unbound_dns_qstats_top_domain_queries_7d{result=\"passed\"}: the domains "
+             "Unbound answered most over the rolling query-stats window. Same gauge semantics and "
+             "the same 512-domain truncation as the blocked leaderboard beside it. A domain can "
+             "appear in both panels - some queries for it passed before a policy started blocking "
+             "it.",
+    )
+    leaderboard_refusals = b.ts(
+        "Leaderboard Refusals",
+        [(f'sum {grp("family")} (rate({sel("opnsense_unbound_dns_cardinality_capped_total")}[{RATE}]))',
+          "{{family}}")],
+        unit="short", w=12, h=8,
+        desc="opnsense_unbound_dns_cardinality_capped_total: domains refused their own series "
+             "because the leaderboard was already holding its full 512-key budget. This panel is "
+             "what stops a truncated top-N looking like a quiet network. Sustained non-zero means "
+             "something is minting domains faster than the cap turns over - random-subdomain or "
+             "DNS-tunnelling traffic does exactly that, so a rise here is worth investigating on "
+             "its own account and not only as a metrics problem.",
+    )
+
     row_qstats = b.row(
         "DNSBL / Query Stats",
         [
             qstats_enabled_stat, blocklist_size, total_7d, window_age,
             queries_by_result, local_zones, local_data_records, insecure_domains,
+            top_blocked_domains, top_passed_domains, leaderboard_refusals,
         ],
         present="has_unbound_qstats",
     )

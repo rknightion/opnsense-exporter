@@ -38,6 +38,34 @@ The routing-state volume gauges (route_count, route_nexthop_count,
 ospf_route_count, ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count) are
 opt-in (--exporter.enable-frr-routes) and gated behind their own
 has_frr_routes sentinel/row, since they are absent unless that flag is set.
+
+OSPF neighbor adjacency stability (#582): ospf_neighbor_nsm_state_info is an
+info metric (value always 1) carrying FRR's raw NSM state name as a label —
+shown as a table, same pattern as bfd_peer_diagnostic_info. Distinct from
+ospf_neighbor_adjacency above: that flag only shows Full vs. not-Full, this
+shows what a non-Full neighbor is stuck at (ExStart/Exchange/Loading = a
+negotiation problem, Init/Attempt = it never got that far). ospf_neighbor_
+uptime_seconds/dead_timer_seconds are presence-gated — FRR omits both for a
+neighbor whose inactivity timer isn't scheduled, so an absent series there
+means "no reading", not zero. ospf_neighbor_lsa_queue_depth is always
+emitted (0 is a legitimate empty-queue reading); a persistently nonzero
+ls_retransmission depth is the classic neighbor-sync-stuck symptom the
+issue asks this dashboard to surface.
+
+OSPF/OSPFv3 SPF-run timing (#582): ospf_spf_last_duration_seconds and
+ospfv3_spf_last_duration_seconds are genuine duration gauges (how long the
+last SPF run took), shown raw. ospf_spf_last_executed_timestamp_seconds and
+ospfv3_area_spf_last_executed_timestamp_seconds are absolute-timestamp
+gauges (unix seconds of the last SPF run) — shown as `time() - metric`
+("SPF age"), the same pattern already used for freshness metrics elsewhere
+in this dashboard (e.g. clamav signature-db age, crowdsec heartbeat age).
+NOTE: OSPFv3's SPF-age reading is PER AREA, not instance-level like OSPFv2's
+— FRR's ospf6d only reports a numeric "time since last run" per area; its
+instance-level sibling of the same name is a formatted string with no
+numeric equivalent (see the FRROSPFv3Overview field docs in opnsense/frr.go).
+Both *_timestamp_seconds metrics still need an ANNOTATIONS/NOT_ANNOTATED
+entry in annotations.py per AUTHORING.md rule 9 — not added here, see the
+#582 implementation report.
 """
 
 from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
@@ -214,6 +242,52 @@ def build(b: Builder):
     )
 
     # ------------------------------------------------------------------ #
+    # Row 3a2: OSPF Neighbor Adjacency Stability (#582)                    #
+    # ------------------------------------------------------------------ #
+    ospf_nbr_nsm_state = b.table(
+        "OSPF Neighbor State (NSM)",
+        [sel("opnsense_frr_ospf_neighbor_nsm_state_info")],
+        w=24, h=6,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "neighbor_id": "Neighbor",
+            "address": "Address",
+            "interface": "Interface",
+            "nsm_state": "State",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="Neighbor",
+        desc="FRR's raw OSPF neighbor state machine state (info metric — value is always 1; "+
+             "use the State label). Distinct from the Adjacency panel above: that flag only "+
+             "shows Full vs. not, this shows what a non-Full neighbor is stuck at "+
+             "(ExStart/Exchange/Loading = negotiation trouble, Init/Attempt = never got that far).",
+    )
+    ospf_nbr_uptime = b.ts(
+        "OSPF Neighbor Adjacency Uptime",
+        [(sel("opnsense_frr_ospf_neighbor_uptime_seconds"), "{{neighbor_id}} via {{interface}}")],
+        unit="s", w=12, h=8,
+        desc="How long each OSPF neighbor's adjacency has been progressing. Absent (not zero) "+
+             "for a neighbor whose inactivity timer isn't scheduled yet.",
+    )
+    ospf_nbr_dead_timer = b.ts(
+        "OSPF Neighbor Dead Timer",
+        [(sel("opnsense_frr_ospf_neighbor_dead_timer_seconds"), "{{neighbor_id}} via {{interface}}")],
+        unit="s", w=12, h=8,
+        desc="Time remaining before each OSPF neighbor's dead interval expires. Repeatedly "+
+             "resetting close to the configured interval is healthy; a value trending toward "+
+             "zero and recovering (rather than resetting cleanly on a fresh hello) is a "+
+             "flapping adjacency. Absent (not zero) when FRR reports the timer as inactive.",
+    )
+    ospf_nbr_lsa_queue = b.ts(
+        "OSPF Neighbor LSA Queue Depth",
+        [(sel("opnsense_frr_ospf_neighbor_lsa_queue_depth"), "{{neighbor_id}} {{queue}}")],
+        unit="short", w=24, h=8,
+        desc="Per-neighbor LSA synchronization queue depth (db_summary/ls_request/"+
+             "ls_retransmission). A persistently nonzero ls_retransmission depth is the "+
+             "classic symptom of a neighbor stuck failing to acknowledge LSAs.",
+    )
+
+    # ------------------------------------------------------------------ #
     # Row 3b: OSPF Interface Detail                                       #
     # ------------------------------------------------------------------ #
     ospf_iface_up = b.statetimeline(
@@ -286,6 +360,41 @@ def build(b: Builder):
         unit="short", w=12, h=8,
         desc="Pending LSUpdate/LSAck queue depth per OSPFv3 interface — a growing backlog "+
              "indicates an LSA flooding problem.",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 3c2: OSPF/OSPFv3 SPF-Run Timing (#582)                          #
+    # ------------------------------------------------------------------ #
+    ospf_spf_age = b.ts(
+        "OSPF SPF Age (Time Since Last Run)",
+        [(f'time() - {sel("opnsense_frr_ospf_spf_last_executed_timestamp_seconds")}', "instance")],
+        unit="s", w=12, h=8,
+        desc="Seconds since this OSPF instance's last SPF calculation. The already-charted "+
+             "SPF Execution Rate above is a COUNT of runs, not their recency or cost — a "+
+             "router thrashing SPF (short-interval recalculation storms) shows up here as "+
+             "this value repeatedly dropping close to zero.",
+    )
+    ospf_spf_duration = b.ts(
+        "OSPF SPF Last Run Duration",
+        [(sel("opnsense_frr_ospf_spf_last_duration_seconds"), "instance")],
+        unit="s", w=12, h=8,
+        desc="Wall-clock duration of this OSPF instance's last SPF calculation — the CPU-cost "+
+             "half of the SPF story that a run count alone cannot show.",
+    )
+    ospfv3_spf_duration = b.ts(
+        "OSPFv3 SPF Last Run Duration",
+        [(sel("opnsense_frr_ospfv3_spf_last_duration_seconds"), "instance")],
+        unit="s", w=12, h=8,
+        desc="Wall-clock duration of this OSPFv3 instance's last SPF calculation.",
+    )
+    ospfv3_area_spf_age = b.ts(
+        "OSPFv3 Area SPF Age (Time Since Last Run)",
+        [(f'time() - {sel("opnsense_frr_ospfv3_area_spf_last_executed_timestamp_seconds")}',
+          "area {{area}}")],
+        unit="s", w=12, h=8,
+        desc="Seconds since each OSPFv3 area last ran SPF. Per-area, not instance-level: "+
+             "FRR's ospf6d only reports SPF recency numerically at the area scope (its "+
+             "instance-level sibling is a formatted string with no numeric equivalent).",
     )
 
     # ------------------------------------------------------------------ #
@@ -426,12 +535,18 @@ def build(b: Builder):
               [ospf_adj, ospf_area_ifaces, ospf_area_full,
                ospf_lsa, ospf_spf],
               present="has_frr"),
+        b.row("OSPF Neighbor Adjacency Stability",
+              [ospf_nbr_nsm_state, ospf_nbr_uptime, ospf_nbr_dead_timer, ospf_nbr_lsa_queue],
+              present="has_frr"),
         b.row("OSPF Interface Detail",
               [ospf_iface_up, ospf_iface_cost, ospf_iface_nbrs, ospf_iface_state],
               present="has_frr"),
         b.row("OSPFv3 (ospf6) Parity",
               [ospfv3_iface_up, ospfv3_iface_cost, ospfv3_area_lsa,
                ospfv3_iface_state, ospfv3_pending_lsa],
+              present="has_frr"),
+        b.row("OSPF/OSPFv3 SPF-Run Timing",
+              [ospf_spf_age, ospf_spf_duration, ospfv3_spf_duration, ospfv3_area_spf_age],
               present="has_frr"),
         b.row("Routing-State Volume (opt-in: --exporter.enable-frr-routes)",
               [route_count, route_nexthop_count, ospf_route_count,

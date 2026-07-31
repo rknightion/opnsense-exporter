@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
@@ -745,5 +746,256 @@ func TestFRRCollector_Update_MalformedOSPFOverviewFailsScrape(t *testing.T) {
 		for _, m := range emitted {
 			t.Logf("  unexpectedly emitted: %s", m.Desc().String())
 		}
+	}
+}
+
+// TestFRRCollector_Update_OSPFNeighborAdjacencyStability covers #582 at the
+// metric-emission layer: the NSM-state info series, the presence-gated
+// uptime/dead-timer gauges, and the always-emitted LSA queue-depth gauges.
+// Only ospfoverview and searchOspfneighbor are registered; every other quagga
+// endpoint 404s via the mux's default handler, which every Fetch* in this
+// package already reads as "plugin absent" — isolating these two neighbor
+// rows as the only OSPF-relevant input, same technique as
+// TestFRRCollector_Update_MalformedOSPFOverviewFailsScrape above.
+func TestFRRCollector_Update_OSPFNeighborAdjacencyStability(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":{"areas":{}}}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/searchOspfneighbor", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+  "total": 2,
+  "rowCount": 2,
+  "current": 1,
+  "rows": [
+    {
+      "neighborid": "10.0.0.2",
+      "state": "Full/DR",
+      "address": "10.0.0.2",
+      "ifaceName": "em0",
+      "converged": "Full",
+      "upTimeInMsec": 93780000,
+      "routerDeadIntervalTimerDueMsec": 32000,
+      "databaseSummaryListCounter": 0,
+      "linkStateRequestListCounter": 0,
+      "linkStateRetransmissionListCounter": 2
+    },
+    {
+      "neighborid": "10.0.0.3",
+      "state": "Init/Other",
+      "address": "10.0.0.3",
+      "ifaceName": "em1",
+      "converged": "Init",
+      "routerDeadIntervalTimerDueMsec": "inactive",
+      "databaseSummaryListCounter": 0,
+      "linkStateRequestListCounter": 0,
+      "linkStateRetransmissionListCounter": 0
+    }
+  ]
+}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	nsmStates := map[string]string{}    // neighbor_id -> nsm_state
+	uptimeSeen := map[string]bool{}     // neighbor_id -> saw uptime series
+	deadTimerSeen := map[string]bool{}  // neighbor_id -> saw dead-timer series
+	queueDepths := map[string]float64{} // "neighbor_id/queue" -> value
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		nbr := labels["neighbor_id"]
+		switch {
+		case strings.Contains(desc, "frr_ospf_neighbor_nsm_state_info"):
+			nsmStates[nbr] = labels["nsm_state"]
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("ospf_neighbor_nsm_state_info{neighbor_id=%s}: want 1, got %v", nbr, v)
+			}
+		case strings.Contains(desc, "frr_ospf_neighbor_uptime_seconds"):
+			uptimeSeen[nbr] = true
+			if nbr == "10.0.0.2" {
+				if v := getMetricValue(m); v != 93780 {
+					t.Errorf("ospf_neighbor_uptime_seconds{neighbor_id=10.0.0.2}: want 93780, got %v", v)
+				}
+			}
+		case strings.Contains(desc, "frr_ospf_neighbor_dead_timer_seconds"):
+			deadTimerSeen[nbr] = true
+			if nbr == "10.0.0.2" {
+				if v := getMetricValue(m); v != 32 {
+					t.Errorf("ospf_neighbor_dead_timer_seconds{neighbor_id=10.0.0.2}: want 32, got %v", v)
+				}
+			}
+		case strings.Contains(desc, "frr_ospf_neighbor_lsa_queue_depth"):
+			queueDepths[nbr+"/"+labels["queue"]] = getMetricValue(m)
+		}
+	}
+
+	if nsmStates["10.0.0.2"] != "Full" {
+		t.Errorf("neighbor 10.0.0.2 nsm_state: want Full, got %q", nsmStates["10.0.0.2"])
+	}
+	if nsmStates["10.0.0.3"] != "Init" {
+		t.Errorf("neighbor 10.0.0.3 nsm_state: want Init, got %q", nsmStates["10.0.0.3"])
+	}
+
+	if !uptimeSeen["10.0.0.2"] {
+		t.Error("expected ospf_neighbor_uptime_seconds for neighbor 10.0.0.2 (upTimeInMsec present)")
+	}
+	if uptimeSeen["10.0.0.3"] {
+		t.Error("expected NO ospf_neighbor_uptime_seconds for neighbor 10.0.0.3 (upTimeInMsec absent)")
+	}
+	if !deadTimerSeen["10.0.0.2"] {
+		t.Error("expected ospf_neighbor_dead_timer_seconds for neighbor 10.0.0.2 (numeric reading)")
+	}
+	// GUARDS the exact bug this metric exists to avoid: a fabricated "0
+	// seconds until dead" reading for the neighbor whose timer FRR reports as
+	// the string "inactive", which would look identical to a neighbor on the
+	// verge of dropping.
+	if deadTimerSeen["10.0.0.3"] {
+		t.Error(`expected NO ospf_neighbor_dead_timer_seconds for neighbor 10.0.0.3 (timer is "inactive")`)
+	}
+
+	if queueDepths["10.0.0.2/ls_retransmission"] != 2 {
+		t.Errorf("neighbor 10.0.0.2 ls_retransmission queue depth: want 2, got %v", queueDepths["10.0.0.2/ls_retransmission"])
+	}
+	if queueDepths["10.0.0.3/ls_retransmission"] != 0 {
+		t.Errorf("neighbor 10.0.0.3 ls_retransmission queue depth: want 0, got %v", queueDepths["10.0.0.3/ls_retransmission"])
+	}
+}
+
+// TestFRRCollector_Update_OSPFSPFTiming covers #582's instance-level SPF-run
+// timing gauges: present with the fixture's numbers, and absent entirely
+// (never a fabricated 0) when the box hasn't run SPF yet.
+func TestFRRCollector_Update_OSPFSPFTiming(t *testing.T) {
+	cases := []struct {
+		name         string
+		overview     string
+		wantPresent  bool
+		wantDuration float64
+	}{
+		{
+			name:         "spf_has_run",
+			overview:     `{"response":{"areas":{},"spfLastExecutedMsecs":5000,"spfLastDurationMsecs":42}}`,
+			wantPresent:  true,
+			wantDuration: 0.042,
+		},
+		{
+			name:        "spf_has_not_run",
+			overview:    `{"response":{"areas":{},"spfHasNotRun":true}}`,
+			wantPresent: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.overview))
+			})
+			mux.HandleFunc("/api/quagga/diagnostics/searchOspfneighbor", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+			client := newCollectorTestClient(t, server)
+
+			c := &frrCollector{subsystem: FRRSubsystem}
+			c.Register(namespace, "test", promslog.NewNopLogger())
+
+			metrics := collectMetrics(t, c, client)
+
+			var sawTimestamp, sawDuration bool
+			var durationVal float64
+			for _, m := range metrics {
+				desc := m.Desc().String()
+				switch {
+				case strings.Contains(desc, "frr_ospf_spf_last_executed_timestamp_seconds"):
+					sawTimestamp = true
+				case strings.Contains(desc, "frr_ospf_spf_last_duration_seconds"):
+					sawDuration = true
+					durationVal = getMetricValue(m)
+				}
+			}
+
+			if sawTimestamp != tc.wantPresent {
+				t.Errorf("frr_ospf_spf_last_executed_timestamp_seconds presence: want %v, got %v", tc.wantPresent, sawTimestamp)
+			}
+			if sawDuration != tc.wantPresent {
+				t.Errorf("frr_ospf_spf_last_duration_seconds presence: want %v, got %v", tc.wantPresent, sawDuration)
+			}
+			if tc.wantPresent && durationVal != tc.wantDuration {
+				t.Errorf("frr_ospf_spf_last_duration_seconds: want %v, got %v", tc.wantDuration, durationVal)
+			}
+		})
+	}
+}
+
+// TestFRRCollector_Update_OSPFv3SPFTiming covers #582's OSPFv3 SPF-run timing
+// pair, which is deliberately asymmetric: duration is instance-level, recency
+// is per-area (see the FRROSPFv3Overview field docs in opnsense/frr.go for
+// why there is no numeric instance-level recency reading on OSPFv3).
+func TestFRRCollector_Update_OSPFv3SPFTiming(t *testing.T) {
+	mux := http.NewServeMux()
+	// ospfoverview/searchOspfneighbor 404 (OSPFv2 absent); only OSPFv3 is live.
+	mux.HandleFunc("/api/quagga/diagnostics/ospfv3overview", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+  "response": {
+    "spfLastDurationSecs": 1,
+    "spfLastDurationMsecs": 500000,
+    "areas": {
+      "0.0.0.0": {
+        "numberOfAreaScopedLsa": 4,
+        "spfLastExecutedSecs": 10,
+        "spfLastExecutedMicroSecs": 250000
+      }
+    }
+  }
+}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawDuration, sawAreaTimestamp bool
+	var durationVal, areaTimestampVal float64
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		switch {
+		case strings.Contains(desc, "frr_ospfv3_spf_last_duration_seconds"):
+			sawDuration = true
+			durationVal = getMetricValue(m)
+		case strings.Contains(desc, "frr_ospfv3_area_spf_last_executed_timestamp_seconds"):
+			if labels["area"] == "0.0.0.0" {
+				sawAreaTimestamp = true
+				areaTimestampVal = getMetricValue(m)
+			}
+		}
+	}
+
+	if !sawDuration {
+		t.Fatal("expected frr_ospfv3_spf_last_duration_seconds")
+	}
+	if durationVal != 1.5 {
+		t.Errorf("frr_ospfv3_spf_last_duration_seconds: want 1.5, got %v", durationVal)
+	}
+	if !sawAreaTimestamp {
+		t.Fatal("expected frr_ospfv3_area_spf_last_executed_timestamp_seconds{area=0.0.0.0}")
+	}
+	wantTimestamp := float64(time.Now().Unix()) - 10.25
+	if diff := areaTimestampVal - wantTimestamp; diff > 2 || diff < -2 {
+		t.Errorf("frr_ospfv3_area_spf_last_executed_timestamp_seconds: want ~%v, got %v", wantTimestamp, areaTimestampVal)
 	}
 }

@@ -65,6 +65,11 @@ type corrEntry struct {
 	firstSeen time.Time // arrival of the first fragment: the expiry and eviction clock
 	zen       *Record   // Zenarmor enrichment, if a conn document for this key arrived
 	hasNF     bool      // false for a Zenarmor-only entry, which never emits
+	// tcpFlags is OR-ed, not taken from the sample: the two directions of one
+	// conversation arrive as separate NetFlow records, so the sample's byte alone reads
+	// "SYN" on practically every TCP flow and a refused connection (client SYN, server
+	// RST) becomes indistinguishable from a scan that got no reply at all (#585).
+	tcpFlags uint8
 }
 
 // CorrelatorStats is the correlator's own health, published as self-metrics so a
@@ -165,6 +170,7 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 	e.nf.RxPackets += r.NF.RxPackets
 	e.nf.Present = true
 	e.hasNF = true
+	e.tcpFlags |= r.TCPFlags
 	e.fragments += fragmentsOf(r)
 	if r.Start.Before(e.start) {
 		e.start = r.Start
@@ -270,6 +276,7 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 	}
 	out := e.sample
 	out.NF = e.nf
+	out.TCPFlags = e.tcpFlags
 	out.Fragments = e.fragments
 	out.Start = e.start
 	out.End = e.end

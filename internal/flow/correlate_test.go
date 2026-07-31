@@ -84,6 +84,62 @@ func TestCorrelator_CollapsesFragmentsIntoOneEmit(t *testing.T) {
 	}
 }
 
+// #585: one conversation arrives as a mean of 3.75 NetFlow records — the two
+// directions are separate records, and a long flow is re-reported per inactive
+// timeout — so the flag bits of a single connection are SPREAD ACROSS fragments.
+// Taking the first fragment's byte (the sample record's own value) would report "SYN"
+// on almost every TCP flow and make the attribute useless for the question it exists
+// to answer: a refused connection (client SYN, server RST) would be indistinguishable
+// from a scan that got no reply at all.
+//
+// OR-ing is not an invention here: a NetFlow record already reports the union of the
+// flags across its own packets, so extending that union across the fragments of one
+// connection-window keeps the field meaning exactly one thing.
+func TestCorrelator_UnionsTCPFlagsAcrossFragments(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+
+	syn := baseNF("cid-A", 60, 1, t0, t0)
+	syn.TCPFlags = 0x02 // client -> server: SYN
+	c.Observe(syn)
+	rstAck := baseNF("cid-A", 40, 1, t0, t0.Add(time.Second))
+	rstAck.TCPFlags = 0x14 // server -> client: RST,ACK — the peer refused
+	c.Observe(rstAck)
+
+	c.Expire(t0.Add(4 * time.Minute))
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+	}
+	if got := sink.recs[0].TCPFlags; got != 0x16 {
+		t.Errorf("TCPFlags = %#02x, want 0x16 (SYN|RST|ACK across both fragments)", got)
+	}
+	if got := sink.recs[0].LogAttributes()["netflow.tcp_flags"]; got != "SYN,RST,ACK" {
+		t.Errorf("rendered flags = %q, want SYN,RST,ACK", got)
+	}
+}
+
+// #585: Zenarmor's encryption verdict reaches the merged record only because it rides
+// inside L7, which finalize copies wholesale. A sibling field on Record would need its
+// own line in finalize and would otherwise be dropped on every merged record — the
+// only kind of record carrying both a Zenarmor verdict and NetFlow volume, and so the
+// only one that answers "which hosts still send cleartext to the internet".
+func TestCorrelator_MergedRecordCarriesZenarmorEncryption(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseNF("cid-A", 500, 5, t0, t0))
+	zen := baseZen("cid-A", 480, t0, t0.Add(time.Second))
+	zen.L7.Encryption = "Clear"
+	c.Observe(zen)
+
+	c.Expire(t0.Add(4 * time.Minute))
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 merged record, got %d", len(sink.recs))
+	}
+	if got := sink.recs[0].L7.Encryption; got != "Clear" {
+		t.Errorf("L7.Encryption = %q, want Clear", got)
+	}
+}
+
 // Fragments whose flow-ends land in different windows are different keys, so each
 // window emits its own partial — the mechanism that bounds emit latency for a flow
 // that never ends.

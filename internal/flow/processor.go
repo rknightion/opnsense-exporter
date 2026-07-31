@@ -267,6 +267,12 @@ func normalizeNetflow(nr netflow.Record, now time.Time) (Record, bool) {
 			TxPackets: nr.Packets,
 			Present:   true,
 		},
+		// The decoder has read element 6 since phase 2; this is where it stops being
+		// netflow-package-local (#585). Copied raw, with no protocol gate: the field's
+		// meaning is "what the exporter put in element 6", and ng_netflow already zeroes
+		// it for non-TCP, so a gate would only ever hide a non-zero value on a record
+		// whose protocol we read wrong — which is exactly the case worth seeing.
+		TCPFlags:  nr.TCPFlags,
 		Fragments: 1,
 	}
 	if r.End.IsZero() {

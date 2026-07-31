@@ -157,6 +157,27 @@ ANNOTATIONS: list = [
             "The kernel does not distinguish an attach from an explicit reset.",
     ),
     Annotation(
+        name="pf counter reset",
+        group="prometheus",
+        # Deliberately NOT on the toolbar: that set is pinned small on purpose
+        # (test_the_toolbar_set_is_small_and_is_the_declared_one), and this is a
+        # narrower, pf-specific case than the interface-wide reset that is up there.
+        title="pf counters cleared (pfctl -z)",
+        expr=f'{sel("opnsense_firewall_pf_counters_cleared_timestamp_seconds")} * 1000 > $__from < $__to',
+        value_as_time=True,
+        color="light-orange",
+        tag_keys=("opnsense_instance", "interface"),
+        metrics=("opnsense_firewall_pf_counters_cleared_timestamp_seconds",),
+        why="The pf-side twin of the interface counter reset above, and the reason #580 "
+            "modelled the field at all: after a `pfctl -z` every pf rate() panel shows a "
+            "bogus negative delta or a spurious plateau, with nothing on the dashboard to "
+            "explain it. pf reports the reset time per interface, so the marker lands on "
+            "the interface whose counters actually moved. Note the timestamp is parsed from "
+            "a naive, timezone-less string upstream and read as UTC, so the marker can sit "
+            "off by the box's real offset - it answers 'a reset happened around here', not "
+            "'at this exact second'.",
+    ),
+    Annotation(
         name="Boot environment created",
         group="prometheus",
         title="Boot environment created (upgrade)",
@@ -417,6 +438,18 @@ NOT_ANNOTATED: dict = {
         "same reason and with the same blocker as the v4 bound timestamp above: "
         "annotating it means adding a kind to internal/annotations, which is outside "
         "#546's scope rather than wrong in principle. Read as an age until then.",
+    "opnsense_frr_ospf_spf_last_executed_timestamp_seconds":
+        "A genuine point-in-time event - an SPF recalculation is triggered by a real "
+        "topology change - and a fair future annotation candidate, with the same blocker "
+        "as the dhcp6c prefix timestamps above: it means adding a kind to "
+        "internal/annotations, which is outside #582's scope rather than wrong in "
+        "principle. Read as an age via the OSPF SPF Age panel until then.",
+    "opnsense_frr_ospfv3_area_spf_last_executed_timestamp_seconds":
+        "The OSPFv3 twin of the OSPFv2 SPF timestamp above, excluded for the same reason. "
+        "Per-AREA rather than per-instance, deliberately: OSPFv3's instance-level "
+        "spfLastExecutedMsecs is a formatted duration STRING upstream (ospf6_top.c uses "
+        "json_object_string_add), so the only numeric SPF-age reading FRR exposes for v3 "
+        "lives on the area (ospf6_area.c's spfLastExecutedSecs + MicroSecs pair).",
     "opnsense_log_events_dhcp6c_address_preferred_expiry_timestamp_seconds":
         "The IA_NA twin of the prefix deadline above (#560), and excluded for exactly the "
         "same reason: future-dated by construction, so a marker would sit ahead of now. "

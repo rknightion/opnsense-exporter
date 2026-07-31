@@ -17,12 +17,32 @@
       "kind": "object"
     },
     {
+      "path": "data[].A",
+      "kind": "any"
+    },
+    {
+      "path": "data[].dnssec",
+      "kind": "any"
+    },
+    {
+      "path": "data[].edns",
+      "kind": "any"
+    },
+    {
       "path": "data[].host",
       "kind": "string"
     },
     {
       "path": "data[].ip",
       "kind": "string"
+    },
+    {
+      "path": "data[].other",
+      "kind": "any"
+    },
+    {
+      "path": "data[].rec",
+      "kind": "any"
     },
     {
       "path": "data[].rto",

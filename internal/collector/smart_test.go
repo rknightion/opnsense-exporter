@@ -277,6 +277,188 @@ func TestSmartCollector_Update_PluginAbsent(t *testing.T) {
 	}
 }
 
+func TestSMARTCollector_Update_WearAndRotation(t *testing.T) {
+	// #577: endurance_used, spare_available and rotation_rate must surface as
+	// their own device-scoped gauges, and rotation_rate=0 (SSD) must emit a
+	// real series rather than being treated as "absent".
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices":["ada0","nvme0","usb0"]}`))
+	})
+	mux.HandleFunc("/api/smart/service/info", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		switch r.FormValue("device") {
+		case "ada0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "WDC WD40EFRX",
+					"serial_number": "WD-SERIAL001",
+					"smart_status": {"passed": true},
+					"rotation_rate": 5400
+				}
+			}`))
+		case "nvme0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Samsung SSD 970",
+					"serial_number": "NVME-SERIAL002",
+					"smart_status": {"passed": true},
+					"rotation_rate": 0,
+					"spare_available": 100,
+					"endurance_used": 7
+				}
+			}`))
+		case "usb0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Generic USB",
+					"serial_number": "USB001",
+					"smart_status": {"passed": true}
+				}
+			}`))
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &smartCollector{subsystem: SMARTSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	// ada0 emits rotation_rate only (no wear %). nvme0 emits rotation_rate=0
+	// PLUS both wear gauges. usb0 emits none of the three. Verify each value
+	// individually rather than just a metric count, since a miscounted
+	// "absent" vs "present-zero" bug would still add up to the right total.
+	checks := []struct {
+		device string
+		metric string
+		want   float64
+		absent bool
+	}{
+		{"ada0", "device_rotation_rate_rpm", 5400, false},
+		{"ada0", "device_spare_available_percent", 0, true},
+		{"ada0", "device_endurance_used_percent", 0, true},
+		{"nvme0", "device_rotation_rate_rpm", 0, false},
+		{"nvme0", "device_spare_available_percent", 100, false},
+		{"nvme0", "device_endurance_used_percent", 7, false},
+		{"usb0", "device_rotation_rate_rpm", 0, true},
+		{"usb0", "device_spare_available_percent", 0, true},
+		{"usb0", "device_endurance_used_percent", 0, true},
+	}
+
+	for _, chk := range checks {
+		found := false
+		for _, m := range metrics {
+			if !strings.Contains(m.Desc().String(), chk.metric) {
+				continue
+			}
+			labels := getMetricLabels(m)
+			if labels["device"] != chk.device {
+				continue
+			}
+			found = true
+			if got := getMetricValue(m); got != chk.want {
+				t.Errorf("%s/%s: expected %v, got %v", chk.device, chk.metric, chk.want, got)
+			}
+		}
+		if chk.absent && found {
+			t.Errorf("%s/%s: expected no series, but found one", chk.device, chk.metric)
+		}
+		if !chk.absent && !found {
+			t.Errorf("%s/%s: expected a series, found none", chk.device, chk.metric)
+		}
+	}
+}
+
+func TestSMARTCollector_Update_AttributeFailed(t *testing.T) {
+	// #577: attribute_failed must be emitted ONLY for attributes whose
+	// when_failed marker is non-empty, carrying the raw marker as a label —
+	// this is the decided alternative to adding a `when_failed` label onto
+	// the existing attribute_value/worst/threshold/raw series, which would
+	// have changed those series' identity and broken any panel/rule reading
+	// them by their current label set. A healthy attribute must add NO
+	// series at all (not a 0-valued one), so a clean fleet costs ~0 cardinality.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices":["ada0"]}`))
+	})
+	mux.HandleFunc("/api/smart/service/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"output": {
+				"model_name": "Failing Drive",
+				"serial_number": "FAIL001",
+				"smart_status": {"passed": false},
+				"ata_smart_attributes": {
+					"table": [
+						{"id": 5, "name": "Reallocated_Sector_Ct", "value": 1, "worst": 1, "thresh": 10, "when_failed": "now", "raw": {"value": 200}},
+						{"id": 194, "name": "Temperature_Celsius", "value": 50, "worst": 40, "thresh": 0, "when_failed": "past", "raw": {"value": 38}},
+						{"id": 9, "name": "Power_On_Hours", "value": 99, "worst": 99, "thresh": 0, "when_failed": "", "raw": {"value": 12044}}
+					]
+				}
+			}
+		}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &smartCollector{subsystem: SMARTSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	var failedSeries []map[string]string
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "attribute_failed") {
+			failedSeries = append(failedSeries, getMetricLabels(m))
+		}
+	}
+
+	if len(failedSeries) != 2 {
+		t.Fatalf("expected 2 attribute_failed series (id 5 and 194), got %d: %+v", len(failedSeries), failedSeries)
+	}
+
+	byID := map[string]map[string]string{}
+	for _, labels := range failedSeries {
+		byID[labels["attribute_id"]] = labels
+	}
+
+	id5, ok := byID["5"]
+	if !ok {
+		t.Fatal("expected an attribute_failed series for id=5")
+	}
+	if id5["when_failed"] != "now" {
+		t.Errorf("expected id=5 when_failed=now, got %q", id5["when_failed"])
+	}
+	if id5["attribute_name"] != "Reallocated_Sector_Ct" {
+		t.Errorf("expected id=5 attribute_name=Reallocated_Sector_Ct, got %q", id5["attribute_name"])
+	}
+
+	id194, ok := byID["194"]
+	if !ok {
+		t.Fatal("expected an attribute_failed series for id=194")
+	}
+	if id194["when_failed"] != "past" {
+		t.Errorf("expected id=194 when_failed=past, got %q", id194["when_failed"])
+	}
+
+	if _, ok := byID["9"]; ok {
+		t.Error("expected NO attribute_failed series for id=9 (when_failed empty / healthy)")
+	}
+
+	// Value is always 1 — the series' mere existence is the signal.
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "attribute_failed") {
+			if got := getMetricValue(m); got != 1 {
+				t.Errorf("expected attribute_failed value=1, got %v", got)
+			}
+		}
+	}
+}
+
 func TestSMARTCollector_Name(t *testing.T) {
 	c := &smartCollector{subsystem: SMARTSubsystem}
 	if c.Name() != SMARTSubsystem {

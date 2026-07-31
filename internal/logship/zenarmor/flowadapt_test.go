@@ -366,6 +366,34 @@ func TestFlowFromDoc_EnrichesServiceAndCommunityID(t *testing.T) {
 	}
 }
 
+// flowEncrypted / flowCleartext isolate ONE field. Both are flowLANToInternet with
+// `encryption` restored: the anonymiser dropped it from the shared fixtures, but the
+// real corpus carries it on every conn document (see connDoc in fixtures_test.go), and
+// "Clear" / "TLS-Encrypted" are the two values it was observed with. Nothing else in
+// the document differs, so a failure here is about the copy and not about parsing.
+const flowEncrypted = `{"transport_proto":"TCP","interface":"ixl0","vlanid":"0","direction":"out","is_local":0,"ip_src_saddr":"192.0.2.50","ip_src_port":49812,"ip_dst_saddr":"203.0.113.12","ip_dst_port":443,"is_blocked":0,"src_npackets":12,"src_nbytes":1804,"dst_npackets":18,"dst_nbytes":23110,"start_time":1784656700000,"end_time":1784656707000,"encryption":"TLS-Encrypted","app_proto":"HTTPS","app_name":"Secure Web Browsing","app_category":"Secure Web Browsing"}`
+
+const flowCleartext = `{"transport_proto":"TCP","interface":"ixl0","vlanid":"0","direction":"out","is_local":0,"ip_src_saddr":"192.0.2.50","ip_src_port":49813,"ip_dst_saddr":"203.0.113.12","ip_dst_port":80,"is_blocked":0,"src_npackets":12,"src_nbytes":1804,"dst_npackets":18,"dst_nbytes":23110,"start_time":1784656700000,"end_time":1784656707000,"encryption":"Clear","app_proto":"HTTP","app_name":"Web Browsing","app_category":"Web Browsing"}`
+
+// #585: the parser has read `encryption` since the Zenarmor lane existed and the flow
+// adapter never copied it, so it reached the conn record only and could not be joined
+// against NetFlow volume. It rides on L7 because that is the struct the correlator
+// copies wholesale onto a merged record; a document that states nothing must leave the
+// field empty rather than claiming cleartext, which would read as a finding.
+func TestFlowFromDoc_CarriesEncryption(t *testing.T) {
+	if got := mustFlow(t, flowEncrypted).L7.Encryption; got != "TLS-Encrypted" {
+		t.Errorf("Encryption = %q, want TLS-Encrypted", got)
+	}
+	if got := mustFlow(t, flowCleartext).L7.Encryption; got != "Clear" {
+		t.Errorf("Encryption = %q, want Clear", got)
+	}
+	// The shared fixtures carry no encryption field at all — an absent field must not
+	// become a stated verdict.
+	if got := mustFlow(t, flowLANToInternet).L7.Encryption; got != "" {
+		t.Errorf("Encryption = %q on a document that stated none, want empty", got)
+	}
+}
+
 // The [F9] regression test, and the whole reason the hook lives in process rather
 // than parseDoc: parseDoc runs UPSTREAM of the self-traffic drop, which is on by
 // default and removes the exporter's own ingest link — about 11% of the flow

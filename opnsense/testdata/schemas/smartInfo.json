@@ -48,7 +48,15 @@
       "kind": "number"
     },
     {
+      "path": "output.ata_smart_attributes.table[].when_failed",
+      "kind": "string"
+    },
+    {
       "path": "output.ata_smart_attributes.table[].worst",
+      "kind": "number"
+    },
+    {
+      "path": "output.endurance_used",
       "kind": "number"
     },
     {
@@ -92,6 +100,10 @@
       "kind": "number"
     },
     {
+      "path": "output.rotation_rate",
+      "kind": "number"
+    },
+    {
       "path": "output.serial_number",
       "kind": "string"
     },
@@ -102,6 +114,10 @@
     {
       "path": "output.smart_status.passed",
       "kind": "boolean"
+    },
+    {
+      "path": "output.spare_available",
+      "kind": "number"
     },
     {
       "path": "output.temperature",

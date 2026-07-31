@@ -350,6 +350,166 @@ func TestFetchSMARTDevices_AttributesAndNVMe(t *testing.T) {
 	}
 }
 
+func TestFetchSMARTDevices_WearAndRotationFields(t *testing.T) {
+	// #577: endurance_used, spare_available and rotation_rate were decoded
+	// nowhere. rotation_rate=0 is a genuine SSD reading, not an absence, so
+	// this also pins that a present-but-zero wire value must NOT collapse to
+	// the same nil the "field omitted entirely" case produces (mirrors the
+	// AttachOrStatResetUptime presence-gating rule in interfaces.go).
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices":["ada0","nvme0","usb0"]}`))
+	})
+
+	mux.HandleFunc("/api/smart/service/info", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+		switch r.FormValue("device") {
+		case "ada0":
+			// Spinning HDD: rotation_rate is a real RPM figure; no wear
+			// percentages (those are SSD-only smartctl derivations).
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "WDC WD40EFRX",
+					"serial_number": "WD-SERIAL001",
+					"smart_status": {"passed": true},
+					"rotation_rate": 5400
+				}
+			}`))
+		case "nvme0":
+			// SSD: rotation_rate is explicitly 0 (not absent) and the wear
+			// percentages are present.
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Samsung SSD 970",
+					"serial_number": "NVME-SERIAL002",
+					"smart_status": {"passed": true},
+					"rotation_rate": 0,
+					"spare_available": 100,
+					"endurance_used": 7
+				}
+			}`))
+		case "usb0":
+			// Drive reports none of the three fields at all: must decode to
+			// nil, not a fabricated 0 (0 would misreport a real HDD/SSD as
+			// something it isn't, or invent wear data that was never sent).
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Generic USB Disk",
+					"serial_number": "USB001",
+					"smart_status": {"passed": true}
+				}
+			}`))
+		default:
+			t.Errorf("unexpected device %q", r.FormValue("device"))
+		}
+	})
+
+	data, err := client.FetchSMARTDevices()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Devices) != 3 {
+		t.Fatalf("expected 3 devices, got %d", len(data.Devices))
+	}
+
+	ada0 := data.Devices[0]
+	if ada0.RotationRate == nil {
+		t.Fatal("expected ada0 RotationRate to be non-nil")
+	} else if *ada0.RotationRate != 5400 {
+		t.Errorf("expected ada0 RotationRate=5400, got %v", *ada0.RotationRate)
+	}
+	if ada0.SpareAvailable != nil {
+		t.Errorf("expected ada0 SpareAvailable=nil (HDD has no wear %%), got %v", *ada0.SpareAvailable)
+	}
+	if ada0.EnduranceUsed != nil {
+		t.Errorf("expected ada0 EnduranceUsed=nil (HDD has no wear %%), got %v", *ada0.EnduranceUsed)
+	}
+
+	nvme0 := data.Devices[1]
+	if nvme0.RotationRate == nil {
+		t.Fatal("expected nvme0 RotationRate to be non-nil (explicit 0 means SSD, not absent)")
+	} else if *nvme0.RotationRate != 0 {
+		t.Errorf("expected nvme0 RotationRate=0, got %v", *nvme0.RotationRate)
+	}
+	if nvme0.SpareAvailable == nil {
+		t.Fatal("expected nvme0 SpareAvailable to be non-nil")
+	} else if *nvme0.SpareAvailable != 100 {
+		t.Errorf("expected nvme0 SpareAvailable=100, got %v", *nvme0.SpareAvailable)
+	}
+	if nvme0.EnduranceUsed == nil {
+		t.Fatal("expected nvme0 EnduranceUsed to be non-nil")
+	} else if *nvme0.EnduranceUsed != 7 {
+		t.Errorf("expected nvme0 EnduranceUsed=7, got %v", *nvme0.EnduranceUsed)
+	}
+
+	usb0 := data.Devices[2]
+	if usb0.RotationRate != nil {
+		t.Errorf("expected usb0 RotationRate=nil (field omitted), got %v", *usb0.RotationRate)
+	}
+	if usb0.SpareAvailable != nil {
+		t.Errorf("expected usb0 SpareAvailable=nil (field omitted), got %v", *usb0.SpareAvailable)
+	}
+	if usb0.EnduranceUsed != nil {
+		t.Errorf("expected usb0 EnduranceUsed=nil (field omitted), got %v", *usb0.EnduranceUsed)
+	}
+}
+
+func TestFetchSMARTDevices_AttributeWhenFailed(t *testing.T) {
+	// #577: when_failed on a SATA attribute row names WHICH attribute tripped
+	// a failing drive, distinct from the device-wide smart_status.passed
+	// gauge. Pins that the raw smartctl string ("now"/"past"/"") survives
+	// decoding unchanged onto the per-attribute struct.
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices":["ada0"]}`))
+	})
+
+	mux.HandleFunc("/api/smart/service/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"output": {
+				"model_name": "Failing Drive",
+				"serial_number": "FAIL001",
+				"smart_status": {"passed": false},
+				"ata_smart_attributes": {
+					"table": [
+						{"id": 5, "name": "Reallocated_Sector_Ct", "value": 1, "worst": 1, "thresh": 10, "when_failed": "now", "raw": {"value": 200}},
+						{"id": 194, "name": "Temperature_Celsius", "value": 50, "worst": 40, "thresh": 0, "when_failed": "past", "raw": {"value": 38}},
+						{"id": 9, "name": "Power_On_Hours", "value": 99, "worst": 99, "thresh": 0, "when_failed": "", "raw": {"value": 12044}}
+					]
+				}
+			}
+		}`))
+	})
+
+	data, err := client.FetchSMARTDevices()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(data.Devices))
+	}
+
+	attrs := data.Devices[0].Attributes
+	if len(attrs) != 3 {
+		t.Fatalf("expected 3 attributes, got %d", len(attrs))
+	}
+	if attrs[0].WhenFailed != "now" {
+		t.Errorf("expected attribute 0 WhenFailed=%q, got %q", "now", attrs[0].WhenFailed)
+	}
+	if attrs[1].WhenFailed != "past" {
+		t.Errorf("expected attribute 1 WhenFailed=%q, got %q", "past", attrs[1].WhenFailed)
+	}
+	if attrs[2].WhenFailed != "" {
+		t.Errorf("expected attribute 2 WhenFailed=%q (healthy), got %q", "", attrs[2].WhenFailed)
+	}
+}
+
 func TestFetchSMARTDevices_PartialFields(t *testing.T) {
 	// Some drives may not report temperature or power-on hours (e.g. USB attached).
 	// The returned SMARTDevice should have nil for missing fields.

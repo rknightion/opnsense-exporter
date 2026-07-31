@@ -28,6 +28,30 @@
       "kind": "any"
     },
     {
+      "path": "rows[].allocated",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].allocated_hard",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].allocated_soft",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].bytes_current",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].bytes_hard",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].bytes_soft",
+      "kind": "any"
+    },
+    {
       "path": "rows[].dst",
       "kind": "string"
     },

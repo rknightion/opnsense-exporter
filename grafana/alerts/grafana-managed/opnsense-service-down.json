@@ -26,7 +26,7 @@
       "description": "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. On-demand services (e.g. iperf) are excluded. One alert per service.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseservicedown",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "444"
+      "__panelId__": "459"
     },
     "expressions": {
       "A": {

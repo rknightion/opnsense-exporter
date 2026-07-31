@@ -89,6 +89,21 @@ var Watches = []Watch{
 		LabelKeys:      []string{"interface"},
 	},
 	{
+		// The pf-side twin of interface-reset above (#580). pf reports its own
+		// "counters cleared at" time per interface, so a `pfctl -z` gets a marker on
+		// the interface whose counters actually moved, instead of every pf rate()
+		// panel showing an unexplained negative delta or plateau.
+		//
+		// Unlike interface-reset this is an absolute timestamp, not an uptime offset,
+		// so it needs no UptimeOffsetOf. It is parsed upstream from a naive,
+		// timezone-less string and read as UTC, so the marker can sit off by the
+		// box's real offset — it answers "a reset happened around here".
+		Metric:    "opnsense_firewall_pf_counters_cleared_timestamp_seconds",
+		Kind:      "pf-counter-reset",
+		Text:      "pf counters cleared on %s (pfctl -z)",
+		LabelKeys: []string{"interface"},
+	},
+	{
 		Metric: "opnsense_snapshots_active_created_timestamp_seconds",
 		Kind:   "upgrade",
 		Text:   "Boot environment created (OPNsense upgrade)",

@@ -41,11 +41,21 @@ type frrCollector struct {
 	// OSPF per-neighbor
 	ospfNeighborAdjacency *prometheus.Desc
 
+	// OSPF per-neighbor adjacency stability (#582)
+	ospfNeighborNSMStateInfo  *prometheus.Desc
+	ospfNeighborUptimeSec     *prometheus.Desc
+	ospfNeighborDeadTimerSec  *prometheus.Desc
+	ospfNeighborLSAQueueDepth *prometheus.Desc
+
 	// OSPF per-area
 	ospfAreaIfActive *prometheus.Desc
 	ospfAreaNbrFull  *prometheus.Desc
 	ospfAreaLSACount *prometheus.Desc
 	ospfAreaSPFExec  *prometheus.Desc
+
+	// OSPF instance-level SPF-run timing (#582)
+	ospfSPFLastExecutedTimestamp *prometheus.Desc
+	ospfSPFLastDurationSec       *prometheus.Desc
 
 	// OSPF per-interface detail (#198)
 	ospfInterfaceUp                *prometheus.Desc
@@ -60,6 +70,12 @@ type frrCollector struct {
 	ospfv3InterfaceState      *prometheus.Desc
 	ospfv3AreaLSACount        *prometheus.Desc
 	ospfv3InterfacePendingLSA *prometheus.Desc
+
+	// OSPFv3 SPF-run timing (#582): duration is instance-level, recency is
+	// per-area — see the FRROSPFv3Overview field docs in opnsense/frr.go for
+	// why these aren't symmetric with each other or with OSPFv2's pair.
+	ospfv3SPFLastDurationSec           *prometheus.Desc
+	ospfv3AreaSPFLastExecutedTimestamp *prometheus.Desc
 
 	// BFD summary
 	bfdPeersTotal *prometheus.Desc
@@ -112,6 +128,11 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	peerIfLabels := []string{"peer", "interface"}
 	nbrLabels := []string{"neighbor_id", "address", "interface"}
 	areaLabels := []string{"area"}
+
+	// #582: OSPF per-neighbor adjacency-stability label sets, riding the
+	// same bootgrid row as nbrLabels above.
+	nbrStateLabels := []string{"neighbor_id", "address", "interface", "nsm_state"}
+	nbrQueueLabels := []string{"neighbor_id", "address", "interface", "queue"}
 
 	// #197: BGP peer session-detail label sets, deliberately distinct from the
 	// peerLabels (peer+remote_as+af) used by the existing per-peer BGP metrics
@@ -189,6 +210,36 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Whether this OSPF neighbor is in Full adjacency state (1 = Full, 0 = otherwise)",
 		nbrLabels)
 
+	// OSPF per-neighbor adjacency stability (#582): the binary adjacency flag
+	// above only distinguishes Full from everything else. These fill in what
+	// a non-Full neighbor is actually doing (stuck negotiating vs. flapping)
+	// and whether its LSA sync queues are draining.
+	c.ospfNeighborNSMStateInfo = buildPrometheusDesc(c.subsystem, "ospf_neighbor_nsm_state_info",
+		"FRR's raw OSPF neighbor state machine state for this neighbor (value is always 1; use "+
+			"the nsm_state label — DependUpon/Deleted/Down/Attempt/Init/2-Way/ExStart/Exchange/"+
+			"Loading/Full). Distinct from ospf_neighbor_adjacency: that flag only shows Full vs. "+
+			"not, this shows what a non-Full neighbor is stuck at.",
+		nbrStateLabels)
+	c.ospfNeighborUptimeSec = buildPrometheusDesc(c.subsystem, "ospf_neighbor_uptime_seconds",
+		"How long this OSPF neighbor's adjacency has been progressing, in seconds. Absent "+
+			"(not zero) while the neighbor's inactivity timer isn't scheduled — FRR doesn't "+
+			"report this field for a neighbor that hasn't started forming an adjacency.",
+		nbrLabels)
+	c.ospfNeighborDeadTimerSec = buildPrometheusDesc(c.subsystem, "ospf_neighbor_dead_timer_seconds",
+		"Time remaining before this OSPF neighbor's dead interval expires, in seconds. A value "+
+			"repeatedly resetting close to the configured dead interval is healthy; one trending "+
+			"toward zero and recovering (rather than resetting cleanly on a fresh hello) is a "+
+			"flapping adjacency. Absent (not zero) when FRR reports the timer as \"inactive\" "+
+			"(no dead-interval timer currently running for this neighbor).",
+		nbrLabels)
+	c.ospfNeighborLSAQueueDepth = buildPrometheusDesc(c.subsystem, "ospf_neighbor_lsa_queue_depth",
+		"Current LSA synchronization queue depth for this OSPF neighbor, by queue "+
+			"(db_summary = database description summary list, ls_request = link-state request "+
+			"list, ls_retransmission = link-state retransmission list). Persistently nonzero "+
+			"ls_retransmission depth is the classic symptom of a neighbor stuck failing to "+
+			"acknowledge LSAs.",
+		nbrQueueLabels)
+
 	// OSPF per-area
 	c.ospfAreaIfActive = buildPrometheusDesc(c.subsystem, "ospf_area_interfaces_active",
 		"Number of active interfaces in this OSPF area", areaLabels)
@@ -198,6 +249,21 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Number of LSAs in this OSPF area", areaLabels)
 	c.ospfAreaSPFExec = buildPrometheusDesc(c.subsystem, "ospf_area_spf_executed_total",
 		"Cumulative number of SPF calculations executed in this OSPF area", areaLabels)
+
+	// OSPF instance-level SPF-run timing (#582): ospf_area_spf_executed_total
+	// above is a per-area COUNT of runs, not their cost or recency — a router
+	// thrashing SPF (short-interval recalculation storms) is a CPU-cost
+	// incident this pair makes visible that the count alone does not.
+	c.ospfSPFLastExecutedTimestamp = buildPrometheusDesc(c.subsystem, "ospf_spf_last_executed_timestamp_seconds",
+		"Unix timestamp of this OSPF instance's last SPF calculation. Exported as an absolute "+
+			"timestamp rather than a \"seconds ago\" reading (FRR re-derives the age fresh on "+
+			"every poll; an absolute timestamp lets time()-metric compute current age at query "+
+			"time instead of only at last-scrape time). Absent until the instance's first SPF run.",
+		nil)
+	c.ospfSPFLastDurationSec = buildPrometheusDesc(c.subsystem, "ospf_spf_last_duration_seconds",
+		"Wall-clock duration of this OSPF instance's last SPF calculation, in seconds. Absent "+
+			"until the instance's first SPF run.",
+		nil)
 
 	// OSPF per-interface detail (#198)
 	c.ospfInterfaceUp = buildPrometheusDesc(c.subsystem, "ospf_interface_up",
@@ -229,6 +295,22 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	c.ospfv3InterfacePendingLSA = buildPrometheusDesc(c.subsystem, "ospfv3_interface_pending_lsa",
 		"OSPFv3 flooding backlog on this interface: pending LSAs by queue "+
 			"(update = LSUpdate, ack = LSAck)", ifaceQueueLabels)
+
+	// OSPFv3 SPF-run timing (#582). Deliberately NOT symmetric with the
+	// OSPFv2 pair above: FRR's ospf6d only exposes a numeric "how long did
+	// the last SPF take" reading at the INSTANCE level, and a numeric "time
+	// since the last SPF ran" reading per AREA — the instance-level
+	// "spfLastExecutedMsecs" is a formatted string with no numeric
+	// equivalent (see the FRROSPFv3Overview field docs in opnsense/frr.go).
+	c.ospfv3SPFLastDurationSec = buildPrometheusDesc(c.subsystem, "ospfv3_spf_last_duration_seconds",
+		"Wall-clock duration of this OSPFv3 instance's last SPF calculation, in seconds. "+
+			"Absent until the instance's first SPF run.",
+		nil)
+	c.ospfv3AreaSPFLastExecutedTimestamp = buildPrometheusDesc(c.subsystem, "ospfv3_area_spf_last_executed_timestamp_seconds",
+		"Unix timestamp of this OSPFv3 area's last SPF calculation. Exported as an absolute "+
+			"timestamp for the same reason as opnsense_frr_ospf_spf_last_executed_timestamp_seconds "+
+			"above. Absent until this area's first SPF run.",
+		areaLabels)
 
 	// BFD summary
 	c.bfdPeersTotal = buildPrometheusDesc(c.subsystem, "bfd_peers_total",
@@ -339,11 +421,15 @@ func (c *frrCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.bgpPeerLastResetSec, c.bgpPeerPrefixesAccepted, c.bgpPeerQueueDepth,
 		c.ospfNeighborsTotal,
 		c.ospfNeighborAdjacency,
+		c.ospfNeighborNSMStateInfo, c.ospfNeighborUptimeSec, c.ospfNeighborDeadTimerSec,
+		c.ospfNeighborLSAQueueDepth,
 		c.ospfAreaIfActive, c.ospfAreaNbrFull, c.ospfAreaLSACount, c.ospfAreaSPFExec,
+		c.ospfSPFLastExecutedTimestamp, c.ospfSPFLastDurationSec,
 		c.ospfInterfaceUp, c.ospfInterfaceCost, c.ospfInterfaceNeighbors,
 		c.ospfInterfaceNeighborsAdjacent, c.ospfInterfaceState,
 		c.ospfv3InterfaceUp, c.ospfv3InterfaceCost, c.ospfv3InterfaceState,
 		c.ospfv3AreaLSACount, c.ospfv3InterfacePendingLSA,
+		c.ospfv3SPFLastDurationSec, c.ospfv3AreaSPFLastExecutedTimestamp,
 		c.bfdPeersTotal,
 		c.bfdPeerUp, c.bfdPeerUptimeSec,
 		c.bfdPeerCtrlIn, c.bfdPeerCtrlOut,
@@ -464,6 +550,27 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 		for _, nbr := range ospf.Neighbors {
 			ch <- prometheus.MustNewConstMetric(c.ospfNeighborAdjacency,
 				prometheus.GaugeValue, nbr.Adjacent, nbr.NeighborID, nbr.Address, nbr.Interface, c.instance)
+
+			// #582: adjacency-stability metrics riding the same neighbor row.
+			ch <- prometheus.MustNewConstMetric(c.ospfNeighborNSMStateInfo,
+				prometheus.GaugeValue, 1, nbr.NeighborID, nbr.Address, nbr.Interface, nbr.NSMState, c.instance)
+			if nbr.HasUptime {
+				ch <- prometheus.MustNewConstMetric(c.ospfNeighborUptimeSec,
+					prometheus.GaugeValue, nbr.UptimeSeconds, nbr.NeighborID, nbr.Address, nbr.Interface, c.instance)
+			}
+			if nbr.HasDeadTimer {
+				ch <- prometheus.MustNewConstMetric(c.ospfNeighborDeadTimerSec,
+					prometheus.GaugeValue, nbr.DeadTimerSeconds, nbr.NeighborID, nbr.Address, nbr.Interface, c.instance)
+			}
+			ch <- prometheus.MustNewConstMetric(c.ospfNeighborLSAQueueDepth,
+				prometheus.GaugeValue, nbr.DatabaseSummaryQueueDepth,
+				nbr.NeighborID, nbr.Address, nbr.Interface, "db_summary", c.instance)
+			ch <- prometheus.MustNewConstMetric(c.ospfNeighborLSAQueueDepth,
+				prometheus.GaugeValue, nbr.LinkStateRequestQueueDepth,
+				nbr.NeighborID, nbr.Address, nbr.Interface, "ls_request", c.instance)
+			ch <- prometheus.MustNewConstMetric(c.ospfNeighborLSAQueueDepth,
+				prometheus.GaugeValue, nbr.LinkStateRetransmissionQueueDepth,
+				nbr.NeighborID, nbr.Address, nbr.Interface, "ls_retransmission", c.instance)
 		}
 		for _, area := range ospf.Areas {
 			ch <- prometheus.MustNewConstMetric(c.ospfAreaIfActive,
@@ -474,6 +581,16 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 				prometheus.GaugeValue, area.LSACount, area.Area, c.instance)
 			ch <- prometheus.MustNewConstMetric(c.ospfAreaSPFExec,
 				prometheus.CounterValue, area.SPFExecuted, area.Area, c.instance)
+		}
+
+		// #582: instance-level SPF-run timing.
+		if ospf.HasSPFLastExecuted {
+			ch <- prometheus.MustNewConstMetric(c.ospfSPFLastExecutedTimestamp,
+				prometheus.GaugeValue, ospf.SPFLastExecutedTimestamp, c.instance)
+		}
+		if ospf.HasSPFLastDuration {
+			ch <- prometheus.MustNewConstMetric(c.ospfSPFLastDurationSec,
+				prometheus.GaugeValue, ospf.SPFLastDurationSeconds, c.instance)
 		}
 	}
 
@@ -505,6 +622,17 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 		for _, area := range ospfv3Overview.Areas {
 			ch <- prometheus.MustNewConstMetric(c.ospfv3AreaLSACount,
 				prometheus.GaugeValue, area.LSACount, area.Area, c.instance)
+			// #582: per-area SPF-run recency (the only level OSPFv3 reports
+			// it numerically — see the field docs in opnsense/frr.go).
+			if area.HasSPFLastExecuted {
+				ch <- prometheus.MustNewConstMetric(c.ospfv3AreaSPFLastExecutedTimestamp,
+					prometheus.GaugeValue, area.SPFLastExecutedTimestamp, area.Area, c.instance)
+			}
+		}
+		// #582: instance-level SPF-run duration.
+		if ospfv3Overview.HasSPFLastDuration {
+			ch <- prometheus.MustNewConstMetric(c.ospfv3SPFLastDurationSec,
+				prometheus.GaugeValue, ospfv3Overview.SPFLastDurationSeconds, c.instance)
 		}
 	}
 	if ospfv3Interfaces.Present {

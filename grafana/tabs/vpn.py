@@ -339,6 +339,20 @@ def build(b: Builder):
         sort_by="Name",
         desc="Rekey and lifetime values for each Phase 2 (Child SA) tunnel.",
     )
+    # #578: Connected only exists at phase1 (IKE SA) level -- a tunnel with
+    # phase1 up and one dead child SA reads fully healthy without this panel.
+    ipsec_p2_established = b.statetimeline(
+        "IPsec Phase 2 (Child SA) Established",
+        [(sel("opnsense_ipsec_phase2_established"),
+          "{{name}} — {{description}}")],
+        UPDOWN, w=24, h=8,
+        desc=(
+            "Whether each phase2 child SA is fully installed (1) vs down or "
+            "transitional -- rekeying, deleting, etc. (0). Check this alongside "
+            "IPsec Phase 1 Status above: phase1 can show connected while a "
+            "single child SA has failed or never installed."
+        ),
+    )
 
     # ================================================================
     # Row 6: IPsec Pools (mode-cfg address pool utilization)
@@ -424,6 +438,52 @@ def build(b: Builder):
             "is the time-to-rekey signal."
         ),
     )
+    # #578: the byte-count rekey trigger's own explanatory ratio -- the already
+    # exported phase1/phase2 bytes-in/out carry no limits, so "is this tunnel
+    # rekeying every 90s because it keeps hitting its byte quota" was previously
+    # unanswerable. RAW values (not rate()) on purpose: this is a level-vs-
+    # threshold comparison like sa_age above, not a throughput view (throughput
+    # already has its own panel: IPsec Phase 2 Throughput). A soft/hard series
+    # absent for a given reqid means that limit is unconfigured (0 = unlimited
+    # in setkey/strongSwan's own convention, never exported as a fabricated
+    # zero) -- not a scrape gap.
+    sa_bytes = b.ts(
+        "IPsec SA Bytes vs Rekey Limits",
+        [
+            (sel("opnsense_ipsec_sa_bytes_current_total"), "reqid {{reqid}} current"),
+            (sel("opnsense_ipsec_sa_bytes_soft_limit"), "reqid {{reqid}} soft"),
+            (sel("opnsense_ipsec_sa_bytes_hard_limit"), "reqid {{reqid}} hard"),
+        ],
+        unit="bytes", w=12, h=8,
+        desc=(
+            "Kernel SA cumulative byte usage (most-utilized SA per reqid/child-SA "
+            "group) against its configured soft (rekey) and hard byte-count "
+            "limits. Current repeatedly climbing straight back up to soft right "
+            "after a rekey is the 'IPsec is up but throughput is garbage' "
+            "pattern -- a byte-count lifetime configured too small for the "
+            "tunnel's real traffic. Missing soft/hard series for a reqid means "
+            "no byte-count limit is configured for that child SA."
+        ),
+    )
+    # Packet-count ("allocations") equivalent of the byte-count panel above --
+    # some child SAs are configured with a packet-count rekey margin instead of,
+    # or alongside, a byte-count one, and would otherwise rekey constantly with
+    # no explanation available on this dashboard.
+    sa_allocated = b.ts(
+        "IPsec SA Packet Allocations vs Rekey Limits",
+        [
+            (sel("opnsense_ipsec_sa_allocated_current_total"), "reqid {{reqid}} current"),
+            (sel("opnsense_ipsec_sa_allocated_soft_limit"), "reqid {{reqid}} soft"),
+            (sel("opnsense_ipsec_sa_allocated_hard_limit"), "reqid {{reqid}} hard"),
+        ],
+        unit="short", w=12, h=8,
+        desc=(
+            "Kernel SA cumulative packet usage (most-utilized SA per reqid/"
+            "child-SA group) against its configured soft (rekey) and hard "
+            "packet-count limits. Missing soft/hard series for a reqid means no "
+            "packet-count limit is configured for that child SA."
+        ),
+    )
     config_flags = b.statetimeline(
         "IPsec Config State",
         [
@@ -463,13 +523,14 @@ def build(b: Builder):
               [ipsec_p1_state, ipsec_p1_install, ipsec_p1_bytes, ipsec_p1_pkts],
               present="has_ipsec_tunnels"),
         b.row("IPsec Phase 2",
-              [ipsec_p2_install, ipsec_p2_throughput, ipsec_p2_pkts, ipsec_p2_times],
+              [ipsec_p2_install, ipsec_p2_throughput, ipsec_p2_pkts, ipsec_p2_times,
+               ipsec_p2_established],
               present="has_ipsec_tunnels"),
         b.row("IPsec Mode-CFG Pools",
               [pool_online, pool_offline, pool_size, lease_online],
               present="has_ipsec_pools"),
         b.row("IPsec Kernel (SAD/SPD)",
-              [sad_entries, spd_policies, sad_nat, sa_age],
+              [sad_entries, spd_policies, sad_nat, sa_age, sa_bytes, sa_allocated],
               present="has_ipsec_sad"),
         b.row("IPsec Config State",
               [config_flags],

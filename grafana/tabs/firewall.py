@@ -188,6 +188,31 @@ def build(b: Builder):
         ),
     )
 
+    # #580: a reset marker for the pf pass/block counters (rows 1-2 above). Without
+    # it, a `pfctl -z`/filter reload shows up on those rate() panels as an
+    # unexplained negative delta or plateau. Table, not a timeseries: the value
+    # only changes on a reset, so a line chart would render as a flat step
+    # function that tells the reader nothing a "when" table doesn't say better —
+    # same reasoning as the GeoIP "Database Last Update" table below.
+    pf_counters_cleared = b.table(
+        "PF Counters Reset (Cleared) — by Interface",
+        [epoch_ms(sel("opnsense_firewall_pf_counters_cleared_timestamp_seconds"))],
+        w=12, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"interface": "Interface", "opnsense_instance": "Instance", "Value": "Counters Reset At"},
+        unit_overrides={"Counters Reset At": "dateTimeAsIso"},
+        desc=(
+            "When pf's own pass/block packet and byte counters (the traffic panels above) were "
+            "last reset for each interface — a `pfctl -z` or a filter/rule reload. OPNsense reports "
+            "this with no timezone marker at all, so it is decoded assuming UTC and can be off by "
+            "the firewall's real UTC offset; read it as 'a reset happened', not a to-the-minute "
+            "clock. A rate()/increase() query spanning a reset already reads a bogus negative delta "
+            "or spurious plateau on the traffic panels above — use this table to explain that away "
+            "rather than chase it as a real traffic drop. Absent entirely for an interface the box "
+            "has never reported a parseable reset time for."
+        ),
+    )
+
     # ══════════════════════════════════════════════════════════════════════
     # ROW 4 — PF state table (pf_stats)
     # ══════════════════════════════════════════════════════════════════════
@@ -474,7 +499,7 @@ def build(b: Builder):
         b.row("Traffic — Pass/Block Throughput (outbound)",
               [bw_pass_out, bw_block_out]),
         b.row("Interface Hits & PF State Table",
-              [iface_hits, pf_states_gauge, pf_states_ts, pf_iface_refs]),
+              [iface_hits, pf_states_gauge, pf_states_ts, pf_iface_refs, pf_counters_cleared]),
         b.row("PF State Table (pf-stats)",
               [pf_entries, pf_state_ops]),
         b.row("PF Counters",

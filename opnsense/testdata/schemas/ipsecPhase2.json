@@ -50,6 +50,10 @@
     {
       "path": "rows[].rekey-time",
       "kind": "string"
+    },
+    {
+      "path": "rows[].state",
+      "kind": "string"
     }
   ]
 }

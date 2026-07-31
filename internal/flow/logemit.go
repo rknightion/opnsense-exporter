@@ -73,6 +73,16 @@ func (r Record) LogAttributes() map[string]string {
 	if r.Fragments > 1 {
 		a["flow.fragments"] = strconv.Itoa(r.Fragments)
 	}
+	// The peer's own answer, which nothing else on this record expresses (#585):
+	// flow.action is the FIREWALL's verdict, so a burst of WAN flows currently cannot
+	// be read as a port scan (SYN, no reply, no bytes back) rather than a refused
+	// service (RST) or a clean short session. Namespaced under the SOURCE that supplied
+	// it, not under flow.*, because it exists only where NetFlow does — a
+	// Zenarmor-only record never carries one, and a reader must not have to discover
+	// that from its absence.
+	if r.TCPFlags != 0 {
+		a["netflow.tcp_flags"] = tcpFlagsString(r.TCPFlags)
+	}
 
 	if r.L7.AppName != "" {
 		a["app.name"] = r.L7.AppName
@@ -85,6 +95,14 @@ func (r Record) LogAttributes() map[string]string {
 	}
 	if r.L7.DomainCat != "" {
 		a["app.domain_category"] = r.L7.DomainCat
+	}
+	// Zenarmor's transport-security verdict (#585), verbatim: "Clear" or
+	// "TLS-Encrypted". Under zenarmor.* rather than app.* for the same reason
+	// netflow.tcp_flags is not flow.*: only one of the two sources can state it, and a
+	// NetFlow-only record legitimately has none. Cleartext-to-the-internet becomes one
+	// Loki query joined against the NetFlow volume already on this record.
+	if r.L7.Encryption != "" {
+		a["zenarmor.encryption"] = r.L7.Encryption
 	}
 
 	if r.Enrich.SrcHostname != "" {
@@ -166,6 +184,42 @@ func geoAttrs(a map[string]string, prefix string, g GeoEndpoint) {
 	if g.ZenCountry != "" && g.ZenCountry != g.Country {
 		a[prefix+".geo.zen_country"] = g.ZenCountry
 	}
+}
+
+// tcpFlagNames are the eight TCP control bits in WIRE ORDER, least significant first,
+// which is also RFC 9293's own order for the flag field. Rendering always walks this
+// array, so one flag combination has exactly one spelling and an operator can write
+// `netflow.tcp_flags="SYN,ACK"` as an exact match. An order that varied — a map range,
+// or "most interesting bit first" — would give the same flow two spellings and make
+// every exact-match query silently miss a share of its records.
+//
+// ECE and CWR are named rather than folded into an "other" bucket: they are ECN, and a
+// path that negotiates ECN is a real thing to be able to see. The names are the
+// conventional tcpdump/Wireshark spellings, because those are what an operator will
+// type.
+var tcpFlagNames = [8]string{"FIN", "SYN", "RST", "PSH", "ACK", "URG", "ECE", "CWR"}
+
+// tcpFlagsString renders a TCP flag byte as its comma-separated set. A zero byte
+// yields the empty string, which the caller reads as "emit no attribute" — see
+// Record.TCPFlags for why zero is unambiguous.
+func tcpFlagsString(f uint8) string {
+	if f == 0 {
+		return ""
+	}
+	var b strings.Builder
+	// Longest possible value ("FIN,SYN,RST,PSH,ACK,URG,ECE,CWR") is 31 bytes; sizing
+	// for it costs one allocation on a path that runs per shipped log record.
+	b.Grow(31)
+	for i, name := range tcpFlagNames {
+		if f&(1<<uint(i)) == 0 {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(name)
+	}
+	return b.String()
 }
 
 // LogBody is a compact, human-readable one-line summary of the flow, used as the OTLP

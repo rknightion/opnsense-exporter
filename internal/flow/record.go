@@ -139,6 +139,18 @@ type L7 struct {
 	AppProto    string
 	AppCategory string // bounded taxonomy (24 values observed live): safe as a label
 	DomainCat   string // bounded taxonomy: safe as a label
+	// Encryption is Zenarmor's transport-security verdict for the connection, verbatim
+	// as sent: "Clear" or "TLS-Encrypted" across the live capture. It is a LOG
+	// ATTRIBUTE only (#585) — bounded enough to be a label, but the flow label set is
+	// closed at seven and this answers a query ("which internal hosts still send
+	// cleartext to the internet") that wants the addresses beside it anyway.
+	//
+	// It lives INSIDE L7 rather than beside it because the correlator copies L7
+	// wholesale onto a merged record (correlate.go finalize). A sibling field on Record
+	// would need its own line there and would otherwise be silently dropped on every
+	// merged record — the only kind of record that carries a Zenarmor verdict and
+	// NetFlow volume together.
+	Encryption string
 }
 
 // Enrichment is everything resolved from the enrich.Snapshot. All of it is
@@ -204,6 +216,20 @@ type Record struct {
 	NF        Counters
 	Zen       Counters
 	Fragments int // NetFlow records folded into this record; 0 for Zenarmor-only
+
+	// TCPFlags is the union of the TCP control bits NetFlow reported (element 6),
+	// OR-ed across every fragment the correlator folded together. A single NetFlow
+	// record already reports the union over its own packets, so extending it across a
+	// connection-window's fragments keeps the field meaning one thing — and it has to
+	// be a union, because the two directions of a conversation arrive as separate
+	// records and the first fragment alone says "SYN" for practically every TCP flow.
+	//
+	// Zero means "nothing reported", never "a segment with no flags set": no legal TCP
+	// segment carries an empty flag byte, so the two readings collapse and no separate
+	// presence bit is needed. Zenarmor supplies nothing here — its own
+	// src_tcp_flags/dst_tcp_flags were empty on every document of the live capture and
+	// are not modelled — so this stays zero on a Zenarmor-only record.
+	TCPFlags uint8
 
 	In        Iface
 	Out       Iface

@@ -1,10 +1,12 @@
 package opnsense
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // bgpSummaryFixture is derived from FRR `show ip bgp summary json` output
@@ -155,6 +157,9 @@ func TestFetchFRRBGP_DualSAFI(t *testing.T) {
 }
 
 // ospfOverviewFixture is derived from FRR `show ip ospf json` output.
+// spfLastExecutedMsecs/spfLastDurationMsecs (#582) are genuine numeric FRR
+// fields (ospf_vty.c ~3451-3463, verified against FRRouting/frr master) —
+// 5000ms "ago" and a 42ms last-run duration.
 const ospfOverviewFixture = `{
   "response": {
     "routerId": "10.0.0.1",
@@ -165,6 +170,8 @@ const ospfOverviewFixture = `{
     "holdtimeMaxMsecs": 5000,
     "lsaMinIntervalMsecs": 5000,
     "lsaArrivalMsecs": 1000,
+    "spfLastExecutedMsecs": 5000,
+    "spfLastDurationMsecs": 42,
     "areas": {
       "0.0.0.0": {
         "areaIfTotalCounter": 2,
@@ -201,6 +208,16 @@ const ospfNeighborsEmptyFixture = `{"total":0,"rowCount":0,"current":1,"rows":[]
 
 // ospfNeighborsFixture is a bootgrid response with both old-style and
 // new-style FRR field names to test coalescing.
+//
+// #582 adjacency-stability fields, verified against FRRouting/frr master
+// (ospfd/ospf_vty.c show_ip_ospf_neighbour_brief ~5180-5234): 10.0.0.2 (Full)
+// carries the "active timer" shape — converged holds the raw NSM state name,
+// upTimeInMsec/routerDeadIntervalTimerDueMsec are both genuine numbers, and
+// the LSA queue-depth counters are a live nonzero retransmission backlog.
+// 10.0.0.3 (Init) carries the "no inactivity timer scheduled" shape FRR sends
+// for a neighbor that hasn't progressed: upTimeInMsec is omitted entirely and
+// routerDeadIntervalTimerDueMsec is the literal string "inactive" rather than
+// a number — both must decode to "no reading", never a fabricated 0.
 const ospfNeighborsFixture = `{
   "total": 2,
   "rowCount": 2,
@@ -211,14 +228,25 @@ const ospfNeighborsFixture = `{
       "priority": "1",
       "state": "Full/DR",
       "address": "10.0.0.2",
-      "ifaceName": "em0"
+      "ifaceName": "em0",
+      "converged": "Full",
+      "upTimeInMsec": 93780000,
+      "routerDeadIntervalTimerDueMsec": 32000,
+      "databaseSummaryListCounter": 0,
+      "linkStateRequestListCounter": 0,
+      "linkStateRetransmissionListCounter": 2
     },
     {
       "neighborid": "10.0.0.3",
       "nbrPriority": "1",
       "nbrState": "Init/Other",
       "ifaceAddress": "10.0.0.3",
-      "ifaceName": "em1"
+      "ifaceName": "em1",
+      "converged": "Init",
+      "routerDeadIntervalTimerDueMsec": "inactive",
+      "databaseSummaryListCounter": 0,
+      "linkStateRequestListCounter": 0,
+      "linkStateRetransmissionListCounter": 0
     }
   ]
 }`
@@ -408,6 +436,40 @@ func TestFetchFRRBGP_PluginAbsent404(t *testing.T) {
 	}
 }
 
+// TestFrrOSPFDeadIntervalDue_UnmarshalJSON guards #582's dead-timer decode
+// directly: FRR sends this field as a JSON number OR the literal string
+// "inactive" depending on neighbor state (ospf_vty.c ~5195-5219). A decode
+// that coerced "inactive" (or any other unexpected shape) into 0 would be
+// indistinguishable from a genuine "dead timer expires in 0s" reading.
+func TestFrrOSPFDeadIntervalDue_UnmarshalJSON(t *testing.T) {
+	cases := []struct {
+		name        string
+		json        string
+		wantPresent bool
+		wantMsec    float64
+	}{
+		{"number", `32000`, true, 32000},
+		{"zero_is_a_real_reading", `0`, true, 0},
+		{"inactive_string", `"inactive"`, false, 0},
+		{"unexpected_string", `"unknown"`, false, 0},
+		{"null", `null`, false, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var d frrOSPFDeadIntervalDue
+			if err := json.Unmarshal([]byte(tc.json), &d); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if d.Present != tc.wantPresent {
+				t.Errorf("Present: want %v, got %v", tc.wantPresent, d.Present)
+			}
+			if tc.wantPresent && d.Msec != tc.wantMsec {
+				t.Errorf("Msec: want %v, got %v", tc.wantMsec, d.Msec)
+			}
+		})
+	}
+}
+
 func TestFetchFRROSPF_Normal(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
@@ -458,6 +520,30 @@ func TestFetchFRROSPF_Normal(t *testing.T) {
 	if n1.Interface != "em0" {
 		t.Errorf("neighbor 10.0.0.2 Interface: want em0, got %q", n1.Interface)
 	}
+	// #582: n1 carries FRR's "active inactivity timer" shape — both timer
+	// fields are genuine numbers.
+	if n1.NSMState != "Full" {
+		t.Errorf("neighbor 10.0.0.2 NSMState: want Full, got %q", n1.NSMState)
+	}
+	if !n1.HasUptime {
+		t.Error("neighbor 10.0.0.2 HasUptime: want true (upTimeInMsec present)")
+	}
+	if n1.UptimeSeconds != 93780 {
+		t.Errorf("neighbor 10.0.0.2 UptimeSeconds: want 93780, got %v", n1.UptimeSeconds)
+	}
+	if !n1.HasDeadTimer {
+		t.Error("neighbor 10.0.0.2 HasDeadTimer: want true (routerDeadIntervalTimerDueMsec is numeric)")
+	}
+	if n1.DeadTimerSeconds != 32 {
+		t.Errorf("neighbor 10.0.0.2 DeadTimerSeconds: want 32, got %v", n1.DeadTimerSeconds)
+	}
+	if n1.LinkStateRetransmissionQueueDepth != 2 {
+		t.Errorf("neighbor 10.0.0.2 LinkStateRetransmissionQueueDepth: want 2, got %v", n1.LinkStateRetransmissionQueueDepth)
+	}
+	if n1.DatabaseSummaryQueueDepth != 0 || n1.LinkStateRequestQueueDepth != 0 {
+		t.Errorf("neighbor 10.0.0.2 db_summary/ls_request queue depths: want 0/0, got %v/%v",
+			n1.DatabaseSummaryQueueDepth, n1.LinkStateRequestQueueDepth)
+	}
 
 	n2 := nbrMap["10.0.0.3"]
 	if n2.Adjacent != 0 {
@@ -465,6 +551,21 @@ func TestFetchFRROSPF_Normal(t *testing.T) {
 	}
 	if n2.Interface != "em1" {
 		t.Errorf("neighbor 10.0.0.3 Interface: want em1, got %q", n2.Interface)
+	}
+	// #582: n2 carries FRR's "no inactivity timer scheduled" shape — upTimeInMsec
+	// is omitted and routerDeadIntervalTimerDueMsec is the string "inactive".
+	// GUARDS: a naive numeric decode of "inactive" (e.g. via flexInt, which
+	// silently maps any unparseable value to 0) would turn "no dead timer" into
+	// a fabricated "0 seconds until expiry" — indistinguishable from a neighbor
+	// on the brink of dropping. HasDeadTimer must stay false here.
+	if n2.NSMState != "Init" {
+		t.Errorf("neighbor 10.0.0.3 NSMState: want Init, got %q", n2.NSMState)
+	}
+	if n2.HasUptime {
+		t.Error("neighbor 10.0.0.3 HasUptime: want false (upTimeInMsec key absent)")
+	}
+	if n2.HasDeadTimer {
+		t.Error(`neighbor 10.0.0.3 HasDeadTimer: want false (routerDeadIntervalTimerDueMsec is "inactive")`)
 	}
 
 	// Areas
@@ -486,6 +587,51 @@ func TestFetchFRROSPF_Normal(t *testing.T) {
 	}
 	if a.SPFExecuted != 12 {
 		t.Errorf("area SPFExecuted: want 12, got %v", a.SPFExecuted)
+	}
+
+	// #582: instance-level SPF-run timing. SPFLastExecutedTimestamp is
+	// computed from a fixed "5000ms ago" reading at call time, so assert it
+	// lands within a generous window of time.Now() rather than an exact value.
+	if !data.HasSPFLastExecuted {
+		t.Error("expected HasSPFLastExecuted=true")
+	}
+	wantTimestamp := float64(time.Now().Unix()) - 5.0
+	if diff := data.SPFLastExecutedTimestamp - wantTimestamp; diff > 2 || diff < -2 {
+		t.Errorf("SPFLastExecutedTimestamp: want ~%v, got %v", wantTimestamp, data.SPFLastExecutedTimestamp)
+	}
+	if !data.HasSPFLastDuration {
+		t.Error("expected HasSPFLastDuration=true")
+	}
+	if data.SPFLastDurationSeconds != 0.042 {
+		t.Errorf("SPFLastDurationSeconds: want 0.042, got %v", data.SPFLastDurationSeconds)
+	}
+}
+
+// TestFetchFRROSPF_SPFTimingAbsentBeforeFirstRun guards #582: FRR omits
+// spfLastExecutedMsecs/spfLastDurationMsecs entirely (sending a bare
+// "spfHasNotRun": true instead) until the OSPF instance's first SPF
+// calculation. Both HasSPFLastExecuted/HasSPFLastDuration must stay false —
+// never a fabricated "SPF ran 0ms ago" reading.
+func TestFetchFRROSPF_SPFTimingAbsentBeforeFirstRun(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":{"routerId":"10.0.0.1","spfHasNotRun":true,"areas":{}}}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/searchOspfneighbor", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ospfNeighborsEmptyFixture))
+	})
+
+	data, err := client.FetchFRROSPF()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.HasSPFLastExecuted {
+		t.Error("expected HasSPFLastExecuted=false before the instance's first SPF run")
+	}
+	if data.HasSPFLastDuration {
+		t.Error("expected HasSPFLastDuration=false before the instance's first SPF run")
 	}
 }
 
@@ -1143,6 +1289,16 @@ func TestFetchFRROSPFInterfaces_PluginAbsent404(t *testing.T) {
 	}
 }
 
+// TestFetchFRROSPFv3Overview_Normal's SPF-timing fields (#582) are verified
+// against FRRouting/frr master: spfLastDurationSecs/spfLastDurationMsecs are
+// instance-level and genuinely numeric (ospf6_top.c ~1309-1326) — note
+// spfLastDurationMsecs is actually o->ts_spf_duration.tv_usec (MICROseconds
+// despite the name), so 1 sec + 500000 "msec" here means a 1.5s SPF run, not
+// a 1000.5s one. areas.*.spfLastExecutedSecs/MicroSecs are the per-area
+// SPF-age pair (ospf6_area.c ~498-517) — the only level OSPFv3 reports SPF
+// recency numerically; the instance-level "spfLastExecutedMsecs" sibling
+// that ospf6_top.c also sends is a formatted STRING and is deliberately not
+// decoded here (see frrOSPFv3OverviewBody's field doc in frr.go).
 func TestFetchFRROSPFv3Overview_Normal(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
@@ -1152,8 +1308,16 @@ func TestFetchFRROSPFv3Overview_Normal(t *testing.T) {
   "response": {
     "routerId": "172.16.9.1",
     "numberOfAsScopedLsa": 0,
+    "spfLastExecutedMsecs": "00:00:10",
+    "spfLastDurationSecs": 1,
+    "spfLastDurationMsecs": 500000,
     "areas": {
-      "0.0.0.0": {"numberOfAreaScopedLsa": 4}
+      "0.0.0.0": {
+        "numberOfAreaScopedLsa": 4,
+        "spfHasRun": true,
+        "spfLastExecutedSecs": 10,
+        "spfLastExecutedMicroSecs": 250000
+      }
     }
   }
 }`))
@@ -1174,6 +1338,59 @@ func TestFetchFRROSPFv3Overview_Normal(t *testing.T) {
 	}
 	if data.Areas[0].LSACount != 4 {
 		t.Errorf("LSACount: want 4, got %v", data.Areas[0].LSACount)
+	}
+
+	if !data.HasSPFLastDuration {
+		t.Error("expected HasSPFLastDuration=true")
+	}
+	if data.SPFLastDurationSeconds != 1.5 {
+		t.Errorf("SPFLastDurationSeconds: want 1.5, got %v", data.SPFLastDurationSeconds)
+	}
+
+	if !data.Areas[0].HasSPFLastExecuted {
+		t.Fatal("expected area HasSPFLastExecuted=true")
+	}
+	// 10.25s ago, so the absolute timestamp should land within a generous
+	// window of time.Now()-10.25.
+	wantTimestamp := float64(time.Now().Unix()) - 10.25
+	if diff := data.Areas[0].SPFLastExecutedTimestamp - wantTimestamp; diff > 2 || diff < -2 {
+		t.Errorf("area SPFLastExecutedTimestamp: want ~%v, got %v", wantTimestamp, data.Areas[0].SPFLastExecutedTimestamp)
+	}
+}
+
+// TestFetchFRROSPFv3Overview_SPFTimingAbsentBeforeFirstRun guards #582: FRR
+// omits the numeric SPF-timing fields entirely (favoring a bare
+// "spfHasRun": false) until SPF has run at least once, at both the instance
+// and area level. Neither Has* flag must be fabricated true.
+func TestFetchFRROSPFv3Overview_SPFTimingAbsentBeforeFirstRun(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/ospfv3overview", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+  "response": {
+    "routerId": "172.16.9.1",
+    "numberOfAsScopedLsa": 0,
+    "spfHasRun": false,
+    "areas": {
+      "0.0.0.0": {"numberOfAreaScopedLsa": 0, "spfHasRun": false}
+    }
+  }
+}`))
+	})
+
+	data, err := client.FetchFRROSPFv3Overview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.HasSPFLastDuration {
+		t.Error("expected HasSPFLastDuration=false before the instance's first SPF run")
+	}
+	if len(data.Areas) != 1 {
+		t.Fatalf("expected 1 area, got %d", len(data.Areas))
+	}
+	if data.Areas[0].HasSPFLastExecuted {
+		t.Error("expected area HasSPFLastExecuted=false before that area's first SPF run")
 	}
 }
 

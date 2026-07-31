@@ -22,9 +22,9 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
-| FRR Routing (BGP/OSPF/BFD) | frr | 50 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
+| FRR Routing (BGP/OSPF/BFD) | frr | 58 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
 | Feature Availability | feature | 1 | Enabled | --exporter.disable-feature-availability | OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY |
-| Firewall | firewall | 25 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
+| Firewall | firewall | 26 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 15 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
@@ -35,7 +35,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPNSENSE_EXPORTER_DISABLE_HARDWARE |
 | Host Discovery | hostdiscovery | 2 | Enabled | --exporter.disable-hostdiscovery | OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY |
 | IDS/IPS (Suricata) | ids | 9 | Enabled | --exporter.disable-ids | OPNSENSE_EXPORTER_DISABLE_IDS |
-| IPsec | ipsec | 26 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
+| IPsec | ipsec | 33 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
 | Interfaces | interfaces | 38 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
@@ -58,7 +58,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Protocol Statistics | protocol | 77 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
 | Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPNSENSE_EXPORTER_DISABLE_RELAYD |
-| SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
+| SMART Disk Health | smart | 18 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
 | Services | services | 3 | Enabled | --exporter.disable-services | OPNSENSE_EXPORTER_DISABLE_SERVICES |
 | Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPNSENSE_EXPORTER_DISABLE_SIPROXD |
 | Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
@@ -67,7 +67,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
 | Tor | tor | 6 | Disabled | --exporter.enable-tor | OPNSENSE_EXPORTER_ENABLE_TOR |
 | Traffic Shaper | trafficshaper | 15 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
-| Unbound DNS | unbound_dns | 44 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
+| Unbound DNS | unbound_dns | 51 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPNSENSE_EXPORTER_ENABLE_VNSTAT |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
 | ZFS Boot Environments | snapshots | 3 | Enabled | --exporter.disable-snapshots | OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS |

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // VERIFICATION: bgpsummary/ospfoverview/searchOspfneighbor/bfd* below were
@@ -67,6 +68,49 @@ import (
 // same response. Verify BFD field names against FRR's bfdd/bfdd_vty.c, not
 // against OPNsense: the quagga plugin is a pure vtysh passthrough and renames
 // nothing.
+//
+// #582 (2026-07-31): the OSPF-neighbor/SPF-timing fields ledgered as
+// opportunities in exemptions.json were verified against FRRouting/frr master
+// (ospfd/ospf_vty.c show_ip_ospf_neighbour_brief ~5180-5234, ospfd/ospf_dump_api.c
+// ospf_nsm_state_msg, ospfd/ospf_vty.c ~3451-3463, ospf6d/ospf6_top.c ~1309-1326,
+// ospf6d/ospf6_area.c ~498-517, ospf6d/ospf6_interface.c ~1222-1263) rather than
+// assumed, and two of that ledger's OPPORTUNITY notes turned out to describe the
+// wrong shape:
+//
+//   - "converged" is NOT a boolean convergence flag despite the name — it is the
+//     neighbor's raw NSM state name (ospf_nsm_state_msg: DependUpon/Deleted/Down/
+//     Attempt/Init/2-Way/ExStart/Exchange/Loading/Full), the same value baked into
+//     the existing "Full/DR"-style nbrState/state string minus its ISM suffix.
+//     Modeled as a single always-1 info gauge keyed by the state string (the same
+//     shape as bfdPeerDiagnosticInfo below), not an 8-way enum: the existing
+//     ospf_neighbor_adjacency binary flag already answers "is it Full", so the
+//     gap this closes is "what is it stuck at when it isn't" — a label, not a
+//     fixed enum set fanned out per neighbor.
+//   - OSPFv3's instance-level "spfLastExecutedMsecs" (ospf6_top.c:1315) is a
+//     json_object_STRING_add of a formatted duration, NOT a millisecond number
+//     like OSPFv2's field of the same name — there is no numeric sibling for it
+//     at the instance level. The numeric SPF-age reading only exists PER AREA
+//     (ospf6_area.c's areas.*.spfLastExecutedSecs + areas.*.spfLastExecutedMicroSecs,
+//     a genuine (whole-seconds, microseconds-remainder) pair), so the v3 SPF-age
+//     gauge below is area-labeled, unlike v2's instance-level one. OSPFv3's
+//     instance-level "spfLastDurationMsecs" (ospf6_top.c:1324-1326) IS numeric —
+//     but it is o->ts_spf_duration.tv_usec, i.e. genuinely MICROSECONDS despite
+//     the "Msecs" name (struct timeval's second field is always usec); pair it
+//     with the sibling spfLastDurationSecs, never divide it by 1000 as if it were
+//     milliseconds.
+//
+// Also verified: quaggaOspfv3Interface's pendingLsaLsUpdateTime/pendingLsaLsAckTime
+// (ospf6_interface.c ~1224-1263) are NOT a numeric queue-age sibling of the
+// already-modeled pendingLsaLs{Update,Ack}Count scalars, contrary to that ledger
+// entry's OPPORTUNITY note. They are json_object_string_add-only formatted
+// countdowns to the interface's next scheduled LSA flood/ack SEND (sands-now via
+// thread_send_lsupdate/thread_send_lsack), computed unconditionally (timerclear()
+// zeroes the timeval when no send is scheduled) — a different signal (send-timer
+// due) than "how long has this been queued", and available only as a string this
+// codebase has no parser for (the same reason OSPFv2's upTime/deadTime strings
+// are decoded-and-discarded below in favor of their numeric siblings). NOT
+// modeled here; see the #582 implementation report for the open question this
+// leaves.
 
 // --- BGP ---
 
@@ -212,6 +256,45 @@ func (c *Client) FetchFRRBGP() (FRRBGP, *APICallError) {
 
 // --- OSPF ---
 
+// frrOSPFDeadIntervalDue holds the OSPF neighbor's router-dead-interval
+// countdown (ospf_vty.c show_ip_ospf_neighbour_brief ~5195-5219, verified
+// against FRRouting/frr master for #582). FRR always emits this key, but as
+// two different JSON types depending on neighbor state: a JSON number
+// (milliseconds remaining until the dead interval expires) while the
+// neighbor's inactivity timer is scheduled, or the literal string "inactive"
+// once it is not (the neighbor never progressed, or dropped back to Down).
+// Present is false for anything that isn't a genuine number, so "inactive"
+// lands on "no reading" rather than being coerced into a fabricated 0 —
+// exactly the mutual-exclusivity trap frrBFDNeighborEntry.Downtime documents
+// above for BFD's uptime/downtime pair.
+type frrOSPFDeadIntervalDue struct {
+	Msec    float64
+	Present bool
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (d *frrOSPFDeadIntervalDue) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		return nil
+	}
+	if trimmed[0] == '"' {
+		// "inactive" is the only string FRR sends here; treat any other
+		// string the same way rather than failing the whole neighbor row.
+		return nil
+	}
+	var v float64
+	if err := json.Unmarshal(data, &v); err != nil {
+		// Unexpected shape (neither a number nor a string): tolerate it as
+		// "no reading" rather than aborting the bootgrid decode over one
+		// neighbor's timer field.
+		return nil
+	}
+	d.Msec = v
+	d.Present = true
+	return nil
+}
+
 // frrOSPFNeighborRow holds a single row from the searchOspfneighbor bootgrid.
 // FRR renamed fields across versions; both old and new names are decoded.
 type frrOSPFNeighborRow struct {
@@ -223,6 +306,23 @@ type frrOSPFNeighborRow struct {
 	Address      flexString `json:"address"`      // old
 	IfaceAddress flexString `json:"ifaceAddress"` // new
 	IfaceName    flexString `json:"ifaceName"`
+
+	// #582: adjacency stability fields, all emitted unconditionally by FRR
+	// for every neighbor row (ospf_vty.c show_ip_ospf_neighbour_brief).
+	//
+	// Converged is FRR's raw NSM state name (see the #582 VERIFICATION note
+	// above) — despite the JSON key name it is not a boolean.
+	Converged flexString `json:"converged"`
+	// UpTimeInMsec is the numeric sibling of the human-formatted "upTime"
+	// string, which is deliberately NOT decoded here — same convention as
+	// state/nbrState and address/ifaceAddress above, prefer the machine value.
+	// A pointer because FRR omits this key entirely (along with "upTime" and
+	// "deadTime") whenever the neighbor's inactivity timer isn't scheduled.
+	UpTimeInMsec                       *float64               `json:"upTimeInMsec"`
+	RouterDeadIntervalTimerDueMsec     frrOSPFDeadIntervalDue `json:"routerDeadIntervalTimerDueMsec"`
+	DatabaseSummaryListCounter         flexInt                `json:"databaseSummaryListCounter"`
+	LinkStateRequestListCounter        flexInt                `json:"linkStateRequestListCounter"`
+	LinkStateRetransmissionListCounter flexInt                `json:"linkStateRetransmissionListCounter"`
 }
 
 // frrOSPFNeighborSearch is the bootgrid envelope for searchOspfneighbor.
@@ -269,8 +369,14 @@ func (m *frrOSPFAreaMap) UnmarshalJSON(data []byte) error {
 }
 
 // frrOSPFOverviewBody holds the parsed ospfoverview `response` object.
+//
+// SpfLastExecutedMsecs/SpfLastDurationMsecs are pointers because FRR omits
+// both keys entirely (in favor of a bare "spfHasNotRun": true) until the
+// instance's first SPF run — ospf_vty.c ~3451-3465, verified for #582.
 type frrOSPFOverviewBody struct {
-	Areas frrOSPFAreaMap `json:"areas"`
+	Areas                frrOSPFAreaMap `json:"areas"`
+	SpfLastExecutedMsecs *float64       `json:"spfLastExecutedMsecs"`
+	SpfLastDurationMsecs *float64       `json:"spfLastDurationMsecs"`
 }
 
 // frrOSPFOverviewEnvelope wraps the API `{"response": ...}`.
@@ -282,6 +388,22 @@ type frrOSPFOverviewEnvelope struct {
 type FRROSPFNeighbor struct {
 	NeighborID, Address, Interface string
 	Adjacent                       float64 // 1 when state has prefix "Full"
+
+	// #582: adjacency stability signals riding the same bootgrid row as the
+	// fields above — see the VERIFICATION note near the top of this file.
+	NSMState string // raw FRR NSM state name ("Full", "ExStart", ...); always present
+
+	HasUptime     bool
+	UptimeSeconds float64 // only meaningful when HasUptime
+
+	HasDeadTimer     bool
+	DeadTimerSeconds float64 // only meaningful when HasDeadTimer
+
+	// LSA-sync queue depths: always present and always a legitimate reading
+	// (0 = empty queue), never presence-gated.
+	DatabaseSummaryQueueDepth         float64
+	LinkStateRequestQueueDepth        float64
+	LinkStateRetransmissionQueueDepth float64
 }
 
 // FRROSPFArea holds normalised per-OSPF-area metrics.
@@ -295,6 +417,16 @@ type FRROSPF struct {
 	Present   bool
 	Neighbors []FRROSPFNeighbor
 	Areas     []FRROSPFArea
+
+	// #582: instance-level SPF-run timing from quaggaOspfOverview. Absolute
+	// timestamp (not a "seconds ago" gauge) per Prometheus convention for a
+	// "time since X happened" reading — see the #582 implementation report
+	// for the reasoning.
+	HasSPFLastExecuted       bool
+	SPFLastExecutedTimestamp float64 // unix seconds
+
+	HasSPFLastDuration     bool
+	SPFLastDurationSeconds float64
 }
 
 // FetchFRROSPF fetches OSPF overview and neighbor data from the quagga plugin.
@@ -358,6 +490,23 @@ func (c *Client) FetchFRROSPF() (FRROSPF, *APICallError) {
 				SPFExecuted:           areaData.SpfExecutedCounter,
 			})
 		}
+
+		// #582: instance-level SPF-run timing. spfLastExecutedMsecs is FRR's
+		// "milliseconds ago" reading, re-derived fresh by FRR on every call —
+		// not a value this exporter caches and lets go stale (contrast the
+		// LastRefresh trap in internal/logship/enrich/metrics.go) — so it is
+		// converted to an absolute unix timestamp here rather than exported
+		// as a raw age, per Prometheus's own naming convention for "time
+		// since X happened" gauges (avoids a value that visibly creeps
+		// upward between scrapes even when nothing changed).
+		if overview.SpfLastExecutedMsecs != nil {
+			data.HasSPFLastExecuted = true
+			data.SPFLastExecutedTimestamp = float64(time.Now().Unix()) - *overview.SpfLastExecutedMsecs/1000
+		}
+		if overview.SpfLastDurationMsecs != nil {
+			data.HasSPFLastDuration = true
+			data.SPFLastDurationSeconds = *overview.SpfLastDurationMsecs / 1000
+		}
 	}
 
 	// Fetch neighbors via bootgrid POST.
@@ -388,12 +537,26 @@ func (c *Client) FetchFRROSPF() (FRROSPF, *APICallError) {
 		if strings.HasPrefix(state, "Full") {
 			adjacent = 1.0
 		}
-		data.Neighbors = append(data.Neighbors, FRROSPFNeighbor{
+		nbr := FRROSPFNeighbor{
 			NeighborID: row.NeighborID.String(),
 			Address:    address,
 			Interface:  row.IfaceName.String(),
 			Adjacent:   adjacent,
-		})
+			NSMState:   row.Converged.String(),
+
+			DatabaseSummaryQueueDepth:         float64(row.DatabaseSummaryListCounter.Int()),
+			LinkStateRequestQueueDepth:        float64(row.LinkStateRequestListCounter.Int()),
+			LinkStateRetransmissionQueueDepth: float64(row.LinkStateRetransmissionListCounter.Int()),
+		}
+		if row.UpTimeInMsec != nil {
+			nbr.HasUptime = true
+			nbr.UptimeSeconds = *row.UpTimeInMsec / 1000
+		}
+		if row.RouterDeadIntervalTimerDueMsec.Present {
+			nbr.HasDeadTimer = true
+			nbr.DeadTimerSeconds = row.RouterDeadIntervalTimerDueMsec.Msec / 1000
+		}
+		data.Neighbors = append(data.Neighbors, nbr)
 	}
 
 	data.Present = true
@@ -859,17 +1022,43 @@ func (c *Client) FetchFRROSPFInterfaces() (FRROSPFInterfaces, *APICallError) {
 // UNVERIFIED against a live payload (see the VERIFICATION banner at the top of
 // this file): field name grounded in FRR ospf6d source
 // (ospf6_area.c ospf6_area_show -> "numberOfAreaScopedLsa").
+//
+// #582: SpfLastExecutedSecs/SpfLastExecutedMicroSecs are the per-area
+// "time since this area's last SPF run" pair (ospf6_area.c ~498-517,
+// verified against FRRouting/frr master) — a genuine (whole-seconds,
+// microseconds-remainder) numeric pair, unlike the instance-level
+// spfLastExecutedMsecs on frrOSPFv3OverviewBody below, which is a formatted
+// STRING with no numeric equivalent. Both are pointers because FRR omits
+// them entirely (in favor of a bare "spfHasRun": false) until that area has
+// run SPF at least once.
 type frrOSPFv3AreaData struct {
-	NumberOfAreaScopedLsa float64 `json:"numberOfAreaScopedLsa"`
+	NumberOfAreaScopedLsa    float64  `json:"numberOfAreaScopedLsa"`
+	SpfLastExecutedSecs      *float64 `json:"spfLastExecutedSecs"`
+	SpfLastExecutedMicroSecs *float64 `json:"spfLastExecutedMicroSecs"`
 }
 
 // frrOSPFv3OverviewBody holds the parsed ospfv3overview `response` object.
 // UNVERIFIED against a live payload: field names grounded in FRR ospf6d source
 // (ospf6_top.c ospf6_show), mirroring `show ipv6 ospf6 json`.
+//
+// #582: SpfLastDurationSecs/SpfLastDurationMsecs are the instance-level
+// "how long did the last SPF run take" pair (ospf6_top.c ~1309-1326,
+// verified against FRRouting/frr master). SpfLastDurationMsecs is a
+// deliberately misleading FRR field name: it is o->ts_spf_duration.tv_usec,
+// i.e. MICROSECONDS (struct timeval's second field is always usec), not
+// milliseconds — divide by 1e6, never by 1000, when combining with
+// SpfLastDurationSecs. There is no numeric instance-level "time since last
+// SPF ran" here (that field, spfLastExecutedMsecs, is a formatted STRING on
+// this endpoint — see FRROSPFv3Overview's field doc below); the numeric
+// SPF-age reading only exists per-area, on frrOSPFv3AreaData above. Both
+// pointers because FRR omits them (favoring "spfHasRun": false) until the
+// instance's first SPF run.
 type frrOSPFv3OverviewBody struct {
-	RouterID            string                       `json:"routerId"`
-	NumberOfAsScopedLsa float64                      `json:"numberOfAsScopedLsa"`
-	Areas               map[string]frrOSPFv3AreaData `json:"areas"`
+	RouterID             string                       `json:"routerId"`
+	NumberOfAsScopedLsa  float64                      `json:"numberOfAsScopedLsa"`
+	Areas                map[string]frrOSPFv3AreaData `json:"areas"`
+	SpfLastDurationSecs  *float64                     `json:"spfLastDurationSecs"`
+	SpfLastDurationMsecs *float64                     `json:"spfLastDurationMsecs"` // actually microseconds — see doc above
 }
 
 // frrOSPFv3OverviewEnvelope wraps the API `{"response": ...}`.
@@ -881,12 +1070,22 @@ type frrOSPFv3OverviewEnvelope struct {
 type FRROSPFv3Area struct {
 	Area     string
 	LSACount float64
+
+	// #582: per-area SPF-run recency, converted to an absolute timestamp for
+	// the same reason as FRROSPF.SPFLastExecutedTimestamp above.
+	HasSPFLastExecuted       bool
+	SPFLastExecutedTimestamp float64 // unix seconds
 }
 
 // FRROSPFv3Overview holds the aggregated result of FetchFRROSPFv3Overview.
 type FRROSPFv3Overview struct {
 	Present bool
 	Areas   []FRROSPFv3Area
+
+	// #582: instance-level SPF-run duration (there is no instance-level
+	// numeric SPF-age on OSPFv3 — see frrOSPFv3OverviewBody's field doc).
+	HasSPFLastDuration     bool
+	SPFLastDurationSeconds float64
 }
 
 // FetchFRROSPFv3Overview calls api/quagga/diagnostics/ospfv3overview.
@@ -927,11 +1126,25 @@ func (c *Client) FetchFRROSPFv3Overview() (FRROSPFv3Overview, *APICallError) {
 	}
 
 	data.Present = true
+	if body.SpfLastDurationSecs != nil && body.SpfLastDurationMsecs != nil {
+		data.HasSPFLastDuration = true
+		// SpfLastDurationMsecs is actually microseconds — see the field doc
+		// on frrOSPFv3OverviewBody.
+		data.SPFLastDurationSeconds = *body.SpfLastDurationSecs + *body.SpfLastDurationMsecs/1e6
+	}
 	for areaID, area := range body.Areas {
-		data.Areas = append(data.Areas, FRROSPFv3Area{
+		a := FRROSPFv3Area{
 			Area:     areaID,
 			LSACount: area.NumberOfAreaScopedLsa,
-		})
+		}
+		if area.SpfLastExecutedSecs != nil && area.SpfLastExecutedMicroSecs != nil {
+			ageSeconds := *area.SpfLastExecutedSecs + *area.SpfLastExecutedMicroSecs/1e6
+			a.HasSPFLastExecuted = true
+			// Converted to an absolute timestamp for the same reason as the
+			// OSPFv2 instance-level gauge — see FetchFRROSPF.
+			a.SPFLastExecutedTimestamp = float64(time.Now().Unix()) - ageSeconds
+		}
+		data.Areas = append(data.Areas, a)
 	}
 
 	return data, nil
