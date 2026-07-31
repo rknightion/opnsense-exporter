@@ -9,7 +9,7 @@ import (
 // strings quote a flag name or an env var inline and wrap ugly just past 80.
 const envExampleWrapWidth = 88
 
-// envVarName derives OPNSENSE_EXPORTER_FOO from a flag's own Envar when set,
+// envVarName derives OPN2OTEL_FOO from a flag's own Envar when set,
 // or from its dotted --flag.name otherwise. All 200 flags in the kingpin
 // model already carry one or the other; the fallback exists only so a future
 // flag added without an explicit Envar still renders instead of vanishing.
@@ -17,7 +17,7 @@ func envVarName(f FlagDoc) string {
 	if f.Envar != "" {
 		return f.Envar
 	}
-	return "OPNSENSE_EXPORTER_" + strings.ToUpper(strings.NewReplacer(".", "_", "-", "_").Replace(f.Name))
+	return "OPN2OTEL_" + strings.ToUpper(strings.NewReplacer(".", "_", "-", "_").Replace(f.Name))
 }
 
 // wrapComment word-wraps text into "# "-prefixed lines at width. Greedy

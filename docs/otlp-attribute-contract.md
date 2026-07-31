@@ -104,7 +104,7 @@ cost.
 
 | Exporter | Custom resource attributes | Promoted |
 | --- | --- | --- |
-| `opnsense-exporter` | `opnsense.source`, `opnsense.subsystem`, `opnsense.action`, `opnsense.device_category`, `opnsense.interface` | all five |
+| `opnsense2otel` | `opnsense.source`, `opnsense.subsystem`, `opnsense.action`, `opnsense.device_category`, `opnsense.interface` | all five |
 | `tailscale2otel` | none | none |
 | `graph2otel` | none | none |
 

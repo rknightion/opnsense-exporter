@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"strconv"
 
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
 )
 
 // geoSourceMaxMind is the provenance value stamped on every geo attribute this

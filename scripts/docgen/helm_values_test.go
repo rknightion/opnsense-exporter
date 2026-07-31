@@ -140,7 +140,7 @@ func TestInjectYAMLRegionEndBeforeBeginErrors(t *testing.T) {
 // otherwise regresses the marker line) fails here even without running `helm lint`.
 func TestGeneratedValuesEndMarkerKeepsCommentPrefix(t *testing.T) {
 	root := findRepoRoot()
-	doc, err := os.ReadFile(filepath.Join(root, "charts", "opnsense-exporter", "values.yaml"))
+	doc, err := os.ReadFile(filepath.Join(root, "charts", "opnsense2otel", "values.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,5 +153,5 @@ func TestGeneratedValuesEndMarkerKeepsCommentPrefix(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("helm-settings end marker not found in charts/opnsense-exporter/values.yaml")
+	t.Fatal("helm-settings end marker not found in charts/opnsense2otel/values.yaml")
 }

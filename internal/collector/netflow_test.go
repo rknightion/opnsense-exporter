@@ -10,7 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense-exporter/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
 )
 
 // TestNetflowCollector_ConcurrentFetch covers #129: the three independent netflow

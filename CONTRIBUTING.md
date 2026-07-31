@@ -5,7 +5,7 @@ structure, and conventions — lives on the docs site and is the canonical sourc
 intentionally does not duplicate that content, so the two can't silently drift apart:
 
 **[docs/development/contributing.md](docs/development/contributing.md)**
-(rendered at <https://m7kni.io/opnsense-exporter/development/contributing/>)
+(rendered at <https://m7kni.io/opnsense2otel/development/contributing/>)
 
 What follows is specific to running the exporter against a real OPNsense box, which isn't otherwise
 obvious from that guide.

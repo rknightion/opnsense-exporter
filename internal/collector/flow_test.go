@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense-exporter/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
 )
 
 // descVarLabels extracts a Desc's variable labels. Substring matching cannot do

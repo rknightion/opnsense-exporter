@@ -1,6 +1,6 @@
 ---
 title: Kubernetes
-description: Deploy the OPNsense Exporter on Kubernetes with secrets, Deployment manifests, and Prometheus Operator scrape configuration
+description: Deploy opnsense2otel on Kubernetes with secrets, Deployment manifests, and Prometheus Operator scrape configuration
 tags:
   - Deployment
   - Kubernetes
@@ -8,7 +8,7 @@ tags:
 
 # Kubernetes Deployment
 
-Deploy the OPNsense Exporter in a Kubernetes cluster with file-based secrets and Prometheus integration.
+Deploy opnsense2otel in a Kubernetes cluster with file-based secrets and Prometheus integration.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ protocol=https
 Create the Secret in your cluster:
 
 ```bash
-kubectl create secret generic opnsense-exporter-cfg \
+kubectl create secret generic opnsense2otel-cfg \
   --from-env-file=opnsense_apikey.txt
 ```
 
@@ -44,35 +44,35 @@ The following manifest creates a Deployment and a ClusterIP Service. API credent
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: opnsense-exporter
+      app.kubernetes.io/name: opnsense2otel
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: opnsense-exporter
+        app.kubernetes.io/name: opnsense2otel
     spec:
       # The exporter is a pure HTTP scrape target and never calls the Kubernetes API,
       # so don't mount a ServiceAccount token (shrinks the pivot surface on compromise).
       automountServiceAccountToken: false
       containers:
-        - name: opnsense-exporter
+        - name: opnsense2otel
           # Pin to an immutable release tag, not :latest — :latest is retagged every
           # release, so a pod reschedule could silently pull a breaking version with no
           # deploy event to correlate. The tag tracks version.txt and is rewritten on
           # each release by release-please via the x-release-please-version marker below;
           # keep that marker on the image line or the tag stops updating. Published tags
           # carry no leading "v" (the git tag is v2.2.1, the image tag is 2.2.1).
-          image: ghcr.io/rknightion/opnsense-exporter:3.0.0 # x-release-please-version
+          image: ghcr.io/rknightion/opnsense2otel:3.0.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           # In pod, mount OPNSense API credentials as files
           volumeMounts:
             # name must match the volume name below
             - name: api-key-vol
-              mountPath: /etc/opnsense-exporter/creds
+              mountPath: /etc/opnsense2otel/creds
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -115,25 +115,25 @@ spec:
             - "--log.level=info"
             - "--log.format=json"
           env:
-            - name: OPNSENSE_EXPORTER_INSTANCE_LABEL
+            - name: OPN2OTEL_INSTANCE_LABEL
               value: "opnsense"
-            - name: OPNSENSE_EXPORTER_OPS_API
+            - name: OPN2OTEL_OPS_API
               valueFrom:
                 secretKeyRef:
-                  name: opnsense-exporter-cfg
+                  name: opnsense2otel-cfg
                   key: host
-            - name: OPNSENSE_EXPORTER_OPS_PROTOCOL
+            - name: OPN2OTEL_OPS_PROTOCOL
               valueFrom:
                 secretKeyRef:
-                  name: opnsense-exporter-cfg
+                  name: opnsense2otel-cfg
                   key: protocol
             # Env var points to a location on disk, make sure the value set here matches the volumeMount path
             - name: OPS_API_KEY_FILE
-              value: /etc/opnsense-exporter/creds/api-key
+              value: /etc/opnsense2otel/creds/api-key
             - name: OPS_API_SECRET_FILE
-              value: /etc/opnsense-exporter/creds/api-secret
+              value: /etc/opnsense2otel/creds/api-secret
             # Only enable if using self-signed cert
-            # - name: OPNSENSE_EXPORTER_OPS_INSECURE
+            # - name: OPN2OTEL_OPS_INSECURE
             #   value: "true"
 
           # in basic testing with a home lab OPNsense 100m CPU and 64Mi memory are sufficient
@@ -149,7 +149,7 @@ spec:
       volumes:
         - name: api-key-vol
           secret:
-            secretName: opnsense-exporter-cfg
+            secretName: opnsense2otel-cfg
             items:
               - key: key
                 path: api-key
@@ -159,10 +159,10 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
 spec:
   selector:
-    app.kubernetes.io/name: opnsense-exporter
+    app.kubernetes.io/name: opnsense2otel
   type: ClusterIP
   ports:
     - name: http
@@ -201,7 +201,7 @@ If you are running the Prometheus Operator, create a `ScrapeConfig` resource:
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: ScrapeConfig
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
   labels:
     # Match the label selector your Prometheus uses for ScrapeConfig discovery
     release: "kube-prom"
@@ -214,9 +214,9 @@ spec:
   metricsPath: /metrics
   staticConfigs:
     - labels:
-        job: opnsense-exporter
+        job: opnsense2otel
       targets:
-        - opnsense-exporter.default.svc:8080
+        - opnsense2otel.default.svc:8080
 ```
 
 ### Prometheus Operator (ServiceMonitor)
@@ -227,13 +227,13 @@ Alternatively, use a `ServiceMonitor`:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
   labels:
     release: "kube-prom"
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: opnsense-exporter
+      app.kubernetes.io/name: opnsense2otel
   endpoints:
     - port: http
       interval: 30s
@@ -250,14 +250,14 @@ scrape_configs:
     scrape_interval: 30s
     static_configs:
       - targets:
-          - opnsense-exporter.default.svc:8080
+          - opnsense2otel.default.svc:8080
 ```
 
 ## Verify the deployment
 
 ```bash
 kubectl run debug --rm -i --tty --restart=Never --image=alpine - \
-  wget --quiet -O- opnsense-exporter.default.svc.cluster.local:8080/metrics | head -20
+  wget --quiet -O- opnsense2otel.default.svc.cluster.local:8080/metrics | head -20
 ```
 
 ## Security considerations
@@ -271,21 +271,21 @@ The deployment manifest is hardened:
 - **File-based secrets** - API credentials are mounted as files, not passed as environment variables
 
 !!! tip "Self-signed certificates"
-    If your OPNsense uses a self-signed certificate, add `OPNSENSE_EXPORTER_OPS_INSECURE: "true"` to the env section. For production, add the CA certificate to the container's trust store instead.
+    If your OPNsense uses a self-signed certificate, add `OPN2OTEL_OPS_INSECURE: "true"` to the env section. For production, add the CA certificate to the container's trust store instead.
 
 ## Restrict access with a NetworkPolicy
 
-The `/metrics` endpoint requires no authentication by default, so restrict which pods can reach it. A sample manifest is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense-exporter/blob/main/deploy/k8s/networkpolicy.yaml):
+The `/metrics` endpoint requires no authentication by default, so restrict which pods can reach it. A sample manifest is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense2otel/blob/main/deploy/k8s/networkpolicy.yaml):
 
 ```yaml title="networkpolicy.yaml"
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: opnsense-exporter
+      app.kubernetes.io/name: opnsense2otel
   policyTypes:
     - Ingress
   ingress:
@@ -328,6 +328,6 @@ Or use environment variables:
 
 ```yaml
 env:
-  - name: OPNSENSE_EXPORTER_DISABLE_CRON_TABLE
+  - name: OPN2OTEL_DISABLE_CRON_TABLE
     value: "true"
 ```

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 func TestFamilyFor(t *testing.T) {

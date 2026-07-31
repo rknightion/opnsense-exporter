@@ -1,4 +1,4 @@
-title: OPNsense Exporter Documentation
+title: opnsense2otel Documentation
 description: Comprehensive Prometheus exporter for OPNsense firewalls providing 994 metrics across 65 collectors for firewall monitoring, network diagnostics, and system observability
 
 # Global meta tags for all pages
@@ -18,4 +18,4 @@ twitter:
 # SEO defaults
 robots: index,follow
 language: en
-canonical_base: https://m7kni.io/opnsense-exporter/
+canonical_base: https://m7kni.io/opnsense2otel/

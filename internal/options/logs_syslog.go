@@ -25,7 +25,7 @@ var (
 			"UDP and/or TCP) and ships them enriched with rule descriptions, interface names and "+
 			"hostnames. Off by default. Requires --logs.enabled. Configure a matching target on the "+
 			"firewall under System > Settings > Logging > Targets.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_ENABLED").Default("false").Bool()
 
 	// 5514, not 514: 514 is a privileged port and the container runs as a non-root
 	// user (distroless nonroot), so it cannot bind it.
@@ -33,13 +33,13 @@ var (
 		"logs.syslog.listen-udp",
 		"UDP listen address for the syslog receiver. Empty disables the UDP listener. "+
 			"Port 5514 (not 514) because 514 is privileged and the container runs non-root.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP").Default(":5514").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_LISTEN_UDP").Default(":5514").String()
 
 	logsSyslogListenTCP = kingpin.Flag(
 		"logs.syslog.listen-tcp",
 		"TCP listen address for the syslog receiver. Empty disables the TCP listener. "+
 			"Prefer TCP for firewall logs: UDP datagram loss is silent and unrecoverable.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_TCP").Default(":5514").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_LISTEN_TCP").Default(":5514").String()
 
 	// Syslog is UNAUTHENTICATED: anything that can reach the port can inject arbitrary
 	// log records into the user's observability stack. On a shared network, restrict
@@ -49,7 +49,7 @@ var (
 		"Comma-separated CIDR allowlist of hosts permitted to send syslog (e.g. "+
 			"10.0.0.254/32). Empty accepts any sender. Syslog is unauthenticated, so set this "+
 			"on a shared network.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_ALLOWED_PEERS").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_ALLOWED_PEERS").Default("").String()
 
 	logsSyslogMaxConns = kingpin.Flag(
 		"logs.syslog.max-conns",
@@ -58,7 +58,7 @@ var (
 			"cannot starve authenticated mTLS senders out of the capacity they need. Bounds goroutine "+
 			"growth on an unauthenticated ingress; with both transports enabled the worst-case "+
 			"connection count is twice this value.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_MAX_CONNS").Default("64").Int()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_MAX_CONNS").Default("64").Int()
 
 	// Filtering is OPT-IN. The receiver's contract is that nothing is silently
 	// discarded; a user with no ingest limits would rather have the data than have
@@ -68,26 +68,26 @@ var (
 		"Comma-separated syslog programs to DROP (e.g. radvd,cron). Empty ships everything. "+
 			"Dropped records are counted in opnsense_exporter_logs_rejected_total{reason=\"filtered\"} "+
 			"- never silently discarded.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_EXCLUDE_PROGRAMS").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_EXCLUDE_PROGRAMS").Default("").String()
 
 	logsSyslogInclude = kingpin.Flag(
 		"logs.syslog.include-programs",
 		"Comma-separated syslog programs to ship, dropping everything else. Empty ships "+
 			"everything. Mutually exclusive with --logs.syslog.exclude-programs.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_INCLUDE_PROGRAMS").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_INCLUDE_PROGRAMS").Default("").String()
 
 	logsSyslogMinSeverity = kingpin.Flag(
 		"logs.syslog.min-severity",
 		"Drop records less severe than this (emerg, alert, crit, err, warning, notice, info, "+
 			"debug). E.g. notice drops info and debug. Empty ships every severity.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_MIN_SEVERITY").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_MIN_SEVERITY").Default("").String()
 
 	logsSyslogEnrich = kingpin.Flag(
 		"logs.syslog.enrich",
 		"Enrich received syslog records from the OPNsense API: firewall rule descriptions "+
 			"(including auto-generated system rules), friendly interface names, DHCP hostnames, "+
 			"MAC addresses, local/remote scope and well-known service names.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_ENRICH").Default("true").Bool()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_ENRICH").Default("true").Bool()
 
 	// GeoIP on logs (#528) is the PER-LANE OPT-OUT --geoip.enabled's own help text
 	// promises: turning --geoip.enabled on now covers filterlog, sshd/auth and
@@ -103,7 +103,7 @@ var (
 			"WHENEVER --geoip.enabled is set -- BEHAVIOUR CHANGE ON UPGRADE for any deployment "+
 			"already running --geoip.enabled for flow records, since filterlog is the highest-volume "+
 			"log stream on the box. Set to false to keep GeoIP on flow records only.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_GEOIP").Default("true").Bool()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_GEOIP").Default("true").Bool()
 
 	// Sampling is OPT-IN. Metric derivation (the log_events collector) is on by
 	// default and additive; sampling is what actually DROPS raw lines, so it stays
@@ -116,21 +116,21 @@ var (
 			"errors and drop the per-connection noise. Low-volume programs (sshd, dhcp, audit, "+
 			"ids) are kept in full. Off by default. Requires the log_events collector "+
 			"(exporter.disable-log-events must not be set) so every dropped line is counted first.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLE").Default("false").Bool()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_SAMPLE").Default("false").Bool()
 
 	logsSyslogSampledAttr = kingpin.Flag(
 		"logs.syslog.sampled-attribute",
 		"When sampling is on, stamp a sampled=\"true\" attribute on every shipped line so "+
 			"consumers know the log stream is incomplete and must use the derived counters for "+
 			"totals. On by default; only takes effect when --logs.syslog.sample is set.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLED_ATTRIBUTE").Default("true").Bool()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_SAMPLED_ATTRIBUTE").Default("true").Bool()
 
 	logsSyslogDebugCapture = kingpin.Flag(
 		"logs.syslog.debug-capture",
 		"Dump syslog lines this receiver cannot parse (unknown program, no matching parser, or an "+
 			"unparseable envelope) to --logs.debug-capture.dir for inspection. Requires "+
 			"--logs.debug-capture.dir. Additive - these lines still ship as generic records.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_DEBUG_CAPTURE").Default("false").Bool()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_DEBUG_CAPTURE").Default("false").Bool()
 
 	// TLS is a third listener feeding the same handler. For most users the firewall
 	// link is LAN-local and TLS is unnecessary; it matters when shipping across an
@@ -141,24 +141,24 @@ var (
 		"TLS listen address for the syslog receiver (RFC5424 over TLS, OPNsense tls4/tls6). "+
 			"Empty disables the TLS listener. Requires --logs.syslog.tls-cert-file and "+
 			"--logs.syslog.tls-key-file.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_TLS").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_LISTEN_TLS").Default("").String()
 
 	logsSyslogTLSCertFile = kingpin.Flag(
 		"logs.syslog.tls-cert-file",
 		"PEM server certificate for the TLS syslog listener.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CERT_FILE").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_TLS_CERT_FILE").Default("").String()
 
 	logsSyslogTLSKeyFile = kingpin.Flag(
 		"logs.syslog.tls-key-file",
 		"PEM private key for the TLS syslog listener.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_KEY_FILE").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_TLS_KEY_FILE").Default("").String()
 
 	logsSyslogTLSClientCAFile = kingpin.Flag(
 		"logs.syslog.tls-client-ca-file",
 		"PEM CA bundle to verify sender client certificates on the TLS syslog listener. When "+
 			"set, a sender MUST present a certificate signed by this CA - the only real sender "+
 			"authentication syslog offers. Empty accepts any TLS client (encryption only).",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CLIENT_CA_FILE").Default("").String()
+	).Envar("OPN2OTEL_LOGS_SYSLOG_TLS_CLIENT_CA_FILE").Default("").String()
 )
 
 // SyslogConfig is the resolved configuration for the syslog receiver.

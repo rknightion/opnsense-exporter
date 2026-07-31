@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-default-route-missing",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense has no {{ $labels.proto }} default route ({{ $labels.opnsense_instance }})",
       "description": "The routing table carries no default route for {{ $labels.proto }}. For a firewall that is a total outage for that address family - nothing off-subnet is reachable. There was no signal for this condition before #544.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedefaultroutemissing",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedefaultroutemissing",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "403"
     },

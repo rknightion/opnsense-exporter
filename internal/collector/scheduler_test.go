@@ -13,7 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // intervalFake is a fakeCollectorInstance that also declares a poll tier.

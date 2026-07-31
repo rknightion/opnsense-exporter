@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // derivedPathEndpoints returns the endpoint names whose REQUEST path is built from

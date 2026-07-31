@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // helmValuesWrapWidth matches envExampleWrapWidth's reasoning (some help strings quote

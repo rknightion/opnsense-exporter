@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/internal/flow"
-	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // Source is the minimal contract every log source lane implements. The pipeline

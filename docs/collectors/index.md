@@ -1,6 +1,6 @@
 ---
 title: Collectors
-description: Overview of all 65 OPNsense Exporter collectors, their auto-registration pattern, and configuration options
+description: Overview of all 65 opnsense2otel collectors, their auto-registration pattern, and configuration options
 tags:
   - Monitoring
   - Configuration
@@ -8,7 +8,7 @@ tags:
 
 # Collectors
 
-The OPNsense Exporter runs 65 sub-collectors on independent background schedules, each targeting a specific OPNsense subsystem. Poll results are stored in memory; Prometheus scrapes replay that snapshot and make no OPNsense API calls.
+opnsense2otel runs 65 sub-collectors on independent background schedules, each targeting a specific OPNsense subsystem. Poll results are stored in memory; Prometheus scrapes replay that snapshot and make no OPNsense API calls.
 
 ## Poll and replay flow
 

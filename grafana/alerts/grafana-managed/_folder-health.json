@@ -2,9 +2,9 @@
   "apiVersion": "folder.grafana.app/v1beta1",
   "kind": "Folder",
   "metadata": {
-    "name": "opnsense-exporter-health-alerts"
+    "name": "opnsense2otel-health-alerts"
   },
   "spec": {
-    "title": "OPNsense Exporter Health Alerts"
+    "title": "opnsense2otel Health Alerts"
   }
 }

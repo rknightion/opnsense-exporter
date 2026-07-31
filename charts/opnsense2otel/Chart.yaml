@@ -1,0 +1,17 @@
+apiVersion: v2
+name: opnsense2otel
+description: Secure single-firewall OpenTelemetry and Prometheus observability for OPNsense
+type: application
+version: 0.1.0
+appVersion: main
+keywords:
+  - opnsense
+  - opentelemetry
+  - otlp
+  - prometheus
+  - exporter
+home: https://github.com/rknightion/opnsense2otel
+sources:
+  - https://github.com/rknightion/opnsense2otel
+maintainers:
+  - name: rknightion

@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/internal/flow"
-	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow/netflow"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // Default accumulator bounds, overridden by --flow.top-n / --flow.max-keys.

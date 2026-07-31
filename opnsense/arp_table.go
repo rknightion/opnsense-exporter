@@ -1,7 +1,7 @@
 package opnsense
 
 import (
-	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
 	"strings"
 )
 

@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-mbuf-jumbo-pool-saturated",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense mbuf {{ $labels.pool }} jumbo pool saturated ({{ $values.A.Value | printf \"%.1f\" }}%, {{ $labels.opnsense_instance }})",
       "description": "The {{ $labels.pool }} jumbo mbuf pool has been over 90% of its configured ceiling for 10m. This is headroom BEFORE the pool exhausts and the box starts dropping jumbo-frame traffic, complementing opnsense_mbuf_failures_total (which only reports a failure after it has already happened). Scoped to jumbo9/jumbo16 only - the packet secondary zone has no ceiling series upstream.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensembufjumbopoolsaturated",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensembufjumbopoolsaturated",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "102"
     },

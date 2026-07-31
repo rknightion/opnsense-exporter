@@ -1,4 +1,4 @@
-// Package webui serves the opnsense-exporter operator console: a single
+// Package webui serves the opnsense2otel operator console: a single
 // server-rendered, tabbed page (Overview / Collectors / API / Cardinality /
 // Devices / Config) with inline CSS/JS and zero external assets. It mirrors the
 // tailscale2otel/graph2otel fleet console standard — a manual theme toggle, a
@@ -35,10 +35,10 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
-	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // Deps is the fully-resolved set of read-only accessors the console renders
@@ -228,7 +228,7 @@ func (s *Server) pageView() view {
 // serviceInfo assembles the identity/uptime header from Deps.
 func (s *Server) serviceInfo() ServiceInfo {
 	info := ServiceInfo{
-		Name:      "opnsense-exporter",
+		Name:      "opnsense2otel",
 		Version:   s.deps.Version,
 		GoVersion: s.deps.GoVersion,
 		Host:      s.deps.Host,

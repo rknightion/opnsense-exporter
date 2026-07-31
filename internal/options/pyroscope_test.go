@@ -14,22 +14,22 @@ func TestPyroscopeConfig_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid",
-			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: false,
 		},
 		{
 			name:    "missing address",
-			cfg:     PyroscopeConfig{AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: true,
 		},
 		{
 			name:    "missing auth user",
-			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: true,
 		},
 		{
 			name:    "missing auth password",
-			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthUser: "u", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthUser: "u", ApplicationName: "opnsense2otel"},
 			wantErr: true,
 		},
 		{
@@ -40,22 +40,22 @@ func TestPyroscopeConfig_Validate(t *testing.T) {
 		// #142: schemeless address parses as Scheme="host", Host="" — must be rejected.
 		{
 			name:    "schemeless address rejected",
-			cfg:     PyroscopeConfig{ServerAddress: "profiles-prod-011.grafana.net:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "profiles-prod-011.grafana.net:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: true,
 		},
 		{
 			name:    "scheme with empty host rejected",
-			cfg:     PyroscopeConfig{ServerAddress: "https://", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "https://", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: true,
 		},
 		{
 			name:    "http url accepted (self-hosted)",
-			cfg:     PyroscopeConfig{ServerAddress: "http://pyroscope.local:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "http://pyroscope.local:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: false,
 		},
 		{
 			name:    "https grafana cloud url accepted",
-			cfg:     PyroscopeConfig{ServerAddress: "https://profiles-prod-011.grafana.net:443", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			cfg:     PyroscopeConfig{ServerAddress: "https://profiles-prod-011.grafana.net:443", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense2otel"},
 			wantErr: false,
 		},
 	}
@@ -101,14 +101,14 @@ func TestResolveSecretMulti_PrefixPrecedence(t *testing.T) {
 
 	// Legacy alias alone is honored.
 	t.Setenv("PYROSCOPE_AUTH_USER_FILE", legacy)
-	got, err := resolveSecretMulti("flag", "OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
+	got, err := resolveSecretMulti("flag", "OPN2OTEL_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
 	if err != nil || got != "from-legacy" {
 		t.Fatalf("legacy alias: got %q err %v, want from-legacy", got, err)
 	}
 
 	// Prefixed name wins when both are set.
-	t.Setenv("OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", prefixed)
-	got, err = resolveSecretMulti("flag", "OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
+	t.Setenv("OPN2OTEL_PYROSCOPE_AUTH_USER_FILE", prefixed)
+	got, err = resolveSecretMulti("flag", "OPN2OTEL_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
 	if err != nil || got != "from-prefixed" {
 		t.Errorf("prefixed precedence: got %q err %v, want from-prefixed", got, err)
 	}

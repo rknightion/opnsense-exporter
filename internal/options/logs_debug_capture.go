@@ -19,7 +19,7 @@ var (
 			"queries, TLS SNI, HTTP hosts). Off unless set. Enable capture per receiver with "+
 			"--logs.zenarmor.debug-capture / --logs.syslog.debug-capture. Point a writable bind "+
 			"mount here; only signals the exporter cannot model are written, never the full stream.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_DIR").Default("").String()
+	).Envar("OPN2OTEL_LOGS_DEBUG_CAPTURE_DIR").Default("").String()
 
 	// Base2 so 256MiB parses. The cap governs the WHOLE dir, counting bytes left by
 	// previous runs, and STOPS capture when reached (oldest samples kept) rather than
@@ -29,7 +29,7 @@ var (
 		"Total size cap for --logs.debug-capture.dir (e.g. 256MiB, 1GB). Capture STOPS when the "+
 			"dir reaches this, keeping the oldest samples; it never deletes to make room, so a "+
 			"debug capture can never fill the disk. Counts bytes left by previous runs.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_MAX_BYTES").Default("256MiB").Bytes()
+	).Envar("OPN2OTEL_LOGS_DEBUG_CAPTURE_MAX_BYTES").Default("256MiB").Bytes()
 )
 
 // LogsDebugCaptureDir returns the trimmed capture directory, empty when unset.

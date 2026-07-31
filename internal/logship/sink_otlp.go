@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"

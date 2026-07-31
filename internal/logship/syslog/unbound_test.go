@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 func unboundEnv(msg string) Envelope {

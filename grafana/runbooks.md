@@ -10,7 +10,7 @@ Total: **63 alert rules** and **14 recording rules**.
 
 **Severity:** critical  
 **Pending window:** 15m0s  
-**Rule name:** `opnsense-exporter-down`
+**Rule name:** `opnsense2otel-down`
 
 **Expression:**
 ```promql
@@ -41,7 +41,7 @@ opnsense_up
 
 **Severity:** critical  
 **Pending window:** 10m0s  
-**Rule name:** `opnsense-exporter-instance-missing`
+**Rule name:** `opnsense2otel-instance-missing`
 
 **Expression:**
 ```promql

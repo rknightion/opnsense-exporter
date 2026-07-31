@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-memory-high",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense memory usage high ({{ $labels.opnsense_instance }})",
       "description": "Physical memory usage has been above 90% for 15m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensememoryhigh",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensememoryhigh",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "30"
     },

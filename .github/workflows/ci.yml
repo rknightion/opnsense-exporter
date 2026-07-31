@@ -225,7 +225,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: opnsense-exporter:ci-test
+          tags: opnsense2otel:ci-test
           # VERSION (all-caps) MUST match the build-arg name the real publish
           # pipeline supplies (rknightion/.github container-publish passes
           # VERSION=...). Docker build-arg names are case-sensitive, so a
@@ -244,7 +244,7 @@ jobs:
 
       - name: Verify built image embeds the version
         run: |
-          got="$(docker run --rm opnsense-exporter:ci-test --version 2>&1 | head -n1)"
+          got="$(docker run --rm opnsense2otel:ci-test --version 2>&1 | head -n1)"
           echo "image reported version: '${got}'"
           if [ "${got}" != "ci-test" ]; then
             echo "::error::image did not embed the build-arg VERSION (got '${got}', want 'ci-test') — Dockerfile ARG casing regression, see #79"
@@ -261,11 +261,11 @@ jobs:
       - name: Verify the image bundles the DB-IP databases and their attribution
         run: |
           set -euo pipefail
-          cid="$(docker create opnsense-exporter:ci-test)"
+          cid="$(docker create opnsense2otel:ci-test)"
           trap 'docker rm -f "$cid" >/dev/null' EXIT
           out="$(mktemp -d)"
-          for f in /usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb \
-                   /usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb \
+          for f in /usr/share/opnsense2otel/geoip/dbip-country-lite.mmdb \
+                   /usr/share/opnsense2otel/geoip/dbip-asn-lite.mmdb \
                    /licenses/GEOIP-DB-IP-ATTRIBUTION.txt; do
             docker cp "$cid:$f" "$out/" || {
               echo "::error::image is missing $f (#549)"; exit 1; }
@@ -294,8 +294,8 @@ jobs:
 
           tee "$compose_dir/compose.yaml" >/dev/null <<'YAML'
           services:
-            opnsense-exporter:
-              image: opnsense-exporter:ci-test
+            opnsense2otel:
+              image: opnsense2otel:ci-test
               command:
                 - --opnsense.protocol=https
                 - --opnsense.address=127.0.0.1
@@ -307,7 +307,7 @@ jobs:
                 - opnsense-api-key
                 - opnsense-api-secret
               healthcheck:
-                test: ["CMD", "/opnsense-exporter", "health"]
+                test: ["CMD", "/opnsense2otel", "health"]
                 interval: 1s
                 timeout: 2s
                 retries: 10
@@ -321,10 +321,10 @@ jobs:
 
           docker compose -f "$compose_dir/compose.yaml" config --quiet
           docker compose -f "$compose_dir/compose.yaml" run --rm --no-deps \
-            opnsense-exporter --opnsense.protocol=https --opnsense.address=127.0.0.1 --config.check
+            opnsense2otel --opnsense.protocol=https --opnsense.address=127.0.0.1 --config.check
           docker compose -f "$compose_dir/compose.yaml" up -d --wait --wait-timeout 30
 
-          container_id="$(docker compose -f "$compose_dir/compose.yaml" ps -q opnsense-exporter)"
+          container_id="$(docker compose -f "$compose_dir/compose.yaml" ps -q opnsense2otel)"
           status="$(docker inspect --format '{{.State.Health.Status}}' "$container_id")"
           if [ "$status" != "healthy" ]; then
             docker compose -f "$compose_dir/compose.yaml" logs
@@ -345,31 +345,31 @@ jobs:
       - name: Install and upgrade the chart in a disposable cluster
         run: |
           kind create cluster --name chart-contract --wait 60s
-          kind load docker-image opnsense-exporter:ci-test --name chart-contract
+          kind load docker-image opnsense2otel:ci-test --name chart-contract
           kubectl create namespace monitoring
           kubectl -n monitoring create secret generic edge-fw-api \
             --from-literal=key=ci-api-key \
             --from-literal=secret=ci-api-secret
 
-          helm upgrade --install contract charts/opnsense-exporter \
+          helm upgrade --install contract charts/opnsense2otel \
             --namespace monitoring \
-            --values charts/opnsense-exporter/tests/fixtures/minimal.yaml \
-            --set image.repository=opnsense-exporter \
+            --values charts/opnsense2otel/tests/fixtures/minimal.yaml \
+            --set image.repository=opnsense2otel \
             --set image.tag=ci-test \
             --set image.pullPolicy=Never \
             --wait --timeout 2m
-          kubectl -n monitoring rollout status deployment/contract-opnsense-exporter --timeout=60s
+          kubectl -n monitoring rollout status deployment/contract-opnsense2otel --timeout=60s
           helm test contract --namespace monitoring --logs --timeout 60s
 
-          helm upgrade contract charts/opnsense-exporter \
+          helm upgrade contract charts/opnsense2otel \
             --namespace monitoring \
-            --values charts/opnsense-exporter/tests/fixtures/all-receivers.yaml \
+            --values charts/opnsense2otel/tests/fixtures/all-receivers.yaml \
             --set opnsense.existingSecret=edge-fw-api \
-            --set image.repository=opnsense-exporter \
+            --set image.repository=opnsense2otel \
             --set image.tag=ci-test \
             --set image.pullPolicy=Never \
             --wait --timeout 2m
-          kubectl -n monitoring rollout status deployment/contract-opnsense-exporter --timeout=60s
+          kubectl -n monitoring rollout status deployment/contract-opnsense2otel --timeout=60s
 
       - name: Delete disposable chart cluster
         if: always()

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // TestNewClient_InsecureWarns covers #159: NewClient must emit a Warn when TLS
@@ -227,7 +227,7 @@ func TestDo_Headers(t *testing.T) {
 		if got := r.Header.Get("Accept"); got != "application/json" {
 			t.Errorf("expected Accept: application/json, got %q", got)
 		}
-		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "prometheus-opnsense-exporter/") {
+		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "prometheus-opnsense2otel/") {
 			t.Errorf("expected User-Agent prefix, got %q", got)
 		}
 		// Only gzip is advertised: readResponse can decode gzip but not

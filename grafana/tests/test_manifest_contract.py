@@ -150,7 +150,7 @@ class StackRoutingLabelContractTest(unittest.TestCase):
             try:
                 build_rules.HERE = tmp
                 outdir, written = build_rules.emit_grafana_managed(
-                    "test-prometheus", "test-opnsense-alerts", stack=stack,
+                    "test-prometheus", "test-opnsense2otel-alerts", stack=stack,
             health_folder="test-opnsense-health-alerts"
                 )
             finally:
@@ -246,10 +246,10 @@ class PerInstanceLabelPreservationContractTest(unittest.TestCase):
         # opnsense_up carries opnsense_instance as a base-metric label with no
         # `by (...)` clause at all - nothing here is statically checkable, and
         # the absence of an aggregation must not itself be an error.
-        doc = _load("opnsense-exporter-down.json")
+        doc = _load("opnsense2otel-down.json")
         expr = doc["spec"]["expressions"]["A"]["model"]["expr"]
         self.assertNotRegex(expr, r"(sum|max|min|avg|count)\s+by\s*\(")
-        self.assertEqual(vm.validate_document("opnsense-exporter-down.json", doc), [])
+        self.assertEqual(vm.validate_document("opnsense2otel-down.json", doc), [])
 
     def test_dangling_label_token_in_summary_is_rejected(self):
         doc = _base_alert()
@@ -311,7 +311,7 @@ class RunbookAnchorContractTest(unittest.TestCase):
         # The old contract required every alert to carry the SAME shared constant;
         # the new one requires the opposite - each alert's anchor names ITS OWN
         # heading, so no two (real, distinct) alerts should collide.
-        down = _load("opnsense-exporter-down.json")
+        down = _load("opnsense2otel-down.json")
         carp = _load(BASE_ALERT_NAME)
         self.assertNotEqual(
             down["spec"]["annotations"]["runbook_url"],
@@ -327,14 +327,14 @@ class RunbookAnchorContractTest(unittest.TestCase):
     def test_a_wrong_runbook_url_is_rejected(self):
         doc = _base_alert()
         doc["spec"]["annotations"]["runbook_url"] = (
-            "https://github.com/rknightion/opnsense-exporter/blob/main/README.md#alerts"
+            "https://github.com/rknightion/opnsense2otel/blob/main/README.md#alerts"
         )
         errors = vm.validate_document(BASE_ALERT_NAME, doc)
         self.assertTrue(any("runbook_url" in e for e in errors), errors)
 
     def test_an_anchor_that_does_not_exist_in_the_doc_is_rejected(self):
         ok, why = vm._runbook_anchor_resolves(
-            "https://github.com/rknightion/opnsense-exporter/blob/main/"
+            "https://github.com/rknightion/opnsense2otel/blob/main/"
             "grafana/README.md#this-heading-does-not-exist"
         )
         self.assertFalse(ok)
@@ -342,7 +342,7 @@ class RunbookAnchorContractTest(unittest.TestCase):
 
     def test_a_nonexistent_document_is_rejected(self):
         ok, why = vm._runbook_anchor_resolves(
-            "https://github.com/rknightion/opnsense-exporter/blob/main/"
+            "https://github.com/rknightion/opnsense2otel/blob/main/"
             "grafana/DOES-NOT-EXIST.md#alerts"
         )
         self.assertFalse(ok)

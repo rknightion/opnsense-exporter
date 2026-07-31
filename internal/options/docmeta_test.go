@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense-exporter/internal/collector"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 func TestCollectorFlagsCoverAllSwitchFlags(t *testing.T) {
@@ -75,8 +75,8 @@ func TestRegisterAllFlagsIdempotent(t *testing.T) {
 }
 
 // TestAllFlagsHaveEnvar covers #141: every project-owned flag must be settable via an
-// OPNSENSE_EXPORTER_-prefixed env var (a fully env-driven deployment), and
-// --web.telemetry-path specifically must expose OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH.
+// OPN2OTEL_-prefixed env var (a fully env-driven deployment), and
+// --web.telemetry-path specifically must expose OPN2OTEL_WEB_TELEMETRY_PATH.
 func TestAllFlagsHaveEnvar(t *testing.T) {
 	options.RegisterAllFlags()
 	model := kingpin.CommandLine.Model()
@@ -95,14 +95,14 @@ func TestAllFlagsHaveEnvar(t *testing.T) {
 		if f.Envar == "" {
 			t.Errorf("project flag --%s has no env var binding", f.Name)
 		}
-		if !strings.HasPrefix(f.Envar, "OPNSENSE_EXPORTER_") {
-			t.Errorf("flag --%s env var %q is not OPNSENSE_EXPORTER_-prefixed", f.Name, f.Envar)
+		if !strings.HasPrefix(f.Envar, "OPN2OTEL_") {
+			t.Errorf("flag --%s env var %q is not OPN2OTEL_-prefixed", f.Name, f.Envar)
 		}
 	}
 	if telemetry == nil {
 		t.Fatal("web.telemetry-path flag not found")
 	}
-	if telemetry.Envar != "OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH" {
-		t.Errorf("web.telemetry-path env var = %q, want OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH", telemetry.Envar)
+	if telemetry.Envar != "OPN2OTEL_WEB_TELEMETRY_PATH" {
+		t.Errorf("web.telemetry-path env var = %q, want OPN2OTEL_WEB_TELEMETRY_PATH", telemetry.Envar)
 	}
 }

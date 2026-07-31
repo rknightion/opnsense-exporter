@@ -2,7 +2,7 @@
 # Download and verify one Linux release archive before it is installed.
 set -euo pipefail
 
-readonly repository='rknightion/opnsense-exporter'
+readonly repository='rknightion/opnsense2otel'
 readonly signing_identity='https://github.com/rknightion/.github/.github/workflows/binaries.yml@d1c590b295b9d7f2535fadc7bc5e74f2eddbd512'
 readonly signing_issuer='https://token.actions.githubusercontent.com'
 
@@ -33,7 +33,7 @@ esac
 
 mkdir -p "$output_directory"
 output_directory=$(cd "$output_directory" && pwd)
-output_binary="$output_directory/opnsense-exporter"
+output_binary="$output_directory/opnsense2otel"
 if [[ -e "$output_binary" ]]; then
   printf 'refusing to reuse existing output binary: %s\n' "$output_binary" >&2
   exit 1
@@ -46,7 +46,7 @@ for command in curl cosign sha256sum tar mktemp install; do
   }
 done
 
-archive="opnsense-exporter_Linux_${architecture}.tar.gz"
+archive="opnsense2otel_Linux_${architecture}.tar.gz"
 base_url="https://github.com/${repository}/releases/download/${version}"
 temporary_directory=$(mktemp -d)
 trap 'rm -rf "$temporary_directory"' EXIT
@@ -71,9 +71,9 @@ printf '%s\n' "$checksum_line" | (cd "$temporary_directory" && sha256sum -c -)
 staging_directory="$temporary_directory/extracted"
 mkdir "$staging_directory"
 tar -xzf "$temporary_directory/$archive" -C "$staging_directory"
-staged_binary="$staging_directory/opnsense-exporter"
+staged_binary="$staging_directory/opnsense2otel"
 if [[ ! -x "$staged_binary" ]]; then
-  printf 'verified archive did not extract an executable opnsense-exporter\n' >&2
+  printf 'verified archive did not extract an executable opnsense2otel\n' >&2
   exit 1
 fi
 "$staged_binary" --version

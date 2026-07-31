@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
 )
 
 // trackerWithSuccess returns a StatusTracker whose only collector has a clean run

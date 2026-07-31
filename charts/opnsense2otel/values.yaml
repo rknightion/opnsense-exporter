@@ -1,7 +1,7 @@
 # One Helm release monitors one OPNsense firewall. Install another release for each
 # additional firewall rather than scaling this Deployment.
 image:
-  repository: ghcr.io/rknightion/opnsense-exporter
+  repository: ghcr.io/rknightion/opnsense2otel
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -11,7 +11,7 @@ opnsense:
   protocol: https
   instanceLabel: opnsense
   # This chart never creates credentials. These defaults match deploy/k8s.
-  existingSecret: opnsense-exporter
+  existingSecret: opnsense2otel
   secretKeys:
     apiKey: key
     apiSecret: secret
@@ -590,11 +590,11 @@ settings:
   # otlp.grafana-cloud-endpoint: ""
   #
   # Grafana Cloud OTLP instance ID. With --otlp.grafana-cloud-token, synthesizes basic-auth.
-  # This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set.
+  # This flag/ENV or OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set.
   # otlp.grafana-cloud-instance-id: ""
   #
   # Grafana Cloud Access Policy token. This flag/ENV or
-  # OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.
+  # OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.
   # otlp.grafana-cloud-token: ""
   #
   # OTLP headers as comma-separated key=value pairs (e.g.
@@ -610,7 +610,7 @@ settings:
   # otlp.protocol: "http/protobuf"
   #
   # service.name resource attribute for exported metrics.
-  # otlp.service-name: "opnsense-exporter"
+  # otlp.service-name: "opnsense2otel"
   #
   # Path to a CA certificate file used to verify the OTLP server.
   # otlp.tls-ca-file: ""
@@ -625,7 +625,7 @@ settings:
   # Off until a server address is set. All profile types are pushed by default.
   #
   # Pyroscope application name profiles are reported under.
-  # pyroscope.application-name: "opnsense-exporter"
+  # pyroscope.application-name: "opnsense2otel"
   #
   # HTTP basic auth password for Pyroscope (Grafana Cloud Access Policy token). This
   # flag/ENV or PYROSCOPE_AUTH_PASSWORD_FILE may be set.
@@ -656,7 +656,7 @@ settings:
   # annotations.enabled: false
   #
   # Extra tag to add to every written annotation (repeatable), e.g. env:prod. Every
-  # annotation already carries opnsense-exporter, the event kind and instance:<name>.
+  # annotation already carries opnsense2otel, the event kind and instance:<name>.
   # annotations.extra-tags: []  # LIST -- one --annotations.extra-tags=value arg per element
   #
   # Grafana base URL to write annotations to, e.g. https://mystack.grafana.net.
@@ -699,8 +699,8 @@ settings:
   # annotations.timeout: "10s"
   #
   # Grafana service-account token used to write annotations. It needs the annotation write
-  # permission and nothing else. This flag/ENV or OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE
-  # may be set.
+  # permission and nothing else. This flag/ENV or OPN2OTEL_ANNOTATIONS_TOKEN_FILE may be
+  # set.
   # annotations.token: ""
 
   # ---- Log shipping: syslog receiver ----
@@ -1113,7 +1113,7 @@ settings:
   # Zenarmor ships no ASN database on any box. Defaults to the DB-IP ASN Lite database
   # bundled in the container image (CC BY 4.0, https://db-ip.com), or to the downloaded copy
   # when --geoip.download.enabled is set.
-  # geoip.asn-database: "/usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb"
+  # geoip.asn-database: "/usr/share/opnsense2otel/geoip/dbip-asn-lite.mmdb"
   #
   # Path to a Country OR City database in MaxMind .mmdb format (DB-IP Country/City Lite,
   # GeoLite2-Country, GeoLite2-City, GeoIP2-City). A City database is a strict superset, so
@@ -1123,7 +1123,7 @@ settings:
   # --geoip.download.enabled and it defaults to the downloaded MaxMind copy instead. A
   # missing file is not an error - enrichment is fail-open and the attributes are just
   # absent, which is what a non-container build gets.
-  # geoip.country-database: "/usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb"
+  # geoip.country-database: "/usr/share/opnsense2otel/geoip/dbip-country-lite.mmdb"
   #
   # MaxMind account ID for the database download API (the Basic-auth username).
   # geoip.download.account-id: ""
@@ -1131,7 +1131,7 @@ settings:
   # Directory downloaded databases are installed into, as <dir>/<edition>.mmdb. Must be
   # writable and should be persistent - a volume that is lost on restart costs a full
   # download every start, against MaxMind's daily limit.
-  # geoip.download.dir: "/var/lib/opnsense-exporter/geoip"
+  # geoip.download.dir: "/var/lib/opnsense2otel/geoip"
   #
   # Comma-separated MaxMind edition IDs to download. Default is Country + ASN (~9 MB and ~12
   # MB resident). Swap GeoLite2-Country for GeoLite2-City (~60 MB resident) to get city and
@@ -1151,8 +1151,8 @@ settings:
   # only at startup.
   # geoip.download.interval: "24h"
   #
-  # MaxMind license key. This flag/ENV or OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE
-  # may be set; the file form is preferred for a container secret.
+  # MaxMind license key. This flag/ENV or OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY_FILE may be
+  # set; the file form is preferred for a container secret.
   # geoip.download.license-key: ""
   #
   # End-to-end timeout for one edition's download. A timeout leaves the installed database

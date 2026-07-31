@@ -1,13 +1,13 @@
 ---
 title: Adding a Collector
-description: Step-by-step guide for adding a new collector to the OPNsense Exporter
+description: Step-by-step guide for adding a new collector to opnsense2otel
 tags:
   - OPNsense
 ---
 
 # Adding a Collector
 
-This guide adds a new collector to the OPNsense Exporter: five steps across three packages.
+This guide adds a new collector to opnsense2otel: five steps across three packages.
 
 ## Overview
 
@@ -29,7 +29,7 @@ import (
     "log/slog"
 
     "github.com/prometheus/client_golang/prometheus"
-    "github.com/rknightion/opnsense-exporter/opnsense"
+    "github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 type exampleCollector struct {
@@ -173,7 +173,7 @@ Add a new flag in `internal/options/collectors.go`:
 exampleCollectorDisabled = kingpin.Flag(
     "exporter.disable-example",
     "Disable the scraping of example metrics",
-).Envar("OPNSENSE_EXPORTER_DISABLE_EXAMPLE").Default("false").Bool()
+).Envar("OPN2OTEL_DISABLE_EXAMPLE").Default("false").Bool()
 ```
 
 Add the field to `CollectorsDisableSwitch`:

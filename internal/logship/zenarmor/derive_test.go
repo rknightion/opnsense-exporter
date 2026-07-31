@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // captureSink records the observations handed to it. Only ObserveZenarmor is

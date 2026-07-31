@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-kernel-zone-near-limit",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense kernel zone {{ $labels.zone }} over 80% of its limit ({{ $labels.opnsense_instance }})",
       "description": "A UMA zone has been above 80% of its configured ceiling for 15m. This is the leading indicator for OPNsenseKernelZoneAllocationFailure - it fires while allocations still succeed.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensekernelzonenearlimit",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensekernelzonenearlimit",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "119"
     },

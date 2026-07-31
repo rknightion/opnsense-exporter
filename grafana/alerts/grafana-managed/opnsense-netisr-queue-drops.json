@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-netisr-queue-drops",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense netisr is dropping {{ $labels.protocol }} packets ({{ $labels.opnsense_instance }})",
       "description": "The FreeBSD network interrupt scheduler has been dropping packets on the {{ $labels.protocol }} queue for 10m. This is silent packet loss - it is invisible from the OPNsense UI and degrades the affected protocol without any other symptom. Must be a rate: the counter is cumulative since boot, so an absolute threshold would keep alerting forever on a box that dropped packets once a year ago.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensenetisrqueuedrops",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensenetisrqueuedrops",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "398"
     },

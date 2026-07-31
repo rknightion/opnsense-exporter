@@ -42,9 +42,9 @@ func TestEnvExampleKnownDefaults(t *testing.T) {
 	flags := collectAllFlags()
 	content := renderEnvExample(flags)
 	for _, want := range []string{
-		"#OPNSENSE_EXPORTER_FLOW_TOP_N=1000",
-		"#OPNSENSE_EXPORTER_OTLP_PROTOCOL=http/protobuf",
-		"#OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP=:5514",
+		"#OPN2OTEL_FLOW_TOP_N=1000",
+		"#OPN2OTEL_OTLP_PROTOCOL=http/protobuf",
+		"#OPN2OTEL_LOGS_SYSLOG_LISTEN_UDP=:5514",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("expected line %q in rendered output, not found", want)
@@ -71,7 +71,7 @@ func TestEnvExampleRequiredFlagsUncommented(t *testing.T) {
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimPrefix(line, "#")
 		isVarLine := strings.Contains(line, "=") && !strings.HasPrefix(strings.TrimSpace(trimmed), "#") &&
-			strings.Contains(line, "OPNSENSE_EXPORTER_")
+			strings.Contains(line, "OPN2OTEL_")
 		if !isVarLine {
 			continue
 		}

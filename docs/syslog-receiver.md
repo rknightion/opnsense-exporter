@@ -13,8 +13,8 @@ This is off by default. It needs configuration on **both** sides: the receiver o
 exporter, and a logging target on the firewall.
 
 If a log line from your firewall is not parsed the way you expect, the parsers are open source:
-see [`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship)
-and [report the format](https://github.com/rknightion/opnsense-exporter/issues/new) with a sample line.
+see [`internal/logship/` on GitHub](https://github.com/rknightion/opnsense2otel/tree/main/internal/logship)
+and [report the format](https://github.com/rknightion/opnsense2otel/issues/new) with a sample line.
 
 ## Why this exists
 
@@ -33,7 +33,7 @@ structurally cannot do.
 ## Set up the exporter
 
 ```bash
-opnsense-exporter \
+opnsense2otel \
   --logs.enabled \
   --logs.syslog.enabled
 ```
@@ -521,7 +521,7 @@ OPNsense's `tls4`/`tls6` transports. It matters when the firewall ships across a
 untrusted segment; on a LAN-local link it is unnecessary.
 
 ```bash
-opnsense-exporter \
+opnsense2otel \
   --logs.enabled \
   --logs.syslog.enabled \
   --logs.syslog.listen-tls=:6514 \
@@ -619,7 +619,7 @@ Two index labels select the stream; everything else is structured metadata, filt
 with `|` after it:
 
 ```logql
-{service_name="opnsense-exporter", service_instance_id="opnsense"}
+{service_name="opnsense2otel", service_instance_id="opnsense"}
   | opnsense_subsystem="firewall" | action="block" | src_scope="remote"
 ```
 
@@ -641,10 +641,10 @@ A record, as it lands:
 Useful starting points:
 
 ```logql
-{service_name="opnsense-exporter"} | opnsense_subsystem="audit"                    # who changed the config
-{service_name="opnsense-exporter"} | opnsense_subsystem="auth" | auth_result="failed"
-{service_name="opnsense-exporter"} | opnsense_subsystem="firewall" | action="block" | dst_scope="self"
-{service_name="opnsense-exporter"} | program="filterlog" | src_hostname="WINSRV"
+{service_name="opnsense2otel"} | opnsense_subsystem="audit"                    # who changed the config
+{service_name="opnsense2otel"} | opnsense_subsystem="auth" | auth_result="failed"
+{service_name="opnsense2otel"} | opnsense_subsystem="firewall" | action="block" | dst_scope="self"
+{service_name="opnsense2otel"} | program="filterlog" | src_hostname="WINSRV"
 ```
 
 `opnsense.source` and `opnsense.subsystem` (namespaced so they can never collide

@@ -86,7 +86,7 @@ func renderComposeReference(flags []FlagDoc) []byte {
 	var b strings.Builder
 	b.WriteString("---\n")
 	b.WriteString("title: Docker Compose Reference\n")
-	b.WriteString("description: Every OPNsense Exporter setting, commented out at its default, in one Docker Compose file\n")
+	b.WriteString("description: Every opnsense2otel setting, commented out at its default, in one Docker Compose file\n")
 	b.WriteString("tags:\n")
 	b.WriteString("  - Deployment\n")
 	b.WriteString("  - Docker\n")
@@ -103,9 +103,9 @@ func renderComposeReference(flags []FlagDoc) []byte {
 
 	b.WriteString("```yaml title=\"docker-compose.yml\"\n")
 	b.WriteString("services:\n")
-	b.WriteString("  opnsense-exporter:\n")
-	b.WriteString("    image: ghcr.io/rknightion/opnsense-exporter:latest\n")
-	b.WriteString("    container_name: opnsense-exporter\n")
+	b.WriteString("  opnsense2otel:\n")
+	b.WriteString("    image: ghcr.io/rknightion/opnsense2otel:latest\n")
+	b.WriteString("    container_name: opnsense2otel\n")
 	b.WriteString("    restart: always\n")
 	b.WriteString("\n")
 
@@ -221,7 +221,7 @@ func yamlQuote(s string) string {
 //
 // Named distinctly from env_example.go's wrapComment (different signature:
 // prefix-string vs width-only, since Compose lines are indented under
-// services.opnsense-exporter.environment and .env's are not).
+// services.opnsense2otel.environment and .env's are not).
 func wrapComposeComment(prefix, text string) []string {
 	words := strings.Fields(text)
 	if len(words) == 0 {

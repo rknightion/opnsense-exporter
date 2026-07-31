@@ -1,6 +1,6 @@
 ---
 title: Metrics Reference
-description: Overview of all 994 Prometheus metrics exposed by the OPNsense Exporter
+description: Overview of all 994 Prometheus metrics exposed by opnsense2otel
 tags:
   - Prometheus
   - Monitoring
@@ -8,12 +8,12 @@ tags:
 
 # Metrics Reference
 
-The OPNsense Exporter provides 994 Prometheus metrics across 65 collectors, covering every major subsystem of the firewall platform.
+opnsense2otel provides 994 Prometheus metrics across 65 collectors, covering every major subsystem of the firewall platform.
 
 Every metric on this page is generated from the collector source, so it always matches the shipped
 binary. Read the collector implementations in
-[`internal/collector/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/collector),
-or [open an issue](https://github.com/rknightion/opnsense-exporter/issues/new) if a metric you need
+[`internal/collector/` on GitHub](https://github.com/rknightion/opnsense2otel/tree/main/internal/collector),
+or [open an issue](https://github.com/rknightion/opnsense2otel/issues/new) if a metric you need
 is missing.
 
 <div class="grid cards" markdown>

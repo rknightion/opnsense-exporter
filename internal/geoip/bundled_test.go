@@ -11,10 +11,10 @@ import (
 // change on either side alone silently ships an image whose databases nothing
 // opens, which is indistinguishable from "geo has nothing to say".
 func TestBundledPathsAreStable(t *testing.T) {
-	if BundledCountryPath != "/usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb" {
+	if BundledCountryPath != "/usr/share/opnsense2otel/geoip/dbip-country-lite.mmdb" {
 		t.Errorf("BundledCountryPath = %q", BundledCountryPath)
 	}
-	if BundledASNPath != "/usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb" {
+	if BundledASNPath != "/usr/share/opnsense2otel/geoip/dbip-asn-lite.mmdb" {
 		t.Errorf("BundledASNPath = %q", BundledASNPath)
 	}
 	if filepath.Dir(BundledCountryPath) != BundledDir || filepath.Dir(BundledASNPath) != BundledDir {

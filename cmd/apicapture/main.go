@@ -9,8 +9,8 @@
 //
 //	apicapture --base-url https://192.168.1.1 --insecure [--out opnsense/testdata/captures]
 //
-// Credentials come from --api-key/--api-secret, the OPNSENSE_EXPORTER_OPS_API_KEY /
-// OPNSENSE_EXPORTER_OPS_API_SECRET environment variables, or the file-based
+// Credentials come from --api-key/--api-secret, the OPN2OTEL_OPS_API_KEY /
+// OPN2OTEL_OPS_API_SECRET environment variables, or the file-based
 // OPS_API_KEY_FILE / OPS_API_SECRET_FILE secrets (resolved identically to the
 // exporter, via internal/options). Captures land in a gitignored scratch dir by
 // default; review one (it may contain host/network data) and promote it into a
@@ -25,14 +25,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 func main() {
 	baseURL := flag.String("base-url", os.Getenv("OPNSENSE_CAPTURE_BASE_URL"), "OPNsense base URL, e.g. https://192.168.1.1 (env OPNSENSE_CAPTURE_BASE_URL)")
-	apiKey := flag.String("api-key", os.Getenv("OPNSENSE_EXPORTER_OPS_API_KEY"), "OPNsense API key (env OPNSENSE_EXPORTER_OPS_API_KEY)")
-	apiSecret := flag.String("api-secret", os.Getenv("OPNSENSE_EXPORTER_OPS_API_SECRET"), "OPNsense API secret (env OPNSENSE_EXPORTER_OPS_API_SECRET)")
+	apiKey := flag.String("api-key", os.Getenv("OPN2OTEL_OPS_API_KEY"), "OPNsense API key (env OPN2OTEL_OPS_API_KEY)")
+	apiSecret := flag.String("api-secret", os.Getenv("OPN2OTEL_OPS_API_SECRET"), "OPNsense API secret (env OPN2OTEL_OPS_API_SECRET)")
 	insecure := flag.Bool("insecure", false, "skip TLS verification (for self-signed OPNsense certs)")
 	outDir := flag.String("out", "opnsense/testdata/captures", "directory to write captured responses into")
 	flag.Parse()

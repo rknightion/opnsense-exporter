@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // fakeIDSFetcher is a test double for idsFetcher: each call to

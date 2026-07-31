@@ -1,6 +1,6 @@
 ---
 title: Docker & Compose
-description: Deploy the OPNsense Exporter using Docker or Docker Compose with environment variables or Docker secrets
+description: Deploy opnsense2otel using Docker or Docker Compose with environment variables or Docker secrets
 tags:
   - Deployment
   - Docker
@@ -8,10 +8,10 @@ tags:
 
 # Docker & Compose
 
-The OPNsense Exporter is published as a multi-architecture container image (amd64/arm64) on GitHub Container Registry.
+opnsense2otel is published as a multi-architecture container image (amd64/arm64) on GitHub Container Registry.
 
 ```text
-ghcr.io/rknightion/opnsense-exporter:latest
+ghcr.io/rknightion/opnsense2otel:latest
 ```
 
 ## Docker run
@@ -20,9 +20,9 @@ The simplest way to start the exporter:
 
 ```bash
 docker run -p 8080:8080 \
-  -e OPNSENSE_EXPORTER_OPS_API_KEY=YOUR_API_KEY \
-  -e OPNSENSE_EXPORTER_OPS_API_SECRET=YOUR_API_SECRET \
-  ghcr.io/rknightion/opnsense-exporter:latest \
+  -e OPN2OTEL_OPS_API_KEY=YOUR_API_KEY \
+  -e OPN2OTEL_OPS_API_SECRET=YOUR_API_SECRET \
+  ghcr.io/rknightion/opnsense2otel:latest \
   --opnsense.protocol=https \
   --opnsense.address=opnsense.example.com \
   --exporter.instance-label=my-firewall \
@@ -37,9 +37,9 @@ For production, prefer the [file-based secrets](#docker-compose-with-file-based-
 
 ```yaml title="docker-compose.yml"
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
-    container_name: opnsense-exporter
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
+    container_name: opnsense2otel
     restart: always
     command:
       - --opnsense.protocol=https
@@ -50,8 +50,8 @@ services:
       # - --exporter.disable-arp-table
       # - --exporter.disable-cron-table
     environment:
-      OPNSENSE_EXPORTER_OPS_API_KEY: "${OPS_API_KEY}"
-      OPNSENSE_EXPORTER_OPS_API_SECRET: "${OPS_API_SECRET}"
+      OPN2OTEL_OPS_API_KEY: "${OPS_API_KEY}"
+      OPN2OTEL_OPS_API_SECRET: "${OPS_API_SECRET}"
     ports:
       - "8080:8080"
       # The receivers listen on their own ports and are off by default. Publish
@@ -89,9 +89,9 @@ sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret
 <!-- executable:begin:compose-file-secrets -->
 ```yaml title="docker-compose.yml"
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
-    container_name: opnsense-exporter
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
+    container_name: opnsense2otel
     restart: always
     command:
       - --opnsense.protocol=https
@@ -148,7 +148,7 @@ No `secrets:` section at all — the files are ordinary read-only mounts. Simple
 
 ```yaml
 services:
-  opnsense-exporter:
+  opnsense2otel:
     # ...
     volumes:
       - ./secrets/api-key:/run/secrets/opnsense-api-key:ro
@@ -164,10 +164,10 @@ The runtime image is distroless: it contains the exporter binary and its licence
 
 ```yaml
 services:
-  opnsense-exporter:
+  opnsense2otel:
     # ...
     healthcheck:
-      test: ["CMD", "/opnsense-exporter", "health"]
+      test: ["CMD", "/opnsense2otel", "health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -188,7 +188,7 @@ For a non-default listen address:
 
 ```yaml
     healthcheck:
-      test: ["CMD", "/opnsense-exporter", "health", "--url=http://127.0.0.1:9100/-/healthy"]
+      test: ["CMD", "/opnsense2otel", "health", "--url=http://127.0.0.1:9100/-/healthy"]
 ```
 
 ### What an unhealthy container does and does not do
@@ -210,18 +210,18 @@ Automatic remediation needs something outside plain Docker Compose:
 With an env-var-driven configuration:
 
 ```bash
-docker compose run --rm --no-deps opnsense-exporter --config.check
+docker compose run --rm --no-deps opnsense2otel --config.check
 ```
 
 !!! warning "`docker compose run` replaces `command:`"
     Arguments passed to `docker compose run` do not extend the service's `command:` list, they replace it. If your flags live in `command:` rather than in `environment:`, the invocation above drops them and the check fails on missing required flags. Either repeat the flags:
 
     ```bash
-    docker compose run --rm --no-deps opnsense-exporter \
+    docker compose run --rm --no-deps opnsense2otel \
       --opnsense.protocol=https --opnsense.address=opnsense.example.com --config.check
     ```
 
-    or configure the exporter through `OPNSENSE_EXPORTER_*` environment variables, which the check reads through the same parser a real start does.
+    or configure the exporter through `OPN2OTEL_*` environment variables, which the check reads through the same parser a real start does.
 
 Deliberately not checked, because a configuration error and an unreachable firewall are different problems: OPNsense API reachability, port binding, and OTLP/Pyroscope endpoint reachability. Runtime reachability is reported by `/-/ready`.
 
@@ -232,7 +232,7 @@ To monitor multiple OPNsense firewalls from a single Docker host, run one export
 ```yaml title="docker-compose.yml"
 services:
   opnsense-primary:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
+    image: ghcr.io/rknightion/opnsense2otel:latest
     restart: always
     command:
       - --opnsense.protocol=https
@@ -240,13 +240,13 @@ services:
       - --exporter.instance-label=primary
       - --web.listen-address=:8080
     environment:
-      OPNSENSE_EXPORTER_OPS_API_KEY: "${PRIMARY_API_KEY}"
-      OPNSENSE_EXPORTER_OPS_API_SECRET: "${PRIMARY_API_SECRET}"
+      OPN2OTEL_OPS_API_KEY: "${PRIMARY_API_KEY}"
+      OPN2OTEL_OPS_API_SECRET: "${PRIMARY_API_SECRET}"
     ports:
       - "8080:8080"
 
   opnsense-secondary:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
+    image: ghcr.io/rknightion/opnsense2otel:latest
     restart: always
     command:
       - --opnsense.protocol=https
@@ -254,8 +254,8 @@ services:
       - --exporter.instance-label=secondary
       - --web.listen-address=:8080
     environment:
-      OPNSENSE_EXPORTER_OPS_API_KEY: "${SECONDARY_API_KEY}"
-      OPNSENSE_EXPORTER_OPS_API_SECRET: "${SECONDARY_API_SECRET}"
+      OPN2OTEL_OPS_API_KEY: "${SECONDARY_API_KEY}"
+      OPN2OTEL_OPS_API_SECRET: "${SECONDARY_API_SECRET}"
     ports:
       - "8081:8080"
 ```
@@ -275,8 +275,8 @@ so there is no `update-ca-certificates`):
 
 ```yaml
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
     command:
       - --opnsense.protocol=https
       - --opnsense.address=ops.example.com

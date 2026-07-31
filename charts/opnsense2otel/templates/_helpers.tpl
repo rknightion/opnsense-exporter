@@ -1,9 +1,9 @@
-{{- define "opnsense-exporter.name" -}}
+{{- define "opnsense2otel.name" -}}
 {{- .Chart.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "opnsense-exporter.fullname" -}}
-{{- $name := include "opnsense-exporter.name" . }}
+{{- define "opnsense2otel.fullname" -}}
+{{- $name := include "opnsense2otel.name" . }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -11,27 +11,27 @@
 {{- end }}
 {{- end }}
 
-{{- define "opnsense-exporter.chart" -}}
+{{- define "opnsense2otel.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "opnsense-exporter.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "opnsense-exporter.name" . }}
+{{- define "opnsense2otel.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "opnsense2otel.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "opnsense-exporter.labels" -}}
-helm.sh/chart: {{ include "opnsense-exporter.chart" . }}
-{{ include "opnsense-exporter.selectorLabels" . }}
+{{- define "opnsense2otel.labels" -}}
+helm.sh/chart: {{ include "opnsense2otel.chart" . }}
+{{ include "opnsense2otel.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{- define "opnsense-exporter.image" -}}
+{{- define "opnsense2otel.image" -}}
 {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
 {{- end }}
 
-{{- define "opnsense-exporter.securityContext" -}}
+{{- define "opnsense2otel.securityContext" -}}
 allowPrivilegeEscalation: false
 capabilities:
   drop:
@@ -44,27 +44,27 @@ seccompProfile:
   type: RuntimeDefault
 {{- end }}
 
-{{- define "opnsense-exporter.env" -}}
-- name: OPNSENSE_EXPORTER_INSTANCE_LABEL
+{{- define "opnsense2otel.env" -}}
+- name: OPN2OTEL_INSTANCE_LABEL
   value: {{ .Values.opnsense.instanceLabel | quote }}
-- name: OPNSENSE_EXPORTER_OPS_API
+- name: OPN2OTEL_OPS_API
   value: {{ required "opnsense.address is required" .Values.opnsense.address | quote }}
-- name: OPNSENSE_EXPORTER_OPS_PROTOCOL
+- name: OPN2OTEL_OPS_PROTOCOL
   value: {{ .Values.opnsense.protocol | quote }}
 - name: OPS_API_KEY_FILE
-  value: /etc/opnsense-exporter/creds/api-key
+  value: /etc/opnsense2otel/creds/api-key
 - name: OPS_API_SECRET_FILE
-  value: /etc/opnsense-exporter/creds/api-secret
+  value: /etc/opnsense2otel/creds/api-secret
 {{- end }}
 
 {{/*
-opnsense-exporter.reservedFlagReason takes a bare flag name (no leading --, no value)
+opnsense2otel.reservedFlagReason takes a bare flag name (no leading --, no value)
 and returns the curated value that already sets it, or empty if the flag is not
 chart-managed. Shared by the extraArgs check and the settings check below so the two
 reserved-flag lists cannot drift apart -- a flag added to one and not the other would
 let extraArgs and settings disagree about what's safe to set.
 */}}
-{{- define "opnsense-exporter.reservedFlagReason" -}}
+{{- define "opnsense2otel.reservedFlagReason" -}}
 {{- if or (eq . "opnsense.api-key") (eq . "opnsense.api-secret") -}}
 already set via the mounted credentials Secret (opnsense.existingSecret)
 {{- else if eq . "opnsense.address" -}}
@@ -90,10 +90,10 @@ already set via receivers.netflow.*
 {{- end -}}
 {{- end }}
 
-{{- define "opnsense-exporter.args" -}}
+{{- define "opnsense2otel.args" -}}
 {{- range $arg := .Values.extraArgs }}
 {{- $name := (splitn "=" 2 (trimPrefix "--" $arg))._0 }}
-{{- $reason := include "opnsense-exporter.reservedFlagReason" $name }}
+{{- $reason := include "opnsense2otel.reservedFlagReason" $name }}
 {{- if $reason }}
 {{- fail (printf "extraArgs may not set chart-managed or secret flag %q: %s" $arg $reason) }}
 {{- end }}
@@ -128,7 +128,7 @@ already set via receivers.netflow.*
 - {{ . | quote }}
 {{- end }}
 {{- range $name, $value := .Values.settings }}
-{{- $reason := include "opnsense-exporter.reservedFlagReason" $name }}
+{{- $reason := include "opnsense2otel.reservedFlagReason" $name }}
 {{- if $reason }}
 {{- fail (printf "settings.%s conflicts with a chart-managed flag: %s. Set it there instead, or drop the curated value if settings should win." $name $reason) }}
 {{- end }}

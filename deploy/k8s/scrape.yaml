@@ -5,7 +5,7 @@
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: ScrapeConfig
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
   labels:
     # If Prometheus Operator is installed with Helm chart, default config requires ScrapeConfig to have this label
     release: "kube-prom"
@@ -19,9 +19,9 @@ spec:
   staticConfigs:
     - labels:
         # if the job label is not set, one will be automatically generated from the scrape-config name and namespace
-        job: opnsense-exporter
+        job: opnsense2otel
       targets:
         # Valid Kubernetes Service DNS is <service>.<namespace>.svc — there is no
         # ".svc" shorthand that omits the namespace. Substitute the namespace the
         # exporter is deployed into (this assumes "default").
-        - opnsense-exporter.default.svc:8080
+        - opnsense2otel.default.svc:8080

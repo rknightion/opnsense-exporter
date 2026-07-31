@@ -104,8 +104,8 @@ func statRules(s docStats) []statRule {
 	return []statRule{
 		{File: "zensical.toml", Pattern: across, Replace: acrossRepl, MinHits: 1},
 		{File: "docs/.meta.yml", Pattern: across, Replace: acrossRepl, MinHits: 1},
-		{File: "docs/collectors/.meta.yml", Pattern: regexp.MustCompile(`all \d+ OPNsense Exporter collectors`),
-			Replace: fmt.Sprintf("all %d OPNsense Exporter collectors", s.Collectors), MinHits: 1},
+		{File: "docs/collectors/.meta.yml", Pattern: regexp.MustCompile(`all \d+ opnsense2otel collectors`),
+			Replace: fmt.Sprintf("all %d opnsense2otel collectors", s.Collectors), MinHits: 1},
 		{File: "docs/index.md", Pattern: across, Replace: acrossRepl, MinHits: 2},
 		{File: "docs/index.md", Pattern: allProm, Replace: allPromRepl, MinHits: 1},
 		{File: "docs/index.md", Pattern: regexp.MustCompile(`\*\*\d+ collectors\*\*`),
@@ -115,8 +115,8 @@ func statRules(s docStats) []statRule {
 		{File: "docs/metrics/index.md", Pattern: across, Replace: acrossRepl, MinHits: 1},
 		{File: "docs/metrics/index.md", Pattern: regexp.MustCompile(`\*\*\d+\+? metrics\*\* across \d+ collectors`),
 			Replace: fmt.Sprintf("**%d metrics** across %d collectors", s.Metrics, s.Collectors), MinHits: 1},
-		{File: "docs/collectors/index.md", Pattern: regexp.MustCompile(`all \d+ OPNsense Exporter collectors`),
-			Replace: fmt.Sprintf("all %d OPNsense Exporter collectors", s.Collectors), MinHits: 1},
+		{File: "docs/collectors/index.md", Pattern: regexp.MustCompile(`all \d+ opnsense2otel collectors`),
+			Replace: fmt.Sprintf("all %d opnsense2otel collectors", s.Collectors), MinHits: 1},
 		{File: "docs/collectors/index.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
 		{File: "docs/architecture.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
 		// CLAUDE.md + these three docs pages sat outside the pin allowlist and drifted to a stale

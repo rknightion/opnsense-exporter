@@ -65,7 +65,7 @@ jobs:
     # is main-only, and the repository guard stops forks' copies from even
     # attempting scheduled runs. timeout-minutes bounds how long the ephemeral
     # node can exist if something hangs.
-    if: github.repository == 'rknightion/opnsense-exporter'
+    if: github.repository == 'rknightion/opnsense2otel'
     name: canary (${{ matrix.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -97,8 +97,8 @@ jobs:
         id: drift
         env:
           DEVBOX_HOST: ${{ secrets[matrix.host_secret] }}
-          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets[matrix.key_secret] }}
-          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets[matrix.secret_secret] }}
+          OPN2OTEL_OPS_API_KEY: ${{ secrets[matrix.key_secret] }}
+          OPN2OTEL_OPS_API_SECRET: ${{ secrets[matrix.secret_secret] }}
           CANARY_PROFILE: ${{ matrix.target }}
         run: |
           set -euo pipefail
@@ -122,15 +122,15 @@ jobs:
         id: smoke
         env:
           DEVBOX_HOST: ${{ secrets[matrix.host_secret] }}
-          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets[matrix.key_secret] }}
-          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets[matrix.secret_secret] }}
-          OPNSENSE_EXPORTER_OPS_PROTOCOL: https
-          OPNSENSE_EXPORTER_OPS_INSECURE: 'true'
-          OPNSENSE_EXPORTER_INSTANCE_LABEL: canary
+          OPN2OTEL_OPS_API_KEY: ${{ secrets[matrix.key_secret] }}
+          OPN2OTEL_OPS_API_SECRET: ${{ secrets[matrix.secret_secret] }}
+          OPN2OTEL_OPS_PROTOCOL: https
+          OPN2OTEL_OPS_INSECURE: 'true'
+          OPN2OTEL_INSTANCE_LABEL: canary
         run: |
           set -euo pipefail
-          go build -o /tmp/opnsense-exporter .
-          OPNSENSE_EXPORTER_OPS_API="$DEVBOX_HOST" /tmp/opnsense-exporter \
+          go build -o /tmp/opnsense2otel .
+          OPN2OTEL_OPS_API="$DEVBOX_HOST" /tmp/opnsense2otel \
             --exporter.enable-arp-details \
             --exporter.enable-ndp-details \
             --exporter.enable-unbound-infra \

@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-opnsense-exporter-security-findings/
+opnsense2otel-security-findings/
 # Test binary, built with `go test -c`
 *.test
 
@@ -19,7 +19,7 @@ opnsense-exporter-security-findings/
 
 # Go workspace file
 go.work
-*opnsense-exporter-local
+*opnsense2otel-local
 local.Makefile
 key
 secret
@@ -38,6 +38,10 @@ local.docker-compose.yml
 .idea/
 .vscode/
 
+/opnsense2otel
+# Kept alongside the current name: a checkout that predates the opnsense2otel
+# rename leaves a binary called opnsense-exporter at the root, and renaming this
+# entry alone would silently un-ignore it into the next `git add -A`.
 /opnsense-exporter
 /docgen
 # Stray dev binaries from `go build ./cmd/...`

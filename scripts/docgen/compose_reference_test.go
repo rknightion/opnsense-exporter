@@ -60,11 +60,11 @@ func TestComposeReferenceYAMLParses(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(block), &doc); err != nil {
 		t.Fatalf("generated compose reference is not valid YAML: %v\n---\n%s", err, block)
 	}
-	svc, ok := doc.Services["opnsense-exporter"]
+	svc, ok := doc.Services["opnsense2otel"]
 	if !ok {
-		t.Fatal("services.opnsense-exporter missing")
+		t.Fatal("services.opnsense2otel missing")
 	}
-	if svc.Image != "ghcr.io/rknightion/opnsense-exporter:latest" {
+	if svc.Image != "ghcr.io/rknightion/opnsense2otel:latest" {
 		t.Errorf("image = %q", svc.Image)
 	}
 	if svc.Restart != "always" {
@@ -73,11 +73,11 @@ func TestComposeReferenceYAMLParses(t *testing.T) {
 	// The two Required flags must be live (uncommented) keys, everything else
 	// commented, so environment should contain exactly the OPNsense address +
 	// protocol placeholders and nothing more.
-	if svc.Environment["OPNSENSE_EXPORTER_OPS_PROTOCOL"] != "https" {
-		t.Errorf("OPNSENSE_EXPORTER_OPS_PROTOCOL = %q, want https", svc.Environment["OPNSENSE_EXPORTER_OPS_PROTOCOL"])
+	if svc.Environment["OPN2OTEL_OPS_PROTOCOL"] != "https" {
+		t.Errorf("OPN2OTEL_OPS_PROTOCOL = %q, want https", svc.Environment["OPN2OTEL_OPS_PROTOCOL"])
 	}
-	if svc.Environment["OPNSENSE_EXPORTER_OPS_API"] != "opnsense.example.com" {
-		t.Errorf("OPNSENSE_EXPORTER_OPS_API = %q, want opnsense.example.com", svc.Environment["OPNSENSE_EXPORTER_OPS_API"])
+	if svc.Environment["OPN2OTEL_OPS_API"] != "opnsense.example.com" {
+		t.Errorf("OPN2OTEL_OPS_API = %q, want opnsense.example.com", svc.Environment["OPN2OTEL_OPS_API"])
 	}
 	if len(svc.Environment) != 2 {
 		t.Errorf("environment has %d live keys, want exactly the 2 required flags: %v", len(svc.Environment), svc.Environment)
@@ -93,9 +93,9 @@ func TestComposeReferenceYAMLParses(t *testing.T) {
 func TestComposeReferenceKnownDefaults(t *testing.T) {
 	content := string(renderComposeReference(collectAllFlags()))
 	for _, tc := range []struct{ envar, want string }{
-		{"OPNSENSE_EXPORTER_OTLP_PROTOCOL", `# OPNSENSE_EXPORTER_OTLP_PROTOCOL: "http/protobuf"`},
-		{"OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP", `# OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP: ":5514"`},
-		{"OPNSENSE_EXPORTER_FLOW_TOP_N", `# OPNSENSE_EXPORTER_FLOW_TOP_N: "10000"`},
+		{"OPN2OTEL_OTLP_PROTOCOL", `# OPN2OTEL_OTLP_PROTOCOL: "http/protobuf"`},
+		{"OPN2OTEL_LOGS_SYSLOG_LISTEN_UDP", `# OPN2OTEL_LOGS_SYSLOG_LISTEN_UDP: ":5514"`},
+		{"OPN2OTEL_FLOW_TOP_N", `# OPN2OTEL_FLOW_TOP_N: "10000"`},
 	} {
 		if !strings.Contains(content, tc.want) {
 			t.Errorf("expected line %q not found for %s", tc.want, tc.envar)

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/flow"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // flowFromDoc builds a normalized flow.Record from a Zenarmor conn document.

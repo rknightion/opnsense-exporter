@@ -11,7 +11,7 @@ So navigation is built rather than written, and this file is the contract:
 1. **Every destination comes from `uids.py`.** A UID is never typed at a call site,
    the three retired UIDs can never reappear, and a destination that does not exist
    yet emits no link at all — the registry's `exists` flag is what stops us shipping
-   a link to a 404. (`opnsense-exporter-health` was the reserved case until #431
+   a link to a 404. (`opnsense2otel-health` was the reserved case until #431
    generated it; there is no reserved destination today, so that guard is exercised
    against a synthetic one in `UrlBuilderTest`.)
 2. **Every internal link carries context.** Time range, selected instance, and the

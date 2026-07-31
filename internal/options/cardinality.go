@@ -25,4 +25,4 @@ var SeriesBudget = kingpin.Flag(
 		"budget) and is reported on /cardinality alongside the existing per-metric "+
 		"warn/crit thresholds, which are a different, unrelated dimension. Set to 0 to "+
 		"disable the check entirely.",
-).Envar("OPNSENSE_EXPORTER_SERIES_BUDGET").Default("100000").Int()
+).Envar("OPN2OTEL_SERIES_BUDGET").Default("100000").Int()

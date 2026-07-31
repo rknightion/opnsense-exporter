@@ -21,14 +21,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 func main() {
 	baseURL := flag.String("base-url", os.Getenv("OPNSENSE_CAPTURE_BASE_URL"), "OPNsense base URL, e.g. https://192.168.1.1 (env OPNSENSE_CAPTURE_BASE_URL)")
-	apiKey := flag.String("api-key", os.Getenv("OPNSENSE_EXPORTER_OPS_API_KEY"), "OPNsense API key (env OPNSENSE_EXPORTER_OPS_API_KEY)")
-	apiSecret := flag.String("api-secret", os.Getenv("OPNSENSE_EXPORTER_OPS_API_SECRET"), "OPNsense API secret (env OPNSENSE_EXPORTER_OPS_API_SECRET)")
+	apiKey := flag.String("api-key", os.Getenv("OPN2OTEL_OPS_API_KEY"), "OPNsense API key (env OPN2OTEL_OPS_API_KEY)")
+	apiSecret := flag.String("api-secret", os.Getenv("OPN2OTEL_OPS_API_SECRET"), "OPNsense API secret (env OPN2OTEL_OPS_API_SECRET)")
 	insecure := flag.Bool("insecure", false, "skip TLS verification (for self-signed OPNsense certs)")
 	out := flag.String("out", "", "write the markdown report to this file as well as stdout")
 	captures := flag.String("captures", "", "runner-local scratch dir for raw captures (never commit or upload)")

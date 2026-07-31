@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // TestBodyCacheDefaultsOutliveThePollCeiling pins the reason the per-endpoint

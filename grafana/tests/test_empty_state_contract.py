@@ -275,9 +275,9 @@ class GateFailsOnAMismatchTest(unittest.TestCase):
     would fail here too.
     """
 
-    MISMATCH = ("opnsense-exporter", "Built Circuits", ["opnsense_tor_circuits"],
+    MISMATCH = ("opnsense2otel", "Built Circuits", ["opnsense_tor_circuits"],
                 ["has_crowdsec"], "Security > CrowdSec")
-    MATCH = ("opnsense-exporter", "Built Circuits", ["opnsense_tor_circuits"],
+    MATCH = ("opnsense2otel", "Built Circuits", ["opnsense_tor_circuits"],
              ["has_tor"], "VPN & remote access > Tor")
 
     def test_a_tor_panel_gated_by_a_crowdsec_sentinel_is_a_violation(self):
@@ -292,7 +292,7 @@ class GateFailsOnAMismatchTest(unittest.TestCase):
         self.assertEqual(violations([self.MATCH]), [])
 
     def test_a_zero_fill_gated_by_nothing_at_all_is_a_violation(self):
-        ungated = ("opnsense-exporter", "Built Circuits", ["opnsense_tor_circuits"],
+        ungated = ("opnsense2otel", "Built Circuits", ["opnsense_tor_circuits"],
                    [], "Overview > Health")
         self.assertEqual(len(violations([ungated])), 1)
 

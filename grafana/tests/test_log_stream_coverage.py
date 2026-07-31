@@ -120,7 +120,7 @@ class LogStreamCoverageTest(unittest.TestCase):
         which is how the flow drilldown is written. Reading it as the single literal
         `netflow|merged` would leave both permanently reported as gaps."""
         b = Builder()
-        b.record_loki_expr('{service_name="opnsense-exporter",opnsense_source=~"netflow|merged"} | json')
+        b.record_loki_expr('{service_name="opnsense2otel",opnsense_source=~"netflow|merged"} | json')
         self.assertEqual({"netflow", "merged"},
                          build_dashboard.panelled_log_sources(b))
 
@@ -129,7 +129,7 @@ class LogStreamCoverageTest(unittest.TestCase):
         over the Zenarmor tab. Counting a bare word match would score a stream as
         covered because some unrelated panel mentions it in a `|=` filter."""
         b = Builder()
-        b.record_loki_expr('{service_name="opnsense-exporter"} |= "zenarmor"')
+        b.record_loki_expr('{service_name="opnsense2otel"} |= "zenarmor"')
         self.assertEqual(set(), build_dashboard.panelled_log_sources(b))
 
     def test_the_documented_source_table_agrees_with_the_source(self):

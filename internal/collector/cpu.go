@@ -7,8 +7,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/rknightion/opnsense-exporter/internal/cpustream"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/cpustream"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // CPUStream is the process-wide seam between the SSE stream consumer and this

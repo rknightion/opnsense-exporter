@@ -1,5 +1,5 @@
 """
-Grafana v2 dynamic-dashboard builder framework for the OPNsense Exporter.
+Grafana v2 dynamic-dashboard builder framework for the opnsense2otel.
 
 Emits a `dashboard.grafana.app/v2` manifest (TabsLayout + conditionalRendering).
 Tab modules call the helper methods on a `Builder` instance; each helper registers
@@ -1057,7 +1057,7 @@ class Builder:
         self.tabs.append({"kind": "TabsLayoutTab", "spec": spec})
 
     # ---- manifest --------------------------------------------------------
-    def manifest(self, title, description, tags, name="opnsense-exporter") -> dict:
+    def manifest(self, title, description, tags, name="opnsense2otel") -> dict:
         return {
             "apiVersion": "dashboard.grafana.app/v2",
             "kind": "Dashboard",

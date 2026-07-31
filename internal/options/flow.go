@@ -24,14 +24,14 @@ var (
 			"Costs nothing where no flow source is configured - the metrics are simply silent, like "+
 			"log_events without the syslog receiver. Set --exporter.disable-flow to remove the "+
 			"collector entirely.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_ENABLED").Default("true").Bool()
+	).Envar("OPN2OTEL_FLOW_ENABLED").Default("true").Bool()
 
 	flowZenarmor = kingpin.Flag(
 		"flow.zenarmor",
 		"Derive flow records from the Zenarmor receiver's conn documents. Adds no new log records "+
 			"to Loki: the conn document ships exactly as before and this only feeds the metric "+
 			"rollup. Requires --logs.zenarmor.enabled to produce anything.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_ZENARMOR").Default("true").Bool()
+	).Envar("OPN2OTEL_FLOW_ZENARMOR").Default("true").Bool()
 
 	// topN bounds the EMITTED series; maxKeys bounds the LIVE map. They are separate
 	// bounds and neither substitutes for the other — see internal/flow/rollup.go.
@@ -78,7 +78,7 @@ var (
 			"because the accumulator never tracks the combinations it would emit. Lower it if the "+
 			"flow families are more series than you want - opnsense_flow_rollup_capped_total tells "+
 			"you what folding is costing you.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_TOP_N").Default("10000").Int()
+	).Envar("OPN2OTEL_FLOW_TOP_N").Default("10000").Int()
 
 	flowMaxKeys = kingpin.Flag(
 		"flow.max-keys",
@@ -90,7 +90,7 @@ var (
 			"actual volume decides which combinations get reported, because a combination refused "+
 			"at first sight can never accumulate its way into the top-N. The default runs 10:1 for "+
 			"that reason. Roughly 250-350 bytes per tracked key, so the default is ~25-35 MB.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_KEYS").Default("100000").Int()
+	).Envar("OPN2OTEL_FLOW_MAX_KEYS").Default("100000").Int()
 
 	// The NetFlow lane is opt-in, and stays opt-in even though --flow.enabled is not.
 	// The difference is real rather than stylistic: the Zenarmor lane derives records
@@ -101,20 +101,20 @@ var (
 		"Enable the NetFlow v5/v9 receiver. Opens an UNAUTHENTICATED UDP socket: NetFlow has no "+
 			"authentication of any kind, so restrict it with --flow.netflow.allowed-peers or by "+
 			"firewalling the port. Requires --flow.enabled.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_FLOW_NETFLOW_ENABLED").Default("false").Bool()
 
 	flowNetflowListen = kingpin.Flag(
 		"flow.netflow.listen",
 		"Address the NetFlow receiver binds, host:port. Bound eagerly at startup, so a port "+
 			"already in use is a startup error rather than a receiver that is silently never there.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_LISTEN").Default(":2055").String()
+	).Envar("OPN2OTEL_FLOW_NETFLOW_LISTEN").Default(":2055").String()
 
 	flowNetflowPeers = kingpin.Flag(
 		"flow.netflow.allowed-peers",
 		"CIDR allowlist of exporters permitted to send flow records, repeatable. Empty means "+
 			"accept from anyone, which is a deliberate decision to trust the network rather than a "+
 			"default to drift into: anything that can reach the port can inject flow records.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_ALLOWED_PEERS").Strings()
+	).Envar("OPN2OTEL_FLOW_NETFLOW_ALLOWED_PEERS").Strings()
 
 	// Off by default and it must stay that way: this writes RAW datagrams — real
 	// addresses, ports and the traffic pattern of the whole network — to disk. It is
@@ -128,7 +128,7 @@ var (
 			"at all) - cheap, and the mode worth leaving on. \"all\" writes every datagram, for "+
 			"regenerating a replay fixture or measuring the export; deliberately heavy, bounded only "+
 			"by --logs.debug-capture.max-bytes. Requires --flow.netflow.enabled and the shared dir.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_DEBUG_CAPTURE").Default("off").
+	).Envar("OPN2OTEL_FLOW_NETFLOW_DEBUG_CAPTURE").Default("off").
 		Enum("off", "unidentified", "all")
 
 	// ng_netflow's ifIndex is a 1-based counter over ifinfo output, NOT an OS or SNMP
@@ -152,7 +152,7 @@ var (
 			"opnsense_flow_ifindex_conflicts, whose reason=\"derived_differs\" is that "+
 			"divergence; settle which side is right with ngctl show netflow_<device>:, where "+
 			"the ifaceN hook name is the index ng_netflow actually stamps on the records.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_IFINDEX_MAP").Default("").String()
+	).Envar("OPN2OTEL_FLOW_NETFLOW_IFINDEX_MAP").Default("").String()
 
 	// Correlation joins the two sources' view of one conversation. It is a pass-through
 	// when only one source is configured, so the no-second-source deployment pays
@@ -163,35 +163,35 @@ var (
 		"Correlate NetFlow fragments and Zenarmor conn documents into one merged flow record per "+
 			"connection-window. A pass-through when only one source is present. Off emits NetFlow "+
 			"records raw and per-fragment.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_CORRELATE").Default("true").Bool()
+	).Envar("OPN2OTEL_FLOW_CORRELATE").Default("true").Bool()
 
 	flowCorrelateWindow = kingpin.Flag(
 		"flow.correlate.window",
 		"How long the correlator holds a connection-window before emitting. Also the maximum a flow "+
 			"log is delayed. NetFlow export lag runs to ~30m for long flows (#346), so a flow whose "+
 			"records straddle the window emits a partial per window rather than one joined record.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_CORRELATE_WINDOW").Default("3m").Duration()
+	).Envar("OPN2OTEL_FLOW_CORRELATE_WINDOW").Default("3m").Duration()
 
 	flowCorrelateMaxEntries = kingpin.Flag(
 		"flow.correlate.max-entries",
 		"Hard cap on live correlator entries. At the cap the oldest is force-emitted (never "+
 			"dropped) and counted. The NetFlow ingress is unauthenticated, so this bounds memory "+
 			"against a flood. 0 is unbounded (unwise with the listener on).",
-	).Envar("OPNSENSE_EXPORTER_FLOW_CORRELATE_MAX_ENTRIES").Default("50000").Int()
+	).Envar("OPN2OTEL_FLOW_CORRELATE_MAX_ENTRIES").Default("50000").Int()
 
 	flowLogMode = kingpin.Flag(
 		"flow.log-mode",
 		"Flow log emission: \"per_flow\" ships one OTLP log record per correlated flow on the shared "+
 			"log pipeline; \"off\" ships none while still deriving all metrics. Zenarmor conn documents "+
 			"ship on their own lane regardless.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_LOG_MODE").Default("per_flow").Enum("per_flow", "off")
+	).Envar("OPN2OTEL_FLOW_LOG_MODE").Default("per_flow").Enum("per_flow", "off")
 
 	flowMaxLogsPerWindow = kingpin.Flag(
 		"flow.max-logs-per-window",
 		"Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled) and counted. "+
 			"A flood guard on the unauthenticated NetFlow ingress. 0 is unlimited. Metrics are never "+
 			"truncated.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_LOGS_PER_WINDOW").Default("0").Int()
+	).Envar("OPN2OTEL_FLOW_MAX_LOGS_PER_WINDOW").Default("0").Int()
 
 	// Opt-in because the host label is unbounded cardinality — one series per internal
 	// host, unlike every other flow metric, which is exactly why it is off by default
@@ -201,14 +201,14 @@ var (
 		"Emit opnsense_flow_top_talker_bytes_total: bytes per internal host and direction, top-N with "+
 			"an __other__ remainder. OFF by default because the host label is high cardinality; the top-N "+
 			"bounds it but a host label is still one series per host.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_TOP_TALKERS").Default("false").Bool()
+	).Envar("OPN2OTEL_FLOW_TOP_TALKERS").Default("false").Bool()
 
 	flowDNSCacheSize = kingpin.Flag(
 		"flow.dns-cache.size",
 		"Entries in the DNS answer cache that gives a flow to a bare IP its dst.domain, fed by the "+
 			"Zenarmor dns family. Over the cap it stops inserting rather than evicting hot entries. 0 "+
 			"disables domain enrichment.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_DNS_CACHE_SIZE").Default("50000").Int()
+	).Envar("OPN2OTEL_FLOW_DNS_CACHE_SIZE").Default("50000").Int()
 )
 
 // parseAllowedPeers turns the repeatable CIDR flag into prefixes. A bare address is

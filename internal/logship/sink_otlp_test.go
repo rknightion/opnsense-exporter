@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -63,7 +63,7 @@ func (f *fakeExporter) exported() []sdklog.Record {
 func newTestSink(exp sdklog.Exporter) *otlpSink {
 	return &otlpSink{
 		exporter:  exp,
-		base:      baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		base:      baseLogAttributes("opnsense2otel", "v1.2.3", "opnsense"),
 		providers: make(map[resourceKey]*resourceLogger),
 	}
 }
@@ -75,7 +75,7 @@ func newConcurrentTestSink(exp sdklog.Exporter, concurrency int) *otlpSink {
 	return &otlpSink{
 		exporter:    exp,
 		concurrency: concurrency,
-		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		base:        baseLogAttributes("opnsense2otel", "v1.2.3", "opnsense"),
 		providers:   make(map[resourceKey]*resourceLogger),
 	}
 }
@@ -184,7 +184,7 @@ func TestOTLPSink_SourceAndSubsystemAreResourceAttributes(t *testing.T) {
 	for k, want := range map[string]string{
 		"opnsense.source":     "syslog",
 		"opnsense.subsystem":  "firewall",
-		"service.name":        "opnsense-exporter",
+		"service.name":        "opnsense2otel",
 		"service.instance.id": "opnsense",
 		"service.version":     "v1.2.3",
 	} {
@@ -321,7 +321,7 @@ func TestBaseLogAttributesAreIdentityOnly(t *testing.T) {
 // OTLP handler appends it as structured metadata verbatim on every record, gated only
 // on it being non-empty (pkg/loghttp/push/otlplabels/labels.go: `if scopeName :=
 // scope.Name(); scopeName != ""`). The old value —
-// "github.com/rknightion/opnsense-exporter/logship" — measured 57 B/line on the wire
+// "github.com/rknightion/opnsense2otel/v4/logship" — measured 57 B/line on the wire
 // at exactly one distinct value across every family, which on the Zenarmor stream
 // alone is ~140 MB/day of the same 46 bytes.
 //
@@ -916,7 +916,7 @@ func newSinkOverEndpoint(t *testing.T, protocol, endpoint string) *otlpSink {
 		exporters:   exps,
 		exporter:    exps[0],
 		concurrency: testShipConcurrency,
-		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		base:        baseLogAttributes("opnsense2otel", "v1.2.3", "opnsense"),
 		providers:   make(map[resourceKey]*resourceLogger),
 	}
 	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
@@ -2062,7 +2062,7 @@ func TestOTLPSink_ConcurrentFlushesUseDistinctExporters(t *testing.T) {
 		exporters:   exps,
 		exporter:    exps[0],
 		concurrency: poolSize,
-		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		base:        baseLogAttributes("opnsense2otel", "v1.2.3", "opnsense"),
 		providers:   make(map[resourceKey]*resourceLogger),
 	}
 
@@ -2107,7 +2107,7 @@ func TestOTLPSink_ShutdownClosesEveryExporterInThePool(t *testing.T) {
 	s := &otlpSink{
 		exporters: exps,
 		exporter:  exps[0],
-		base:      baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		base:      baseLogAttributes("opnsense2otel", "v1.2.3", "opnsense"),
 		providers: make(map[resourceKey]*resourceLogger),
 	}
 

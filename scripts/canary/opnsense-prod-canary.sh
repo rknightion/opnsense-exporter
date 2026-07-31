@@ -13,10 +13,10 @@
 set -euo pipefail
 
 REPO_DIR=/opt/opnsense-canary/repo
-ENV_FILE=/opt/opnsense-exporter/.env
+ENV_FILE=/opt/opnsense2otel/.env
 TOKEN_FILE=/root/.opnsense-canary-gh-token
 BOX=10.0.0.254
-REPO=rknightion/opnsense-exporter
+REPO=rknightion/opnsense2otel
 TITLE="OPNsense live-box canary drift - prod"
 OUT=/var/lib/opnsense-canary/report.md
 
@@ -60,9 +60,9 @@ mkdir -p "$(dirname "$OUT")"
 
 # Reuse the exporter's own credentials. Read out by name rather than sourcing
 # the file, so an unrelated variable in .env can never leak into this process.
-KEY=$(grep -m1 '^OPNSENSE_EXPORTER_OPS_API_KEY=' "$ENV_FILE" | cut -d= -f2-)
-SECRET=$(grep -m1 '^OPNSENSE_EXPORTER_OPS_API_SECRET=' "$ENV_FILE" | cut -d= -f2-)
-export OPNSENSE_EXPORTER_OPS_API_KEY="$KEY" OPNSENSE_EXPORTER_OPS_API_SECRET="$SECRET"
+KEY=$(grep -m1 '^OPN2OTEL_OPS_API_KEY=' "$ENV_FILE" | cut -d= -f2-)
+SECRET=$(grep -m1 '^OPN2OTEL_OPS_API_SECRET=' "$ENV_FILE" | cut -d= -f2-)
+export OPN2OTEL_OPS_API_KEY="$KEY" OPN2OTEL_OPS_API_SECRET="$SECRET"
 
 git -C "$REPO_DIR" fetch --quiet origin main
 git -C "$REPO_DIR" reset --quiet --hard origin/main

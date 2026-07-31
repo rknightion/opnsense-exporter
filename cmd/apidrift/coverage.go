@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // coverageLedgerPath is the committed live-coverage ledger (#377), resolved

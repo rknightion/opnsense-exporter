@@ -32,7 +32,7 @@
 /* --- Documentation-friendly hero -------------------------------------------
  * Neutralises the oversized marketing gradient banner (legacy extra.css) into a
  * compact, readable intro. brand.css loads last, so these win. Currently only
- * the opnsense-exporter home page renders a .hero, but this is fleet-safe. */
+ * the opnsense2otel home page renders a .hero, but this is fleet-safe. */
 .md-typeset .hero {
   background: none;
   color: inherit;

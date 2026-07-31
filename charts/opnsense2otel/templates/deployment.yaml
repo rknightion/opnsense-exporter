@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "opnsense-exporter.fullname" . }}
+  name: {{ include "opnsense2otel.fullname" . }}
   labels:
-    {{- include "opnsense-exporter.labels" . | nindent 4 }}
+    {{- include "opnsense2otel.labels" . | nindent 4 }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "opnsense-exporter.selectorLabels" . | nindent 6 }}
+      {{- include "opnsense2otel.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "opnsense-exporter.selectorLabels" . | nindent 8 }}
+        {{- include "opnsense2otel.selectorLabels" . | nindent 8 }}
       {{- if or .Values.podAnnotations .Values.opnsense.secretRevision }}
       annotations:
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- with .Values.opnsense.secretRevision }}
-        opnsense-exporter/secret-revision: {{ . | quote }}
+        opnsense2otel/secret-revision: {{ . | quote }}
         {{- end }}
       {{- end }}
     spec:
@@ -32,25 +32,25 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: config-check
-          image: {{ include "opnsense-exporter.image" . | quote }}
+          image: {{ include "opnsense2otel.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args:{{ include "opnsense-exporter.args" . | nindent 12 }}
+          args:{{ include "opnsense2otel.args" . | nindent 12 }}
             - "--config.check"
           env:
-            {{- include "opnsense-exporter.env" . | nindent 12 }}
+            {{- include "opnsense2otel.env" . | nindent 12 }}
           volumeMounts:
             - name: credentials
-              mountPath: /etc/opnsense-exporter/creds
+              mountPath: /etc/opnsense2otel/creds
               readOnly: true
           securityContext:
-            {{- include "opnsense-exporter.securityContext" . | nindent 12 }}
+            {{- include "opnsense2otel.securityContext" . | nindent 12 }}
       containers:
-        - name: opnsense-exporter
-          image: {{ include "opnsense-exporter.image" . | quote }}
+        - name: opnsense2otel
+          image: {{ include "opnsense2otel.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args:{{ include "opnsense-exporter.args" . | nindent 12 }}
+          args:{{ include "opnsense2otel.args" . | nindent 12 }}
           env:
-            {{- include "opnsense-exporter.env" . | nindent 12 }}
+            {{- include "opnsense2otel.env" . | nindent 12 }}
           ports:
             - name: metrics-http
               containerPort: {{ .Values.ports.http }}
@@ -83,10 +83,10 @@ spec:
               port: metrics-http
           volumeMounts:
             - name: credentials
-              mountPath: /etc/opnsense-exporter/creds
+              mountPath: /etc/opnsense2otel/creds
               readOnly: true
           securityContext:
-            {{- include "opnsense-exporter.securityContext" . | nindent 12 }}
+            {{- include "opnsense2otel.securityContext" . | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:

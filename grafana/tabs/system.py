@@ -1,5 +1,5 @@
 """
-System & Resources tab for the OPNsense Exporter dashboard.
+System & Resources tab for the opnsense2otel dashboard.
 
 Covers:
   - System subsystem (12 metrics)

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	prometheusbridge "go.opentelemetry.io/contrib/bridges/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -251,7 +251,7 @@ func TestStart_BuildsProviderAndShutdown(t *testing.T) {
 		Endpoint:       "http://127.0.0.1:4318",
 		Insecure:       true,
 		ExportInterval: time.Hour,
-		ServiceName:    "opnsense-exporter",
+		ServiceName:    "opnsense2otel",
 	}
 	shutdown, err := Start(context.Background(), []prometheus.Gatherer{reg}, cfg, "v-test", "inst", nil, discardLogger())
 	if err != nil {
@@ -276,7 +276,7 @@ func TestStart_RegistersDeliveryMetrics(t *testing.T) {
 		Endpoint:       "http://127.0.0.1:4318",
 		Insecure:       true,
 		ExportInterval: time.Hour,
-		ServiceName:    "opnsense-exporter",
+		ServiceName:    "opnsense2otel",
 	}
 	shutdown, err := Start(
 		context.Background(), []prometheus.Gatherer{prometheus.NewRegistry()},

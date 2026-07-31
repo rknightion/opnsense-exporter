@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // The dashboard's "Tunnel lifecycle" annotation layer (grafana/annotations.py) is a

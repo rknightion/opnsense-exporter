@@ -1,5 +1,5 @@
 """
-DNS - Unbound tab for the OPNsense Exporter dashboard.
+DNS - Unbound tab for the opnsense2otel dashboard.
 
 Covers all opnsense_unbound_dns_* metrics across seven rows:
   1. Service         — uptime, service running, blocklist, queries qps, cache hit ratio

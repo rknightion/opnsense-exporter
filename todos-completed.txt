@@ -822,7 +822,7 @@ PROPOSED METRICS (mirror dnsmasq collector pattern):
 IMPLEMENTATION:
   - Mirror the dnsmasq collector pattern exactly (opnsense/dnsmasq.go + internal/collector/dnsmasq.go)
   - Add endpoint: "keaLeases4": "api/kea/leases4/search"
-  - Add disable flag: OPNSENSE_EXPORTER_DISABLE_KEA_DHCP4
+  - Add disable flag: OPN2OTEL_DISABLE_KEA_DHCP4
   - Also consider api/kea/leases6/search for IPv6 leases
 
 ================================================================================
@@ -1256,4 +1256,4 @@ Route implementation note:
   The response is an array of route objects with a "proto" field. Count by proto.
 
 Default: DISABLED. Enable with --exporter.enable-network-diagnostics or
-  OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS=true
+  OPN2OTEL_ENABLE_NETWORK_DIAGNOSTICS=true

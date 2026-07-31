@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: Internal architecture of the OPNsense Exporter including package structure, data flow, and collector interface
+description: Internal architecture of opnsense2otel including package structure, data flow, and collector interface
 tags:
   - Monitoring
 ---
@@ -10,7 +10,7 @@ tags:
 This page covers the exporter's internal architecture: package structure, data flow, and extension points.
 
 It describes the code in the
-[rknightion/opnsense-exporter repository on GitHub](https://github.com/rknightion/opnsense-exporter),
+[rknightion/opnsense2otel repository on GitHub](https://github.com/rknightion/opnsense2otel),
 which is Apache-2.0 licensed. Package and file names below are paths in that repository.
 
 ## Package structure
@@ -136,7 +136,7 @@ type CollectorInstance interface {
 - **`exporter.go`** - Server config (listen address, metrics path, instance label)
 - **`collectors.go`** - Per-collector disable/enable switches
 
-All environment variables use the `OPNSENSE_EXPORTER_` prefix, except for `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`.
+All environment variables use the `OPN2OTEL_` prefix, except for `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`.
 
 ### `internal/logship/` - Log shipping
 

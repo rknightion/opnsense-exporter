@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 func TestCaptureContracts(t *testing.T) {

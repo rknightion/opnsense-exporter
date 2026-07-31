@@ -1,6 +1,6 @@
 ---
 title: Upgrading
-description: Breaking changes and migration notes for OPNsense Exporter releases, including v2.0, v1.0 and migration from the upstream AthennaMind exporter
+description: Breaking changes and migration notes for opnsense2otel releases, including v2.0, v1.0 and migration from the upstream AthennaMind exporter
 tags:
   - upgrading
   - migration
@@ -13,6 +13,42 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 [Changelog](changelog.md).
 
 ## Upgrading to v4.0 from v3.x
+
+### Project renamed: opnsense-exporter -> opnsense2otel
+
+The project, repository, Go module, container image, Helm chart path, docs URL and
+environment variable prefix are all renamed in this release. Metric names and
+Grafana dashboard UIDs are the exception - see the last item below.
+
+- **Container image** - pull `ghcr.io/rknightion/opnsense2otel` instead of
+  `ghcr.io/rknightion/opnsense-exporter`.
+- **Environment variable prefix** - `OPNSENSE_EXPORTER_*` becomes `OPN2OTEL_*`.
+  This is a hard break: there are no back-compat aliases for the prefix itself.
+  Rewrite compose files, systemd unit `Environment=` lines, and Kubernetes
+  manifests before upgrading:
+
+  ```sh
+  sed -i 's/OPNSENSE_EXPORTER_/OPN2OTEL_/g' docker-compose.yml
+  ```
+
+  This does not touch the unprefixed `OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE` /
+  `PYROSCOPE_AUTH_USER_FILE` / `PYROSCOPE_AUTH_PASSWORD_FILE` file-secret aliases -
+  those are a separate, unrelated convention and are unchanged.
+- **Helm chart path** - the chart moved from `charts/opnsense-exporter` to
+  `charts/opnsense2otel`. Update any local clone path or `helm upgrade` invocation
+  that references the old directory.
+- **Docs site** - `https://m7kni.io/opnsense-exporter/` becomes
+  `https://m7kni.io/opnsense2otel/`.
+- **Go module path** - `github.com/rknightion/opnsense-exporter` becomes
+  `github.com/rknightion/opnsense2otel/v4`. Relevant only if you import packages
+  from this module directly rather than running the binary or image.
+- **Metric names and dashboard UIDs did not change.** Every `opnsense_*` and
+  `opnsense_exporter_*` metric keeps its existing name, and the Grafana dashboard
+  UIDs stay `opnsense-exporter` / `opnsense-exporter-health` on purpose - changing
+  a UID breaks every existing bookmark and every alert's `__dashboardUid__` link.
+  Existing dashboards, alert rules, and PromQL/LogQL queries keep working
+  unmodified; only the image reference, environment variables, chart path and
+  docs URL need updating.
 
 - **CPU metrics are now cumulative counters fed by a stream, not percentage gauges** -
   `opnsense_activity_cpu_user_percent` and its `nice`/`system`/`interrupt`/`idle`
@@ -51,7 +87,7 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 - **GeoIP enrichment is now ON by default, and the image bundles a database** -
   `--geoip.enabled` defaults to `true`, and the container image ships the DB-IP Lite
-  Country and ASN databases at `/usr/share/opnsense-exporter/geoip/`, which are the
+  Country and ASN databases at `/usr/share/opnsense2otel/geoip/`, which are the
   new default values of `--geoip.country-database` / `--geoip.asn-database`. A
   container deployment that had never configured GeoIP now emits
   `<src|dst>.geo.*` attributes on flow records **and on filterlog, sshd/auth and
@@ -115,7 +151,7 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   sender-controlled event timestamp.
 
 - **Container health uses the native `health` subcommand** - the distroless image
-  now runs `opnsense-exporter health`, which probes `/-/healthy` without requiring a
+  now runs `opnsense2otel health`, which probes `/-/healthy` without requiring a
   shell, `curl`, or `wget`. Custom images and Compose overrides that copied the old
   `wget` healthcheck should switch to this command. Docker health status alone does
   not trigger `restart:`; process exit or an external unhealthy-container
@@ -188,7 +224,7 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 - **SMART collector is now opt-in** - the `opnsense_smart_*` metrics are no longer
   emitted by default. Set `--exporter.enable-smart` (env
-  `OPNSENSE_EXPORTER_ENABLE_SMART=true`) to restore them. Querying SMART data is one
+  `OPN2OTEL_ENABLE_SMART=true`) to restore them. Querying SMART data is one
   of the more expensive per-scrape calls, so it now has to be requested explicitly.
 - **ARP/NDP per-entry series are opt-in** - the per-entry `opnsense_arp_table_entries`
   and `opnsense_ndp_entries` series (one series per host, high cardinality) are no
@@ -242,8 +278,8 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 In addition to the items above:
 
-- **Image and module path** - pull `ghcr.io/rknightion/opnsense-exporter`; the Go
-  module is `github.com/rknightion/opnsense-exporter`.
+- **Image and module path** - pull `ghcr.io/rknightion/opnsense2otel`; the Go
+  module is `github.com/rknightion/opnsense2otel/v4`.
 - **`--runtime.gomaxprocs` removed** - Go now auto-detects CPUs; delete the flag from
   any unit files or manifests.
 - **`/debug/pprof/*` endpoints removed** - replaced by optional authenticated push

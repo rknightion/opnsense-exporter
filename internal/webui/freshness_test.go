@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
 )
 
 // TestCollectorRow_FreshnessIsDataAgeNotAttemptAge is the #382 regression. A
@@ -119,7 +119,7 @@ func TestCollectorRow_NoDeadlineIsNotScheduled(t *testing.T) {
 func TestRenderPage_LabelsDataAgeAndAttemptAgeSeparately(t *testing.T) {
 	now := time.Now()
 	v := view{Title: "Status", RefreshMs: 5000, Data: Status{
-		Service: ServiceInfo{Name: "opnsense-exporter"},
+		Service: ServiceInfo{Name: "opnsense2otel"},
 		Health:  "degraded",
 		Collectors: []CollectorRow{collectorRow(collector.CollectorStat{
 			Name: "gateways", Display: "Gateways", Runs: 400, Failures: 359,

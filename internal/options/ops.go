@@ -14,35 +14,35 @@ var (
 	opnsenseProtocol = kingpin.Flag(
 		"opnsense.protocol",
 		"Protocol to use to connect to OPNsense API. One of: [http, https]",
-	).Envar("OPNSENSE_EXPORTER_OPS_PROTOCOL").Required().String()
+	).Envar("OPN2OTEL_OPS_PROTOCOL").Required().String()
 	opnsenseAPI = kingpin.Flag(
 		"opnsense.address",
 		"Hostname or IP address of OPNsense API",
-	).Envar("OPNSENSE_EXPORTER_OPS_API").Required().String()
+	).Envar("OPN2OTEL_OPS_API").Required().String()
 	opnsenseAPIKey = kingpin.Flag(
 		"opnsense.api-key",
 		"API key to use to connect to OPNsense API. This flag/ENV or the OPS_API_KEY_FILE may be set.",
-	).Default("").Envar("OPNSENSE_EXPORTER_OPS_API_KEY").String()
+	).Default("").Envar("OPN2OTEL_OPS_API_KEY").String()
 	opnsenseAPISecret = kingpin.Flag(
 		"opnsense.api-secret",
 		"API secret to use to connect to OPNsense API. This flag/ENV or the OPS_API_SECRET_FILE may be set.",
-	).Default("").Envar("OPNSENSE_EXPORTER_OPS_API_SECRET").String()
+	).Default("").Envar("OPN2OTEL_OPS_API_SECRET").String()
 	opnsenseInsecure = kingpin.Flag(
 		"opnsense.insecure",
 		"Disable TLS certificate verification",
-	).Envar("OPNSENSE_EXPORTER_OPS_INSECURE").Default("false").Bool()
+	).Envar("OPN2OTEL_OPS_INSECURE").Default("false").Bool()
 	opnsenseTimeout = kingpin.Flag(
 		"opnsense.timeout",
 		"Per-request HTTP timeout for calls to the OPNsense API. Combined with --opnsense.max-retries this bounds one endpoint attempt sequence inside a background collector poll (timeout x retries). Keep that product below --exporter.max-scrape-duration so the poll deadline, rather than a request retry, remains the outer bound. Prometheus scrape_timeout applies only to replaying /metrics.",
-	).Envar("OPNSENSE_EXPORTER_OPS_TIMEOUT").Default("15s").Duration()
+	).Envar("OPN2OTEL_OPS_TIMEOUT").Default("15s").Duration()
 	opnsenseMaxRetries = kingpin.Flag(
 		"opnsense.max-retries",
 		"Number of attempts for a failed OPNsense API request (transport errors / retryable 5xx). Worst-case block time is --opnsense.timeout x this value.",
-	).Envar("OPNSENSE_EXPORTER_OPS_MAX_RETRIES").Default("3").Int()
+	).Envar("OPN2OTEL_OPS_MAX_RETRIES").Default("3").Int()
 	opnsenseMaxConcurrentRequests = kingpin.Flag(
 		"opnsense.max-concurrent-requests",
 		"Maximum number of background OPNsense API requests in flight across all scheduled collector polls, including nested sub-requests. Bounds the simultaneous PHP/configd load on the firewall: lower it (e.g. 4-8) to protect a low-power appliance at the cost of queued or longer polls; raise it to let more independent polls progress concurrently on capable hardware. It does not affect /metrics replay. Must be >= 1.",
-	).Envar("OPNSENSE_EXPORTER_OPS_MAX_CONCURRENT_REQUESTS").Default("16").Int()
+	).Envar("OPN2OTEL_OPS_MAX_CONCURRENT_REQUESTS").Default("16").Int()
 )
 
 // ReadFirstLine opens a file and reads its first line.
@@ -79,21 +79,21 @@ func opsAPIKey() (string, error) {
 	return ResolveOPSAPIKey(*opnsenseAPIKey)
 }
 
-// ResolveOPSAPIKey resolves the OPNsense API key from OPNSENSE_EXPORTER_OPS_API_KEY_FILE
+// ResolveOPSAPIKey resolves the OPNsense API key from OPN2OTEL_OPS_API_KEY_FILE
 // / OPS_API_KEY_FILE (first set-and-non-empty file wins), falling back to flagValue. It is
 // exported so other entrypoints — notably cmd/apicapture via `make capture` — resolve
 // file-based secrets identically to the exporter itself (#157).
 func ResolveOPSAPIKey(flagValue string) (string, error) {
 	return resolveSecretMulti(flagValue,
-		"OPNSENSE_EXPORTER_OPS_API_KEY_FILE", "OPS_API_KEY_FILE")
+		"OPN2OTEL_OPS_API_KEY_FILE", "OPS_API_KEY_FILE")
 }
 
 // ResolveOPSAPISecret resolves the OPNsense API secret from
-// OPNSENSE_EXPORTER_OPS_API_SECRET_FILE / OPS_API_SECRET_FILE, falling back to flagValue.
+// OPN2OTEL_OPS_API_SECRET_FILE / OPS_API_SECRET_FILE, falling back to flagValue.
 // See ResolveOPSAPIKey.
 func ResolveOPSAPISecret(flagValue string) (string, error) {
 	return resolveSecretMulti(flagValue,
-		"OPNSENSE_EXPORTER_OPS_API_SECRET_FILE", "OPS_API_SECRET_FILE")
+		"OPN2OTEL_OPS_API_SECRET_FILE", "OPS_API_SECRET_FILE")
 }
 
 // OPNSenseConfig holds the configuration for the OPNsense API.

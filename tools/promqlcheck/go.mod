@@ -1,4 +1,4 @@
-module github.com/rknightion/opnsense-exporter/tools/promqlcheck
+module github.com/rknightion/opnsense2otel/v4/tools/promqlcheck
 
 go 1.26
 

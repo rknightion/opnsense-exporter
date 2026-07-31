@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // DHCP lease events, normalised across the three backends an OPNsense box might

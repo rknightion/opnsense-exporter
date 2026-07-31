@@ -7,13 +7,13 @@ import (
 
 // The env-var path is the one that actually matters: kingpin already rejects an
 // unknown --flag, but once a flag is deleted its Envar binding goes too, so a stale
-// OPNSENSE_EXPORTER_LOGS_DIAGLOG_ENABLED would be read by nothing and silently
+// OPN2OTEL_LOGS_DIAGLOG_ENABLED would be read by nothing and silently
 // ignored — leaving the user with an empty log stream and no error to explain it.
 func TestCheckRemovedFlags_EnvVarPath(t *testing.T) {
 	for _, env := range []string{
-		"OPNSENSE_EXPORTER_LOGS_FIREWALL_ENABLED=true",
-		"OPNSENSE_EXPORTER_LOGS_DIAGLOG_ENABLED=true",
-		"OPNSENSE_EXPORTER_LOGS_SCOPES=core/audit",
+		"OPN2OTEL_LOGS_FIREWALL_ENABLED=true",
+		"OPN2OTEL_LOGS_DIAGLOG_ENABLED=true",
+		"OPN2OTEL_LOGS_SCOPES=core/audit",
 	} {
 		err := CheckRemovedFlags(nil, []string{"PATH=/usr/bin", env})
 		if err == nil {
@@ -50,7 +50,7 @@ func TestCheckRemovedFlags_FlagPath(t *testing.T) {
 func TestCheckRemovedFlags_UnboundIsNotRemoved(t *testing.T) {
 	if err := CheckRemovedFlags(
 		[]string{"--logs.unbound.enabled"},
-		[]string{"OPNSENSE_EXPORTER_LOGS_UNBOUND_ENABLED=true"},
+		[]string{"OPN2OTEL_LOGS_UNBOUND_ENABLED=true"},
 	); err != nil {
 		t.Fatalf("--logs.unbound.enabled must still be supported (per-query DNS has no syslog path), got: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestCheckRemovedFlags_UnboundIsNotRemoved(t *testing.T) {
 func TestCheckRemovedFlags_CleanConfigPasses(t *testing.T) {
 	if err := CheckRemovedFlags(
 		[]string{"--logs.enabled", "--logs.syslog.enabled"},
-		[]string{"PATH=/usr/bin", "OPNSENSE_EXPORTER_LOGS_SYSLOG_ENABLED=true"},
+		[]string{"PATH=/usr/bin", "OPN2OTEL_LOGS_SYSLOG_ENABLED=true"},
 	); err != nil {
 		t.Fatalf("a valid configuration must not error: %v", err)
 	}

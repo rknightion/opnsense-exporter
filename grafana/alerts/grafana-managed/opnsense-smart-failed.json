@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-smart-failed",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense SMART health failed on {{ $labels.device }} ({{ $labels.opnsense_instance }})",
       "description": "SMART overall-health for {{ $labels.device }} ({{ $labels.model }}) reports FAILED.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensesmarthealthfailed",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensesmarthealthfailed",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "80"
     },

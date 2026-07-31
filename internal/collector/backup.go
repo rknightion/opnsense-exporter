@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // backupCollector surfaces config-backup freshness (#220): is the firewall's

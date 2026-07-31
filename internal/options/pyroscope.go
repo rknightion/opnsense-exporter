@@ -14,32 +14,32 @@ var (
 	pyroscopeServerAddress = kingpin.Flag(
 		"pyroscope.server-address",
 		"Grafana Cloud Pyroscope endpoint URL. When empty, continuous profiling is disabled.",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS").Default("").String()
+	).Envar("OPN2OTEL_PYROSCOPE_SERVER_ADDRESS").Default("").String()
 	pyroscopeAuthUser = kingpin.Flag(
 		"pyroscope.auth-user",
 		"HTTP basic auth user for Pyroscope (Grafana Cloud stack/instance ID). "+
 			"This flag/ENV or PYROSCOPE_AUTH_USER_FILE may be set.",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER").Default("").String()
+	).Envar("OPN2OTEL_PYROSCOPE_AUTH_USER").Default("").String()
 	pyroscopeAuthPassword = kingpin.Flag(
 		"pyroscope.auth-password",
 		"HTTP basic auth password for Pyroscope (Grafana Cloud Access Policy token). "+
 			"This flag/ENV or PYROSCOPE_AUTH_PASSWORD_FILE may be set.",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD").Default("").String()
+	).Envar("OPN2OTEL_PYROSCOPE_AUTH_PASSWORD").Default("").String()
 	pyroscopeTenantID = kingpin.Flag(
 		"pyroscope.tenant-id",
 		"Pyroscope tenant ID (only needed for multi-tenancy; unused for Grafana Cloud).",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID").Default("").String()
+	).Envar("OPN2OTEL_PYROSCOPE_TENANT_ID").Default("").String()
 	pyroscopeApplicationName = kingpin.Flag(
 		"pyroscope.application-name",
 		"Pyroscope application name profiles are reported under.",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME").Default("opnsense-exporter").String()
+	).Envar("OPN2OTEL_PYROSCOPE_APPLICATION_NAME").Default("opnsense2otel").String()
 	pyroscopeDisableMutexBlock = kingpin.Flag(
 		"pyroscope.disable-mutex-block",
 		"Disable mutex/block contention profiling. On by default; disabling drops "+
 			"the two contention profiles and their process-global sampling rates. "+
 			"CPU, memory, goroutine (and goroutine-leak, when built with the "+
 			"experiment) profiling are unaffected.",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_DISABLE_MUTEX_BLOCK").Default("false").Bool()
+	).Envar("OPN2OTEL_PYROSCOPE_DISABLE_MUTEX_BLOCK").Default("false").Bool()
 )
 
 // PyroscopeConfig holds the configuration for continuous profiling.
@@ -91,7 +91,7 @@ func resolveSecret(fileEnvVar, flagValue string) (string, error) {
 
 // resolveSecretMulti tries each fileEnvVar in order — the first that is set and names a
 // file with a non-empty first line wins — otherwise returns flagValue. Callers list the
-// canonical OPNSENSE_EXPORTER_-prefixed name first and a legacy unprefixed alias second,
+// canonical OPN2OTEL_-prefixed name first and a legacy unprefixed alias second,
 // so both are accepted while the project-wide prefix convention holds (#141).
 func resolveSecretMulti(flagValue string, fileEnvVars ...string) (string, error) {
 	for _, fileEnvVar := range fileEnvVars {
@@ -118,12 +118,12 @@ func Pyroscope() (*PyroscopeConfig, bool, error) {
 	}
 
 	user, err := resolveSecretMulti(*pyroscopeAuthUser,
-		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
+		"OPN2OTEL_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
 	if err != nil {
 		return nil, false, err
 	}
 	password, err := resolveSecretMulti(*pyroscopeAuthPassword,
-		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE")
+		"OPN2OTEL_PYROSCOPE_AUTH_PASSWORD_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE")
 	if err != nil {
 		return nil, false, err
 	}

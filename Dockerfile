@@ -9,7 +9,7 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION
 
-WORKDIR /go/src/github.com/rknightion/opnsense-exporter
+WORKDIR /go/src/github.com/rknightion/opnsense2otel
 COPY . .
 
 # GOEXPERIMENT=goroutineleakprofile registers the goroutineleak pprof profile, which
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   -tags osusergo,netgo \
   -trimpath \
   -ldflags "-s -w -X main.version=${VERSION}" \
-  -o /usr/bin/opnsense-exporter .
+  -o /usr/bin/opnsense2otel .
 
 # Third-party notices (LICENSE + NOTICE texts of the linked modules) baked into /licenses/
 # below. Runs once on the BUILDPLATFORM (not per target arch); pinned go-licenses. See
@@ -140,8 +140,8 @@ RUN set -eu; mkdir -p /geoip-licenses; { \
   echo "(https://creativecommons.org/licenses/by/4.0/)."; \
   echo; \
   echo "Files (unmodified as published by DB-IP):"; \
-  echo "  /usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb  (DB-IP Country Lite)"; \
-  echo "  /usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb      (DB-IP ASN Lite)"; \
+  echo "  /usr/share/opnsense2otel/geoip/dbip-country-lite.mmdb  (DB-IP Country Lite)"; \
+  echo "  /usr/share/opnsense2otel/geoip/dbip-asn-lite.mmdb      (DB-IP ASN Lite)"; \
   echo "  Edition: $(cat /geoip-month)"; \
   echo; \
   echo "They are redistributed byte-for-byte, not adapted. Each database's own build"; \
@@ -152,23 +152,23 @@ FROM gcr.io/distroless/static-debian13:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae
 
 ARG VERSION
 
-LABEL org.opencontainers.image.source=https://github.com/rknightion/opnsense-exporter
+LABEL org.opencontainers.image.source=https://github.com/rknightion/opnsense2otel
 LABEL org.opencontainers.image.version=${VERSION}
 LABEL org.opencontainers.image.authors="rknightion"
-LABEL org.opencontainers.image.title="OPNsense Prometheus Exporter"
-LABEL org.opencontainers.image.description="Prometheus exporter for OPNsense"
+LABEL org.opencontainers.image.title="opnsense2otel"
+LABEL org.opencontainers.image.description="OpenTelemetry and Prometheus observability for OPNsense firewalls"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
-COPY --from=build /usr/bin/opnsense-exporter /
+COPY --from=build /usr/bin/opnsense2otel /
 # License compliance travels with the image (OCI /licenses convention): Apache text + third-party notices.
-COPY --from=build /go/src/github.com/rknightion/opnsense-exporter/LICENSE /licenses/LICENSE
+COPY --from=build /go/src/github.com/rknightion/opnsense2otel/LICENSE /licenses/LICENSE
 COPY --from=build /THIRD_PARTY_NOTICES.md /licenses/THIRD_PARTY_NOTICES.md
 # Bundled DB-IP Lite databases (#549) + the CC BY 4.0 credit they require. The path
 # is the default value of --geoip.country-database / --geoip.asn-database
 # (internal/geoip/bundled.go); read-only image content, deliberately NOT under
 # --geoip.download.dir, which is operator-writable state.
-COPY --from=geoip /geoip/ /usr/share/opnsense-exporter/geoip/
+COPY --from=geoip /geoip/ /usr/share/opnsense2otel/geoip/
 COPY --from=geoip /geoip-licenses/GEOIP-DB-IP-ATTRIBUTION.txt /licenses/GEOIP-DB-IP-ATTRIBUTION.txt
 USER 65532:65532
 EXPOSE 8080
-ENTRYPOINT ["/opnsense-exporter"]
+ENTRYPOINT ["/opnsense2otel"]

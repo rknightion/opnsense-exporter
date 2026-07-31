@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // excludeTestSource builds a source wired for handleDoc without binding a socket:

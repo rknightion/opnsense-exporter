@@ -1,13 +1,13 @@
 ---
 title: Contributing
-description: How to contribute to the OPNsense Exporter project, including build, test, and lint instructions
+description: How to contribute to the opnsense2otel project, including build, test, and lint instructions
 tags:
   - OPNsense
 ---
 
 # Contributing
 
-This guide covers the development workflow, tooling, and conventions for contributing to the OPNsense Exporter.
+This guide covers the development workflow, tooling, and conventions for contributing to opnsense2otel.
 
 This page is the canonical contribution guide. The repository root `CONTRIBUTING.md` is a short
 pointer to this page — edit only this file; do not duplicate content into the root file.
@@ -24,8 +24,8 @@ pointer to this page — edit only this file; do not duplicate content into the 
 Clone the repository:
 
 ```bash
-git clone https://github.com/rknightion/opnsense-exporter.git
-cd opnsense-exporter
+git clone https://github.com/rknightion/opnsense2otel.git
+cd opnsense2otel
 ```
 
 ## Build commands
@@ -43,7 +43,7 @@ cd opnsense-exporter
 The Makefile uses `-extldflags "-static"` which does not work on macOS. Use this instead:
 
 ```bash
-CGO_ENABLED=0 go build -o opnsense-exporter .
+CGO_ENABLED=0 go build -o opnsense2otel .
 ```
 
 ### Running a single test

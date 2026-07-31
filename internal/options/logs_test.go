@@ -80,7 +80,7 @@ func TestLogsConfigValidate_ShipConcurrencyNormalised(t *testing.T) {
 // concurrent internal/logship lane: --logs.buffer-size (65536, up from the old 4096
 // which bound at 1.5% of the byte budget), --logs.batch-max (5000, up from 1000, to
 // amortise the sink's fixed per-partition round-trip), and the new
-// --logs.ship-concurrency (default 8, env OPNSENSE_EXPORTER_LOGS_SHIP_CONCURRENCY).
+// --logs.ship-concurrency (default 8, env OPN2OTEL_LOGS_SHIP_CONCURRENCY).
 func TestLogsFlagDefaults(t *testing.T) {
 	RegisterAllFlags()
 	model := kingpin.CommandLine.Model()
@@ -89,9 +89,9 @@ func TestLogsFlagDefaults(t *testing.T) {
 		def   string
 		envar string
 	}{
-		"logs.buffer-size":      {"65536", "OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE"},
-		"logs.batch-max":        {"5000", "OPNSENSE_EXPORTER_LOGS_BATCH_MAX"},
-		"logs.ship-concurrency": {"8", "OPNSENSE_EXPORTER_LOGS_SHIP_CONCURRENCY"},
+		"logs.buffer-size":      {"65536", "OPN2OTEL_LOGS_BUFFER_SIZE"},
+		"logs.batch-max":        {"5000", "OPN2OTEL_LOGS_BATCH_MAX"},
+		"logs.ship-concurrency": {"8", "OPN2OTEL_LOGS_SHIP_CONCURRENCY"},
 	}
 
 	found := map[string]bool{}

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // fakeCrowdSecFetcher is a test double for crowdsecFetcher: each field is

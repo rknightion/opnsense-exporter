@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // MaxRetries is the default maximum number of attempts for a failed request to the
@@ -429,7 +429,7 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 		endpoints:        defaultEndpoints(),
 		headers: map[string]string{
 			"Accept":     "application/json",
-			"User-Agent": fmt.Sprintf("prometheus-opnsense-exporter/%s", userAgentVersion),
+			"User-Agent": fmt.Sprintf("prometheus-opnsense2otel/%s", userAgentVersion),
 			// Only advertise encodings readResponse can actually decode. The client
 			// decompresses gzip (see readResponse); deflate/br are not handled, so
 			// advertising them would risk an undecodable body.

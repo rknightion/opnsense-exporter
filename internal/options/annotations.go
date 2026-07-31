@@ -8,7 +8,7 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 
-	"github.com/rknightion/opnsense-exporter/internal/annotations"
+	"github.com/rknightion/opnsense2otel/v4/internal/annotations"
 )
 
 var (
@@ -18,23 +18,23 @@ var (
 			"resets, upgrades, certificate renewals, feed updates) into Grafana's annotation "+
 			"store so they overlay any dashboard. Off by default: this is the exporter's only "+
 			"outbound write.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_ANNOTATIONS_ENABLED").Default("false").Bool()
 	annotationsGrafanaURL = kingpin.Flag(
 		"annotations.grafana-url",
 		"Grafana base URL to write annotations to, e.g. https://mystack.grafana.net.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_GRAFANA_URL").Default("").String()
+	).Envar("OPN2OTEL_ANNOTATIONS_GRAFANA_URL").Default("").String()
 	annotationsToken = kingpin.Flag(
 		"annotations.token",
 		"Grafana service-account token used to write annotations. It needs the annotation "+
 			"write permission and nothing else. This flag/ENV or "+
-			"OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE may be set.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN").Default("").String()
+			"OPN2OTEL_ANNOTATIONS_TOKEN_FILE may be set.",
+	).Envar("OPN2OTEL_ANNOTATIONS_TOKEN").Default("").String()
 	annotationsInterval = kingpin.Flag(
 		"annotations.interval",
 		"How often the watched event metrics are checked for changes. This bounds how late "+
 			"an annotation is WRITTEN, never where it is PLACED — each annotation carries the "+
 			"event's own timestamp.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_INTERVAL").Default("60s").Duration()
+	).Envar("OPN2OTEL_ANNOTATIONS_INTERVAL").Default("60s").Duration()
 	annotationsLookback = kingpin.Flag(
 		"annotations.lookback",
 		"How old an event may be and still be worth annotating, and how far back the "+
@@ -45,16 +45,16 @@ var (
 			"max-per-cycle annotations per --annotations.interval (default 20/60s), so a 24h "+
 			"lookback on a busy firewall takes several minutes to catch up. Shorten this if "+
 			"you want a fresh deployment to start clean rather than backfill a day.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_LOOKBACK").Default("24h").Duration()
+	).Envar("OPN2OTEL_ANNOTATIONS_LOOKBACK").Default("24h").Duration()
 	annotationsTimeout = kingpin.Flag(
 		"annotations.timeout",
 		"Timeout for each Grafana annotation API request.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_TIMEOUT").Default("10s").Duration()
+	).Envar("OPN2OTEL_ANNOTATIONS_TIMEOUT").Default("10s").Duration()
 	annotationsExtraTags = kingpin.Flag(
 		"annotations.extra-tags",
 		"Extra tag to add to every written annotation (repeatable), e.g. env:prod. Every "+
-			"annotation already carries opnsense-exporter, the event kind and instance:<name>.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_EXTRA_TAGS").Strings()
+			"annotation already carries opnsense2otel, the event kind and instance:<name>.",
+	).Envar("OPN2OTEL_ANNOTATIONS_EXTRA_TAGS").Strings()
 	annotationsKinds = kingpin.Flag(
 		"annotations.kinds",
 		"Event kind to write, repeatable (comma-separated in the environment variable). "+
@@ -63,7 +63,7 @@ var (
 			"excluded for their cadence rather than their importance: "+
 			strings.Join(annotations.DefaultOffKinds(), ", ")+". Known kinds: "+
 			strings.Join(annotations.KnownKinds(), ", ")+".",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_KINDS").Strings()
+	).Envar("OPN2OTEL_ANNOTATIONS_KINDS").Strings()
 	annotationsMaxPerCycle = kingpin.Flag(
 		"annotations.max-per-cycle",
 		"Maximum annotation posts ATTEMPTED per check, successful or not. A guard "+
@@ -75,7 +75,7 @@ var (
 			"before the backlog reaches them. Raising it drains faster but makes a rate limit "+
 			"(opnsense_exporter_annotations_rate_limited_total) more likely, since a "+
 			"Grafana org shares one annotation limit across every writer.",
-	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_MAX_PER_CYCLE").Default("20").Int()
+	).Envar("OPN2OTEL_ANNOTATIONS_MAX_PER_CYCLE").Default("20").Int()
 )
 
 // AnnotationsConfig holds the resolved annotation-writer configuration.
@@ -108,7 +108,7 @@ func (c *AnnotationsConfig) Validate() error {
 			c.GrafanaURL, parsed.Scheme, parsed.Host)
 	}
 	if c.Token == "" {
-		return fmt.Errorf("annotations.token (or OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE) " +
+		return fmt.Errorf("annotations.token (or OPN2OTEL_ANNOTATIONS_TOKEN_FILE) " +
 			"must be set when annotations are enabled")
 	}
 	if c.Interval <= 0 {
@@ -150,7 +150,7 @@ func Annotations() (*AnnotationsConfig, bool, error) {
 		return nil, false, nil
 	}
 
-	token, err := resolveSecret("OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE", *annotationsToken)
+	token, err := resolveSecret("OPN2OTEL_ANNOTATIONS_TOKEN_FILE", *annotationsToken)
 	if err != nil {
 		return nil, false, err
 	}

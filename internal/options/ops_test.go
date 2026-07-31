@@ -261,7 +261,7 @@ func TestOpsAPIKey_ResolvesFlag(t *testing.T) {
 }
 
 // TestOpsAPIKey_PrefixedFileEnv covers #141: the prefixed
-// OPNSENSE_EXPORTER_OPS_API_KEY_FILE alias is recognized (in addition to the legacy
+// OPN2OTEL_OPS_API_KEY_FILE alias is recognized (in addition to the legacy
 // unprefixed name), and takes precedence over it.
 func TestOpsAPIKey_PrefixedFileEnv(t *testing.T) {
 	resetOpsFlags(t)
@@ -273,7 +273,7 @@ func TestOpsAPIKey_PrefixedFileEnv(t *testing.T) {
 	if err := os.WriteFile(prefixed, []byte("prefixed-key\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OPNSENSE_EXPORTER_OPS_API_KEY_FILE", prefixed)
+	t.Setenv("OPN2OTEL_OPS_API_KEY_FILE", prefixed)
 	*opnsenseAPIKey = ""
 	if got, err := opsAPIKey(); err != nil || got != "prefixed-key" {
 		t.Fatalf("prefixed alias: got %q err %v, want prefixed-key", got, err)
@@ -299,7 +299,7 @@ func TestOpsAPISecret_PrefixedFileEnv(t *testing.T) {
 	if err := os.WriteFile(p, []byte("prefixed-secret\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OPNSENSE_EXPORTER_OPS_API_SECRET_FILE", p)
+	t.Setenv("OPN2OTEL_OPS_API_SECRET_FILE", p)
 	*opnsenseAPISecret = ""
 	if got, err := opsAPISecret(); err != nil || got != "prefixed-secret" {
 		t.Fatalf("prefixed secret alias: got %q err %v", got, err)

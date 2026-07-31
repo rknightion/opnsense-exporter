@@ -3,7 +3,7 @@ package syslog
 import (
 	"regexp"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // Universal enrichment for records that have no positional structure.

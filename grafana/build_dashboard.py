@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build the OPNsense Exporter Grafana v2 dynamic dashboard.
+Build the opnsense2otel Grafana v2 dynamic dashboard.
 
 Usage:
     python3 build_dashboard.py            # write dashboard.json + run coverage gate
@@ -191,7 +191,7 @@ RUNTIME_METRIC_EXACT = ("up",)
 # The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's
 # Prometheus scrape config sets. The docs use `job_name: opnsense` (getting-started,
 # integration-dashboards, k8s static config) while deploy/k8s/scrape.yaml + the ScrapeConfig
-# CRD use `job: opnsense-exporter`. Match both with a regex so the Exporter Runtime panels
+# CRD use `job: opnsense2otel`. Match both with a regex so the Exporter Runtime panels
 # return data regardless of which documented setup the user followed (#113).
 JOB = 'job=~"opnsense.*"'
 
@@ -2021,10 +2021,10 @@ class DashboardSpec:
 DASHBOARDS = [
     DashboardSpec(
         uid=os.environ.get("DASH_NAME", uids.MAIN_UID),
-        title="OPNsense Exporter",
+        title="opnsense2otel",
         description="Comprehensive single-pane OPNsense firewall dashboard. Tabs and "
                     "rows auto-hide when their metrics are absent. Exporter "
-                    "self-observability lives on the companion OPNsense Exporter "
+                    "self-observability lives on the companion opnsense2otel "
                     "Health dashboard. Built from grafana/build_dashboard.py.",
         tags=["opnsense", "firewall", "network", "exporter"],
         out_path=OUT,
@@ -2033,11 +2033,11 @@ DASHBOARDS = [
     ),
     DashboardSpec(
         uid=uids.HEALTH_UID,
-        title="OPNsense Exporter Health",
+        title="opnsense2otel Health",
         description="Self-observability for the OPNsense exporter itself: scrape and "
                     "poll health, per-collector freshness, OPNsense API errors and "
                     "response cache, OTLP delivery and the log-shipping pipeline. "
-                    "Firewall data lives on the OPNsense Exporter dashboard. Built "
+                    "Firewall data lives on the opnsense2otel dashboard. Built "
                     "from grafana/build_dashboard.py.",
         tags=["opnsense", "exporter", "self-observability"],
         out_path=HEALTH_OUT,

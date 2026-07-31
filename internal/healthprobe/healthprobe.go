@@ -53,7 +53,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(Command, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "usage: opnsense-exporter %s [flags]\n\n"+
+		fmt.Fprintf(stderr, "usage: opnsense2otel %s [flags]\n\n"+
 			"Probes the exporter's own liveness route and exits 0 (healthy) or 1.\n"+
 			"Makes no OPNsense API call.\n\nFlags:\n", Command)
 		fs.PrintDefaults()
@@ -96,7 +96,7 @@ func probe(url string, timeout time.Duration, insecure bool) error {
 	if err != nil {
 		return fmt.Errorf("invalid --url %q: %w", url, err)
 	}
-	req.Header.Set("User-Agent", "opnsense-exporter-health/1")
+	req.Header.Set("User-Agent", "opnsense2otel-health/1")
 
 	client := &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },

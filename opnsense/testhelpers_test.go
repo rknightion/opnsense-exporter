@@ -24,7 +24,7 @@ func newTestClientWithServer(t *testing.T, handler http.HandlerFunc) (*httptest.
 		gatewayRTTRegex:  regexp.MustCompile(`\d+\.\d+ ms`),
 		headers: map[string]string{
 			"Accept":          "application/json",
-			"User-Agent":      "prometheus-opnsense-exporter/test",
+			"User-Agent":      "prometheus-opnsense2otel/test",
 			"Accept-Encoding": "gzip",
 		},
 		endpoints:  defaultEndpoints(),
@@ -51,7 +51,7 @@ func newTestClientWithMux(t *testing.T) (*httptest.Server, *http.ServeMux, *Clie
 		gatewayRTTRegex:  regexp.MustCompile(`\d+\.\d+ ms`),
 		headers: map[string]string{
 			"Accept":          "application/json",
-			"User-Agent":      "prometheus-opnsense-exporter/test",
+			"User-Agent":      "prometheus-opnsense2otel/test",
 			"Accept-Encoding": "gzip",
 		},
 		endpoints:  defaultEndpoints(),

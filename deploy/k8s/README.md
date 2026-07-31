@@ -37,16 +37,16 @@ protocol=https
 Then create the secret in your Kubernetes cluster:
 
 ```shell
-❯ kubectl create secret generic opnsense-exporter-cfg --from-env-file=opnsense_apikey.txt 
-secret/opnsense-exporter-cfg created
+❯ kubectl create secret generic opnsense2otel-cfg --from-env-file=opnsense_apikey.txt 
+secret/opnsense2otel-cfg created
 ```
 
 With the secret created, the exporter can be deployed.
 
 ```shell
 ❯ k apply -f deployment.yaml
-deployment.apps/opnsense-exporter created
-service/opnsense-exporter unchanged
+deployment.apps/opnsense2otel created
+service/opnsense2otel unchanged
 ```
 
 Check your work:
@@ -54,6 +54,6 @@ Check your work:
 ```shell
 ❯ kubectl run debug --rm -i --tty --restart=Never --image=alpine
 <...>
-/ # wget --quiet -O- opnsense-exporter.default.svc.cluster.local:8080/metrics
+/ # wget --quiet -O- opnsense2otel.default.svc.cluster.local:8080/metrics
 <...>
 ```

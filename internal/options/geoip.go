@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
 )
 
 // Editions shipped by default. Country + ASN, following the reference implementation
@@ -43,7 +43,7 @@ var (
 			"existing --geoip.enabled deployment gains real per-line byte cost on upgrade with no "+
 			"config change. Set --logs.syslog.geoip=false to opt those log lines back out while "+
 			"keeping GeoIP on flow records. See docs/geoip.md.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_ENABLED").Default("true").Bool()
+	).Envar("OPN2OTEL_GEOIP_ENABLED").Default("true").Bool()
 
 	geoipCountryDatabase = kingpin.Flag(
 		"geoip.country-database",
@@ -55,7 +55,7 @@ var (
 			"--geoip.download.enabled and it defaults to the downloaded MaxMind copy instead. "+
 			"A missing file is not an error - enrichment is fail-open and the attributes are just "+
 			"absent, which is what a non-container build gets.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE").Default(geoip.BundledCountryPath).String()
+	).Envar("OPN2OTEL_GEOIP_COUNTRY_DATABASE").Default(geoip.BundledCountryPath).String()
 
 	geoipASNDatabase = kingpin.Flag(
 		"geoip.asn-database",
@@ -64,7 +64,7 @@ var (
 			"database on any box. Defaults to the DB-IP ASN Lite database bundled in the container "+
 			"image (CC BY 4.0, https://db-ip.com), or to the downloaded copy when "+
 			"--geoip.download.enabled is set.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE").Default(geoip.BundledASNPath).String()
+	).Envar("OPN2OTEL_GEOIP_ASN_DATABASE").Default(geoip.BundledASNPath).String()
 
 	geoipReloadInterval = kingpin.Flag(
 		"geoip.reload-interval",
@@ -72,7 +72,7 @@ var (
 			"operator-managed path work - a geoipupdate cron, a sidecar or a re-mounted volume can "+
 			"rewrite the files under a running exporter. Separate from --geoip.download.interval, which "+
 			"asks MaxMind whether a newer build exists. 0 disables reloading.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_RELOAD_INTERVAL").Default("15m").Duration()
+	).Envar("OPN2OTEL_GEOIP_RELOAD_INTERVAL").Default("15m").Duration()
 
 	geoipDownloadEnabled = kingpin.Flag(
 		"geoip.download.enabled",
@@ -80,18 +80,18 @@ var (
 			"--geoip.download.account-id and a license key. Conditional requests mean an unchanged "+
 			"database costs a 304 and no download quota. Off by default: operator-managed files are "+
 			"the supported baseline and this adds an outbound network dependency.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_ENABLED").Default("false").Bool()
 
 	geoipDownloadAccountID = kingpin.Flag(
 		"geoip.download.account-id",
 		"MaxMind account ID for the database download API (the Basic-auth username).",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ACCOUNT_ID").Default("").String()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_ACCOUNT_ID").Default("").String()
 
 	geoipDownloadLicenseKey = kingpin.Flag(
 		"geoip.download.license-key",
-		"MaxMind license key. This flag/ENV or OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE may "+
+		"MaxMind license key. This flag/ENV or OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY_FILE may "+
 			"be set; the file form is preferred for a container secret.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY").Default("").String()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY").Default("").String()
 
 	geoipDownloadEditions = kingpin.Flag(
 		"geoip.download.editions",
@@ -99,14 +99,14 @@ var (
 			"resident). Swap GeoLite2-Country for GeoLite2-City (~60 MB resident) to get city and "+
 			"region attributes without Zenarmor - the same --geoip.country-database path accepts "+
 			"either edition.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_EDITIONS").Default(defaultGeoIPEditions).String()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_EDITIONS").Default(defaultGeoIPEditions).String()
 
 	geoipDownloadDir = kingpin.Flag(
 		"geoip.download.dir",
 		"Directory downloaded databases are installed into, as <dir>/<edition>.mmdb. Must be "+
 			"writable and should be persistent - a volume that is lost on restart costs a full "+
 			"download every start, against MaxMind's daily limit.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_DIR").Default("/var/lib/opnsense-exporter/geoip").String()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_DIR").Default("/var/lib/opnsense2otel/geoip").String()
 
 	geoipDownloadInterval = kingpin.Flag(
 		"geoip.download.interval",
@@ -114,13 +114,13 @@ var (
 			"ample; an unchanged database answers 304 and costs no quota. The first download runs at "+
 			"startup regardless, so a fresh container is not blind for a whole interval. 0 downloads "+
 			"only at startup.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_INTERVAL").Default("24h").Duration()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_INTERVAL").Default("24h").Duration()
 
 	geoipDownloadTimeout = kingpin.Flag(
 		"geoip.download.timeout",
 		"End-to-end timeout for one edition's download. A timeout leaves the installed database "+
 			"untouched and is retried on the next interval.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_TIMEOUT").Default("5m").Duration()
+	).Envar("OPN2OTEL_GEOIP_DOWNLOAD_TIMEOUT").Default("5m").Duration()
 
 	// The cardinality gate, and the reason it is a separate flag from
 	// --geoip.enabled. Log attributes are free; a metric label is not.
@@ -136,7 +136,7 @@ var (
 			"answer, so with --geoip.enabled off the label is present and empty. ASN and city NEVER "+
 			"become labels at any setting. Geo on flow LOGS needs no flag - it is unconditional "+
 			"whenever --geoip.enabled is set.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_GEOIP_METRIC_DIMS").Default("true").
+	).Envar("OPN2OTEL_FLOW_GEOIP_METRIC_DIMS").Default("true").
 		IsSetByUser(&geoipMetricDimsUserSet).Bool()
 
 	// Whether the operator actually typed --flow.geoip.metric-dims (or set its env
@@ -153,7 +153,7 @@ var (
 // as every other credential: the *_FILE env var wins unless it is set-but-empty, in
 // which case the flag/env value is used.
 func geoipLicenseKey() (string, error) {
-	return resolveSecret("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE", *geoipDownloadLicenseKey)
+	return resolveSecret("OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY_FILE", *geoipDownloadLicenseKey)
 }
 
 // GeoIPConfig is the resolved GeoIP configuration.
@@ -304,7 +304,7 @@ func (c GeoIPConfig) Validate() error {
 	}
 	if c.DownloadAccount == "" || c.DownloadKey == "" {
 		return fmt.Errorf("geoip: --geoip.download.enabled requires --geoip.download.account-id and " +
-			"--geoip.download.license-key (or OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE)")
+			"--geoip.download.license-key (or OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY_FILE)")
 	}
 	if len(c.DownloadEditions) == 0 {
 		return fmt.Errorf("geoip: --geoip.download.enabled requires at least one " +

@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-gateway-high-rtt",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense gateway {{ $labels.name }} RTT over its high threshold ({{ $labels.opnsense_instance }})",
       "description": "Gateway {{ $labels.name }} mean RTT has exceeded its configured high-latency threshold for 10m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensegatewayhighrtt",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensegatewayhighrtt",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "217"
     },

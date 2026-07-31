@@ -7,8 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 //go:embed templates/page.html.tmpl

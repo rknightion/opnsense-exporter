@@ -1,12 +1,12 @@
 ---
-title: OPNsense Exporter
+title: opnsense2otel
 description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 994 metrics across 65 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
 image: assets/social-card.png
 ---
 
 <div class="hero" markdown>
 
-# OPNsense Exporter
+# opnsense2otel
 
 **Prometheus and OpenTelemetry metrics for OPNsense firewalls**
 
@@ -15,8 +15,8 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 994 metrics acro
 <div class="hero-badges" markdown>
 
 [Getting Started](getting-started.md){ .md-button .md-button--primary .md-button--stretch }
-[GitHub :fontawesome-brands-github:](https://github.com/rknightion/opnsense-exporter){ .md-button .md-button--primary .md-button--stretch target="_blank" }
-[Docker Hub :fontawesome-brands-docker:](https://ghcr.io/rknightion/opnsense-exporter){ .md-button .md-button--primary .md-button--stretch target="_blank" }
+[GitHub :fontawesome-brands-github:](https://github.com/rknightion/opnsense2otel){ .md-button .md-button--primary .md-button--stretch target="_blank" }
+[Docker Hub :fontawesome-brands-docker:](https://ghcr.io/rknightion/opnsense2otel){ .md-button .md-button--primary .md-button--stretch target="_blank" }
 
 </div>
 </div>
@@ -77,7 +77,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 994 metrics acro
 
 ## About
 
-OPNsense Exporter targets OPNsense specifically, covering the firewall, its plugin ecosystem, and the services running on it. It complements `node_exporter`: `node_exporter` has to run on the firewall itself, but this exporter can run on any machine with network access to the OPNsense API.
+opnsense2otel targets OPNsense specifically, covering the firewall, its plugin ecosystem, and the services running on it. It complements `node_exporter`: `node_exporter` has to run on the firewall itself, but this exporter can run on any machine with network access to the OPNsense API.
 
 Key highlights:
 
@@ -97,7 +97,7 @@ Most OPNsense exporters scrape a few endpoints and stop at `/metrics`. This one 
 - **[Zenarmor receiver](zenarmor-receiver.md)** - per-connection, DNS, TLS/SNI, HTTP and threat-alert records taken straight from Zenarmor by posing as its Elasticsearch streaming target. The only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated.
 - **[NetFlow and flow volume](flow.md)** - a NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so traffic-volume questions are answerable from Prometheus for years instead of by scanning GB/day of logs.
 
-The source for all of it is on GitHub at [rknightion/opnsense-exporter](https://github.com/rknightion/opnsense-exporter) under Apache-2.0. Bug reports and questions go to [GitHub issues](https://github.com/rknightion/opnsense-exporter/issues) and [discussions](https://github.com/rknightion/opnsense-exporter/discussions); if the project is useful to you, [a star on the repository](https://github.com/rknightion/opnsense-exporter) helps other OPNsense operators find it.
+The source for all of it is on GitHub at [rknightion/opnsense2otel](https://github.com/rknightion/opnsense2otel) under Apache-2.0. Bug reports and questions go to [GitHub issues](https://github.com/rknightion/opnsense2otel/issues) and [discussions](https://github.com/rknightion/opnsense2otel/discussions); if the project is useful to you, [a star on the repository](https://github.com/rknightion/opnsense2otel) helps other OPNsense operators find it.
 
 !!! info "Fork notice"
     This began as a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and became a hard fork early on, as its changes quickly grew incompatible with upstream. Credit to the original authors for the foundation this builds on. It now evolves independently; see the [changelog](changelog.md) for release history.

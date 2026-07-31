@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow/netflow"
 )
 
 // The NetFlow lane's notice kinds live in internal/flow/netflow (which must not

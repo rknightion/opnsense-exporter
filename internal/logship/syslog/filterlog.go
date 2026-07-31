@@ -3,8 +3,8 @@ package syslog
 import (
 	"strings"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // filterlog CSV layout. The common header is nine fields, then an IP-version

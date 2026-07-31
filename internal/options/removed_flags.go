@@ -24,17 +24,17 @@ type removedSetting struct {
 var removedSettings = []removedSetting{
 	{
 		Flag: "logs.firewall.enabled",
-		Env:  "OPNSENSE_EXPORTER_LOGS_FIREWALL_ENABLED",
+		Env:  "OPN2OTEL_LOGS_FIREWALL_ENABLED",
 		Why:  "the syslog receiver now ships firewall (filterlog) records, enriched with rule descriptions",
 	},
 	{
 		Flag: "logs.diaglog.enabled",
-		Env:  "OPNSENSE_EXPORTER_LOGS_DIAGLOG_ENABLED",
+		Env:  "OPN2OTEL_LOGS_DIAGLOG_ENABLED",
 		Why:  "the syslog receiver now ships the audit/configd/gateway/portal logs this polled",
 	},
 	{
 		Flag: "logs.scopes",
-		Env:  "OPNSENSE_EXPORTER_LOGS_SCOPES",
+		Env:  "OPN2OTEL_LOGS_SCOPES",
 		Why:  "scope selection is now done on the firewall, in the syslog target's Applications/Facilities filters",
 	},
 }
@@ -43,7 +43,7 @@ var removedSettings = []removedSetting{
 //
 // kingpin already rejects an unknown --flag, so the case that genuinely needs this
 // guard is the ENVIRONMENT VARIABLE path: once the flag is gone, its Envar binding
-// goes with it, and a stale OPNSENSE_EXPORTER_LOGS_DIAGLOG_ENABLED would otherwise
+// goes with it, and a stale OPN2OTEL_LOGS_DIAGLOG_ENABLED would otherwise
 // be read by nothing and silently ignored — leaving a user who thought they were
 // shipping logs with an empty log stream and no error. Call before kingpin.Parse.
 func CheckRemovedFlags(args []string, env []string) error {

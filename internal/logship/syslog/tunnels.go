@@ -3,7 +3,7 @@ package syslog
 import (
 	"regexp"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // IPsec and OpenVPN both name their tunnel in the log as a bare UUID and nothing

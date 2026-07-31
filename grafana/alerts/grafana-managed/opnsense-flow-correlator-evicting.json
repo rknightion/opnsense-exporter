@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-flow-correlator-evicting",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense flow correlator evicting entries ({{ $labels.opnsense_instance }})",
       "description": "The flow correlator has force-emitted entries for 15m because --flow.correlate.max-entries is binding under current flow volume. No bytes are lost, but the cap should be raised so the accumulator can hold a full correlate window; sustained eviction shortens the effective join window and lowers the merged hit-rate.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseflowcorrelatorevicting",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseflowcorrelatorevicting",
       "__dashboardUid__": "opnsense-exporter-health",
       "__panelId__": "31"
     },

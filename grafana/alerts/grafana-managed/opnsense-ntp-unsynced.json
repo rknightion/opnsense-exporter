@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-ntp-unsynced",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense NTP peer {{ $labels.server }} unreachable ({{ $labels.opnsense_instance }})",
       "description": "NTP peer {{ $labels.server }} reachability register has been 0 for 15m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensentppeerunreachable",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensentppeerunreachable",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "454"
     },

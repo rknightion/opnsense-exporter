@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-dhcp6-address-not-refreshing",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense WAN IPv6 address lease has not refreshed on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
       "description": "Nothing has created or refreshed the WAN IPv6 address lease on {{ $labels.interface }} for over two hours. The lease is still valid, so nothing has broken yet - this is the leading indicator that fires while there is still time to act, ahead of OPNsenseDHCP6AddressExpiring.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6addressnotrefreshing",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6addressnotrefreshing",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "315"
     },

@@ -10,7 +10,7 @@ tags:
 
 A recurring request is an SSH-based channel for the small set of signals OPNsense's REST API
 does not expose at all, chiefly ZFS pool health and CARP demotion state. This was spiked
-end-to-end in [#225](https://github.com/rknightion/opnsense-exporter/issues/225) against a real
+end-to-end in [#225](https://github.com/rknightion/opnsense2otel/issues/225) against a real
 26.7-devel box. **Verdict: no.** This page is the permanent record of why, and the recipe to get
 those two signals without the exporter ever holding a shell credential.
 

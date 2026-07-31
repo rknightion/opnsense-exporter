@@ -1,5 +1,5 @@
-./opnsense-exporter-local
-./opnsense-exporter
+./opnsense2otel-local
+./opnsense2otel
 .git/
 .gitignore
 .github

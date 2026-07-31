@@ -1,18 +1,18 @@
-# OPNsense Exporter: Prometheus and OpenTelemetry monitoring for OPNsense firewalls
+# opnsense2otel: Prometheus and OpenTelemetry monitoring for OPNsense firewalls
 
-[![Documentation](https://img.shields.io/badge/docs-m7kni.io-2563eb)](https://m7kni.io/opnsense-exporter/)
-[![Release](https://img.shields.io/github/v/release/rknightion/opnsense-exporter)](https://github.com/rknightion/opnsense-exporter/releases)
-[![GitHub License](https://img.shields.io/github/license/rknightion/opnsense-exporter)](https://github.com/rknightion/opnsense-exporter/blob/main/LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/rknightion/opnsense-exporter/ci.yml)](https://github.com/rknightion/opnsense-exporter/actions)
-![Go version](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense-exporter/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense-exporter)
+[![Documentation](https://img.shields.io/badge/docs-m7kni.io-2563eb)](https://m7kni.io/opnsense2otel/)
+[![Release](https://img.shields.io/github/v/release/rknightion/opnsense2otel)](https://github.com/rknightion/opnsense2otel/releases)
+[![GitHub License](https://img.shields.io/github/license/rknightion/opnsense2otel)](https://github.com/rknightion/opnsense2otel/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/rknightion/opnsense2otel/ci.yml)](https://github.com/rknightion/opnsense2otel/actions)
+![Go version](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense2otel/main)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense2otel/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense2otel)
 
 **An observability agent for [OPNsense](https://opnsense.org/) firewalls.** It exposes
 Prometheus metrics, pushes native OpenTelemetry metrics and logs over OTLP, receives and
 enriches syslog, and turns NetFlow and Zenarmor flow records into bounded traffic-volume
 metrics. One binary, one API user, no agent on the firewall.
 
-📖 **[Full documentation: m7kni.io/opnsense-exporter](https://m7kni.io/opnsense-exporter/)**
+📖 **[Full documentation: m7kni.io/opnsense2otel](https://m7kni.io/opnsense2otel/)**
 
 ## What this does that other OPNsense exporters don't
 
@@ -21,11 +21,11 @@ all four telemetry paths off the firewall, plus a local console:
 
 | Capability | What you get | Docs |
 |---|---|---|
-| **Native OpenTelemetry** | Push metrics **and** logs over OTLP to any collector or Grafana Cloud, with no Prometheus scrape involved. Not a sidecar or a translation layer. | [OTLP export](https://m7kni.io/opnsense-exporter/configuration/) |
-| **Syslog receiver** | OPNsense pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive these lines; it cannot understand them. | [Syslog receiver](https://m7kni.io/opnsense-exporter/syslog-receiver/) |
-| **Zenarmor receiver** | Per-connection, DNS, TLS/SNI, HTTP and threat-alert records pulled straight out of Zenarmor by posing as its Elasticsearch streaming target. This is the only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated. | [Zenarmor receiver](https://m7kni.io/opnsense-exporter/zenarmor-receiver/) |
-| **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so you can answer "how much traffic, which interface, which direction, which application category" from Prometheus for years, instead of scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense-exporter/flow/) |
-| **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense-exporter/architecture/) |
+| **Native OpenTelemetry** | Push metrics **and** logs over OTLP to any collector or Grafana Cloud, with no Prometheus scrape involved. Not a sidecar or a translation layer. | [OTLP export](https://m7kni.io/opnsense2otel/configuration/) |
+| **Syslog receiver** | OPNsense pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive these lines; it cannot understand them. | [Syslog receiver](https://m7kni.io/opnsense2otel/syslog-receiver/) |
+| **Zenarmor receiver** | Per-connection, DNS, TLS/SNI, HTTP and threat-alert records pulled straight out of Zenarmor by posing as its Elasticsearch streaming target. This is the only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated. | [Zenarmor receiver](https://m7kni.io/opnsense2otel/zenarmor-receiver/) |
+| **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so you can answer "how much traffic, which interface, which direction, which application category" from Prometheus for years, instead of scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense2otel/flow/) |
+| **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense2otel/architecture/) |
 
 Underneath that: 994 metrics across 65 collectors covering firewall and PF statistics,
 interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq, ISC), Unbound DNS,
@@ -39,9 +39,9 @@ Create an OPNsense API user (see [permissions](#opnsense-user-permissions) below
 
 ```bash
 docker run -p 8080:8080 \
-      -e OPNSENSE_EXPORTER_OPS_API_KEY=your-api-key \
-      -e OPNSENSE_EXPORTER_OPS_API_SECRET=your-api-secret \
-      ghcr.io/rknightion/opnsense-exporter:latest \
+      -e OPN2OTEL_OPS_API_KEY=your-api-key \
+      -e OPN2OTEL_OPS_API_SECRET=your-api-secret \
+      ghcr.io/rknightion/opnsense2otel:latest \
       --opnsense.protocol=https \
       --opnsense.address=ops.example.com
 ```
@@ -54,8 +54,8 @@ For production, prefer file-based secrets over plain environment variables:
 
 ```yaml
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
     restart: always
     command:
       - --opnsense.protocol=https
@@ -76,11 +76,11 @@ secrets:
     external: true
 ```
 
-Full walkthrough: [Getting started](https://m7kni.io/opnsense-exporter/getting-started/). Other
-deployment methods: [Docker & Compose](https://m7kni.io/opnsense-exporter/deployment/docker/) ·
-[Kubernetes](https://m7kni.io/opnsense-exporter/deployment/kubernetes/) (manifests in
+Full walkthrough: [Getting started](https://m7kni.io/opnsense2otel/getting-started/). Other
+deployment methods: [Docker & Compose](https://m7kni.io/opnsense2otel/deployment/docker/) ·
+[Kubernetes](https://m7kni.io/opnsense2otel/deployment/kubernetes/) (manifests in
 [`deploy/k8s/`](./deploy/k8s/)) ·
-[Systemd](https://m7kni.io/opnsense-exporter/deployment/systemd/)
+[Systemd](https://m7kni.io/opnsense2otel/deployment/systemd/)
 
 ## OpenTelemetry and log shipping
 
@@ -102,19 +102,19 @@ OTLP export and log shipping are independent of each other and both off by defau
 
 High-cardinality event data (addresses, ports, Suricata SIDs, domains) ships as log body and
 structured metadata, never as a metric label and never as a Loki label. See
-[log shipping](https://m7kni.io/opnsense-exporter/log-shipping/) and
-[flow volume](https://m7kni.io/opnsense-exporter/flow/).
+[log shipping](https://m7kni.io/opnsense2otel/log-shipping/) and
+[flow volume](https://m7kni.io/opnsense2otel/flow/).
 
 ## Configuration
 
-Everything is configured with CLI flags or `OPNSENSE_EXPORTER_*` environment variables. Each
+Everything is configured with CLI flags or `OPN2OTEL_*` environment variables. Each
 collector can be switched off individually (`--exporter.disable-<name>`); a few high-cost or
 high-cardinality collectors are opt-in (`--exporter.enable-<name>`). Grafana Cloud Pyroscope
 continuous profiling is also available.
 
 The generated flag and collector reference lives in the
-[configuration docs](https://m7kni.io/opnsense-exporter/configuration/) and the
-[collector reference](https://m7kni.io/opnsense-exporter/collectors/reference/).
+[configuration docs](https://m7kni.io/opnsense2otel/configuration/) and the
+[collector reference](https://m7kni.io/opnsense2otel/collectors/reference/).
 
 ## Grafana dashboard
 
@@ -130,37 +130,37 @@ for collectors and OPNsense plugins you don't run. Import
 via the Grafana UI, `gcx`, or GitOps. Alert
 and recording rules ship alongside it in [`grafana/alerts/`](./grafana/alerts/). See
 [`grafana/README.md`](./grafana/README.md) and
-[integration & dashboards](https://m7kni.io/opnsense-exporter/integration-dashboards/).
+[integration & dashboards](https://m7kni.io/opnsense2otel/integration-dashboards/).
 
 ## OPNsense user permissions
 
-Use the generated [collector-to-ACL matrix](https://m7kni.io/opnsense-exporter/security/#generated-collector-to-acl-matrix) to grant only the privileges required by the collectors you enable. It records known, plugin-dependent, and explicitly unknown mappings, including whether an available privilege can also reach write actions.
+Use the generated [collector-to-ACL matrix](https://m7kni.io/opnsense2otel/security/#generated-collector-to-acl-matrix) to grant only the privileges required by the collectors you enable. It records known, plugin-dependent, and explicitly unknown mappings, including whether an available privilege can also reach write actions.
 
 Required OPNsense settings:
 
 - Unbound collector: *Unbound DNS > Advanced > Extended Statistics* must be enabled.
 
-Details, 401/403 remediation, and ACL caveats: [security](https://m7kni.io/opnsense-exporter/security/).
+Details, 401/403 remediation, and ACL caveats: [security](https://m7kni.io/opnsense2otel/security/).
 
 ## Compatibility
 
 Supported against the current and previous stable OPNsense releases. Plugin-gated collectors go
 silent when the plugin is absent rather than erroring. See
-[compatibility](https://m7kni.io/opnsense-exporter/compatibility/) and
-[upgrading](https://m7kni.io/opnsense-exporter/upgrading/).
+[compatibility](https://m7kni.io/opnsense2otel/compatibility/) and
+[upgrading](https://m7kni.io/opnsense2otel/upgrading/).
 
 ## Documentation
 
 | | |
 |---|---|
-| [Getting started](https://m7kni.io/opnsense-exporter/getting-started/) | API key, first deploy, verifying metrics |
-| [Configuration](https://m7kni.io/opnsense-exporter/configuration/) | Every flag and environment variable |
-| [Metrics reference](https://m7kni.io/opnsense-exporter/metrics/metrics/) | All 994 metrics with types, labels and PromQL |
-| [Collectors](https://m7kni.io/opnsense-exporter/collectors/) | What each of the 65 collectors covers |
-| [Deployment](https://m7kni.io/opnsense-exporter/deployment/) | Docker, Kubernetes, systemd |
-| [Log shipping](https://m7kni.io/opnsense-exporter/log-shipping/) | Syslog, Zenarmor, NetFlow, Loki |
-| [Architecture](https://m7kni.io/opnsense-exporter/architecture/) | Poll scheduler, snapshot model, operator console |
-| [Troubleshooting](https://m7kni.io/opnsense-exporter/troubleshooting/) | Common failures and how to read them |
+| [Getting started](https://m7kni.io/opnsense2otel/getting-started/) | API key, first deploy, verifying metrics |
+| [Configuration](https://m7kni.io/opnsense2otel/configuration/) | Every flag and environment variable |
+| [Metrics reference](https://m7kni.io/opnsense2otel/metrics/metrics/) | All 994 metrics with types, labels and PromQL |
+| [Collectors](https://m7kni.io/opnsense2otel/collectors/) | What each of the 65 collectors covers |
+| [Deployment](https://m7kni.io/opnsense2otel/deployment/) | Docker, Kubernetes, systemd |
+| [Log shipping](https://m7kni.io/opnsense2otel/log-shipping/) | Syslog, Zenarmor, NetFlow, Loki |
+| [Architecture](https://m7kni.io/opnsense2otel/architecture/) | Poll scheduler, snapshot model, operator console |
+| [Troubleshooting](https://m7kni.io/opnsense2otel/troubleshooting/) | Common failures and how to read them |
 
 ## Fork notice
 
@@ -172,11 +172,11 @@ original exporter this one is built on. See [CHANGELOG.md](./CHANGELOG.md) for r
 ## Contributing
 
 Bug reports, questions and ideas are welcome in
-[issues](https://github.com/rknightion/opnsense-exporter/issues) and
-[discussions](https://github.com/rknightion/opnsense-exporter/discussions).
+[issues](https://github.com/rknightion/opnsense2otel/issues) and
+[discussions](https://github.com/rknightion/opnsense2otel/discussions).
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) and the
-[development docs](https://m7kni.io/opnsense-exporter/development/contributing/). Docs for
+[development docs](https://m7kni.io/opnsense2otel/development/contributing/). Docs for
 metrics and configuration are generated from code; run `make docs` after changing flags or
 collectors.
 

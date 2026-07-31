@@ -455,7 +455,7 @@ class GrafanaManagedRuleGenerationTest(unittest.TestCase):
             try:
                 build_rules.HERE = tmp
                 outdir, written = build_rules.emit_grafana_managed(
-                    "test-prometheus", "test-opnsense-alerts", stack=False,
+                    "test-prometheus", "test-opnsense2otel-alerts", stack=False,
         health_folder="test-opnsense-health-alerts"
                 )
             finally:
@@ -535,7 +535,7 @@ class ExporterDisappearanceTest(unittest.TestCase):
 
     def test_a_missing_instance_rule_exists(self):
         rule = rule_by_title("OPNsenseExporterInstanceMissing")
-        self.assertEqual(rule["name"], "opnsense-exporter-instance-missing")
+        self.assertEqual(rule["name"], "opnsense2otel-instance-missing")
 
     def test_it_compares_recent_history_against_the_present(self):
         """The detector must name instances seen recently but absent NOW.
@@ -614,8 +614,8 @@ class SelfHealthFolderRoutingTest(unittest.TestCase):
     cannot fall behind the expressions.
     """
 
-    OPS = "opnsense-alerts"
-    HEALTH = "opnsense-exporter-health-alerts"
+    OPS = "opnsense2otel-alerts"
+    HEALTH = "opnsense2otel-health-alerts"
 
     def _folder(self, rule):
         return build_rules.rule_folder(rule, self.OPS, self.HEALTH)

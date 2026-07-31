@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-dhcp6-address-expiring",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense WAN IPv6 address lease expired on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
       "description": "The valid lifetime of the IA_NA address lease on {{ $labels.interface }} has run out with no refresh. dhcp6c has lost this firewall's own WAN IPv6 address.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6addressexpiring",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6addressexpiring",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "315"
     },

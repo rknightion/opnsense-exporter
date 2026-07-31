@@ -1,20 +1,20 @@
 ---
 title: Deployment
-description: Deployment options for the OPNsense Exporter including Docker, Kubernetes, and systemd
+description: Deployment options for opnsense2otel including Docker, Kubernetes, and systemd
 tags:
   - Deployment
 ---
 
 # Deployment
 
-The OPNsense Exporter can run on any machine with network access to the OPNsense API. It does not need to run on the firewall itself. Choose the deployment method that fits your infrastructure.
+opnsense2otel can run on any machine with network access to the OPNsense API. It does not need to run on the firewall itself. Choose the deployment method that fits your infrastructure.
 
 Container images are published to
-[`ghcr.io/rknightion/opnsense-exporter`](https://github.com/rknightion/opnsense-exporter/pkgs/container/opnsense-exporter),
+[`ghcr.io/rknightion/opnsense2otel`](https://github.com/rknightion/opnsense2otel/pkgs/container/opnsense2otel),
 and static binaries for each release are attached to the
-[GitHub releases page](https://github.com/rknightion/opnsense-exporter/releases). Ready-made
+[GitHub releases page](https://github.com/rknightion/opnsense2otel/releases). Ready-made
 Kubernetes manifests live in
-[`deploy/k8s/`](https://github.com/rknightion/opnsense-exporter/tree/main/deploy/k8s).
+[`deploy/k8s/`](https://github.com/rknightion/opnsense2otel/tree/main/deploy/k8s).
 
 ## Deployment options
 

@@ -389,13 +389,13 @@ ANNOTATIONS: list = [
 # The tag every annotation the exporter writes carries (internal/annotations
 # BaseTag). One string, and the Go and Python sides must agree on it or the pushed
 # events land somewhere the dashboard never looks.
-EXPORTER_TAG = "opnsense-exporter"
+EXPORTER_TAG = "opnsense2otel"
 
 # Tags for the deployment-local overlay layer. Both matter and neither is
 # guessable, which is why they are data here rather than a comment: the second
 # scopes the query to THIS dashboard, without which every change event in the
 # estate lands on it.
-EXTERNAL_CHANGE_TAGS = ("n8n-change", "dashboard:opnsense-exporter")
+EXTERNAL_CHANGE_TAGS = ("n8n-change", "dashboard:opnsense2otel")
 
 # Which tag set each built-in-store layer queries, keyed by layer name.
 TAG_QUERIES = {

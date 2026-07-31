@@ -788,7 +788,7 @@ Notes:
     a string "1"/"0" — use the stats endpoint only.
   - Default: DISABLED. Users must explicitly enable this collector since
     the plugin is not universally installed. Use env var
-    OPNSENSE_EXPORTER_ENABLE_QFEEDS=true to enable.
+    OPN2OTEL_ENABLE_QFEEDS=true to enable.
   - Unlike other collectors which use --disable flags, this one should
     use an --enable flag (or --disable defaulting to disabled).
 

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "opnsense-exporter values",
+  "title": "opnsense2otel values",
   "type": "object",
   "additionalProperties": false,
   "required": ["image", "opnsense", "ports", "service", "receivers", "extraArgs"],

@@ -26,7 +26,7 @@ var logsUnboundEnabled = kingpin.Flag(
 		"Homelab/SMB query volumes are fine; a busy enterprise resolver should not enable this. "+
 		"Also requires Unbound reporting/statistics enabled on the firewall. Poll floor 15s "+
 		"regardless of --logs.poll-interval.",
-).Envar("OPNSENSE_EXPORTER_LOGS_UNBOUND_ENABLED").Default("false").Bool()
+).Envar("OPN2OTEL_LOGS_UNBOUND_ENABLED").Default("false").Bool()
 
 // LogsUnboundEnabled reports whether the unbound per-query DNS log source is
 // enabled.

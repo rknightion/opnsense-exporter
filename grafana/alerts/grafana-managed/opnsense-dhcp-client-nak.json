@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-dhcp-client-nak",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense WAN DHCP server sent a NAK on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
       "description": "The upstream DHCP server is refusing the address this box is currently using on {{ $labels.interface }}. A NAK forces dhclient back to DISCOVER, so the WAN address is about to change or be lost.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcpclientnak",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcpclientnak",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "309"
     },

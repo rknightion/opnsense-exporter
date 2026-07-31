@@ -36,7 +36,7 @@ func TestStop_FlushesFinalWindow(t *testing.T) {
 	defer srv.Close()
 
 	profiler, err := pyroscope.Start(pyroscope.Config{
-		ApplicationName: "opnsense-exporter.test",
+		ApplicationName: "opnsense2otel.test",
 		ServerAddress:   srv.URL,
 		UploadRate:      time.Hour, // no periodic upload within the test window
 		ProfileTypes:    profileTypes(false),
@@ -271,7 +271,7 @@ func TestStop_BoundedByTimeoutOnSlowServer(t *testing.T) {
 	t.Cleanup(func() { stopFlushTimeout = orig })
 
 	profiler, err := pyroscope.Start(pyroscope.Config{
-		ApplicationName: "opnsense-exporter.test",
+		ApplicationName: "opnsense2otel.test",
 		ServerAddress:   srv.URL,
 		UploadRate:      time.Hour, // no periodic upload within the test window
 		ProfileTypes:    profileTypes(false),

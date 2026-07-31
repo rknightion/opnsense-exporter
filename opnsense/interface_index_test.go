@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // liveStatisticsFixture is the real payload shape from the reference box, trimmed

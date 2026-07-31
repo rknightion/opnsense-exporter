@@ -18,7 +18,7 @@ Usage:
     python3 build_rules.py                       # generic labels
     python3 build_rules.py --stack               # add domain=infra (+page on critical)
     python3 build_rules.py --datasource <uid>    # datasource UID (default grafanacloud-prom)
-    python3 build_rules.py --folder <name>       # grafana folder (default opnsense-alerts)
+    python3 build_rules.py --folder <name>       # grafana folder (default opnsense2otel-alerts)
     python3 build_rules.py --health-folder <name>  # exporter self-health folder (#431)
 
 Alerts are defined as a value-producing query `A` plus a threshold condition, rendered to the
@@ -70,7 +70,7 @@ SUMMARY_INSTANCE_EXEMPT: dict = {}
 # Each alert: name(slug), title, A (value query), cond (op, params), for_min, severity,
 # summary, description. op in {gt, lt, within_range, outside_range}.
 RULES = [
-    dict(name="opnsense-exporter-down", title="OPNsenseExporterDown",
+    dict(name="opnsense2otel-down", title="OPNsenseExporterDown",
          selfhealth=True,
          A="opnsense_up", op="lt", params=[1, 0], for_min=15, severity="critical",
          nodata="Alerting",
@@ -140,7 +140,7 @@ RULES = [
     # repeatedly for one event. Verified live 2026-07-27: the raw form returned two
     # series for the one real instance, differing only by a service_version label that
     # had been removed earlier that day (#472).
-    dict(name="opnsense-exporter-instance-missing", title="OPNsenseExporterInstanceMissing",
+    dict(name="opnsense2otel-instance-missing", title="OPNsenseExporterInstanceMissing",
          selfhealth=True,
          A="max by (opnsense_instance) (present_over_time(opnsense_up[1h])) "
            "unless on(opnsense_instance) opnsense_up",
@@ -224,7 +224,7 @@ RULES = [
     # opnsense_system_subsystem_status_code gauge (no dedicated gauge for this one). OPNsense
     # omits a healthy subsystem from the payload entirely, so the series is ABSENT (not 0/OK)
     # on a healthy box — noDataState is deliberately left at the default "Ok" (see nodata=
-    # default below) rather than "Alerting", unlike opnsense-exporter-down.
+    # default below) rather than "Alerting", unlike opnsense2otel-down.
     dict(name="opnsense-disk-space-low", title="OPNsenseDiskSpaceLow",
          A='opnsense_system_subsystem_status_code{subsystem="diskspace"}', op="lt", params=[2, 0],
          for_min=10, severity="warning",
@@ -459,7 +459,7 @@ RULES = [
     # Split primary vs failover: the default (primary) WAN reconverges in <1m after a reboot, so it
     # keeps a tight for=5m + critical/page. A secondary/failover WAN can take ~7-10m to re-establish
     # (DHCP + dpinger convergence) after a reboot, so it gets for=15m + warning (no page) to avoid
-    # false pages during reboots. Requires the default_gateway label (opnsense-exporter >=0.x).
+    # false pages during reboots. Requires the default_gateway label (opnsense2otel >=0.x).
     dict(name="opnsense-gateway-down", title="OPNsenseGatewayDown",
          A='opnsense_gateways_status{default_gateway="true"}', op="lt", params=[1, 0], for_min=5, severity="critical",
          summary="OPNsense PRIMARY gateway {{ $labels.name }} is offline ({{ $labels.opnsense_instance }})",
@@ -2430,8 +2430,8 @@ def emit_grafana_managed(ds: str, ops_folder: str, stack: bool, health_folder: s
     # Folder manifests (named so each UID == its folder); pushed first so the rules
     # resolve. Two folders since #431: firewall-operational and exporter-health.
     for slug, title, fname in (
-            (ops_folder, "OPNsense Exporter Alerts", "_folder.json"),
-            (health_folder, "OPNsense Exporter Health Alerts", "_folder-health.json")):
+            (ops_folder, "opnsense2otel Alerts", "_folder.json"),
+            (health_folder, "opnsense2otel Health Alerts", "_folder-health.json")):
         fp = os.path.join(outdir, fname)
         with open(fp, "w") as f:
             json.dump({"apiVersion": "folder.grafana.app/v1beta1", "kind": "Folder",
@@ -2647,9 +2647,9 @@ def write_runbooks_md() -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasource", default="grafanacloud-prom")
-    ap.add_argument("--folder", default="opnsense-alerts",
+    ap.add_argument("--folder", default="opnsense2otel-alerts",
                     help="grafana folder for firewall-operational rules")
-    ap.add_argument("--health-folder", default="opnsense-exporter-health-alerts",
+    ap.add_argument("--health-folder", default="opnsense2otel-health-alerts",
                     help="grafana folder for exporter self-health rules (#431)")
     ap.add_argument("--stack", action="store_true",
                     help="add IRM label contract (domain=infra; page=true on critical)")

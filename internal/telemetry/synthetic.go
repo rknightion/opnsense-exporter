@@ -36,7 +36,7 @@ func newSyntheticUpGatherer(instance string) (prometheus.Gatherer, error) {
 	reg := prometheus.NewRegistry()
 	up := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "up",
-		Help: "Whether the opnsense-exporter is alive (always 1 while it is exporting). " +
+		Help: "Whether the opnsense2otel is alive (always 1 while it is exporting). " +
 			"Push-mode equivalent of the target `up` series a Prometheus server synthesizes on scrape; " +
 			"exported only over OTLP. Absence/staleness signals the exporter is down. " +
 			"Firewall reachability is reported separately by opnsense_up.",

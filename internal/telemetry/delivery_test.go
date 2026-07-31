@@ -12,7 +12,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -350,7 +350,7 @@ func TestStart_BooksRealExports(t *testing.T) {
 		Endpoint:       srv.URL,
 		Insecure:       true,
 		ExportInterval: time.Hour, // no periodic tick; the shutdown flush drives the export
-		ServiceName:    "opnsense-exporter",
+		ServiceName:    "opnsense2otel",
 	}
 	shutdown, err := Start(
 		context.Background(), []prometheus.Gatherer{dataReg},
@@ -450,7 +450,7 @@ func TestStart_FastLaneExportsOnItsOwnCadence(t *testing.T) {
 		Insecure:           true,
 		ExportInterval:     time.Hour, // parked: cannot tick during the test
 		FastExportInterval: 150 * time.Millisecond,
-		ServiceName:        "opnsense-exporter",
+		ServiceName:        "opnsense2otel",
 	}
 	shutdown, err := Start(
 		context.Background(), []prometheus.Gatherer{baseReg},
@@ -509,7 +509,7 @@ func TestStart_NoFastIntervalKeepsSingleLane(t *testing.T) {
 		Endpoint:       srv.URL,
 		Insecure:       true,
 		ExportInterval: time.Hour,
-		ServiceName:    "opnsense-exporter",
+		ServiceName:    "opnsense2otel",
 		// FastExportInterval deliberately zero.
 	}
 	shutdown, err := Start(

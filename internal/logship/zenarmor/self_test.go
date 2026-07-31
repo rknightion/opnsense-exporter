@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // selfDoc builds a conn document describing a connection from src to dst:dstPort —

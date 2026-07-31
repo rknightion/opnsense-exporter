@@ -1,6 +1,6 @@
 ---
 title: Integration & Dashboards
-description: Prometheus scrape configuration, Grafana dashboard setup, and example PromQL queries for the OPNsense Exporter
+description: Prometheus scrape configuration, Grafana dashboard setup, and example PromQL queries for opnsense2otel
 tags:
   - Prometheus
   - Monitoring
@@ -8,7 +8,7 @@ tags:
 
 # Integration & Dashboards
 
-This guide covers integrating the OPNsense Exporter with Prometheus and Grafana, including scrape configuration, dashboard import, and practical PromQL queries.
+This guide covers integrating opnsense2otel with Prometheus and Grafana, including scrape configuration, dashboard import, and practical PromQL queries.
 
 ## Prometheus scrape configuration
 
@@ -78,7 +78,7 @@ Overview, System & Resources, Kernel Memory, Services, Cron & DynDNS, Certificat
    dashboard's exporter-health summary links to the companion.
 3. Select your Prometheus data source and click **Import**.
 
-The dashboard uses template variables for `datasource`, `opnsense_instance`, and `interface`. See [`grafana/README.md`](https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md) for `gcx`/GitOps deployment and the bundled alert and recording rules.
+The dashboard uses template variables for `datasource`, `opnsense_instance`, and `interface`. See [`grafana/README.md`](https://github.com/rknightion/opnsense2otel/blob/main/grafana/README.md) for `gcx`/GitOps deployment and the bundled alert and recording rules.
 
 ### Event annotations
 
@@ -100,7 +100,7 @@ Every tab shares one event timeline, so a step in a graph can be attributed with
 | CARP transition | A failover, demotion or promotion | shipped `kernel` log records |
 | Config change detail | Which API endpoint changed the config | shipped `audit` log records |
 | Tunnel lifecycle | A VPN tunnel coming up or going down | shipped `vpn`/`ipsec` log records |
-| Exporter-pushed events | Everything above, as written by the exporter | Grafana's annotation store, tag `opnsense-exporter` |
+| Exporter-pushed events | Everything above, as written by the exporter | Grafana's annotation store, tag `opnsense2otel` |
 | External change events | Changes your own automation records | Grafana's annotation store, deployment-local tags |
 
 The metric-sourced layers place their marker at the metric's **value** (Grafana's
@@ -123,17 +123,17 @@ makes the exporter write the same events into Grafana's own annotation store, so
 **any other dashboard** that queries the tag, in Explore, and beside your alerts:
 
 ```bash
-opnsense-exporter \
+opnsense2otel \
   --annotations.enabled \
   --annotations.grafana-url=https://mystack.grafana.net \
-  --annotations.token=<token>          # or OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE
+  --annotations.token=<token>          # or OPN2OTEL_ANNOTATIONS_TOKEN_FILE
 ```
 
 The token is a Grafana service-account token needing only the annotation write permission. This is the
 exporter's only outbound write, which is why it is off by default.
 
 Each annotation is stamped with the event's own timestamp rather than the moment it was noticed, is
-tagged `opnsense-exporter` plus the event kind and `instance:<name>`, and is reconciled against what
+tagged `opnsense2otel` plus the event kind and `instance:<name>`, and is reconciled against what
 is already in Grafana on startup so a restart neither duplicates nor loses events. Nothing is written
 for an event older than `--annotations.lookback` (default 24h), so enabling it on a long-running
 firewall does not backfill a reboot from months ago. Watch
@@ -151,7 +151,7 @@ and a pushed annotation is org-wide, so it would land on every dashboard and bes
 ```
 
 **`Exporter-pushed events` is a catch-all**, not a per-kind layer: it queries the single
-`opnsense-exporter` tag, so it shows every kind the exporter writes regardless of the per-kind
+`opnsense2otel` tag, so it shows every kind the exporter writes regardless of the per-kind
 toggles above, which govern the derived layers only. That is why what gets pushed is controlled at
 the exporter rather than on the dashboard.
 
@@ -397,7 +397,7 @@ groups:
 
 ## Complementary exporters
 
-The OPNsense Exporter focuses on OPNsense-specific metrics. For complete visibility, consider running these alongside it:
+opnsense2otel focuses on OPNsense-specific metrics. For complete visibility, consider running these alongside it:
 
-- **[node_exporter](https://github.com/prometheus/node_exporter)** -- Install on the OPNsense firewall itself for OS-level metrics (CPU, memory, disk I/O, network). The OPNsense Exporter provides OPNsense-specific views of some of these, but node_exporter offers deeper system-level detail.
+- **[node_exporter](https://github.com/prometheus/node_exporter)** -- Install on the OPNsense firewall itself for OS-level metrics (CPU, memory, disk I/O, network). opnsense2otel provides OPNsense-specific views of some of these, but node_exporter offers deeper system-level detail.
 - **[blackbox_exporter](https://github.com/prometheus/blackbox_exporter)** -- Probe endpoints through the firewall to verify connectivity and measure latency from the network edge.

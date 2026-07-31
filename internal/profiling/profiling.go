@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/grafana/pyroscope-go"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // Sampling settings applied when mutex/block profiling is enabled.

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
 )
 
 // TestSeamPublishedKeysMatchCallSites derives the set of keys actually published

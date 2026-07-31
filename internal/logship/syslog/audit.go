@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // OPNsense's config-change audit trail used to be scraped from the diagnostics

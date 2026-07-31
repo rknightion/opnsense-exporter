@@ -3,7 +3,7 @@ package syslog
 import (
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
 )
 
 // TestGeoByteCost measures the actual per-line byte cost the four #528 log

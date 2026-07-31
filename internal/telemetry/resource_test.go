@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // attrsOf flattens a built resource into a key->value map.

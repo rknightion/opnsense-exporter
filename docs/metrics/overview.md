@@ -1,6 +1,6 @@
 ---
 title: Metrics Overview
-description: Naming conventions, common labels, metric types, and PromQL examples for OPNsense Exporter metrics
+description: Naming conventions, common labels, metric types, and PromQL examples for opnsense2otel metrics
 tags:
   - Prometheus
   - Monitoring
@@ -8,7 +8,7 @@ tags:
 
 # Metrics Overview
 
-This page covers the naming conventions, label schemas, and metric types the OPNsense Exporter uses, along with practical PromQL examples.
+This page covers the naming conventions, label schemas, and metric types opnsense2otel uses, along with practical PromQL examples.
 
 ## Naming convention
 

@@ -2,7 +2,7 @@
 # notices.sh — regenerate the third-party software notices for the SHIPPED binary.
 #
 # Emits THIRD_PARTY_NOTICES.md: for every Go module in the import graph of the
-# opnsense-exporter main package (repo root, "."), the module name + version +
+# opnsense2otel main package (repo root, "."), the module name + version +
 # detected license + source URL, followed by the verbatim LICENSE text and (where
 # present) the verbatim NOTICE file — the latter satisfying Apache-2.0 §4(d). Our
 # own module is excluded.
@@ -22,7 +22,7 @@ set -euo pipefail
 GO_LICENSES="${GO_LICENSES:-go-licenses}"
 TARGET="${TARGET:-.}"
 OUT="${OUT:-THIRD_PARTY_NOTICES.md}"
-SELF="github.com/rknightion/opnsense-exporter"
+SELF="github.com/rknightion/opnsense2otel"
 TMPL="$(cd "$(dirname "$0")" && pwd)/notices.tsv.tmpl"
 
 # go-licenses resolves license files from the module cache, so force module mode
@@ -56,7 +56,7 @@ trap 'rm -f "$tsv"' EXIT
 <!-- This file is a build/release artifact regenerated on every dependency change; it is
      baked into the container image at /licenses/ and attached to each GitHub Release. -->
 
-opnsense-exporter is licensed under **Apache-2.0** (see LICENSE / LICENSING.md). The
+opnsense2otel is licensed under **Apache-2.0** (see LICENSE / LICENSING.md). The
 compiled binary incorporates the third-party Go modules listed below. Each module's license
 text — and its NOTICE file where one is provided (Apache-2.0 §4(d)) — is reproduced verbatim.
 These modules retain their own upstream licenses; the combined binary is distributed under
@@ -69,7 +69,7 @@ reports only Go MODULES and the databases below are data the container image car
 code the binary links. Do not delete it as "not generated" — it is a licence condition.
 
 The container image bundles the DB-IP Lite IP-to-Country and IP-to-ASN databases at
-`/usr/share/opnsense-exporter/geoip/`, fetched unmodified at image build time from
+`/usr/share/opnsense2otel/geoip/`, fetched unmodified at image build time from
 https://db-ip.com and redistributed byte-for-byte (never adapted, merged or trimmed).
 
 **IP geolocation data by DB-IP (https://db-ip.com), licensed under CC BY 4.0

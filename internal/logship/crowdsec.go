@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // crowdsecMinInterval is the poll floor for the crowdsec source. Each poll is a

@@ -71,12 +71,12 @@ func TestApplyEnableAllAvailable_ExplicitCLIFlagWins(t *testing.T) {
 // observes (it only fires for a CLI token) — explicitlySet() must still catch
 // it via os.LookupEnv.
 func TestApplyEnableAllAvailable_ExplicitEnvVarWins(t *testing.T) {
-	t.Setenv("OPNSENSE_EXPORTER_ENABLE_SMART", "false")
+	t.Setenv("OPN2OTEL_ENABLE_SMART", "false")
 	var smartValue bool // as if kingpin resolved the env var into the flag's own value
 	bindings := []enableFlagBinding{
 		{
 			flag:  "exporter.enable-smart",
-			envar: "OPNSENSE_EXPORTER_ENABLE_SMART",
+			envar: "OPN2OTEL_ENABLE_SMART",
 			value: &smartValue,
 			apply: func(s *CollectorsDisableSwitch) { s.SMART = true },
 		},

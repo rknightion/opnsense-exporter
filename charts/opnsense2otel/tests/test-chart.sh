@@ -49,15 +49,15 @@ assert_not_contains "$minimal" 'kind: ServiceAccount'
 assert_not_contains "$minimal" 'kind: Secret'
 assert_not_contains "$minimal" 'kind: ConfigMap'
 assert_contains "$minimal" 'value: "edge-fw.example.net"'
-assert_contains "$minimal" 'name: opnsense-exporter'
+assert_contains "$minimal" 'name: opnsense2otel'
 assert_contains "$minimal" 'secretName: edge-fw-api'
 assert_contains "$minimal" 'key: "key"'
 assert_contains "$minimal" 'key: "secret"'
-assert_contains "$minimal" 'value: /etc/opnsense-exporter/creds/api-key'
-assert_contains "$minimal" 'value: /etc/opnsense-exporter/creds/api-secret'
-assert_contains "$minimal" 'opnsense-exporter/secret-revision: "42"'
-assert_contains "$minimal" 'image: "ghcr.io/rknightion/opnsense-exporter:main"'
-assert_contains "$minimal" 'mountPath: /etc/opnsense-exporter/creds'
+assert_contains "$minimal" 'value: /etc/opnsense2otel/creds/api-key'
+assert_contains "$minimal" 'value: /etc/opnsense2otel/creds/api-secret'
+assert_contains "$minimal" 'opnsense2otel/secret-revision: "42"'
+assert_contains "$minimal" 'image: "ghcr.io/rknightion/opnsense2otel:main"'
+assert_contains "$minimal" 'mountPath: /etc/opnsense2otel/creds'
 assert_contains "$minimal" 'automountServiceAccountToken: false'
 assert_contains "$minimal" 'runAsUser: 65532'
 assert_contains "$minimal" 'runAsGroup: 65532'
@@ -158,7 +158,7 @@ for forbidden_arg in \
 done
 
 # The settings map draws from the same reserved-flag list as extraArgs (see
-# opnsense-exporter.reservedFlagReason in _helpers.tpl) -- a key naming a
+# opnsense2otel.reservedFlagReason in _helpers.tpl) -- a key naming a
 # chart-managed flag must fail the render rather than silently picking a winner.
 for forbidden_key in \
   opnsense.api-key \

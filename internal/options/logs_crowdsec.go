@@ -13,7 +13,7 @@ var logsCrowdSecEnabled = kingpin.Flag(
 		"alerts live only in the LAPI). Requires --logs.enabled. Polls at a 60s floor "+
 		"regardless of --logs.poll-interval. Silent when the os-crowdsec plugin is absent. "+
 		"Off by default.",
-).Envar("OPNSENSE_EXPORTER_LOGS_CROWDSEC_ENABLED").Default("false").Bool()
+).Envar("OPN2OTEL_LOGS_CROWDSEC_ENABLED").Default("false").Bool()
 
 // LogsCrowdSecEnabled reports whether the crowdsec log source is enabled.
 func LogsCrowdSecEnabled() bool {

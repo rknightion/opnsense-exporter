@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 func TestSparkline_EmptyForFewPoints(t *testing.T) {
@@ -42,7 +42,7 @@ func TestRenderPage_Status(t *testing.T) {
 		Title:     "Status",
 		RefreshMs: 5000,
 		Data: Status{
-			Service: ServiceInfo{Name: "opnsense-exporter", Version: "v1.2.3", GoVersion: "go1.26"},
+			Service: ServiceInfo{Name: "opnsense2otel", Version: "v1.2.3", GoVersion: "go1.26"},
 			Health:  "healthy",
 			Stats:   ExporterStats{ActiveCollectors: 3, MetricFamilies: 10, Series: 42},
 			Collectors: []CollectorRow{{
@@ -57,7 +57,7 @@ func TestRenderPage_Status(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		"opnsense-exporter", "v1.2.3",
+		"opnsense2otel", "v1.2.3",
 		`data-tab="overview"`, `data-tab="collectors"`, `data-tab="api"`, `data-tab="cardinality"`,
 		"opnsense-theme", "Next run",
 		`id="themeToggle"`, `id="pauseBtn"`, `id="staleBanner"`, `id="tabs"`, `id="collBody"`,
@@ -105,7 +105,7 @@ func TestHandler_StatusPage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status want 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "opnsense-exporter") {
+	if !strings.Contains(rec.Body.String(), "opnsense2otel") {
 		t.Fatalf("status page missing app name")
 	}
 }

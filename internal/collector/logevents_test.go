@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 func newTestLogEventStore(t testing.TB) *LogEventStore {

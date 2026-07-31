@@ -229,5 +229,5 @@ alongside native syslog:
 - [API Landmines](development/api-landmines.md) - why `stream_log` and the
   generic `/live` SSE endpoints are unsuitable as ingestion transports, native
   or exporter-side.
-- [API-surface roadmap (#227)](https://github.com/rknightion/opnsense-exporter/issues/227) -
+- [API-surface roadmap (#227)](https://github.com/rknightion/opnsense2otel/issues/227) -
   the tracker for the exporter's per-source log shipping work.

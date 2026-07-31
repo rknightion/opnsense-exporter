@@ -3,7 +3,7 @@ package syslog
 import (
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 func TestSampleKeep(t *testing.T) {

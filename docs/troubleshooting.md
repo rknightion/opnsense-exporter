@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Diagnosing common OPNsense Exporter problems - opnsense_up=0, missing metrics, permission errors, slow scrapes, and TLS failures
+description: Diagnosing common opnsense2otel problems - opnsense_up=0, missing metrics, permission errors, slow scrapes, and TLS failures
 tags:
   - troubleshooting
 ---
@@ -8,9 +8,9 @@ tags:
 # Troubleshooting
 
 If nothing here matches what you are seeing, search the
-[existing GitHub issues](https://github.com/rknightion/opnsense-exporter/issues), ask in
-[GitHub Discussions](https://github.com/rknightion/opnsense-exporter/discussions), or
-[file a bug report](https://github.com/rknightion/opnsense-exporter/issues/new) with the exporter
+[existing GitHub issues](https://github.com/rknightion/opnsense2otel/issues), ask in
+[GitHub Discussions](https://github.com/rknightion/opnsense2otel/discussions), or
+[file a bug report](https://github.com/rknightion/opnsense2otel/issues/new) with the exporter
 version, your OPNsense release, and the relevant log lines.
 
 ## `opnsense_up` is 0

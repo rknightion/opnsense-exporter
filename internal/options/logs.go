@@ -17,15 +17,15 @@ var (
 		"logs.enabled",
 		"Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and ships to Loki via OTLP). "+
 			"Off by default. Independent of --otlp.enabled (which gates metrics).",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_LOGS_ENABLED").Default("false").Bool()
 	logsSink = kingpin.Flag(
 		"logs.sink",
 		"Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout (one JSON line per event).",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SINK").Default("otlp").Enum("otlp", "stdout")
+	).Envar("OPN2OTEL_LOGS_SINK").Default("otlp").Enum("otlp", "stdout")
 	logsPollInterval = kingpin.Flag(
 		"logs.poll-interval",
 		"Base interval between event polls per source (floor 5s). Sources may raise their own floor.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_POLL_INTERVAL").Default("10s").Duration()
+	).Envar("OPN2OTEL_LOGS_POLL_INTERVAL").Default("10s").Duration()
 	logsBufferSize = kingpin.Flag(
 		"logs.buffer-size",
 		"Capacity of the in-memory backpressure queue between pollers and the sink. On overflow the oldest "+
@@ -33,20 +33,20 @@ var (
 			"size, 65536 records is ~31MB, comfortably under the 128MiB --logs.buffer-max-bytes default, so "+
 			"the two bounds read against one number instead of this record cap silently binding first at a "+
 			"fraction of the byte budget.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE").Default("65536").Int()
+	).Envar("OPN2OTEL_LOGS_BUFFER_SIZE").Default("65536").Int()
 	logsBatchMax = kingpin.Flag(
 		"logs.batch-max",
 		"Maximum number of records the emitter hands to the sink per batch. The sink pays a fixed "+
 			"per-resource-partition round-trip, and distinct partitions plateau with batch duration, so a "+
 			"larger batch amortises that fixed cost almost linearly rather than costing proportionally more.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_BATCH_MAX").Default("5000").Int()
+	).Envar("OPN2OTEL_LOGS_BATCH_MAX").Default("5000").Int()
 	logsBufferMaxBytes = kingpin.Flag(
 		"logs.buffer-max-bytes",
 		"Aggregate byte budget for the in-memory backpressure queue. The record-count cap "+
 			"(--logs.buffer-size) alone does not bound memory: a receiver preserves each record's raw body, "+
 			"so a few large records can outweigh thousands of small ones. On overflow the oldest record is "+
 			"dropped and counted, exactly as for the count cap. 0 disables the byte budget.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_BUFFER_MAX_BYTES").Default("134217728").Int()
+	).Envar("OPN2OTEL_LOGS_BUFFER_MAX_BYTES").Default("134217728").Int()
 	logsMaxRecordBytes = kingpin.Flag(
 		"logs.max-record-bytes",
 		"Maximum estimated retained size for a single record - its body, source and attributes plus a "+
@@ -54,33 +54,33 @@ var (
 			"against one number. A record larger than this is rejected at ingest and counted rather than "+
 			"queued, so one oversized record cannot occupy the whole queue budget or become a batch the "+
 			"sink permanently refuses. 0 disables the per-record cap.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_MAX_RECORD_BYTES").Default("1048576").Int()
+	).Envar("OPN2OTEL_LOGS_MAX_RECORD_BYTES").Default("1048576").Int()
 	logsShipMaxAttempts = kingpin.Flag(
 		"logs.ship-max-attempts",
 		"Maximum delivery attempts for one batch before it is dropped and counted "+
 			"(logs_dropped_total{reason=\"ship_failed_permanent\"}). Retries are exponentially backed off. "+
 			"Without this bound a batch the sink permanently refuses is retried forever by the single emitter "+
 			"goroutine, wedging all subsequent delivery. 0 restores unlimited retries.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SHIP_MAX_ATTEMPTS").Default("10").Int()
+	).Envar("OPN2OTEL_LOGS_SHIP_MAX_ATTEMPTS").Default("10").Int()
 	logsMaxMetricKeys = kingpin.Flag(
 		"logs.max-metric-keys",
 		"Maximum distinct label tuples retained per derived log_events metric family. Receivers are "+
 			"push-based and syslog over UDP has a spoofable source, so tuple values are sender-controlled: "+
 			"without this bound a sender can grow process-lifetime metric state without limit. Tuples beyond "+
 			"the cap fold into a counted overflow series rather than being dropped silently. 0 disables the cap.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_MAX_METRIC_KEYS").Default("5000").Int()
+	).Envar("OPN2OTEL_LOGS_MAX_METRIC_KEYS").Default("5000").Int()
 	logsStateFile = kingpin.Flag(
 		"logs.state-file",
 		"Optional path to persist per-source cursors across restarts (atomic JSON). Empty = in-memory only "+
 			"(resume from now on restart).",
-	).Envar("OPNSENSE_EXPORTER_LOGS_STATE_FILE").Default("").String()
+	).Envar("OPN2OTEL_LOGS_STATE_FILE").Default("").String()
 	logsShipConcurrency = kingpin.Flag(
 		"logs.ship-concurrency",
 		"Maximum number of resource partitions within one batch that the sink exports concurrently. Each "+
 			"partition is a separate synchronous wire request, so a batch of N partitions previously cost N "+
 			"sequential round-trips. 1 restores the old fully-sequential behaviour. Values below 1 are "+
 			"normalised to 1.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_SHIP_CONCURRENCY").Default("8").Int()
+	).Envar("OPN2OTEL_LOGS_SHIP_CONCURRENCY").Default("8").Int()
 )
 
 // LogsConfig is the resolved configuration for the log-shipping pipeline.

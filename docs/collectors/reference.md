@@ -2,73 +2,73 @@
 
 # Collector Reference
 
-This page provides a summary of all collectors in the OPNsense Exporter.
+This page provides a summary of all collectors in opnsense2otel.
 
 | Collector | Subsystem | Metrics | Default | Flag | Environment Variable |
 |-----------|-----------|---------|---------|------|---------------------|
-| ACME Client | acme | 6 | Enabled | --exporter.disable-acme | OPNSENSE_EXPORTER_DISABLE_ACME |
-| APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPNSENSE_EXPORTER_DISABLE_APCUPSD |
-| ARP Table | arp_table | 2 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
-| Activity | activity | 14 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
-| BPF Statistics | bpf | 10 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
-| CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
-| CPU | cpu | 6 | Enabled | --exporter.disable-cpu | OPNSENSE_EXPORTER_DISABLE_CPU |
-| Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
-| Certificates | certificate | 8 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
-| Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |
-| ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPNSENSE_EXPORTER_DISABLE_CLAMAV |
-| Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPNSENSE_EXPORTER_DISABLE_BACKUP |
-| Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
-| CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
-| Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
-| DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
-| FRR Routing (BGP/OSPF/BFD) | frr | 58 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
-| Feature Availability | feature | 1 | Enabled | --exporter.disable-feature-availability | OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY |
-| Firewall | firewall | 26 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
-| Firewall Aliases | alias | 8 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
-| Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
-| Firmware | firmware | 20 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
-| Flow Volume | flow | 56 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
-| Gateways | gateways | 19 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
-| HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
-| HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
-| Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPNSENSE_EXPORTER_DISABLE_HARDWARE |
-| Host Discovery | hostdiscovery | 2 | Enabled | --exporter.disable-hostdiscovery | OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY |
-| IDS/IPS (Suricata) | ids | 9 | Enabled | --exporter.disable-ids | OPNSENSE_EXPORTER_DISABLE_IDS |
-| IPsec | ipsec | 33 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
-| ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
-| ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
-| Interfaces | interfaces | 39 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
-| Kea DHCP | kea | 21 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
-| Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY |
-| LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
-| Local Auth | auth | 9 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
-| Log-derived Events | log_events | 31 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
-| Mbuf | mbuf | 20 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
-| Monit | monit | 17 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
-| NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
-| NTP | ntp | 11 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
-| NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPNSENSE_EXPORTER_DISABLE_NUT |
-| NetBird | netbird | 15 | Enabled | --exporter.disable-netbird | OPNSENSE_EXPORTER_DISABLE_NETBIRD |
-| NetFlow | netflow | 11 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
-| Network Diagnostics | network_diag | 29 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
-| Nginx | nginx | 35 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
-| OpenVPN | openvpn | 10 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
-| PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
-| Protocol Statistics | protocol | 77 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
-| Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
-| Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPNSENSE_EXPORTER_DISABLE_RELAYD |
-| SMART Disk Health | smart | 18 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
-| Services | services | 3 | Enabled | --exporter.disable-services | OPNSENSE_EXPORTER_DISABLE_SERVICES |
-| Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPNSENSE_EXPORTER_DISABLE_SIPROXD |
-| Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
-| System | system | 13 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
-| Tailscale | tailscale | 13 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
-| Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
-| Tor | tor | 6 | Disabled | --exporter.enable-tor | OPNSENSE_EXPORTER_ENABLE_TOR |
-| Traffic Shaper | trafficshaper | 22 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
-| Unbound DNS | unbound_dns | 51 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
-| Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPNSENSE_EXPORTER_ENABLE_VNSTAT |
-| Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
-| ZFS Boot Environments | snapshots | 3 | Enabled | --exporter.disable-snapshots | OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS |
+| ACME Client | acme | 6 | Enabled | --exporter.disable-acme | OPN2OTEL_DISABLE_ACME |
+| APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPN2OTEL_DISABLE_APCUPSD |
+| ARP Table | arp_table | 2 | Enabled | --exporter.disable-arp-table | OPN2OTEL_DISABLE_ARP_TABLE |
+| Activity | activity | 14 | Enabled | --exporter.disable-activity | OPN2OTEL_DISABLE_ACTIVITY |
+| BPF Statistics | bpf | 10 | Enabled | --exporter.disable-bpf | OPN2OTEL_DISABLE_BPF |
+| CARP | carp | 7 | Enabled | --exporter.disable-carp | OPN2OTEL_DISABLE_CARP |
+| CPU | cpu | 6 | Enabled | --exporter.disable-cpu | OPN2OTEL_DISABLE_CPU |
+| Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPN2OTEL_DISABLE_CAPTIVEPORTAL |
+| Certificates | certificate | 8 | Enabled | --exporter.disable-certificates | OPN2OTEL_DISABLE_CERTIFICATES |
+| Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPN2OTEL_DISABLE_CHRONY |
+| ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPN2OTEL_DISABLE_CLAMAV |
+| Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPN2OTEL_DISABLE_BACKUP |
+| Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPN2OTEL_DISABLE_CRON_TABLE |
+| CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPN2OTEL_DISABLE_CROWDSEC |
+| Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPN2OTEL_DISABLE_DNSMASQ |
+| DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPN2OTEL_DISABLE_DYNDNS |
+| FRR Routing (BGP/OSPF/BFD) | frr | 58 | Enabled | --exporter.disable-frr | OPN2OTEL_DISABLE_FRR |
+| Feature Availability | feature | 1 | Enabled | --exporter.disable-feature-availability | OPN2OTEL_DISABLE_FEATURE_AVAILABILITY |
+| Firewall | firewall | 26 | Enabled | --exporter.disable-firewall | OPN2OTEL_DISABLE_FIREWALL |
+| Firewall Aliases | alias | 8 | Enabled | --exporter.disable-alias | OPN2OTEL_DISABLE_ALIAS |
+| Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPN2OTEL_DISABLE_FIREWALL_RULES |
+| Firmware | firmware | 20 | Enabled | --exporter.disable-firmware | OPN2OTEL_DISABLE_FIRMWARE |
+| Flow Volume | flow | 56 | Enabled | --exporter.disable-flow | OPN2OTEL_DISABLE_FLOW |
+| Gateways | gateways | 19 | Enabled | --exporter.disable-gateways | OPN2OTEL_DISABLE_GATEWAYS |
+| HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPN2OTEL_ENABLE_HASYNC |
+| HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPN2OTEL_DISABLE_HAPROXY |
+| Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPN2OTEL_DISABLE_HARDWARE |
+| Host Discovery | hostdiscovery | 2 | Enabled | --exporter.disable-hostdiscovery | OPN2OTEL_DISABLE_HOSTDISCOVERY |
+| IDS/IPS (Suricata) | ids | 9 | Enabled | --exporter.disable-ids | OPN2OTEL_DISABLE_IDS |
+| IPsec | ipsec | 33 | Enabled | --exporter.disable-ipsec | OPN2OTEL_DISABLE_IPSEC |
+| ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPN2OTEL_DISABLE_DHCPV4 |
+| ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPN2OTEL_DISABLE_DHCPV6 |
+| Interfaces | interfaces | 39 | Enabled | --exporter.disable-interfaces | OPN2OTEL_DISABLE_INTERFACES |
+| Kea DHCP | kea | 21 | Enabled | --exporter.disable-kea | OPN2OTEL_DISABLE_KEA |
+| Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPN2OTEL_DISABLE_KERNEL_MEMORY |
+| LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPN2OTEL_DISABLE_LLDPD |
+| Local Auth | auth | 9 | Enabled | --exporter.disable-auth | OPN2OTEL_DISABLE_AUTH |
+| Log-derived Events | log_events | 31 | Enabled | --exporter.disable-log-events | OPN2OTEL_DISABLE_LOG_EVENTS |
+| Mbuf | mbuf | 20 | Enabled | --exporter.disable-mbuf | OPN2OTEL_DISABLE_MBUF |
+| Monit | monit | 17 | Enabled | --exporter.disable-monit | OPN2OTEL_DISABLE_MONIT |
+| NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPN2OTEL_DISABLE_NDP |
+| NTP | ntp | 11 | Enabled | --exporter.disable-ntp | OPN2OTEL_DISABLE_NTP |
+| NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPN2OTEL_DISABLE_NUT |
+| NetBird | netbird | 15 | Enabled | --exporter.disable-netbird | OPN2OTEL_DISABLE_NETBIRD |
+| NetFlow | netflow | 11 | Disabled | --exporter.enable-netflow | OPN2OTEL_ENABLE_NETFLOW |
+| Network Diagnostics | network_diag | 29 | Disabled | --exporter.enable-network-diagnostics | OPN2OTEL_ENABLE_NETWORK_DIAGNOSTICS |
+| Nginx | nginx | 35 | Enabled | --exporter.disable-nginx | OPN2OTEL_DISABLE_NGINX |
+| OpenVPN | openvpn | 10 | Enabled | --exporter.disable-openvpn | OPN2OTEL_DISABLE_OPENVPN |
+| PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPN2OTEL_DISABLE_PF_STATS |
+| Protocol Statistics | protocol | 77 | Enabled | --exporter.disable-protocol | OPN2OTEL_DISABLE_PROTOCOL |
+| Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPN2OTEL_DISABLE_QFEEDS |
+| Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPN2OTEL_DISABLE_RELAYD |
+| SMART Disk Health | smart | 18 | Disabled | --exporter.enable-smart | OPN2OTEL_ENABLE_SMART |
+| Services | services | 3 | Enabled | --exporter.disable-services | OPN2OTEL_DISABLE_SERVICES |
+| Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPN2OTEL_DISABLE_SIPROXD |
+| Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPN2OTEL_DISABLE_SYSLOG |
+| System | system | 13 | Enabled | --exporter.disable-system | OPN2OTEL_DISABLE_SYSTEM |
+| Tailscale | tailscale | 13 | Enabled | --exporter.disable-tailscale | OPN2OTEL_DISABLE_TAILSCALE |
+| Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPN2OTEL_DISABLE_TEMPERATURE |
+| Tor | tor | 6 | Disabled | --exporter.enable-tor | OPN2OTEL_ENABLE_TOR |
+| Traffic Shaper | trafficshaper | 22 | Enabled | --exporter.disable-trafficshaper | OPN2OTEL_DISABLE_TRAFFICSHAPER |
+| Unbound DNS | unbound_dns | 51 | Enabled | --exporter.disable-unbound | OPN2OTEL_DISABLE_UNBOUND |
+| Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPN2OTEL_ENABLE_VNSTAT |
+| Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPN2OTEL_DISABLE_WIREGUARD |
+| ZFS Boot Environments | snapshots | 3 | Enabled | --exporter.disable-snapshots | OPN2OTEL_DISABLE_SNAPSHOTS |
 

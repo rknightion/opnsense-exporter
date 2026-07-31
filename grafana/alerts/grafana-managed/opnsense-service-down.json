@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-service-down",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense service {{ $labels.name }} stopped ({{ $labels.opnsense_instance }})",
       "description": "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. On-demand services (e.g. iperf) are excluded. One alert per service.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseservicedown",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseservicedown",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "482"
     },

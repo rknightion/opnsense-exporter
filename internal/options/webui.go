@@ -19,19 +19,19 @@ var (
 	WebUIEnabled = kingpin.Flag(
 		"web.ui-enabled",
 		"Serve the operator console at / (else the minimal landing page).",
-	).Envar("OPNSENSE_EXPORTER_WEB_UI_ENABLED").Default("true").Bool()
+	).Envar("OPN2OTEL_WEB_UI_ENABLED").Default("true").Bool()
 	WebUIRefreshInterval = kingpin.Flag(
 		"web.ui-refresh-interval",
 		"Live-poll interval for the console's dynamic pages.",
-	).Envar("OPNSENSE_EXPORTER_WEB_UI_REFRESH_INTERVAL").Default("5s").Duration()
+	).Envar("OPN2OTEL_WEB_UI_REFRESH_INTERVAL").Default("5s").Duration()
 	WebUIDisableConfig = kingpin.Flag(
 		"web.ui-disable-config",
 		"Hide the /config page.",
-	).Envar("OPNSENSE_EXPORTER_WEB_UI_DISABLE_CONFIG").Default("false").Bool()
+	).Envar("OPN2OTEL_WEB_UI_DISABLE_CONFIG").Default("false").Bool()
 	WebUIDisableDevices = kingpin.Flag(
 		"web.ui-disable-devices",
 		"Hide the /devices page (exposes MAC/hostname).",
-	).Envar("OPNSENSE_EXPORTER_WEB_UI_DISABLE_DEVICES").Default("false").Bool()
+	).Envar("OPN2OTEL_WEB_UI_DISABLE_DEVICES").Default("false").Bool()
 )
 
 // ConfigSection groups related ConfigItem rows under a title for the /config
@@ -318,12 +318,12 @@ func gatherConfigInputs() configInputs {
 	apiSecret, _ := opsAPISecret()
 
 	pyroUser, _ := resolveSecretMulti(*pyroscopeAuthUser,
-		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
+		"OPN2OTEL_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
 	pyroPass, _ := resolveSecretMulti(*pyroscopeAuthPassword,
-		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE")
+		"OPN2OTEL_PYROSCOPE_AUTH_PASSWORD_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE")
 	pyroAddr := strings.TrimSpace(*pyroscopeServerAddress)
 
-	annToken, _ := resolveSecret("OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE", *annotationsToken)
+	annToken, _ := resolveSecret("OPN2OTEL_ANNOTATIONS_TOKEN_FILE", *annotationsToken)
 
 	return configInputs{
 		host:         strings.TrimSpace(*opnsenseAPI),

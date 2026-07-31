@@ -1,5 +1,5 @@
 ---
-# Restricts ingress to the opnsense-exporter pod so that only Prometheus can
+# Restricts ingress to the opnsense2otel pod so that only Prometheus can
 # reach the metrics port. The /metrics endpoint requires no authentication by
 # default, so network-layer restriction is recommended.
 #
@@ -10,12 +10,12 @@
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
 spec:
   podSelector:
     # Must match the pod labels in deployment.yaml
     matchLabels:
-      app.kubernetes.io/name: opnsense-exporter
+      app.kubernetes.io/name: opnsense2otel
   policyTypes:
     - Ingress
   ingress:

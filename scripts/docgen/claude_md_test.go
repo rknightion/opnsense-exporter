@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
 )
 
 // TestClaudeMDCollectorCount guards #117: CLAUDE.md's "N sub-collectors" figure must match the

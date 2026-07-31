@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // FeatureAvailabilitySubsystem is declared in collector.go (see its comment
@@ -385,12 +385,12 @@ func featureFlagMeta(feature string) (flag, envar, reason string) {
 
 // envarForFlag derives a flag's environment variable the same way every flag
 // registration in internal/options spells it out by hand: uppercase, dots and
-// dashes to underscores, OPNSENSE_EXPORTER_ prefix, and the redundant leading
+// dashes to underscores, OPN2OTEL_ prefix, and the redundant leading
 // "exporter." segment dropped.
 func envarForFlag(flag string) string {
 	name := strings.TrimPrefix(flag, "exporter.")
 	name = strings.NewReplacer(".", "_", "-", "_").Replace(name)
-	return "OPNSENSE_EXPORTER_" + strings.ToUpper(name)
+	return "OPN2OTEL_" + strings.ToUpper(name)
 }
 
 // ProbeFeatureAvailability probes every plugin-gated family once and reports which

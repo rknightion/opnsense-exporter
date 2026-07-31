@@ -2,7 +2,7 @@ package opnsense
 
 import (
 	"encoding/json"
-	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
 	"net/http"
 	"sort"
 	"strconv"

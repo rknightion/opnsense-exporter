@@ -7,7 +7,7 @@ tags:
 
 # Release Process
 
-The OPNsense Exporter uses automated release management powered by [release-please](https://github.com/googleapis/release-please) and conventional commit messages.
+opnsense2otel uses automated release management powered by [release-please](https://github.com/googleapis/release-please) and conventional commit messages.
 
 ## How it works
 
@@ -60,8 +60,8 @@ When a maintainer merges the release PR:
 3. The image workflow publishes a signed, attested multi-architecture image and
    release-level CycloneDX and SPDX SBOMs.
 4. The same workflow packages and signs the Helm chart, pushes it to
-   `oci://ghcr.io/rknightion/charts/opnsense-exporter`, and attaches
-   `opnsense-exporter-<version>.tgz` to the GitHub release.
+   `oci://ghcr.io/rknightion/charts/opnsense2otel`, and attaches
+   `opnsense2otel-<version>.tgz` to the GitHub release.
 5. The notices job generates `THIRD_PARTY_NOTICES.md` from the tagged source.
 6. A final read-back job rejects a partial release if any mandatory asset is
    absent.
@@ -73,7 +73,7 @@ When a maintainer merges the release PR:
 Images are published to GitHub Container Registry:
 
 ```text
-ghcr.io/rknightion/opnsense-exporter
+ghcr.io/rknightion/opnsense2otel
 ```
 
 ### Tags
@@ -101,9 +101,9 @@ Every tagged release must contain:
   x86_64, plus Windows x86_64.
 - One `.sbom.json` beside each archive.
 - `checksums.txt`, its Sigstore bundle, and its in-toto provenance.
-- `opnsense-exporter.cdx.json` and `opnsense-exporter.spdx.json`.
+- `opnsense2otel.cdx.json` and `opnsense2otel.spdx.json`.
 - `THIRD_PARTY_NOTICES.md`.
-- `opnsense-exporter-<version>.tgz`, the signed chart package also published to
+- `opnsense2otel-<version>.tgz`, the signed chart package also published to
   GHCR as an OCI artifact.
 
 The release workflow reads the published release back and checks this exact set.
@@ -115,26 +115,26 @@ set matches the binaries they accompany.
 - `checksums.txt`
 - `checksums.txt.intoto.jsonl`
 - `checksums.txt.sigstore.json`
-- `opnsense-exporter.cdx.json`
-- `opnsense-exporter.spdx.json`
-- `opnsense-exporter_Darwin_arm64.tar.gz`
-- `opnsense-exporter_Darwin_arm64.tar.gz.sbom.json`
-- `opnsense-exporter_Darwin_x86_64.tar.gz`
-- `opnsense-exporter_Darwin_x86_64.tar.gz.sbom.json`
-- `opnsense-exporter_Freebsd_arm64.tar.gz`
-- `opnsense-exporter_Freebsd_arm64.tar.gz.sbom.json`
-- `opnsense-exporter_Freebsd_x86_64.tar.gz`
-- `opnsense-exporter_Freebsd_x86_64.tar.gz.sbom.json`
-- `opnsense-exporter_Linux_arm64.tar.gz`
-- `opnsense-exporter_Linux_arm64.tar.gz.sbom.json`
-- `opnsense-exporter_Linux_x86_64.tar.gz`
-- `opnsense-exporter_Linux_x86_64.tar.gz.sbom.json`
-- `opnsense-exporter_Openbsd_arm64.tar.gz`
-- `opnsense-exporter_Openbsd_arm64.tar.gz.sbom.json`
-- `opnsense-exporter_Openbsd_x86_64.tar.gz`
-- `opnsense-exporter_Openbsd_x86_64.tar.gz.sbom.json`
-- `opnsense-exporter_Windows_x86_64.zip`
-- `opnsense-exporter_Windows_x86_64.zip.sbom.json`
+- `opnsense2otel.cdx.json`
+- `opnsense2otel.spdx.json`
+- `opnsense2otel_Darwin_arm64.tar.gz`
+- `opnsense2otel_Darwin_arm64.tar.gz.sbom.json`
+- `opnsense2otel_Darwin_x86_64.tar.gz`
+- `opnsense2otel_Darwin_x86_64.tar.gz.sbom.json`
+- `opnsense2otel_Freebsd_arm64.tar.gz`
+- `opnsense2otel_Freebsd_arm64.tar.gz.sbom.json`
+- `opnsense2otel_Freebsd_x86_64.tar.gz`
+- `opnsense2otel_Freebsd_x86_64.tar.gz.sbom.json`
+- `opnsense2otel_Linux_arm64.tar.gz`
+- `opnsense2otel_Linux_arm64.tar.gz.sbom.json`
+- `opnsense2otel_Linux_x86_64.tar.gz`
+- `opnsense2otel_Linux_x86_64.tar.gz.sbom.json`
+- `opnsense2otel_Openbsd_arm64.tar.gz`
+- `opnsense2otel_Openbsd_arm64.tar.gz.sbom.json`
+- `opnsense2otel_Openbsd_x86_64.tar.gz`
+- `opnsense2otel_Openbsd_x86_64.tar.gz.sbom.json`
+- `opnsense2otel_Windows_x86_64.zip`
+- `opnsense2otel_Windows_x86_64.zip.sbom.json`
 <!-- docgen:end:release-assets -->
 
 ### Build details

@@ -6,9 +6,9 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
 )
 
 func TestCollectorRow_NextRunAndFreshness(t *testing.T) {
@@ -168,7 +168,7 @@ func TestBuildStatus(t *testing.T) {
 		{Name: "gateways", Display: "Gateways", Runs: 3, LastOK: true},
 		{Name: "unbound", Display: "Unbound", Runs: 5, Failures: 2, LastOK: false, LastError: "x"},
 	}
-	svc := ServiceInfo{Name: "opnsense-exporter", Version: "test"}
+	svc := ServiceInfo{Name: "opnsense2otel", Version: "test"}
 	allNames := []string{"gateways", "unbound", "extra"}
 
 	st := buildStatus(stats, metricsnap.Capture{Families: families}, nil, svc, allNames, nil)

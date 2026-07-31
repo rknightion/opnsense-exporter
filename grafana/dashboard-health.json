@@ -6,8 +6,8 @@
     "annotations": {}
   },
   "spec": {
-    "title": "OPNsense Exporter Health",
-    "description": "Self-observability for the OPNsense exporter itself: scrape and poll health, per-collector freshness, OPNsense API errors and response cache, OTLP delivery and the log-shipping pipeline. Firewall data lives on the OPNsense Exporter dashboard. Built from grafana/build_dashboard.py.",
+    "title": "opnsense2otel Health",
+    "description": "Self-observability for the OPNsense exporter itself: scrape and poll health, per-collector freshness, OPNsense API errors and response cache, OTLP delivery and the log-shipping pipeline. Firewall data lives on the opnsense2otel dashboard. Built from grafana/build_dashboard.py.",
     "tags": [
       "opnsense",
       "exporter",
@@ -50,7 +50,7 @@
       {
         "title": "Documentation",
         "type": "link",
-        "url": "https://m7kni.io/opnsense-exporter/",
+        "url": "https://m7kni.io/opnsense2otel/",
         "icon": "external link",
         "tooltip": "Metric reference, collector reference and configuration",
         "tags": [],
@@ -63,7 +63,7 @@
       {
         "title": "Alert runbooks",
         "type": "link",
-        "url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#alerts--recording-rules",
+        "url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#alerts--recording-rules",
         "icon": "external link",
         "tooltip": "What each generated alert means and what to do about it",
         "tags": [],
@@ -477,7 +477,7 @@
               "limit": 100,
               "matchAny": false,
               "tags": [
-                "opnsense-exporter"
+                "opnsense2otel"
               ],
               "type": "tags"
             },
@@ -505,7 +505,7 @@
               "matchAny": false,
               "tags": [
                 "n8n-change",
-                "dashboard:opnsense-exporter"
+                "dashboard:opnsense2otel"
               ],
               "type": "tags"
             },

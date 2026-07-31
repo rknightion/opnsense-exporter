@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Quick start guide for deploying the OPNsense Exporter and scraping your first metrics
+description: Quick start guide for deploying opnsense2otel and scraping your first metrics
 tags:
   - Deployment
   - Configuration
@@ -8,7 +8,7 @@ tags:
 
 # Getting Started
 
-Get the OPNsense Exporter up and running in under five minutes.
+Get opnsense2otel up and running in under five minutes.
 
 ## Prerequisites
 
@@ -34,9 +34,9 @@ Get the OPNsense Exporter up and running in under five minutes.
 
     ```bash
     docker run -p 8080:8080 \
-      -e OPNSENSE_EXPORTER_OPS_API_KEY=YOUR_API_KEY \
-      -e OPNSENSE_EXPORTER_OPS_API_SECRET=YOUR_API_SECRET \
-      ghcr.io/rknightion/opnsense-exporter:latest \
+      -e OPN2OTEL_OPS_API_KEY=YOUR_API_KEY \
+      -e OPN2OTEL_OPS_API_SECRET=YOUR_API_SECRET \
+      ghcr.io/rknightion/opnsense2otel:latest \
       --opnsense.protocol=https \
       --opnsense.address=opnsense.example.com \
       --exporter.instance-label=my-firewall \
@@ -47,8 +47,8 @@ Get the OPNsense Exporter up and running in under five minutes.
 
     ```yaml
     services:
-      opnsense-exporter:
-        image: ghcr.io/rknightion/opnsense-exporter:latest
+      opnsense2otel:
+        image: ghcr.io/rknightion/opnsense2otel:latest
         restart: always
         command:
           - --opnsense.protocol=https
@@ -56,21 +56,21 @@ Get the OPNsense Exporter up and running in under five minutes.
           - --exporter.instance-label=my-firewall
           - --web.listen-address=:8080
         environment:
-          OPNSENSE_EXPORTER_OPS_API_KEY: "${OPS_API_KEY}"
-          OPNSENSE_EXPORTER_OPS_API_SECRET: "${OPS_API_SECRET}"
+          OPN2OTEL_OPS_API_KEY: "${OPS_API_KEY}"
+          OPN2OTEL_OPS_API_SECRET: "${OPS_API_SECRET}"
         ports:
           - "8080:8080"
     ```
 
 === "Binary"
 
-    Download the latest release from [GitHub Releases](https://github.com/rknightion/opnsense-exporter/releases), then run:
+    Download the latest release from [GitHub Releases](https://github.com/rknightion/opnsense2otel/releases), then run:
 
     ```bash
-    export OPNSENSE_EXPORTER_OPS_API_KEY=YOUR_API_KEY
-    export OPNSENSE_EXPORTER_OPS_API_SECRET=YOUR_API_SECRET
+    export OPN2OTEL_OPS_API_KEY=YOUR_API_KEY
+    export OPN2OTEL_OPS_API_SECRET=YOUR_API_SECRET
 
-    ./opnsense-exporter \
+    ./opnsense2otel \
       --opnsense.protocol=https \
       --opnsense.address=opnsense.example.com \
       --exporter.instance-label=my-firewall

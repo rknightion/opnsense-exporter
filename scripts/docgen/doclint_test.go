@@ -7,7 +7,7 @@ import (
 )
 
 func TestExtractDocTokens(t *testing.T) {
-	text := "Use `--opnsense.address` and set OPNSENSE_EXPORTER_OPS_API_KEY or OPS_API_KEY_FILE. " +
+	text := "Use `--opnsense.address` and set OPN2OTEL_OPS_API_KEY or OPS_API_KEY_FILE. " +
 		"The removed --runtime.gomaxprocs flag. Sentence ends with --otlp.enabled."
 	flags, envs := extractDocTokens(text)
 	wantFlags := map[string]bool{"opnsense.address": true, "runtime.gomaxprocs": true, "otlp.enabled": true}
@@ -19,7 +19,7 @@ func TestExtractDocTokens(t *testing.T) {
 	if flags["otlp.enabled."] {
 		t.Error("trailing punctuation not trimmed from flag token")
 	}
-	for _, e := range []string{"OPNSENSE_EXPORTER_OPS_API_KEY", "OPS_API_KEY_FILE"} {
+	for _, e := range []string{"OPN2OTEL_OPS_API_KEY", "OPS_API_KEY_FILE"} {
 		if !envs[e] {
 			t.Errorf("env token %q not extracted", e)
 		}
@@ -28,11 +28,11 @@ func TestExtractDocTokens(t *testing.T) {
 
 func TestDoclintFlagsUnknownTokens(t *testing.T) {
 	known := knownTokens(collectAllFlags())
-	problems := lintText("doc.md", "set --opnsense.adress and OPNSENSE_EXPORTER_TYPO_VAR", known, map[string]bool{})
+	problems := lintText("doc.md", "set --opnsense.adress and OPN2OTEL_TYPO_VAR", known, map[string]bool{})
 	if len(problems) != 2 {
 		t.Fatalf("expected 2 problems, got %d: %v", len(problems), problems)
 	}
-	problems = lintText("doc.md", "set --opnsense.address and OPNSENSE_EXPORTER_OPS_API_KEY and OPS_API_SECRET_FILE", known, map[string]bool{})
+	problems = lintText("doc.md", "set --opnsense.address and OPN2OTEL_OPS_API_KEY and OPS_API_SECRET_FILE", known, map[string]bool{})
 	if len(problems) != 0 {
 		t.Fatalf("expected no problems, got %v", problems)
 	}
@@ -107,15 +107,15 @@ func TestLintTargetsIncludeGrafanaTabs(t *testing.T) {
 }
 
 // TestLintTargetsIncludeCharts guards that the Helm chart is linted like any other
-// doc: a renamed flag can rot charts/opnsense-exporter/templates/_helpers.tpl (which
+// doc: a renamed flag can rot charts/opnsense2otel/templates/_helpers.tpl (which
 // builds the exporter's args/env list from flag and env names) or README.md
 // undetected otherwise.
 func TestLintTargetsIncludeCharts(t *testing.T) {
 	targets := lintTargets(findRepoRoot())
 	want := map[string]bool{
-		"charts/opnsense-exporter/templates/_helpers.tpl": false,
-		"charts/opnsense-exporter/README.md":              false,
-		"charts/opnsense-exporter/tests/test-chart.sh":    false,
+		"charts/opnsense2otel/templates/_helpers.tpl": false,
+		"charts/opnsense2otel/README.md":              false,
+		"charts/opnsense2otel/tests/test-chart.sh":    false,
 	}
 	for _, tgt := range targets {
 		if _, ok := want[filepath.ToSlash(tgt)]; ok {
@@ -135,7 +135,7 @@ func TestLintTargetsIncludeCharts(t *testing.T) {
 func TestDoclintCatchesBogusFlagInChart(t *testing.T) {
 	known := knownTokens(collectAllFlags())
 	problems := lintText(
-		"charts/opnsense-exporter/templates/_helpers.tpl",
+		"charts/opnsense2otel/templates/_helpers.tpl",
 		`- "--exporter.enable-bogus-details"`,
 		known, map[string]bool{},
 	)

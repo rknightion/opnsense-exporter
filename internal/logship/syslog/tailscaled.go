@@ -3,8 +3,8 @@ package syslog
 import (
 	"regexp"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // Tailscale is the fourth backend of the derived `vpn` family's ATTRIBUTE contract

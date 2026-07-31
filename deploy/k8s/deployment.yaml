@@ -2,35 +2,35 @@
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: opnsense-exporter
+      app.kubernetes.io/name: opnsense2otel
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: opnsense-exporter
+        app.kubernetes.io/name: opnsense2otel
     spec:
       # The exporter is a pure HTTP scrape target and never calls the Kubernetes API,
       # so don't mount a ServiceAccount token (shrinks the pivot surface on compromise).
       automountServiceAccountToken: false
       containers:
-        - name: opnsense-exporter
+        - name: opnsense2otel
           # Pin to an immutable release tag, not :latest — :latest is retagged every
           # release, so a pod reschedule could silently pull a breaking version with no
           # deploy event to correlate. The tag tracks version.txt and is rewritten on
           # each release by release-please via the x-release-please-version marker below;
           # keep that marker on the image line or the tag stops updating. Published tags
           # carry no leading "v" (the git tag is v2.2.1, the image tag is 2.2.1).
-          image: ghcr.io/rknightion/opnsense-exporter:3.0.0 # x-release-please-version
+          image: ghcr.io/rknightion/opnsense2otel:3.0.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           # In pod, mount OPNSense API credentials as files
           volumeMounts:
             # name must match the volume name below
             - name: api-key-vol
-              mountPath: /etc/opnsense-exporter/creds
+              mountPath: /etc/opnsense2otel/creds
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -73,25 +73,25 @@ spec:
             - "--log.level=info"
             - "--log.format=json"
           env:
-            - name: OPNSENSE_EXPORTER_INSTANCE_LABEL
+            - name: OPN2OTEL_INSTANCE_LABEL
               value: "opnsense"
-            - name: OPNSENSE_EXPORTER_OPS_API
+            - name: OPN2OTEL_OPS_API
               valueFrom:
                 secretKeyRef:
-                  name: opnsense-exporter-cfg
+                  name: opnsense2otel-cfg
                   key: host
-            - name: OPNSENSE_EXPORTER_OPS_PROTOCOL
+            - name: OPN2OTEL_OPS_PROTOCOL
               valueFrom:
                 secretKeyRef:
-                  name: opnsense-exporter-cfg
+                  name: opnsense2otel-cfg
                   key: protocol
             # Env var points to a location on disk, make sure the value set here matches the volumeMount path
             - name: OPS_API_KEY_FILE
-              value: /etc/opnsense-exporter/creds/api-key
+              value: /etc/opnsense2otel/creds/api-key
             - name: OPS_API_SECRET_FILE
-              value: /etc/opnsense-exporter/creds/api-secret
+              value: /etc/opnsense2otel/creds/api-secret
             # Only enable if using self-signed cert
-            # - name: OPNSENSE_EXPORTER_OPS_INSECURE
+            # - name: OPN2OTEL_OPS_INSECURE
             #   value: "true"
 
           # in basic testing with a home lab OPNsense 100m CPU and 64Mi memory are sufficient
@@ -107,7 +107,7 @@ spec:
       volumes:
         - name: api-key-vol
           secret:
-            secretName: opnsense-exporter-cfg
+            secretName: opnsense2otel-cfg
             items:
               - key: key
                 path: api-key
@@ -117,10 +117,10 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: opnsense-exporter
+  name: opnsense2otel
 spec:
   selector:
-    app.kubernetes.io/name: opnsense-exporter
+    app.kubernetes.io/name: opnsense2otel
   type: ClusterIP
   ports:
     - name: http

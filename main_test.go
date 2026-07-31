@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -433,10 +433,10 @@ func TestRunConfigCheck(t *testing.T) {
 	t.Run("success exits 0 and never prints a secret", func(t *testing.T) {
 		const apiKey = "SUPERSECRETKEYVALUE"
 		const apiSecret = "SUPERSECRETSECRETVALUE"
-		t.Setenv("OPNSENSE_EXPORTER_OPS_PROTOCOL", "https")
-		t.Setenv("OPNSENSE_EXPORTER_OPS_API", "fw.example.com")
-		t.Setenv("OPNSENSE_EXPORTER_OPS_API_KEY", apiKey)
-		t.Setenv("OPNSENSE_EXPORTER_OPS_API_SECRET", apiSecret)
+		t.Setenv("OPN2OTEL_OPS_PROTOCOL", "https")
+		t.Setenv("OPN2OTEL_OPS_API", "fw.example.com")
+		t.Setenv("OPN2OTEL_OPS_API_KEY", apiKey)
+		t.Setenv("OPN2OTEL_OPS_API_SECRET", apiSecret)
 		if _, err := kingpin.CommandLine.Parse(nil); err != nil {
 			t.Fatalf("parse: %v", err)
 		}
@@ -471,10 +471,10 @@ func TestResolveOptionsReportsEveryProblem(t *testing.T) {
 	}
 
 	baseEnv := map[string]string{
-		"OPNSENSE_EXPORTER_OPS_PROTOCOL":   "https",
-		"OPNSENSE_EXPORTER_OPS_API":        "fw.example.com",
-		"OPNSENSE_EXPORTER_OPS_API_KEY":    "a-key",
-		"OPNSENSE_EXPORTER_OPS_API_SECRET": "a-secret",
+		"OPN2OTEL_OPS_PROTOCOL":   "https",
+		"OPN2OTEL_OPS_API":        "fw.example.com",
+		"OPN2OTEL_OPS_API_KEY":    "a-key",
+		"OPN2OTEL_OPS_API_SECRET": "a-secret",
 	}
 
 	// NOTE: these subtests share one process-global kingpin flag set, and a
@@ -494,34 +494,34 @@ func TestResolveOptionsReportsEveryProblem(t *testing.T) {
 		},
 		{
 			name: "missing credential",
-			env:  map[string]string{"OPNSENSE_EXPORTER_OPS_API_KEY": ""},
+			env:  map[string]string{"OPN2OTEL_OPS_API_KEY": ""},
 			want: "api-key must be set",
 		},
 		{
 			name: "metrics path collides with a reserved route",
-			env:  map[string]string{"OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH": "/-/healthy"},
+			env:  map[string]string{"OPN2OTEL_WEB_TELEMETRY_PATH": "/-/healthy"},
 			want: "reserved",
 		},
 		{
 			name: "unreadable TLS keypair on the syslog receiver",
 			env: map[string]string{
-				"OPNSENSE_EXPORTER_LOGS_ENABLED":              "true",
-				"OPNSENSE_EXPORTER_LOGS_SINK":                 "stdout",
-				"OPNSENSE_EXPORTER_LOGS_SYSLOG_ENABLED":       "true",
-				"OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_TLS":    ":6514",
-				"OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CERT_FILE": filepath.Join(t.TempDir(), "absent.pem"),
-				"OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_KEY_FILE":  filepath.Join(t.TempDir(), "absent-key.pem"),
+				"OPN2OTEL_LOGS_ENABLED":              "true",
+				"OPN2OTEL_LOGS_SINK":                 "stdout",
+				"OPN2OTEL_LOGS_SYSLOG_ENABLED":       "true",
+				"OPN2OTEL_LOGS_SYSLOG_LISTEN_TLS":    ":6514",
+				"OPN2OTEL_LOGS_SYSLOG_TLS_CERT_FILE": filepath.Join(t.TempDir(), "absent.pem"),
+				"OPN2OTEL_LOGS_SYSLOG_TLS_KEY_FILE":  filepath.Join(t.TempDir(), "absent-key.pem"),
 			},
 			want: "syslog",
 		},
 		{
 			name: "conflicting receiver modes (zenarmor over syslog with no syslog receiver)",
 			env: map[string]string{
-				"OPNSENSE_EXPORTER_LOGS_ENABLED":            "true",
-				"OPNSENSE_EXPORTER_LOGS_SINK":               "stdout",
-				"OPNSENSE_EXPORTER_LOGS_ZENARMOR_ENABLED":   "true",
-				"OPNSENSE_EXPORTER_LOGS_ZENARMOR_TRANSPORT": "syslog",
-				"OPNSENSE_EXPORTER_LOGS_SYSLOG_ENABLED":     "false",
+				"OPN2OTEL_LOGS_ENABLED":            "true",
+				"OPN2OTEL_LOGS_SINK":               "stdout",
+				"OPN2OTEL_LOGS_ZENARMOR_ENABLED":   "true",
+				"OPN2OTEL_LOGS_ZENARMOR_TRANSPORT": "syslog",
+				"OPN2OTEL_LOGS_SYSLOG_ENABLED":     "false",
 			},
 			want: "zenarmor",
 		},
@@ -535,7 +535,7 @@ func TestResolveOptionsReportsEveryProblem(t *testing.T) {
 		{
 			name: "unknown collector and invalid duration in poll-interval overrides",
 			env: map[string]string{
-				"OPNSENSE_EXPORTER_COLLECTOR_POLL_INTERVAL_OVERRIDE": "gatways=10s\ngateways=10sec",
+				"OPN2OTEL_COLLECTOR_POLL_INTERVAL_OVERRIDE": "gatways=10s\ngateways=10sec",
 			},
 			want: "--collector.poll-interval-override",
 		},

@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 func mdCell(s string) string {

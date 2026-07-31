@@ -8,7 +8,7 @@ tags:
 
 # Security
 
-This guide covers secure configuration of the OPNsense Exporter, including API key management, TLS, and least-privilege access.
+This guide covers secure configuration of opnsense2otel, including API key management, TLS, and least-privilege access.
 
 ## OPNsense API key creation
 
@@ -256,8 +256,8 @@ any path and point Go's TLS stack at it with `SSL_CERT_FILE`:
 
 ```yaml
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
     environment:
       SSL_CERT_FILE: /certs/opnsense-ca.pem
     volumes:
@@ -276,7 +276,7 @@ Docker deployment guide for the full example.
 Or via environment variable:
 
 ```bash
-OPNSENSE_EXPORTER_OPS_INSECURE=true
+OPN2OTEL_OPS_INSECURE=true
 ```
 
 !!! warning
@@ -315,8 +315,8 @@ The exporter reads the first line of each file. File-based secrets take preceden
 
 ```yaml
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
     environment:
       OPS_API_KEY_FILE: /run/secrets/opnsense-api-key
       OPS_API_SECRET_FILE: /run/secrets/opnsense-api-secret
@@ -330,12 +330,12 @@ services:
 ```yaml
 env:
   - name: OPS_API_KEY_FILE
-    value: /etc/opnsense-exporter/creds/api-key
+    value: /etc/opnsense2otel/creds/api-key
   - name: OPS_API_SECRET_FILE
-    value: /etc/opnsense-exporter/creds/api-secret
+    value: /etc/opnsense2otel/creds/api-secret
 volumeMounts:
   - name: api-key-vol
-    mountPath: /etc/opnsense-exporter/creds
+    mountPath: /etc/opnsense2otel/creds
     readOnly: true
 ```
 
@@ -344,12 +344,12 @@ volumeMounts:
 ```bash
 # Create credential files
 # The exporter service user needs read access; unrelated users do not.
-sudo install -d -o root -g opnsense-exporter -m 0710 /etc/opnsense-exporter
-printf '%s\n' 'your-api-key' | sudo install -o root -g opnsense-exporter -m 0640 /dev/stdin /etc/opnsense-exporter/api-key
-printf '%s\n' 'your-api-secret' | sudo install -o root -g opnsense-exporter -m 0640 /dev/stdin /etc/opnsense-exporter/api-secret
+sudo install -d -o root -g opnsense2otel -m 0710 /etc/opnsense2otel
+printf '%s\n' 'your-api-key' | sudo install -o root -g opnsense2otel -m 0640 /dev/stdin /etc/opnsense2otel/api-key
+printf '%s\n' 'your-api-secret' | sudo install -o root -g opnsense2otel -m 0640 /dev/stdin /etc/opnsense2otel/api-secret
 ```
 
-The directory's `0710` mode lets the service group traverse directly to the named files without listing the directory. Each `0640` file is readable only by root and the `opnsense-exporter` group; unrelated users cannot traverse the directory.
+The directory's `0710` mode lets the service group traverse directly to the named files without listing the directory. Each `0640` file is readable only by root and the `opnsense2otel` group; unrelated users cannot traverse the directory.
 
 ## OPNsense settings
 
@@ -367,4 +367,4 @@ The official container image is hardened:
 - **No capabilities** - all Linux capabilities are dropped in the Kubernetes deployment manifest
 - **Static binary** - no runtime dependencies, CGO disabled
 
-The `/metrics` endpoint requires no authentication by default, so restrict who can reach it at the network layer. On Kubernetes, a sample [NetworkPolicy](deployment/kubernetes.md#restrict-access-with-a-networkpolicy) limiting ingress on the metrics port to Prometheus is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense-exporter/blob/main/deploy/k8s/networkpolicy.yaml).
+The `/metrics` endpoint requires no authentication by default, so restrict who can reach it at the network layer. On Kubernetes, a sample [NetworkPolicy](deployment/kubernetes.md#restrict-access-with-a-networkpolicy) limiting ingress on the metrics port to Prometheus is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense2otel/blob/main/deploy/k8s/networkpolicy.yaml).

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // dhclient is the FreeBSD base DHCP CLIENT that holds this firewall's own WAN

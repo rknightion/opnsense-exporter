@@ -21,8 +21,8 @@ scrapes a 25.7 box and a 26.1 box correctly.
 
 Payload drift is caught by a daily canary that diffs live OPNsense responses against the exporter's
 own structs. Its results, and every compatibility decision behind this page, are tracked in the
-[GitHub issue tracker](https://github.com/rknightion/opnsense-exporter/issues). If your release is
-not handled correctly, [open an issue](https://github.com/rknightion/opnsense-exporter/issues/new)
+[GitHub issue tracker](https://github.com/rknightion/opnsense2otel/issues). If your release is
+not handled correctly, [open an issue](https://github.com/rknightion/opnsense2otel/issues/new)
 with the OPNsense version and the raw API response.
 
 When a release drops out of the support window, the shims that carried its payload shape get

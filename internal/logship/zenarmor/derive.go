@@ -3,7 +3,7 @@ package zenarmor
 import (
 	"strconv"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // observeDerived counts one record against sink.

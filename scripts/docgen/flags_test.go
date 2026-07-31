@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // TestDocumentedFlagsAreNotPlatformDependent pins the one flag whose presence in
@@ -50,7 +50,7 @@ func TestCollectAllFlagsFindsKnownFlags(t *testing.T) {
 	if !ok {
 		t.Fatal("exporter.disable-arp-table not in model")
 	}
-	if arp.Envar != "OPNSENSE_EXPORTER_DISABLE_ARP_TABLE" || arp.Default != "false" {
+	if arp.Envar != "OPN2OTEL_DISABLE_ARP_TABLE" || arp.Default != "false" {
 		t.Errorf("unexpected arp flag metadata: %+v", arp)
 	}
 	if _, ok := byName["log.level"]; !ok {

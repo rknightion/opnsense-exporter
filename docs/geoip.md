@@ -60,8 +60,8 @@ image is built and installed read-only:
 
 | path | contents | size |
 | --- | --- | --- |
-| `/usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb` | country + continent | ~8.2 MB |
-| `/usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb` | ASN + organization | ~9.6 MB |
+| `/usr/share/opnsense2otel/geoip/dbip-country-lite.mmdb` | country + continent | ~8.2 MB |
+| `/usr/share/opnsense2otel/geoip/dbip-asn-lite.mmdb` | ASN + organization | ~9.6 MB |
 
 Those two paths are the **default values** of `--geoip.country-database` and
 `--geoip.asn-database`, so nothing needs configuring to use them.

@@ -17,9 +17,9 @@ never as a Loki label. The only labels are the resource identity, plus `opnsense
 and `opnsense.subsystem` if you promote them (see [Loki label model](#loki-label-model)).
 
 The pipeline is implemented in
-[`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship);
+[`internal/logship/` on GitHub](https://github.com/rknightion/opnsense2otel/tree/main/internal/logship);
 parsers live one file per program, so
-[adding a parser](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship) is a
+[adding a parser](https://github.com/rknightion/opnsense2otel/tree/main/internal/logship) is a
 self-contained contribution.
 
 !!! note "Sources are added incrementally"
@@ -144,7 +144,7 @@ collector's alert count is a floor against).
   (`event=gap_detected` structured metadata, `warn` severity, a JSON body
   naming the gap bounds) instead of silently dropping it, so the loss is
   visible and queryable in Loki (e.g.
-  `{service_name="opnsense-exporter"} | opnsense_source="ids" | json | event="gap_detected"`).
+  `{service_name="opnsense2otel"} | opnsense_source="ids" | json | event="gap_detected"`).
 - **First poll**: with no prior cursor (fresh start, or `--logs.state-file` not
   set/empty/corrupt), the whole initial window ships as a startup catch-up
   rather than being silently skipped or treated as a gap.
@@ -299,7 +299,7 @@ so it is deliberately kept where it cannot become a label.
 Out of the box they all land in structured metadata, so you filter with `|`:
 
 ```logql
-{service_name="opnsense-exporter"} | opnsense_subsystem="firewall" | action="block"
+{service_name="opnsense2otel"} | opnsense_subsystem="firewall" | action="block"
 ```
 
 That scans every chunk for the instance. To turn it into a stream selection instead,
@@ -333,7 +333,7 @@ The change is queued and can take a couple of business days to apply.
 Then the same query becomes:
 
 ```logql
-{service_name="opnsense-exporter", opnsense_subsystem="firewall"} | action="block"
+{service_name="opnsense2otel", opnsense_subsystem="firewall"} | action="block"
 ```
 
 Cost: bounded, because every one of these is a closed set. The combinations are a
@@ -419,10 +419,10 @@ Enable it with a shared directory plus a per-receiver toggle:
 
 | Flag | Env | Default |
 | --- | --- | --- |
-| `--logs.debug-capture.dir` | `OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_DIR` | *(empty - off)* |
-| `--logs.debug-capture.max-bytes` | `OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_MAX_BYTES` | `256MiB` |
-| `--logs.zenarmor.debug-capture` | `OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE` | `false` |
-| `--logs.syslog.debug-capture` | `OPNSENSE_EXPORTER_LOGS_SYSLOG_DEBUG_CAPTURE` | `false` |
+| `--logs.debug-capture.dir` | `OPN2OTEL_LOGS_DEBUG_CAPTURE_DIR` | *(empty - off)* |
+| `--logs.debug-capture.max-bytes` | `OPN2OTEL_LOGS_DEBUG_CAPTURE_MAX_BYTES` | `256MiB` |
+| `--logs.zenarmor.debug-capture` | `OPN2OTEL_LOGS_ZENARMOR_DEBUG_CAPTURE` | `false` |
+| `--logs.syslog.debug-capture` | `OPN2OTEL_LOGS_SYSLOG_DEBUG_CAPTURE` | `false` |
 
 A per-receiver toggle with no `--logs.debug-capture.dir` set is a startup error - it
 would read as "on" but write nowhere. When Zenarmor capture is on, the receiver's
@@ -450,12 +450,12 @@ exporter (runs as UID/GID `65532` nonroot):
 ```yaml
 # docker-compose.yml
 services:
-  opnsense-exporter:
+  opnsense2otel:
     volumes:
       - ./capture:/capture
     environment:
-      OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_DIR: /capture
-      OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE: "true"
+      OPN2OTEL_LOGS_DEBUG_CAPTURE_DIR: /capture
+      OPN2OTEL_LOGS_ZENARMOR_DEBUG_CAPTURE: "true"
 ```
 
 ```bash

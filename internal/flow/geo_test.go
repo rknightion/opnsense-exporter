@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
 )
 
 // fakeLookup is a table-driven geoip.Lookup, so the precedence rules can be tested

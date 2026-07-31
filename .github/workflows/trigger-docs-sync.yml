@@ -27,4 +27,4 @@ jobs:
           token: ${{ secrets.DOCS_SYNC_PAT }}
           repository: rknightion/m7kni-net-site
           event-type: docs-update
-          client-payload: '{"repository": "opnsense-exporter"}'
+          client-payload: '{"repository": "opnsense2otel"}'

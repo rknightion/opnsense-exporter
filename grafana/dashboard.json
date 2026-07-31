@@ -6,8 +6,8 @@
     "annotations": {}
   },
   "spec": {
-    "title": "OPNsense Exporter",
-    "description": "Comprehensive single-pane OPNsense firewall dashboard. Tabs and rows auto-hide when their metrics are absent. Exporter self-observability lives on the companion OPNsense Exporter Health dashboard. Built from grafana/build_dashboard.py.",
+    "title": "opnsense2otel",
+    "description": "Comprehensive single-pane OPNsense firewall dashboard. Tabs and rows auto-hide when their metrics are absent. Exporter self-observability lives on the companion opnsense2otel Health dashboard. Built from grafana/build_dashboard.py.",
     "tags": [
       "opnsense",
       "firewall",
@@ -51,7 +51,7 @@
       {
         "title": "Documentation",
         "type": "link",
-        "url": "https://m7kni.io/opnsense-exporter/",
+        "url": "https://m7kni.io/opnsense2otel/",
         "icon": "external link",
         "tooltip": "Metric reference, collector reference and configuration",
         "tags": [],
@@ -64,7 +64,7 @@
       {
         "title": "Alert runbooks",
         "type": "link",
-        "url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#alerts--recording-rules",
+        "url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#alerts--recording-rules",
         "icon": "external link",
         "tooltip": "What each generated alert means and what to do about it",
         "tags": [],
@@ -478,7 +478,7 @@
               "limit": 100,
               "matchAny": false,
               "tags": [
-                "opnsense-exporter"
+                "opnsense2otel"
               ],
               "type": "tags"
             },
@@ -506,7 +506,7 @@
               "matchAny": false,
               "tags": [
                 "n8n-change",
-                "dashboard:opnsense-exporter"
+                "dashboard:opnsense2otel"
               ],
               "type": "tags"
             },

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/healthprobe"
+	"github.com/rknightion/opnsense2otel/v4/internal/healthprobe"
 )
 
 // The probe exists because the runtime image is distroless (#438): there is no
@@ -148,7 +148,7 @@ func TestRun_HelpReturnsZero(t *testing.T) {
 	if code := healthprobe.Run([]string{"--help"}, &out, &errOut); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	if !strings.Contains(errOut.String(), "opnsense-exporter health") {
+	if !strings.Contains(errOut.String(), "opnsense2otel health") {
 		t.Errorf("usage text missing: %q", errOut.String())
 	}
 }

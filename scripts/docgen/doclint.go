@@ -20,23 +20,27 @@ import (
 var flagTokenRe = regexp.MustCompile(`--([a-z][a-z0-9-]*\.[A-Za-z0-9.-]+)`)
 
 // envTokenRe matches env vars in the families this project owns and validates: any
-// OPNSENSE-brand token (so a typo'd prefix like OPNSENSE_EXPORT_... — missing the ER —
-// is caught, not silently ignored, the env analogue of the flag-prefix bug in #151) plus
-// the two non-prefixed file-secret families. It deliberately does NOT match arbitrary
-// all-caps tokens: standard third-party envs (OTEL_*, SSL_CERT_FILE) and Makefile vars
-// (OPS_*, GO_LICENSES_VERSION) are legitimately absent from the kingpin model and must
-// not be flagged. Legit-but-unknown OPNSENSE-brand tokens go in doclint_allow.txt.
-var envTokenRe = regexp.MustCompile(`\b(OPNSENSE[A-Z0-9]*(?:_[A-Z0-9]+)+|OPS_API_(?:KEY|SECRET)_FILE|PYROSCOPE_AUTH_(?:USER|PASSWORD)_FILE)\b`)
+// OPN-brand token (so a typo'd prefix like OPN2OTL_... is caught, not silently
+// ignored, the env analogue of the flag-prefix bug in #151) plus the two non-prefixed
+// file-secret families. The `OPN` stem rather than the exact `OPN2OTEL` prefix is
+// deliberate and does double duty after the opnsense-exporter -> opnsense2otel rename:
+// it still matches the retired `OPNSENSE_EXPORTER_*` spelling, so any doc left quoting
+// the old prefix is reported as an unknown token instead of passing unnoticed.
+// It deliberately does NOT match arbitrary all-caps tokens: standard third-party envs
+// (OTEL_*, SSL_CERT_FILE) and Makefile vars (OPS_*, GO_LICENSES_VERSION) are legitimately
+// absent from the kingpin model and must not be flagged. Legit-but-unknown OPN-brand
+// tokens go in doclint_allow.txt.
+var envTokenRe = regexp.MustCompile(`\b(OPN[A-Z0-9]*(?:_[A-Z0-9]+)+|OPS_API_(?:KEY|SECRET)_FILE|PYROSCOPE_AUTH_(?:USER|PASSWORD)_FILE)\b`)
 
 // fileSecretEnvVars are env vars read via os.LookupEnv in internal/options
 // (not part of the kingpin model).
 var fileSecretEnvVars = []string{
 	"OPS_API_KEY_FILE", "OPS_API_SECRET_FILE",
 	"PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE",
-	"OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE",
-	"OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE",
-	"OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE",
-	"OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE",
+	"OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE",
+	"OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN_FILE",
+	"OPN2OTEL_ANNOTATIONS_TOKEN_FILE",
+	"OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY_FILE",
 }
 
 type knownSet struct{ flags, envs map[string]bool }

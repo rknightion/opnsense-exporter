@@ -5,24 +5,24 @@
 #   <name>.spdx.json   SPDX 2.3
 #   <name>.cdx.json    CycloneDX 1.6
 #
-# Default target is the built binary (bin/opnsense-exporter), which embeds the Go
+# Default target is the built binary (bin/opnsense2otel), which embeds the Go
 # module build info — i.e. exactly the modules linked into the release. Set
 # SBOM_TARGET to scan something else (e.g. an image ref
-# `ghcr.io/rknightion/opnsense-exporter:vX.Y.Z` or `dir:.`). These are RELEASE
+# `ghcr.io/rknightion/opnsense2otel:vX.Y.Z` or `dir:.`). These are RELEASE
 # ARTIFACTS (timestamps/UUIDs make them non-deterministic), so they are attached to
 # the GitHub Release rather than committed.
 #
 # Env:
 #   SYFT          syft binary (default: syft on PATH; Makefile passes .tools/)
-#   SBOM_TARGET   what syft scans (default: bin/opnsense-exporter)
+#   SBOM_TARGET   what syft scans (default: bin/opnsense2otel)
 #   OUT_DIR       output directory (default: dist/sbom)
-#   SBOM_NAME     output basename (default: opnsense-exporter)
+#   SBOM_NAME     output basename (default: opnsense2otel)
 set -euo pipefail
 
 SYFT="${SYFT:-syft}"
-SBOM_TARGET="${SBOM_TARGET:-bin/opnsense-exporter}"
+SBOM_TARGET="${SBOM_TARGET:-bin/opnsense2otel}"
 OUT_DIR="${OUT_DIR:-dist/sbom}"
-SBOM_NAME="${SBOM_NAME:-opnsense-exporter}"
+SBOM_NAME="${SBOM_NAME:-opnsense2otel}"
 
 command -v "$SYFT" >/dev/null 2>&1 || {
   echo "sbom: syft not found ('$SYFT') — run 'make tools-sbom'" >&2

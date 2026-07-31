@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-ospf-lsa-retransmission-stuck",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense OSPF neighbor {{ $labels.neighbor_id }} not acknowledging LSAs on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
       "description": "FRR's link-state retransmission queue to neighbor {{ $labels.neighbor_id }} on {{ $labels.interface }} has stayed non-empty for 10m - FRR keeps re-flooding at least one LSA that neighbor has not acknowledged. Scoped to the ls_retransmission queue only; the db_summary/ls_request queues drain during a normal initial database sync and are not included.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseospflsaretransmissionstuck",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseospflsaretransmissionstuck",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "627"
     },

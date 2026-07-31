@@ -26,7 +26,7 @@ func newBoundedTestClient(server *httptest.Server, limit int) *Client {
 		gatewayRTTRegex:  regexp.MustCompile(`\d+\.\d+ ms`),
 		headers: map[string]string{
 			"Accept":     "application/json",
-			"User-Agent": "prometheus-opnsense-exporter/test",
+			"User-Agent": "prometheus-opnsense2otel/test",
 		},
 		endpoints:  defaultEndpoints(),
 		maxRetries: 1,

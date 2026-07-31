@@ -371,6 +371,6 @@ func verifyPublicContracts(repoRoot string, stats docStats) error {
 
 func leadingVContainerTag(doc string) bool {
 	tableTag := regexp.MustCompile("(?mi)^\\|\\s*`v\\d+\\.\\d+\\.\\d+[^`]*`\\s*\\|\\s*Specific version")
-	imageRef := regexp.MustCompile(`(?i)ghcr\.io/rknightion/opnsense-exporter:v\d+\.\d+\.\d+`)
+	imageRef := regexp.MustCompile(`(?i)ghcr\.io/rknightion/opnsense2otel:v\d+\.\d+\.\d+`)
 	return tableTag.MatchString(doc) || imageRef.MatchString(doc)
 }

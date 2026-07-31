@@ -1,4 +1,4 @@
-BINARY_NAME=opnsense-exporter-local
+BINARY_NAME=opnsense2otel-local
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 # ── pinned release-tooling versions (override via env) ────────────────────────
@@ -50,8 +50,8 @@ local-run: default
 	# NOT the api-key/api-secret CLI flags: argv is world-readable (ps, /proc/<pid>/cmdline),
 	# so flag-passed creds leak to every local user for the process lifetime. The env is
 	# only owner-readable (#160).
-	OPNSENSE_EXPORTER_OPS_API_KEY="$(OPS_API_KEY)" \
-	OPNSENSE_EXPORTER_OPS_API_SECRET="$(OPS_API_SECRET)" \
+	OPN2OTEL_OPS_API_KEY="$(OPS_API_KEY)" \
+	OPN2OTEL_OPS_API_SECRET="$(OPS_API_SECRET)" \
 	./${BINARY_NAME} --log.level="debug" \
 		--log.format="logfmt" \
 		--web.telemetry-path="/metrics" \
@@ -109,7 +109,7 @@ notices: tools-licensing
 # linked modules. Override SBOM_TARGET (e.g. an image ref) to scan something else.
 sbom: tools-sbom
 	CGO_ENABLED=0 GOEXPERIMENT=$(GOEXPERIMENT) go build -mod=vendor -tags osusergo,netgo -trimpath \
-	  -ldflags "-s -w -X main.version=$(VERSION)" -o bin/opnsense-exporter .
+	  -ldflags "-s -w -X main.version=$(VERSION)" -o bin/opnsense2otel .
 	SYFT=$(TOOLS_DIR)/syft bash scripts/sbom.sh
 
 clean:
@@ -137,7 +137,7 @@ deployment-test: tools-kubeconform
 	scripts/systemd/test_secret_permissions.sh
 	scripts/systemd/test_unit.sh
 	$(TOOLS_DIR)/kubeconform -strict -summary deploy/k8s/deployment.yaml
-	PATH="$(TOOLS_DIR):$(PATH)" charts/opnsense-exporter/tests/test-chart.sh
+	PATH="$(TOOLS_DIR):$(PATH)" charts/opnsense2otel/tests/test-chart.sh
 
 # Unit tests for the testbed config linter (scripts/testbed/config_lint.py, #504). The
 # linter itself runs against a config.xml pulled off a firewall, which CI has no access
@@ -232,8 +232,8 @@ capture:
 	# Creds via env (apicapture reads the exporter's OPS API env vars as flag defaults,
 	# and OPS_API_KEY_FILE/OPS_API_SECRET_FILE via internal/options), not via CLI flags,
 	# to keep them out of world-readable argv (#160).
-	OPNSENSE_EXPORTER_OPS_API_KEY="$(OPS_API_KEY)" \
-	OPNSENSE_EXPORTER_OPS_API_SECRET="$(OPS_API_SECRET)" \
+	OPN2OTEL_OPS_API_KEY="$(OPS_API_KEY)" \
+	OPN2OTEL_OPS_API_SECRET="$(OPS_API_SECRET)" \
 	go run ./cmd/apicapture \
 		--base-url "$(or $(OPS_BASE_URL),https://$(OPS_ADDRESS))" \
 		$(if $(OPS_INSECURE),--insecure) $(CAPTURE_ARGS)

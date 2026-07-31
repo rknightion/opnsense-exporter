@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-pf-states-near-limit",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense2otel-alerts"
     }
   },
   "spec": {
@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense PF state table near its limit ({{ $labels.opnsense_instance }})",
       "description": "PF state table is over 90% of its configured limit for 10m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensepfstatetablenearlimit",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensepfstatetablenearlimit",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "172"
     },

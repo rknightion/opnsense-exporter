@@ -10,9 +10,9 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense-exporter/internal/collector"
-	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // Status is the full data model rendered by the status console page and

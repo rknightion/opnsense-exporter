@@ -1,5 +1,5 @@
 """
-NTP tab for the OPNsense Exporter dashboard.
+NTP tab for the opnsense2otel dashboard.
 
 Covers all 11 opnsense_ntp_* metrics across three rows:
   1. Peers   — info table, stratum table, reach gauge (0-255) + % stat, peers_total

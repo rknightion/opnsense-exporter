@@ -1,6 +1,6 @@
 package syslog
 
-import "github.com/rknightion/opnsense-exporter/internal/logship"
+import "github.com/rknightion/opnsense2otel/v4/internal/logship"
 
 // sampleKeep decides whether a record should still ship after observeDerived
 // has (or has not) counted it. The binding rule: a line observeDerived did

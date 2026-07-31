@@ -1,6 +1,6 @@
 ---
 title: Docker Compose Reference
-description: Every OPNsense Exporter setting, commented out at its default, in one Docker Compose file
+description: Every opnsense2otel setting, commented out at its default, in one Docker Compose file
 tags:
   - Deployment
   - Docker
@@ -17,9 +17,9 @@ Flags with no environment variable (`--config.check` is the only one today) cann
 
 ```yaml title="docker-compose.yml"
 services:
-  opnsense-exporter:
-    image: ghcr.io/rknightion/opnsense-exporter:latest
-    container_name: opnsense-exporter
+  opnsense2otel:
+    image: ghcr.io/rknightion/opnsense2otel:latest
+    container_name: opnsense2otel
     restart: always
 
     # Flag-only settings: no environment variable exists, so these can only be
@@ -52,34 +52,34 @@ services:
       # else tunes the client.
       # ==========================================================================
       # Hostname or IP address of OPNsense API
-      OPNSENSE_EXPORTER_OPS_API: "opnsense.example.com"
+      OPN2OTEL_OPS_API: "opnsense.example.com"
       # API key to use to connect to OPNsense API. This flag/ENV or the OPS_API_KEY_FILE
       # may be set.
-      # OPNSENSE_EXPORTER_OPS_API_KEY: ""
+      # OPN2OTEL_OPS_API_KEY: ""
       # API secret to use to connect to OPNsense API. This flag/ENV or the
       # OPS_API_SECRET_FILE may be set.
-      # OPNSENSE_EXPORTER_OPS_API_SECRET: ""
+      # OPN2OTEL_OPS_API_SECRET: ""
       # Disable TLS certificate verification
-      # OPNSENSE_EXPORTER_OPS_INSECURE: "false"
+      # OPN2OTEL_OPS_INSECURE: "false"
       # Maximum number of background OPNsense API requests in flight across all
       # scheduled collector polls, including nested sub-requests. Bounds the
       # simultaneous PHP/configd load on the firewall: lower it (e.g. 4-8) to protect a
       # low-power appliance at the cost of queued or longer polls; raise it to let more
       # independent polls progress concurrently on capable hardware. It does not affect
       # /metrics replay. Must be >= 1.
-      # OPNSENSE_EXPORTER_OPS_MAX_CONCURRENT_REQUESTS: "16"
+      # OPN2OTEL_OPS_MAX_CONCURRENT_REQUESTS: "16"
       # Number of attempts for a failed OPNsense API request (transport errors /
       # retryable 5xx). Worst-case block time is --opnsense.timeout x this value.
-      # OPNSENSE_EXPORTER_OPS_MAX_RETRIES: "3"
+      # OPN2OTEL_OPS_MAX_RETRIES: "3"
       # Protocol to use to connect to OPNsense API. One of: [http, https]
-      OPNSENSE_EXPORTER_OPS_PROTOCOL: "https"
+      OPN2OTEL_OPS_PROTOCOL: "https"
       # Per-request HTTP timeout for calls to the OPNsense API. Combined with
       # --opnsense.max-retries this bounds one endpoint attempt sequence inside a
       # background collector poll (timeout x retries). Keep that product below
       # --exporter.max-scrape-duration so the poll deadline, rather than a request
       # retry, remains the outer bound. Prometheus scrape_timeout applies only to
       # replaying /metrics.
-      # OPNSENSE_EXPORTER_OPS_TIMEOUT: "15s"
+      # OPN2OTEL_OPS_TIMEOUT: "15s"
 
       # ==========================================================================
       # Opt-in collectors
@@ -88,7 +88,7 @@ services:
       # ==========================================================================
       # Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10
       # series per alias table)
-      # OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS: "false"
+      # OPN2OTEL_ENABLE_ALIAS_DETAILS: "false"
       # Enable every opt-in collector switch (--exporter.enable-*) that is not
       # explicitly set on the command line or via its own env var. A collector whose
       # PLUGIN the startup availability probe finds absent is left off, so this enables
@@ -101,95 +101,95 @@ services:
       # scope. Each collector this switches on is logged individually with the reason it
       # defaults to off; an explicit --exporter.enable-<x>=false always wins over this
       # blanket switch.
-      # OPNSENSE_EXPORTER_ENABLE_ALL_AVAILABLE: "false"
+      # OPN2OTEL_ENABLE_ALL_AVAILABLE: "false"
       # Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning
       # cardinality). Off by default; the low-cardinality entries_total aggregate is
       # always emitted.
-      # OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS: "false"
+      # OPN2OTEL_ENABLE_ARP_DETAILS: "false"
       # Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large
       # networks)
-      # OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS: "false"
+      # OPN2OTEL_ENABLE_DHCPV4_DETAILS: "false"
       # Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large
       # networks)
-      # OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS: "false"
+      # OPN2OTEL_ENABLE_DHCPV6_DETAILS: "false"
       # Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large
       # networks)
-      # OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS: "false"
+      # OPN2OTEL_ENABLE_DNSMASQ_DETAILS: "false"
       # Enable the NAT rule inventory count metric (opnsense_firewall_nat_rules), broken
       # down by type (source_nat, d_nat, one_to_one, npt) and enabled state. Off by
       # default: each scheduled poll does four extra GETs, one per NAT rule type. Rules
       # created before an admin migrated to the MVC-managed NAT backend are not counted;
       # NAT rule pf hit/byte statistics do not exist upstream.
-      # OPNSENSE_EXPORTER_ENABLE_FIREWALL_NAT_COUNTS: "false"
+      # OPN2OTEL_ENABLE_FIREWALL_NAT_COUNTS: "false"
       # Enable per-rule detail metrics for firewall rules (high cardinality on large
       # rulesets)
-      # OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS: "false"
+      # OPN2OTEL_ENABLE_FIREWALL_RULES_DETAILS: "false"
       # Enable per-package firmware detail metrics (pending package updates and
       # installed plugin inventory; adds one extra API call per scheduled poll)
-      # OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS: "false"
+      # OPN2OTEL_ENABLE_FIRMWARE_PACKAGE_DETAILS: "false"
       # Enable FRR routing-state volume gauges (zebra RIB / OSPF route table / LSDB
       # counts by protocol, route type, area and LSA type - never per-prefix or per-LSA
       # series). Off by default: the underlying bootgrid endpoints have no success-body
       # caching and their payload size scales with route-table size (up to 6 extra vtysh
       # execs per scheduled poll).
-      # OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES: "false"
+      # OPN2OTEL_ENABLE_FRR_ROUTES: "false"
       # Enable the HA sync status collector (performs a live XML-RPC call to the CARP
       # peer on every scheduled poll). Disabled by default.
-      # OPNSENSE_EXPORTER_ENABLE_HASYNC: "false"
+      # OPN2OTEL_ENABLE_HASYNC: "false"
       # Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action).
       # Off by default: each scheduled poll triggers a reverse read of eve.json on the
       # box. Window set by --exporter.ids-alert-lookback.
-      # OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS: "false"
+      # OPN2OTEL_ENABLE_IDS_ALERTS: "false"
       # Enable per-lease IPsec mode-cfg detail metrics (opnsense_ipsec_lease_online with
       # an unbounded road-warrior user label). Off by default; the per-pool lease
       # aggregates stay always-on.
-      # OPNSENSE_EXPORTER_ENABLE_IPSEC_LEASE_DETAILS: "false"
+      # OPN2OTEL_ENABLE_IPSEC_LEASE_DETAILS: "false"
       # Enable per-lease detail metrics for Kea DHCP (high cardinality on large
       # networks)
-      # OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS: "false"
+      # OPN2OTEL_ENABLE_KEA_DETAILS: "false"
       # Enable per-entry NDP metrics (ip/mac labels - high, churning cardinality from
       # IPv6 privacy-address rotation). Off by default; the low-cardinality
       # entries_total aggregate is always emitted.
-      # OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS: "false"
+      # OPN2OTEL_ENABLE_NDP_DETAILS: "false"
       # Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN
       # labels)
-      # OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS: "false"
+      # OPN2OTEL_ENABLE_NETBIRD_DETAILS: "false"
       # Enable the netflow collector (enabled status, service status, cache stats).
       # Disabled by default.
-      # OPNSENSE_EXPORTER_ENABLE_NETFLOW: "false"
+      # OPN2OTEL_ENABLE_NETFLOW: "false"
       # Enable the network diagnostics collector (netisr, sockets, routes). Disabled by
       # default.
-      # OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS: "false"
+      # OPN2OTEL_ENABLE_NETWORK_DIAGNOSTICS: "false"
       # Enable per-session detail metrics for OpenVPN (exposes usernames and per-client
       # tunnel addresses)
-      # OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS: "false"
+      # OPN2OTEL_ENABLE_OPENVPN_DETAILS: "false"
       # Enable the SMART disk health collector. Off by default: each scheduled poll does
       # a per-disk POST fanout that runs `smartctl -a` on the firewall (extra
       # API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is
       # absent.
-      # OPNSENSE_EXPORTER_ENABLE_SMART: "false"
+      # OPN2OTEL_ENABLE_SMART: "false"
       # Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer
       # hostname labels)
-      # OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS: "false"
+      # OPN2OTEL_ENABLE_TAILSCALE_PEER_DETAILS: "false"
       # Enable the Tor circuit/stream telemetry collector (control-port GETINFO via the
       # os-tor plugin). Off by default: each scheduled poll does two extra configd execs
       # to query the control port, and requires the plugin's control port + password to
       # be configured. Silent when the os-tor plugin is absent.
-      # OPNSENSE_EXPORTER_ENABLE_TOR: "false"
+      # OPN2OTEL_ENABLE_TOR: "false"
       # Enable per-upstream infra cache RTT metrics from Unbound (cardinality scales
       # with the resolver's infra cache; one series pair per upstream ip/host)
-      # OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA: "false"
+      # OPN2OTEL_ENABLE_UNBOUND_INFRA: "false"
       # Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus
       # local-zone/data/insecure-domain counts. Off by default: the query-stats totals
       # call is backed by an expensive configd+python+pandas+DuckDB query (~1s per
       # scheduled poll) - skipped entirely while query-stats logging (general.stats) is
       # off on the box, but still paid for on every scheduled poll once it is on.
-      # OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS: "false"
+      # OPN2OTEL_ENABLE_UNBOUND_QSTATS: "false"
       # Enable the vnstat persistent traffic accounting collector (day/month/total bytes
       # per interface, survives reboots). Off by default: each scheduled poll does one
       # interface_list call plus one get_json_data call per interface vnstat tracks.
       # Silent when the os-vnstat plugin is absent.
-      # OPNSENSE_EXPORTER_ENABLE_VNSTAT: "false"
+      # OPN2OTEL_ENABLE_VNSTAT: "false"
 
       # ==========================================================================
       # Default-on collectors
@@ -198,100 +198,100 @@ services:
       # ==========================================================================
       # Disable the scraping of ACME client certificate renewal status and expiry
       # metrics (silent when the os-acme-client plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_ACME: "false"
+      # OPN2OTEL_DISABLE_ACME: "false"
       # Disable the scraping of system activity metrics (CPU percentages, thread counts)
-      # OPNSENSE_EXPORTER_DISABLE_ACTIVITY: "false"
+      # OPN2OTEL_DISABLE_ACTIVITY: "false"
       # Disable the scraping of firewall alias table sizes
-      # OPNSENSE_EXPORTER_DISABLE_ALIAS: "false"
+      # OPN2OTEL_DISABLE_ALIAS: "false"
       # Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd
       # plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_APCUPSD: "false"
+      # OPN2OTEL_DISABLE_APCUPSD: "false"
       # Disable the scraping of the ARP table
-      # OPNSENSE_EXPORTER_DISABLE_ARP_TABLE: "false"
+      # OPN2OTEL_DISABLE_ARP_TABLE: "false"
       # Disable the scraping of local-auth security-posture metrics (user/group/API-key
       # counts, aggregates only - no per-user data)
-      # OPNSENSE_EXPORTER_DISABLE_AUTH: "false"
+      # OPN2OTEL_DISABLE_AUTH: "false"
       # Disable the scraping of config backup freshness metrics (last backup
       # timestamp/count/size)
-      # OPNSENSE_EXPORTER_DISABLE_BACKUP: "false"
+      # OPN2OTEL_DISABLE_BACKUP: "false"
       # Disable the scraping of BPF listener statistics
-      # OPNSENSE_EXPORTER_DISABLE_BPF: "false"
+      # OPN2OTEL_DISABLE_BPF: "false"
       # Disable the scraping of captive portal zone/session metrics (silent when no
       # zones are configured)
-      # OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL: "false"
+      # OPN2OTEL_DISABLE_CAPTIVEPORTAL: "false"
       # Disable the scraping of CARP/VIP status metrics
-      # OPNSENSE_EXPORTER_DISABLE_CARP: "false"
+      # OPN2OTEL_DISABLE_CARP: "false"
       # Disable the scraping of certificate expiry metrics
-      # OPNSENSE_EXPORTER_DISABLE_CERTIFICATES: "false"
+      # OPN2OTEL_DISABLE_CERTIFICATES: "false"
       # Disable the scraping of chrony NTP tracking/source metrics (silent when the
       # os-chrony plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_CHRONY: "false"
+      # OPN2OTEL_DISABLE_CHRONY: "false"
       # Disable the scraping of ClamAV engine version and signature database freshness
       # metrics (silent when the os-clamav plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_CLAMAV: "false"
+      # OPN2OTEL_DISABLE_CLAMAV: "false"
       # Disable CPU metrics. These come from a long-lived Server-Sent Events connection
       # to api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one
       # stream open and accumulates its 1-second samples into cumulative
       # cpu_seconds_total{mode} counters. Disabling this closes that connection and
       # leaves the firewall with no CPU utilisation series at all.
-      # OPNSENSE_EXPORTER_DISABLE_CPU: "false"
+      # OPN2OTEL_DISABLE_CPU: "false"
       # Disable the scraping of the cron table
-      # OPNSENSE_EXPORTER_DISABLE_CRON_TABLE: "false"
+      # OPN2OTEL_DISABLE_CRON_TABLE: "false"
       # Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent
       # when the os-crowdsec plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_CROWDSEC: "false"
+      # OPN2OTEL_DISABLE_CROWDSEC: "false"
       # Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP
       # backend is absent)
-      # OPNSENSE_EXPORTER_DISABLE_DHCPV4: "false"
+      # OPN2OTEL_DISABLE_DHCPV4: "false"
       # Disable the scraping of ISC DHCPv6 leases and delegated prefixes (silent when
       # the legacy ISC DHCP backend is absent)
-      # OPNSENSE_EXPORTER_DISABLE_DHCPV6: "false"
+      # OPN2OTEL_DISABLE_DHCPV6: "false"
       # Disable the scraping of Dnsmasq DHCP leases
-      # OPNSENSE_EXPORTER_DISABLE_DNSMASQ: "false"
+      # OPN2OTEL_DISABLE_DNSMASQ: "false"
       # Disable the scraping of DynDNS (ddclient) account update status metrics (silent
       # when the os-ddclient plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_DYNDNS: "false"
+      # OPN2OTEL_DISABLE_DYNDNS: "false"
       # Disable the feature-availability collector (opnsense_feature_available; #517).
       # It periodically probes the plugin-gated endpoints backing the opt-in
       # SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable
       # any that answer successfully but are not yet enabled.
-      # OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY: "false"
+      # OPN2OTEL_DISABLE_FEATURE_AVAILABILITY: "false"
       # Disable the scraping of the firewall (pf) metrics
-      # OPNSENSE_EXPORTER_DISABLE_FIREWALL: "false"
+      # OPN2OTEL_DISABLE_FIREWALL: "false"
       # Disable the scraping of firewall rule statistics
-      # OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES: "false"
+      # OPN2OTEL_DISABLE_FIREWALL_RULES: "false"
       # Disable the scraping of the firmware metrics
-      # OPNSENSE_EXPORTER_DISABLE_FIRMWARE: "false"
+      # OPN2OTEL_DISABLE_FIRMWARE: "false"
       # Disable the flow collector (Prometheus byte/packet volume counters rolled up
       # from flow records, on bounded dimensions). Silent until a flow source - today
       # the Zenarmor receiver - is enabled and feeding it.
-      # OPNSENSE_EXPORTER_DISABLE_FLOW: "false"
+      # OPN2OTEL_DISABLE_FLOW: "false"
       # Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the
       # os-frr plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_FRR: "false"
+      # OPN2OTEL_DISABLE_FRR: "false"
       # Disable the scraping of gateway status metrics (RTT, packet loss, gateway state)
-      # OPNSENSE_EXPORTER_DISABLE_GATEWAYS: "false"
+      # OPN2OTEL_DISABLE_GATEWAYS: "false"
       # Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is
       # absent)
-      # OPNSENSE_EXPORTER_DISABLE_HAPROXY: "false"
+      # OPN2OTEL_DISABLE_HAPROXY: "false"
       # Disable the scraping of hardware identity/PSU metrics (DMI system info via
       # os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither
       # plugin is installed.
-      # OPNSENSE_EXPORTER_DISABLE_HARDWARE: "false"
+      # OPN2OTEL_DISABLE_HARDWARE: "false"
       # Disable the scraping of the discovered-host inventory (Interfaces > Host
       # discovery / hostwatch): interface+source host counts, low-cardinality. A core
       # OPNsense feature (not a plugin); reads absent/silent on releases predating it.
-      # OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY: "false"
+      # OPN2OTEL_DISABLE_HOSTDISCOVERY: "false"
       # Disable the scraping of Suricata IDS/IPS metrics (service status, IPS mode, eve
       # log and ruleset inventory, installed-rule count; silent structures when IDS is
       # unconfigured)
-      # OPNSENSE_EXPORTER_DISABLE_IDS: "false"
+      # OPN2OTEL_DISABLE_IDS: "false"
       # Disable the interfaces collector (per-interface traffic/link metrics)
-      # OPNSENSE_EXPORTER_DISABLE_INTERFACES: "false"
+      # OPN2OTEL_DISABLE_INTERFACES: "false"
       # Disable the scraping of IPSec service
-      # OPNSENSE_EXPORTER_DISABLE_IPSEC: "false"
+      # OPN2OTEL_DISABLE_IPSEC: "false"
       # Disable the scraping of Kea DHCP lease metrics
-      # OPNSENSE_EXPORTER_DISABLE_KEA: "false"
+      # OPN2OTEL_DISABLE_KEA: "false"
       # Disable the kernel-memory collector (every FreeBSD UMA zone and malloc type from
       # api/diagnostics/system/memory). On by default: UMA fail/sleep is the kernel's
       # canonical could-not-allocate signal, covering pf state, socket and mbuf
@@ -299,77 +299,77 @@ services:
       # nobody sees. About 2,600 series on a live 26.1 firewall (228 zones + 258 malloc
       # types), against a 100k global budget, fetched by one extra GET on the 5-minute
       # poll tier.
-      # OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY: "false"
+      # OPN2OTEL_DISABLE_KERNEL_MEMORY: "false"
       # Disable the scraping of LLDP neighbor table metrics (silent when the os-lldpd
       # plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_LLDPD: "false"
+      # OPN2OTEL_DISABLE_LLDPD: "false"
       # Disable the log_events collector (Prometheus counters derived from received
       # syslog lines: firewall/haproxy/sshd/dhcp/audit/ids event totals). Silent until
       # the syslog receiver is enabled and feeding it.
-      # OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS: "false"
+      # OPN2OTEL_DISABLE_LOG_EVENTS: "false"
       # Disable the scraping of mbuf statistics
-      # OPNSENSE_EXPORTER_DISABLE_MBUF: "false"
+      # OPN2OTEL_DISABLE_MBUF: "false"
       # Disable the scraping of Monit service check status (silent when Monit is not
       # running)
-      # OPNSENSE_EXPORTER_DISABLE_MONIT: "false"
+      # OPN2OTEL_DISABLE_MONIT: "false"
       # Disable the scraping of the NDP (IPv6 neighbor discovery) table
-      # OPNSENSE_EXPORTER_DISABLE_NDP: "false"
+      # OPN2OTEL_DISABLE_NDP: "false"
       # Disable the scraping of NetBird management/signal connectivity, relay and peer
       # metrics (silent when the os-netbird plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_NETBIRD: "false"
+      # OPN2OTEL_DISABLE_NETBIRD: "false"
       # Disable the per-workstream netisr series, keeping only the per-protocol
       # aggregates and derived summaries. On by default: the per-CPU dimension is the
       # diagnosis for a netisr drop - one saturated workstream beside eleven idle ones
       # is a CPU-affinity problem, and collapsed to protocol alone it is
       # indistinguishable from uniform overload, which has the opposite remedy. Costs
       # roughly 7 series per protocol per CPU.
-      # OPNSENSE_EXPORTER_DISABLE_NETISR_PERCPU: "false"
+      # OPN2OTEL_DISABLE_NETISR_PERCPU: "false"
       # Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is
       # absent)
-      # OPNSENSE_EXPORTER_DISABLE_NGINX: "false"
+      # OPN2OTEL_DISABLE_NGINX: "false"
       # Disable the scraping of NTP peer metrics
-      # OPNSENSE_EXPORTER_DISABLE_NTP: "false"
+      # OPN2OTEL_DISABLE_NTP: "false"
       # Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is
       # absent)
-      # OPNSENSE_EXPORTER_DISABLE_NUT: "false"
+      # OPN2OTEL_DISABLE_NUT: "false"
       # Disable the scraping of OpenVPN service
-      # OPNSENSE_EXPORTER_DISABLE_OPENVPN: "false"
+      # OPN2OTEL_DISABLE_OPENVPN: "false"
       # Disable the scraping of PF statistics (state table, counters, memory limits,
       # timeouts)
-      # OPNSENSE_EXPORTER_DISABLE_PF_STATS: "false"
+      # OPN2OTEL_DISABLE_PF_STATS: "false"
       # Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync
       # counters)
-      # OPNSENSE_EXPORTER_DISABLE_PROTOCOL: "false"
+      # OPN2OTEL_DISABLE_PROTOCOL: "false"
       # Disable the scraping of Q-Feeds threat intelligence statistics (silent when the
       # os-q-feeds-connector plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_QFEEDS: "false"
+      # OPN2OTEL_DISABLE_QFEEDS: "false"
       # Disable the scraping of relayd virtual server/table/host health (silent when the
       # os-relayd plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_RELAYD: "false"
+      # OPN2OTEL_DISABLE_RELAYD: "false"
       # Disable the services collector (per-service running state)
-      # OPNSENSE_EXPORTER_DISABLE_SERVICES: "false"
+      # OPN2OTEL_DISABLE_SERVICES: "false"
       # Disable the scraping of the siproxd active SIP registration count (silent when
       # the os-siproxd plugin is absent)
-      # OPNSENSE_EXPORTER_DISABLE_SIPROXD: "false"
+      # OPN2OTEL_DISABLE_SIPROXD: "false"
       # Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on
       # non-ZFS filesystems such as UFS)
-      # OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS: "false"
+      # OPN2OTEL_DISABLE_SNAPSHOTS: "false"
       # Disable the scraping of syslog-ng statistics
-      # OPNSENSE_EXPORTER_DISABLE_SYSLOG: "false"
+      # OPN2OTEL_DISABLE_SYSLOG: "false"
       # Disable the scraping of system resource metrics (memory, uptime, disk, swap)
-      # OPNSENSE_EXPORTER_DISABLE_SYSTEM: "false"
+      # OPN2OTEL_DISABLE_SYSTEM: "false"
       # Disable the scraping of Tailscale node-local metrics (silent when the
       # os-tailscale plugin is absent; complementary to tailscale2otel)
-      # OPNSENSE_EXPORTER_DISABLE_TAILSCALE: "false"
+      # OPN2OTEL_DISABLE_TAILSCALE: "false"
       # Disable the scraping of temperature metrics
-      # OPNSENSE_EXPORTER_DISABLE_TEMPERATURE: "false"
+      # OPN2OTEL_DISABLE_TEMPERATURE: "false"
       # Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when
       # the shaper is unconfigured)
-      # OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER: "false"
+      # OPN2OTEL_DISABLE_TRAFFICSHAPER: "false"
       # Disable the scraping of Unbound service
-      # OPNSENSE_EXPORTER_DISABLE_UNBOUND: "false"
+      # OPN2OTEL_DISABLE_UNBOUND: "false"
       # Disable the scraping of Wireguard service
-      # OPNSENSE_EXPORTER_DISABLE_WIREGUARD: "false"
+      # OPN2OTEL_DISABLE_WIREGUARD: "false"
 
       # ==========================================================================
       # Operator console
@@ -377,13 +377,13 @@ services:
       # gathers on its own.
       # ==========================================================================
       # Hide the /config page.
-      # OPNSENSE_EXPORTER_WEB_UI_DISABLE_CONFIG: "false"
+      # OPN2OTEL_WEB_UI_DISABLE_CONFIG: "false"
       # Hide the /devices page (exposes MAC/hostname).
-      # OPNSENSE_EXPORTER_WEB_UI_DISABLE_DEVICES: "false"
+      # OPN2OTEL_WEB_UI_DISABLE_DEVICES: "false"
       # Serve the operator console at / (else the minimal landing page).
-      # OPNSENSE_EXPORTER_WEB_UI_ENABLED: "true"
+      # OPN2OTEL_WEB_UI_ENABLED: "true"
       # Live-poll interval for the console's dynamic pages.
-      # OPNSENSE_EXPORTER_WEB_UI_REFRESH_INTERVAL: "5s"
+      # OPN2OTEL_WEB_UI_REFRESH_INTERVAL: "5s"
 
       # ==========================================================================
       # HTTP server and logging
@@ -393,10 +393,10 @@ services:
       # --log.level has no env var - see the flag-only settings note above command:.
       # --web.config.file has no env var - see the flag-only settings note above command:.
       # Exclude metrics about the exporter itself (process_*, go_*).
-      # OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS: ""
+      # OPN2OTEL_DISABLE_EXPORTER_METRICS: ""
       # --web.listen-address has no env var - see the flag-only settings note above command:.
       # Path under which to expose metrics.
-      # OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH: "/metrics"
+      # OPN2OTEL_WEB_TELEMETRY_PATH: "/metrics"
 
       # ==========================================================================
       # Exporter behaviour
@@ -407,16 +407,16 @@ services:
       # 'firewall unreachable' flag, so it bounds how quickly collectors resume after
       # the box recovers. Independent of --collector.poll-interval since #386, which
       # previously controlled it by accident. Clamped to [5s, 15m].
-      # OPNSENSE_EXPORTER_COLLECTOR_HEALTH_POLL_INTERVAL: "60s"
+      # OPN2OTEL_COLLECTOR_HEALTH_POLL_INTERVAL: "60s"
       # Default interval at which each collector polls the OPNsense API into the
       # in-memory snapshot that /metrics and the OTLP bridge replay (#336). A collector
       # may declare its own faster/slower tier; every interval is clamped to [5s, 15m].
-      # OPNSENSE_EXPORTER_COLLECTOR_POLL_INTERVAL: "60s"
+      # OPN2OTEL_COLLECTOR_POLL_INTERVAL: "60s"
       # Override a specific collector's poll interval as <collector>=<duration>
       # (repeatable; clamped to [5s, 15m]). Wins over the collector's built-in tier.
       # Example: --collector.poll-interval-override=gateways=10s
       # --collector.poll-interval-override=smart=1h.
-      # OPNSENSE_EXPORTER_COLLECTOR_POLL_INTERVAL_OVERRIDE: ""
+      # OPN2OTEL_COLLECTOR_POLL_INTERVAL_OVERRIDE: ""
       # --config.check has no env var - see the flag-only settings note above command:.
       # How long to cache responses from slow-moving API endpoints (system/CPU identity,
       # certificate inventory, Unbound DNS blocklist policy config) and to remember that
@@ -427,35 +427,35 @@ services:
       # plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch
       # everything on every poll. Live data (counters, rates, service run-state) is
       # never cached regardless of this setting.
-      # OPNSENSE_EXPORTER_CACHE_TTL: "30m0s"
+      # OPN2OTEL_CACHE_TTL: "30m0s"
       # How long to cache firmware API responses (status and, when enabled, package
       # details). The firmware data OPNsense serves is the stored result of the box's
       # own update check, which it refreshes roughly daily, so re-fetching it on every
       # poll only costs firewall CPU. Set to 0 to fetch on every poll.
-      # OPNSENSE_EXPORTER_FIRMWARE_CACHE_TTL: "12h0m0s"
+      # OPN2OTEL_FIRMWARE_CACHE_TTL: "12h0m0s"
       # Lookback window over which opnsense_ids_recent_alerts counts Suricata eve alerts
       # (a gauge). Only used when --exporter.enable-ids-alerts is set. Counts are a
       # floor when more than 500 alerts fall inside the window.
-      # OPNSENSE_EXPORTER_IDS_ALERT_LOOKBACK: "15m"
+      # OPN2OTEL_IDS_ALERT_LOOKBACK: "15m"
       # Label to use to identify the instance in every metric. If you have multiple
       # instances of the exporter, you can differentiate them by using different value
       # in this flag, that represents the instance of the target OPNsense. If left
       # empty, it defaults to the configured OPNsense address (deterministic). Set
       # --exporter.instance-use-hostname to derive it from the OPNsense hostname
       # instead.
-      # OPNSENSE_EXPORTER_INSTANCE_LABEL: ""
+      # OPN2OTEL_INSTANCE_LABEL: ""
       # When --exporter.instance-label is empty, derive the instance label from the
       # OPNsense hostname reported by the API instead of the configured address. This
       # lookup is deterministic: it blocks at startup and, if the hostname cannot be
       # obtained, the exporter refuses to start (rather than silently falling back to
       # the address, which would make the label depend on startup timing and flip
       # between restarts).
-      # OPNSENSE_EXPORTER_INSTANCE_USE_HOSTNAME: "false"
+      # OPN2OTEL_INSTANCE_USE_HOSTNAME: "false"
       # Upper bound on a single collector poll (#336). Since serving /metrics now
       # replays an in-memory snapshot rather than calling the API, this bounds each
       # background poll so a stalled/blackholed endpoint frees its poll-concurrency slot
       # instead of holding it open. Serving itself is never blocked by it.
-      # OPNSENSE_EXPORTER_MAX_SCRAPE_DURATION: "50s"
+      # OPN2OTEL_MAX_SCRAPE_DURATION: "50s"
       # Soft budget for the total number of Prometheus series produced by the COLLECTOR
       # registry (the same set /metrics and the OTLP bridge serve, and what metricsnap
       # replays to the web UI's /cardinality report) — this is NOT the exporter
@@ -469,7 +469,7 @@ services:
       # budget) and is reported on /cardinality alongside the existing per-metric
       # warn/crit thresholds, which are a different, unrelated dimension. Set to 0 to
       # disable the check entirely.
-      # OPNSENSE_EXPORTER_SERIES_BUDGET: "100000"
+      # OPN2OTEL_SERIES_BUDGET: "100000"
 
       # ==========================================================================
       # OTLP metrics export
@@ -477,12 +477,12 @@ services:
       # ==========================================================================
       # Enable pushing metrics to an OTLP endpoint (in addition to the /metrics pull
       # endpoint). Off by default.
-      # OPNSENSE_EXPORTER_OTLP_ENABLED: "false"
+      # OPN2OTEL_OTLP_ENABLED: "false"
       # OTLP endpoint URL. When empty, the standard OTEL_EXPORTER_OTLP_ENDPOINT env var
       # is used.
-      # OPNSENSE_EXPORTER_OTLP_ENDPOINT: ""
+      # OPN2OTEL_OTLP_ENDPOINT: ""
       # Interval between OTLP metric exports (independent of Prometheus scrapes).
-      # OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL: "60s"
+      # OPN2OTEL_OTLP_EXPORT_INTERVAL: "60s"
       # Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the
       # default) keeps the single-stream behaviour exactly. When set, fast-tier
       # collectors export at this interval while everything else stays on
@@ -491,58 +491,58 @@ services:
       # plus whatever --collector.poll-interval-override makes fast; the tier is
       # deliberately small, so 15s here costs far less than setting
       # --otlp.export-interval=15s for everything.
-      # OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL: "0s"
+      # OPN2OTEL_OTLP_FAST_EXPORT_INTERVAL: "0s"
       # Grafana Cloud OTLP gateway base URL (required when using the Grafana Cloud
       # shortcut).
-      # OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT: ""
+      # OPN2OTEL_OTLP_GRAFANA_CLOUD_ENDPOINT: ""
       # Grafana Cloud OTLP instance ID. With --otlp.grafana-cloud-token, synthesizes
-      # basic-auth. This flag/ENV or
-      # OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set.
-      # OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID: ""
+      # basic-auth. This flag/ENV or OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be
+      # set.
+      # OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID: ""
       # Grafana Cloud Access Policy token. This flag/ENV or
-      # OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.
-      # OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN: ""
+      # OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.
+      # OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN: ""
       # OTLP headers as comma-separated key=value pairs (e.g.
       # X-Scope-OrgID=1,Authorization=Bearer x). When set, replaces
       # OTEL_EXPORTER_OTLP_HEADERS entirely; when empty, that env var is used.
-      # OPNSENSE_EXPORTER_OTLP_HEADERS: ""
+      # OPN2OTEL_OTLP_HEADERS: ""
       # Disable TLS for the OTLP connection (plaintext).
-      # OPNSENSE_EXPORTER_OTLP_INSECURE: "false"
+      # OPN2OTEL_OTLP_INSECURE: "false"
       # OTLP transport protocol: grpc or http/protobuf. Defaults to http/protobuf; an
       # empty value is rejected.
-      # OPNSENSE_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+      # OPN2OTEL_OTLP_PROTOCOL: "http/protobuf"
       # service.name resource attribute for exported metrics.
-      # OPNSENSE_EXPORTER_OTLP_SERVICE_NAME: "opnsense-exporter"
+      # OPN2OTEL_OTLP_SERVICE_NAME: "opnsense2otel"
       # Path to a CA certificate file used to verify the OTLP server.
-      # OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE: ""
+      # OPN2OTEL_OTLP_TLS_CA_FILE: ""
       # Path to a client certificate file for OTLP mutual TLS (requires
       # --otlp.tls-key-file).
-      # OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE: ""
+      # OPN2OTEL_OTLP_TLS_CERT_FILE: ""
       # Path to a client key file for OTLP mutual TLS (requires --otlp.tls-cert-file).
-      # OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE: ""
+      # OPN2OTEL_OTLP_TLS_KEY_FILE: ""
 
       # ==========================================================================
       # Continuous profiling (Pyroscope)
       # Off until a server address is set. All profile types are pushed by default.
       # ==========================================================================
       # Pyroscope application name profiles are reported under.
-      # OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME: "opnsense-exporter"
+      # OPN2OTEL_PYROSCOPE_APPLICATION_NAME: "opnsense2otel"
       # HTTP basic auth password for Pyroscope (Grafana Cloud Access Policy token). This
       # flag/ENV or PYROSCOPE_AUTH_PASSWORD_FILE may be set.
-      # OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD: ""
+      # OPN2OTEL_PYROSCOPE_AUTH_PASSWORD: ""
       # HTTP basic auth user for Pyroscope (Grafana Cloud stack/instance ID). This
       # flag/ENV or PYROSCOPE_AUTH_USER_FILE may be set.
-      # OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER: ""
+      # OPN2OTEL_PYROSCOPE_AUTH_USER: ""
       # Disable mutex/block contention profiling. On by default; disabling drops the two
       # contention profiles and their process-global sampling rates. CPU, memory,
       # goroutine (and goroutine-leak, when built with the experiment) profiling are
       # unaffected.
-      # OPNSENSE_EXPORTER_PYROSCOPE_DISABLE_MUTEX_BLOCK: "false"
+      # OPN2OTEL_PYROSCOPE_DISABLE_MUTEX_BLOCK: "false"
       # Grafana Cloud Pyroscope endpoint URL. When empty, continuous profiling is
       # disabled.
-      # OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS: ""
+      # OPN2OTEL_PYROSCOPE_SERVER_ADDRESS: ""
       # Pyroscope tenant ID (only needed for multi-tenancy; unused for Grafana Cloud).
-      # OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID: ""
+      # OPN2OTEL_PYROSCOPE_TENANT_ID: ""
 
       # ==========================================================================
       # Grafana annotations
@@ -553,17 +553,16 @@ services:
       # resets, upgrades, certificate renewals, feed updates) into Grafana's annotation
       # store so they overlay any dashboard. Off by default: this is the exporter's only
       # outbound write.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_ENABLED: "false"
+      # OPN2OTEL_ANNOTATIONS_ENABLED: "false"
       # Extra tag to add to every written annotation (repeatable), e.g. env:prod. Every
-      # annotation already carries opnsense-exporter, the event kind and
-      # instance:<name>.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_EXTRA_TAGS: ""
+      # annotation already carries opnsense2otel, the event kind and instance:<name>.
+      # OPN2OTEL_ANNOTATIONS_EXTRA_TAGS: ""
       # Grafana base URL to write annotations to, e.g. https://mystack.grafana.net.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_GRAFANA_URL: ""
+      # OPN2OTEL_ANNOTATIONS_GRAFANA_URL: ""
       # How often the watched event metrics are checked for changes. This bounds how
       # late an annotation is WRITTEN, never where it is PLACED — each annotation
       # carries the event's own timestamp.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_INTERVAL: "60s"
+      # OPN2OTEL_ANNOTATIONS_INTERVAL: "60s"
       # Event kind to write, repeatable (comma-separated in the environment variable).
       # When set this is the EXACT set written, overriding the defaults in both
       # directions. Unset writes every kind except the default-off ones, which are
@@ -571,7 +570,7 @@ services:
       # Known kinds: reboot, config-change, interface-reset, pf-counter-reset, upgrade,
       # certificate-renewal, geoip-update, nginx-reload, public-ip-change,
       # ids-ruleset-update, threat-feed-update.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_KINDS: ""
+      # OPN2OTEL_ANNOTATIONS_KINDS: ""
       # How old an event may be and still be worth annotating, and how far back the
       # startup reconciliation looks for annotations this exporter already wrote. Keeps
       # a fresh deployment from annotating a reboot that happened months ago. Read this
@@ -580,7 +579,7 @@ services:
       # max-per-cycle annotations per --annotations.interval (default 20/60s), so a 24h
       # lookback on a busy firewall takes several minutes to catch up. Shorten this if
       # you want a fresh deployment to start clean rather than backfill a day.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_LOOKBACK: "24h"
+      # OPN2OTEL_ANNOTATIONS_LOOKBACK: "24h"
       # Maximum annotation posts ATTEMPTED per check, successful or not. A guard against
       # one bad reading writing hundreds of annotations, not a rate limit to tune. It
       # also paces the first-run backlog --annotations.lookback produces: the excess is
@@ -590,13 +589,13 @@ services:
       # reaches them. Raising it drains faster but makes a rate limit
       # (opnsense_exporter_annotations_rate_limited_total) more likely, since a Grafana
       # org shares one annotation limit across every writer.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_MAX_PER_CYCLE: "20"
+      # OPN2OTEL_ANNOTATIONS_MAX_PER_CYCLE: "20"
       # Timeout for each Grafana annotation API request.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_TIMEOUT: "10s"
+      # OPN2OTEL_ANNOTATIONS_TIMEOUT: "10s"
       # Grafana service-account token used to write annotations. It needs the annotation
       # write permission and nothing else. This flag/ENV or
-      # OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE may be set.
-      # OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN: ""
+      # OPN2OTEL_ANNOTATIONS_TOKEN_FILE may be set.
+      # OPN2OTEL_ANNOTATIONS_TOKEN: ""
 
       # ==========================================================================
       # Log shipping: syslog receiver
@@ -606,27 +605,27 @@ services:
       # Comma-separated CIDR allowlist of hosts permitted to send syslog (e.g.
       # 10.0.0.254/32). Empty accepts any sender. Syslog is unauthenticated, so set this
       # on a shared network.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_ALLOWED_PEERS: ""
+      # OPN2OTEL_LOGS_SYSLOG_ALLOWED_PEERS: ""
       # Dump syslog lines this receiver cannot parse (unknown program, no matching
       # parser, or an unparseable envelope) to --logs.debug-capture.dir for inspection.
       # Requires --logs.debug-capture.dir. Additive - these lines still ship as generic
       # records.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_DEBUG_CAPTURE: "false"
+      # OPN2OTEL_LOGS_SYSLOG_DEBUG_CAPTURE: "false"
       # Enable the syslog receiver: listens for logs pushed by OPNsense (RFC5424 or
       # RFC3164, UDP and/or TCP) and ships them enriched with rule descriptions,
       # interface names and hostnames. Off by default. Requires --logs.enabled.
       # Configure a matching target on the firewall under System > Settings > Logging >
       # Targets.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_ENABLED: "false"
+      # OPN2OTEL_LOGS_SYSLOG_ENABLED: "false"
       # Enrich received syslog records from the OPNsense API: firewall rule descriptions
       # (including auto-generated system rules), friendly interface names, DHCP
       # hostnames, MAC addresses, local/remote scope and well-known service names.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_ENRICH: "true"
+      # OPN2OTEL_LOGS_SYSLOG_ENRICH: "true"
       # Comma-separated syslog programs to DROP (e.g. radvd,cron). Empty ships
       # everything. Dropped records are counted in
       # opnsense_exporter_logs_rejected_total{reason="filtered"} - never silently
       # discarded.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_EXCLUDE_PROGRAMS: ""
+      # OPN2OTEL_LOGS_SYSLOG_EXCLUDE_PROGRAMS: ""
       # Add GeoIP country/continent/ASN/as_org attributes (identical keys to the flow
       # lane) to filterlog, sshd/auth and Suricata log lines, for the remote peer's
       # address. Needs no database of its own: it reuses whatever --geoip.enabled
@@ -634,49 +633,49 @@ services:
       # CHANGE ON UPGRADE for any deployment already running --geoip.enabled for flow
       # records, since filterlog is the highest-volume log stream on the box. Set to
       # false to keep GeoIP on flow records only.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_GEOIP: "true"
+      # OPN2OTEL_LOGS_SYSLOG_GEOIP: "true"
       # Comma-separated syslog programs to ship, dropping everything else. Empty ships
       # everything. Mutually exclusive with --logs.syslog.exclude-programs.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_INCLUDE_PROGRAMS: ""
+      # OPN2OTEL_LOGS_SYSLOG_INCLUDE_PROGRAMS: ""
       # TCP listen address for the syslog receiver. Empty disables the TCP listener.
       # Prefer TCP for firewall logs: UDP datagram loss is silent and unrecoverable.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_TCP: ":5514"
+      # OPN2OTEL_LOGS_SYSLOG_LISTEN_TCP: ":5514"
       # TLS listen address for the syslog receiver (RFC5424 over TLS, OPNsense
       # tls4/tls6). Empty disables the TLS listener. Requires
       # --logs.syslog.tls-cert-file and --logs.syslog.tls-key-file.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_TLS: ""
+      # OPN2OTEL_LOGS_SYSLOG_LISTEN_TLS: ""
       # UDP listen address for the syslog receiver. Empty disables the UDP listener.
       # Port 5514 (not 514) because 514 is privileged and the container runs non-root.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP: ":5514"
+      # OPN2OTEL_LOGS_SYSLOG_LISTEN_UDP: ":5514"
       # Maximum concurrent connections to the syslog receiver, applied PER TRANSPORT:
       # plain TCP and TLS each get this budget from a separate pool. They are separate
       # so a plaintext flood cannot starve authenticated mTLS senders out of the
       # capacity they need. Bounds goroutine growth on an unauthenticated ingress; with
       # both transports enabled the worst-case connection count is twice this value.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_MAX_CONNS: "64"
+      # OPN2OTEL_LOGS_SYSLOG_MAX_CONNS: "64"
       # Drop records less severe than this (emerg, alert, crit, err, warning, notice,
       # info, debug). E.g. notice drops info and debug. Empty ships every severity.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_MIN_SEVERITY: ""
+      # OPN2OTEL_LOGS_SYSLOG_MIN_SEVERITY: ""
       # Sample (drop) high-volume raw log lines AFTER their metrics have been derived:
       # keep firewall block/reject lines and drop passes, keep HAProxy state changes and
       # errors and drop the per-connection noise. Low-volume programs (sshd, dhcp,
       # audit, ids) are kept in full. Off by default. Requires the log_events collector
       # (exporter.disable-log-events must not be set) so every dropped line is counted
       # first.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLE: "false"
+      # OPN2OTEL_LOGS_SYSLOG_SAMPLE: "false"
       # When sampling is on, stamp a sampled="true" attribute on every shipped line so
       # consumers know the log stream is incomplete and must use the derived counters
       # for totals. On by default; only takes effect when --logs.syslog.sample is set.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLED_ATTRIBUTE: "true"
+      # OPN2OTEL_LOGS_SYSLOG_SAMPLED_ATTRIBUTE: "true"
       # PEM server certificate for the TLS syslog listener.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CERT_FILE: ""
+      # OPN2OTEL_LOGS_SYSLOG_TLS_CERT_FILE: ""
       # PEM CA bundle to verify sender client certificates on the TLS syslog listener.
       # When set, a sender MUST present a certificate signed by this CA - the only real
       # sender authentication syslog offers. Empty accepts any TLS client (encryption
       # only).
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CLIENT_CA_FILE: ""
+      # OPN2OTEL_LOGS_SYSLOG_TLS_CLIENT_CA_FILE: ""
       # PEM private key for the TLS syslog listener.
-      # OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_KEY_FILE: ""
+      # OPN2OTEL_LOGS_SYSLOG_TLS_KEY_FILE: ""
 
       # ==========================================================================
       # Log shipping: Zenarmor receiver
@@ -686,18 +685,18 @@ services:
       # Comma-separated CIDR allowlist of hosts permitted to stream (e.g.
       # 10.0.0.254/32). Empty accepts any sender. The receiver is unauthenticated unless
       # --logs.zenarmor.auth-user is set, so set this on a shared network.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_ALLOWED_PEERS: ""
+      # OPN2OTEL_LOGS_ZENARMOR_ALLOWED_PEERS: ""
       # Password for --logs.zenarmor.auth-user.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_AUTH_PASSWORD: ""
+      # OPN2OTEL_LOGS_ZENARMOR_AUTH_PASSWORD: ""
       # Require HTTP basic auth on the Zenarmor receiver, with this username. Set the
       # same credentials in Zenarmor's streaming settings. Empty disables auth.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_AUTH_USER: ""
+      # OPN2OTEL_LOGS_ZENARMOR_AUTH_USER: ""
       # Dump Zenarmor signals this receiver does not model (unhandled Elasticsearch
       # endpoints, unknown families, documents that would not parse) to
       # --logs.debug-capture.dir for inspection. Requires --logs.debug-capture.dir.
       # While on, the unhandled-endpoint warning is suppressed - the capture file
       # carries the same signal.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE: "false"
+      # OPN2OTEL_LOGS_ZENARMOR_DEBUG_CAPTURE: "false"
       # Drop records describing the exporter's own Elasticsearch ingest connection -
       # Zenarmor inspects the link the receiver listens on, so it reports the very
       # connection delivering its records (roughly 15% of all volume, and most of the
@@ -705,7 +704,7 @@ services:
       # port, never the destination address, which a containerised exporter cannot know.
       # Set false to keep them; drops are counted as
       # logs_rejected_total{reason="self_traffic"}.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_DROP_SELF_TRAFFIC: "true"
+      # OPN2OTEL_LOGS_ZENARMOR_DROP_SELF_TRAFFIC: "true"
       # Enable the Zenarmor receiver: poses as an Elasticsearch node so Zenarmor can
       # stream its reporting data (connections, DNS, TLS, HTTP, threat alerts) to the
       # exporter, which ships it enriched over OTLP. Off by default. Requires
@@ -713,12 +712,12 @@ services:
       # Streaming Data > 'Stream Reporting Data to External Elasticsearch' - NOT the
       # initial wizard's 'Remote Elasticsearch Database', which replaces local reporting
       # irreversibly.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_ENABLED: "false"
+      # OPN2OTEL_LOGS_ZENARMOR_ENABLED: "false"
       # Enrich received Zenarmor records from the OPNsense API: friendly interface
       # names, local/remote scope and well-known service names. Zenarmor resolves
       # hostnames, MACs and device identity itself, so this adds only what it does not
       # already know.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_ENRICH: "true"
+      # OPN2OTEL_LOGS_ZENARMOR_ENRICH: "true"
       # Drop Zenarmor records whose FIELD matches REGEX, as FIELD=~REGEX (e.g.
       # 'server_name=~.*\.grafana\.net'). Repeatable; default off. The field name is
       # validated at startup against the receiver's attribute vocabulary - a typo is a
@@ -729,31 +728,31 @@ services:
       # device_name, so an excluded record's forensic detail is gone for good. Prefer a
       # query-time filter unless volume genuinely forces this. Set via env as one rule
       # per LINE.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_EXCLUDE: ""
+      # OPN2OTEL_LOGS_ZENARMOR_EXCLUDE: ""
       # Comma-separated Zenarmor families to ship (conn, dns, tls, http, alert, sip).
       # Empty ships all of them. Prefer restricting this at the Zenarmor end instead -
       # data cut at source never crosses the wire. Zenarmor streams ~2.5-3.3M
       # records/day (~4-6 GB/day of JSON), of which conn is ~61%.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_FAMILIES: ""
+      # OPN2OTEL_LOGS_ZENARMOR_FAMILIES: ""
       # Listen address for the Zenarmor receiver. Point Zenarmor's streaming URI at it.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_LISTEN_HTTP: ":9200"
+      # OPN2OTEL_LOGS_ZENARMOR_LISTEN_HTTP: ":9200"
       # Maximum bulk requests processed concurrently by the Zenarmor receiver. The
       # per-request body limit bounds one request; without this, N simultaneous requests
       # each buffer that full allowance. Excess requests are refused with 503 before a
       # body is read. 0 disables the limit.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS: "8"
+      # OPN2OTEL_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS: "8"
       # PEM server certificate for the Zenarmor receiver. Set with
       # --logs.zenarmor.tls-key-file to serve HTTPS, and use an https:// URI in
       # Zenarmor's streaming settings.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_TLS_CERT_FILE: ""
+      # OPN2OTEL_LOGS_ZENARMOR_TLS_CERT_FILE: ""
       # PEM private key for --logs.zenarmor.tls-cert-file.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_TLS_KEY_FILE: ""
+      # OPN2OTEL_LOGS_ZENARMOR_TLS_KEY_FILE: ""
       # How Zenarmor delivers its reporting data: 'elasticsearch' (default) runs the
       # built-in Elasticsearch receiver on --logs.zenarmor.listen-http; 'syslog' ingests
       # it through the shared syslog receiver (requires --logs.syslog.enabled and a
       # business-tier Zenarmor licence). families/exclude/enrich/drop-self-traffic apply
       # to either transport.
-      # OPNSENSE_EXPORTER_LOGS_ZENARMOR_TRANSPORT: "elasticsearch"
+      # OPN2OTEL_LOGS_ZENARMOR_TRANSPORT: "elasticsearch"
 
       # ==========================================================================
       # Log shipping: polled lanes
@@ -764,13 +763,13 @@ services:
       # scope; alerts live only in the LAPI). Requires --logs.enabled. Polls at a 60s
       # floor regardless of --logs.poll-interval. Silent when the os-crowdsec plugin is
       # absent. Off by default.
-      # OPNSENSE_EXPORTER_LOGS_CROWDSEC_ENABLED: "false"
+      # OPN2OTEL_LOGS_CROWDSEC_ENABLED: "false"
       # Enable the IDS (Suricata EVE alert) log source: ships full Suricata alert
       # records polled via ids/service/query_alerts. Off by default. Requires
       # --logs.enabled. If the box already forwards EVE JSON via syslog
       # (ids.general.syslog_eve), prefer that native path instead of also enabling this
       # source - do not ship the same alerts twice.
-      # OPNSENSE_EXPORTER_LOGS_IDS_ENABLED: "false"
+      # OPN2OTEL_LOGS_IDS_ENABLED: "false"
       # Enable the opt-in Unbound per-query DNS log source (pi-hole-style query log to
       # Loki: domain, client, action, resolution source, blocklist and dnssec_status per
       # query). Off by default; requires --logs.enabled. CAVEAT: without a per-client
@@ -783,7 +782,7 @@ services:
       # dropped. Homelab/SMB query volumes are fine; a busy enterprise resolver should
       # not enable this. Also requires Unbound reporting/statistics enabled on the
       # firewall. Poll floor 15s regardless of --logs.poll-interval.
-      # OPNSENSE_EXPORTER_LOGS_UNBOUND_ENABLED: "false"
+      # OPN2OTEL_LOGS_UNBOUND_ENABLED: "false"
 
       # ==========================================================================
       # Log shipping: debug capture
@@ -797,12 +796,12 @@ services:
       # with --logs.zenarmor.debug-capture / --logs.syslog.debug-capture. Point a
       # writable bind mount here; only signals the exporter cannot model are written,
       # never the full stream.
-      # OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_DIR: ""
+      # OPN2OTEL_LOGS_DEBUG_CAPTURE_DIR: ""
       # Total size cap for --logs.debug-capture.dir (e.g. 256MiB, 1GB). Capture STOPS
       # when the dir reaches this, keeping the oldest samples; it never deletes to make
       # room, so a debug capture can never fill the disk. Counts bytes left by previous
       # runs.
-      # OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_MAX_BYTES: "256MiB"
+      # OPN2OTEL_LOGS_DEBUG_CAPTURE_MAX_BYTES: "256MiB"
 
       # ==========================================================================
       # Log shipping: pipeline
@@ -812,57 +811,57 @@ services:
       # a fixed per-resource-partition round-trip, and distinct partitions plateau with
       # batch duration, so a larger batch amortises that fixed cost almost linearly
       # rather than costing proportionally more.
-      # OPNSENSE_EXPORTER_LOGS_BATCH_MAX: "5000"
+      # OPN2OTEL_LOGS_BATCH_MAX: "5000"
       # Aggregate byte budget for the in-memory backpressure queue. The record-count cap
       # (--logs.buffer-size) alone does not bound memory: a receiver preserves each
       # record's raw body, so a few large records can outweigh thousands of small ones.
       # On overflow the oldest record is dropped and counted, exactly as for the count
       # cap. 0 disables the byte budget.
-      # OPNSENSE_EXPORTER_LOGS_BUFFER_MAX_BYTES: "134217728"
+      # OPN2OTEL_LOGS_BUFFER_MAX_BYTES: "134217728"
       # Capacity of the in-memory backpressure queue between pollers and the sink. On
       # overflow the oldest record is dropped and counted (logs_dropped_total). At the
       # measured ~475 bytes/record retained size, 65536 records is ~31MB, comfortably
       # under the 128MiB --logs.buffer-max-bytes default, so the two bounds read against
       # one number instead of this record cap silently binding first at a fraction of
       # the byte budget.
-      # OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE: "65536"
+      # OPN2OTEL_LOGS_BUFFER_SIZE: "65536"
       # Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and
       # ships to Loki via OTLP). Off by default. Independent of --otlp.enabled (which
       # gates metrics).
-      # OPNSENSE_EXPORTER_LOGS_ENABLED: "false"
+      # OPN2OTEL_LOGS_ENABLED: "false"
       # Maximum distinct label tuples retained per derived log_events metric family.
       # Receivers are push-based and syslog over UDP has a spoofable source, so tuple
       # values are sender-controlled: without this bound a sender can grow
       # process-lifetime metric state without limit. Tuples beyond the cap fold into a
       # counted overflow series rather than being dropped silently. 0 disables the cap.
-      # OPNSENSE_EXPORTER_LOGS_MAX_METRIC_KEYS: "5000"
+      # OPN2OTEL_LOGS_MAX_METRIC_KEYS: "5000"
       # Maximum estimated retained size for a single record - its body, source and
       # attributes plus a fixed overhead allowance, measured the same way as
       # --logs.buffer-max-bytes so the two read against one number. A record larger than
       # this is rejected at ingest and counted rather than queued, so one oversized
       # record cannot occupy the whole queue budget or become a batch the sink
       # permanently refuses. 0 disables the per-record cap.
-      # OPNSENSE_EXPORTER_LOGS_MAX_RECORD_BYTES: "1048576"
+      # OPN2OTEL_LOGS_MAX_RECORD_BYTES: "1048576"
       # Base interval between event polls per source (floor 5s). Sources may raise their
       # own floor.
-      # OPNSENSE_EXPORTER_LOGS_POLL_INTERVAL: "10s"
+      # OPN2OTEL_LOGS_POLL_INTERVAL: "10s"
       # Maximum number of resource partitions within one batch that the sink exports
       # concurrently. Each partition is a separate synchronous wire request, so a batch
       # of N partitions previously cost N sequential round-trips. 1 restores the old
       # fully-sequential behaviour. Values below 1 are normalised to 1.
-      # OPNSENSE_EXPORTER_LOGS_SHIP_CONCURRENCY: "8"
+      # OPN2OTEL_LOGS_SHIP_CONCURRENCY: "8"
       # Maximum delivery attempts for one batch before it is dropped and counted
       # (logs_dropped_total{reason="ship_failed_permanent"}). Retries are exponentially
       # backed off. Without this bound a batch the sink permanently refuses is retried
       # forever by the single emitter goroutine, wedging all subsequent delivery. 0
       # restores unlimited retries.
-      # OPNSENSE_EXPORTER_LOGS_SHIP_MAX_ATTEMPTS: "10"
+      # OPN2OTEL_LOGS_SHIP_MAX_ATTEMPTS: "10"
       # Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout
       # (one JSON line per event).
-      # OPNSENSE_EXPORTER_LOGS_SINK: "otlp"
+      # OPN2OTEL_LOGS_SINK: "otlp"
       # Optional path to persist per-source cursors across restarts (atomic JSON). Empty
       # = in-memory only (resume from now on restart).
-      # OPNSENSE_EXPORTER_LOGS_STATE_FILE: ""
+      # OPN2OTEL_LOGS_STATE_FILE: ""
 
       # ==========================================================================
       # Flow: NetFlow receiver
@@ -873,7 +872,7 @@ services:
       # means accept from anyone, which is a deliberate decision to trust the network
       # rather than a default to drift into: anything that can reach the port can inject
       # flow records.
-      # OPNSENSE_EXPORTER_FLOW_NETFLOW_ALLOWED_PEERS: ""
+      # OPN2OTEL_FLOW_NETFLOW_ALLOWED_PEERS: ""
       # Dump raw NetFlow datagrams to --logs.debug-capture.dir. "unidentified" writes
       # only datagrams carrying something the decoder could not interpret (an unmodelled
       # template element, an options template, an unknown flowset, or a datagram that
@@ -881,12 +880,12 @@ services:
       # every datagram, for regenerating a replay fixture or measuring the export;
       # deliberately heavy, bounded only by --logs.debug-capture.max-bytes. Requires
       # --flow.netflow.enabled and the shared dir.
-      # OPNSENSE_EXPORTER_FLOW_NETFLOW_DEBUG_CAPTURE: "off"
+      # OPN2OTEL_FLOW_NETFLOW_DEBUG_CAPTURE: "off"
       # Enable the NetFlow v5/v9 receiver. Opens an UNAUTHENTICATED UDP socket: NetFlow
       # has no authentication of any kind, so restrict it with
       # --flow.netflow.allowed-peers or by firewalling the port. Requires
       # --flow.enabled.
-      # OPNSENSE_EXPORTER_FLOW_NETFLOW_ENABLED: "false"
+      # OPN2OTEL_FLOW_NETFLOW_ENABLED: "false"
       # Override the derived NetFlow ifIndex-to-device map, as comma-separated
       # index=device pairs (e.g. "1=ixl0,5=igb0,13=ixl0_vlan50"). Entries listed here
       # beat the derived map; indices not listed still use it, so pin every index that
@@ -900,11 +899,11 @@ services:
       # watch opnsense_flow_ifindex_conflicts, whose reason="derived_differs" is that
       # divergence; settle which side is right with ngctl show netflow_<device>:, where
       # the ifaceN hook name is the index ng_netflow actually stamps on the records.
-      # OPNSENSE_EXPORTER_FLOW_NETFLOW_IFINDEX_MAP: ""
+      # OPN2OTEL_FLOW_NETFLOW_IFINDEX_MAP: ""
       # Address the NetFlow receiver binds, host:port. Bound eagerly at startup, so a
       # port already in use is a startup error rather than a receiver that is silently
       # never there.
-      # OPNSENSE_EXPORTER_FLOW_NETFLOW_LISTEN: ":2055"
+      # OPN2OTEL_FLOW_NETFLOW_LISTEN: ":2055"
 
       # ==========================================================================
       # Flow: rollups and correlation
@@ -914,25 +913,25 @@ services:
       # Correlate NetFlow fragments and Zenarmor conn documents into one merged flow
       # record per connection-window. A pass-through when only one source is present.
       # Off emits NetFlow records raw and per-fragment.
-      # OPNSENSE_EXPORTER_FLOW_CORRELATE: "true"
+      # OPN2OTEL_FLOW_CORRELATE: "true"
       # Hard cap on live correlator entries. At the cap the oldest is force-emitted
       # (never dropped) and counted. The NetFlow ingress is unauthenticated, so this
       # bounds memory against a flood. 0 is unbounded (unwise with the listener on).
-      # OPNSENSE_EXPORTER_FLOW_CORRELATE_MAX_ENTRIES: "50000"
+      # OPN2OTEL_FLOW_CORRELATE_MAX_ENTRIES: "50000"
       # How long the correlator holds a connection-window before emitting. Also the
       # maximum a flow log is delayed. NetFlow export lag runs to ~30m for long flows
       # (#346), so a flow whose records straddle the window emits a partial per window
       # rather than one joined record.
-      # OPNSENSE_EXPORTER_FLOW_CORRELATE_WINDOW: "3m"
+      # OPN2OTEL_FLOW_CORRELATE_WINDOW: "3m"
       # Entries in the DNS answer cache that gives a flow to a bare IP its dst.domain,
       # fed by the Zenarmor dns family. Over the cap it stops inserting rather than
       # evicting hot entries. 0 disables domain enrichment.
-      # OPNSENSE_EXPORTER_FLOW_DNS_CACHE_SIZE: "50000"
+      # OPN2OTEL_FLOW_DNS_CACHE_SIZE: "50000"
       # Enable flow rollups: bounded byte and packet volume counters derived from flow
       # records. Costs nothing where no flow source is configured - the metrics are
       # simply silent, like log_events without the syslog receiver. Set
       # --exporter.disable-flow to remove the collector entirely.
-      # OPNSENSE_EXPORTER_FLOW_ENABLED: "true"
+      # OPN2OTEL_FLOW_ENABLED: "true"
       # Add a `country` label to the flow volume metrics. ON by default since #537, and
       # --flow.top-n/--flow.max-keys were raised 10x in the same change to hold it:
       # country multiplies the occupied key space by the number of countries the box
@@ -944,11 +943,11 @@ services:
       # --geoip.enabled off the label is present and empty. ASN and city NEVER become
       # labels at any setting. Geo on flow LOGS needs no flag - it is unconditional
       # whenever --geoip.enabled is set.
-      # OPNSENSE_EXPORTER_FLOW_GEOIP_METRIC_DIMS: "true"
+      # OPN2OTEL_FLOW_GEOIP_METRIC_DIMS: "true"
       # Flow log emission: "per_flow" ships one OTLP log record per correlated flow on
       # the shared log pipeline; "off" ships none while still deriving all metrics.
       # Zenarmor conn documents ship on their own lane regardless.
-      # OPNSENSE_EXPORTER_FLOW_LOG_MODE: "per_flow"
+      # OPN2OTEL_FLOW_LOG_MODE: "per_flow"
       # Maximum distinct label combinations the flow accumulator tracks in memory. A
       # separate bound from --flow.top-n: this caps memory between scrapes, that caps
       # emitted series. Combinations first seen at the cap fold into __other__ and are
@@ -958,27 +957,27 @@ services:
       # because a combination refused at first sight can never accumulate its way into
       # the top-N. The default runs 10:1 for that reason. Roughly 250-350 bytes per
       # tracked key, so the default is ~25-35 MB.
-      # OPNSENSE_EXPORTER_FLOW_MAX_KEYS: "100000"
+      # OPN2OTEL_FLOW_MAX_KEYS: "100000"
       # Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled)
       # and counted. A flood guard on the unauthenticated NetFlow ingress. 0 is
       # unlimited. Metrics are never truncated.
-      # OPNSENSE_EXPORTER_FLOW_MAX_LOGS_PER_WINDOW: "0"
+      # OPN2OTEL_FLOW_MAX_LOGS_PER_WINDOW: "0"
       # Maximum flow series emitted per scrape. Everything beyond folds into a single
       # __other__ series per source, so the family still sums exactly at any limit. 0
       # emits every tracked combination. Raise --flow.max-keys with this: a value above
       # max-keys has no effect, because the accumulator never tracks the combinations it
       # would emit. Lower it if the flow families are more series than you want -
       # opnsense_flow_rollup_capped_total tells you what folding is costing you.
-      # OPNSENSE_EXPORTER_FLOW_TOP_N: "10000"
+      # OPN2OTEL_FLOW_TOP_N: "10000"
       # Emit opnsense_flow_top_talker_bytes_total: bytes per internal host and
       # direction, top-N with an __other__ remainder. OFF by default because the host
       # label is high cardinality; the top-N bounds it but a host label is still one
       # series per host.
-      # OPNSENSE_EXPORTER_FLOW_TOP_TALKERS: "false"
+      # OPN2OTEL_FLOW_TOP_TALKERS: "false"
       # Derive flow records from the Zenarmor receiver's conn documents. Adds no new log
       # records to Loki: the conn document ships exactly as before and this only feeds
       # the metric rollup. Requires --logs.zenarmor.enabled to produce anything.
-      # OPNSENSE_EXPORTER_FLOW_ZENARMOR: "true"
+      # OPN2OTEL_FLOW_ZENARMOR: "true"
 
       # ==========================================================================
       # GeoIP enrichment
@@ -992,7 +991,7 @@ services:
       # Zenarmor ships no ASN database on any box. Defaults to the DB-IP ASN Lite
       # database bundled in the container image (CC BY 4.0, https://db-ip.com), or to
       # the downloaded copy when --geoip.download.enabled is set.
-      # OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE: "/usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb"
+      # OPN2OTEL_GEOIP_ASN_DATABASE: "/usr/share/opnsense2otel/geoip/dbip-asn-lite.mmdb"
       # Path to a Country OR City database in MaxMind .mmdb format (DB-IP Country/City
       # Lite, GeoLite2-Country, GeoLite2-City, GeoIP2-City). A City database is a strict
       # superset, so one path accepts either and the city/region attributes are simply
@@ -1001,36 +1000,35 @@ services:
       # to override, or set --geoip.download.enabled and it defaults to the downloaded
       # MaxMind copy instead. A missing file is not an error - enrichment is fail-open
       # and the attributes are just absent, which is what a non-container build gets.
-      # OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE: "/usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb"
+      # OPN2OTEL_GEOIP_COUNTRY_DATABASE: "/usr/share/opnsense2otel/geoip/dbip-country-lite.mmdb"
       # MaxMind account ID for the database download API (the Basic-auth username).
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ACCOUNT_ID: ""
+      # OPN2OTEL_GEOIP_DOWNLOAD_ACCOUNT_ID: ""
       # Directory downloaded databases are installed into, as <dir>/<edition>.mmdb. Must
       # be writable and should be persistent - a volume that is lost on restart costs a
       # full download every start, against MaxMind's daily limit.
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_DIR: "/var/lib/opnsense-exporter/geoip"
+      # OPN2OTEL_GEOIP_DOWNLOAD_DIR: "/var/lib/opnsense2otel/geoip"
       # Comma-separated MaxMind edition IDs to download. Default is Country + ASN (~9 MB
       # and ~12 MB resident). Swap GeoLite2-Country for GeoLite2-City (~60 MB resident)
       # to get city and region attributes without Zenarmor - the same
       # --geoip.country-database path accepts either edition.
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_EDITIONS: "GeoLite2-Country,GeoLite2-ASN"
+      # OPN2OTEL_GEOIP_DOWNLOAD_EDITIONS: "GeoLite2-Country,GeoLite2-ASN"
       # Download MaxMind databases directly, so no geoipupdate cron or sidecar is
       # needed. Requires --geoip.download.account-id and a license key. Conditional
       # requests mean an unchanged database costs a 304 and no download quota. Off by
       # default: operator-managed files are the supported baseline and this adds an
       # outbound network dependency.
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ENABLED: "false"
+      # OPN2OTEL_GEOIP_DOWNLOAD_ENABLED: "false"
       # How often to ask MaxMind for a newer build. GeoLite2 rebuilds twice a week, so
       # daily is ample; an unchanged database answers 304 and costs no quota. The first
       # download runs at startup regardless, so a fresh container is not blind for a
       # whole interval. 0 downloads only at startup.
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_INTERVAL: "24h"
-      # MaxMind license key. This flag/ENV or
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE may be set; the file form is
-      # preferred for a container secret.
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY: ""
+      # OPN2OTEL_GEOIP_DOWNLOAD_INTERVAL: "24h"
+      # MaxMind license key. This flag/ENV or OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY_FILE
+      # may be set; the file form is preferred for a container secret.
+      # OPN2OTEL_GEOIP_DOWNLOAD_LICENSE_KEY: ""
       # End-to-end timeout for one edition's download. A timeout leaves the installed
       # database untouched and is retried on the next interval.
-      # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_TIMEOUT: "5m"
+      # OPN2OTEL_GEOIP_DOWNLOAD_TIMEOUT: "5m"
       # Enable local GeoIP enrichment from MaxMind-format .mmdb files on disk. Adds
       # country/continent/city/ASN attributes to flow LOGS for external addresses, so
       # geo no longer depends on whether Zenarmor happened to see the connection. Purely
@@ -1045,13 +1043,13 @@ services:
       # gains real per-line byte cost on upgrade with no config change. Set
       # --logs.syslog.geoip=false to opt those log lines back out while keeping GeoIP on
       # flow records. See docs/geoip.md.
-      # OPNSENSE_EXPORTER_GEOIP_ENABLED: "true"
+      # OPN2OTEL_GEOIP_ENABLED: "true"
       # How often to re-stat the database paths and hot-swap a changed file. This is
       # what makes the operator-managed path work - a geoipupdate cron, a sidecar or a
       # re-mounted volume can rewrite the files under a running exporter. Separate from
       # --geoip.download.interval, which asks MaxMind whether a newer build exists. 0
       # disables reloading.
-      # OPNSENSE_EXPORTER_GEOIP_RELOAD_INTERVAL: "15m"
+      # OPN2OTEL_GEOIP_RELOAD_INTERVAL: "15m"
 
     ports:
       - "8080:8080" # web.listen-address - the /metrics and operator-console port.

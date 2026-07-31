@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // Refresh intervals. Rules and leases move on human timescales (an admin edits a

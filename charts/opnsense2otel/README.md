@@ -1,4 +1,4 @@
-# opnsense-exporter
+# opnsense2otel
 
 This Helm v3 application chart deploys one secure OPNsense exporter for one firewall. Install a separate Helm release for every additional firewall; the Deployment is deliberately fixed at one replica.
 
@@ -11,7 +11,7 @@ kubectl -n monitoring create secret generic edge-fw-api \
   --from-literal=key='...' \
   --from-literal=secret='...'
 
-helm upgrade --install edge-fw charts/opnsense-exporter \
+helm upgrade --install edge-fw charts/opnsense2otel \
   --namespace monitoring --create-namespace \
   --set opnsense.address=edge-fw.example.net \
   --set opnsense.existingSecret=edge-fw-api
@@ -23,7 +23,7 @@ After rotating an existing Secret, set `opnsense.secretRevision` to a non-secret
 
 ## Versions and release packages
 
-The source chart tracks the development image with `appVersion: main`, so an empty `image.tag` renders `ghcr.io/rknightion/opnsense-exporter:main`. The release publisher overrides `appVersion` with the release version when building packages. It signs and pushes each package to `oci://ghcr.io/rknightion/charts/opnsense-exporter` and attaches `opnsense-exporter-<version>.tgz` to the matching GitHub release.
+The source chart tracks the development image with `appVersion: main`, so an empty `image.tag` renders `ghcr.io/rknightion/opnsense2otel:main`. The release publisher overrides `appVersion` with the release version when building packages. It signs and pushes each package to `oci://ghcr.io/rknightion/charts/opnsense2otel` and attaches `opnsense2otel-<version>.tgz` to the matching GitHub release.
 
 ## Optional receivers
 
@@ -57,7 +57,7 @@ This chart does not package dashboards, alert rules, or Prometheus Operator CRDs
 Run the chart-local render contracts:
 
 ```sh
-bash charts/opnsense-exporter/tests/test-chart.sh
+bash charts/opnsense2otel/tests/test-chart.sh
 ```
 
 They cover Helm linting, minimal and optional-receiver renders, schema failures, credential references, pod hardening, upgrade rendering, and kubeconform when it is installed.

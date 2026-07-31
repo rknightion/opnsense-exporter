@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
 )
 
 func TestGeoIPValidate(t *testing.T) {
@@ -16,7 +16,7 @@ func TestGeoIPValidate(t *testing.T) {
 			CountryPath:      "/db/GeoLite2-Country.mmdb",
 			ReloadInterval:   15 * time.Minute,
 			DownloadEditions: splitEditions(defaultGeoIPEditions),
-			DownloadDir:      "/var/lib/opnsense-exporter/geoip",
+			DownloadDir:      "/var/lib/opnsense2otel/geoip",
 			DownloadInterval: 24 * time.Hour,
 		}
 	}
@@ -160,7 +160,7 @@ func TestGeoIPStockDefaultsValidate(t *testing.T) {
 		ASNPath:          geoip.BundledASNPath,
 		ReloadInterval:   15 * time.Minute,
 		DownloadEditions: splitEditions(defaultGeoIPEditions),
-		DownloadDir:      "/var/lib/opnsense-exporter/geoip",
+		DownloadDir:      "/var/lib/opnsense2otel/geoip",
 		DownloadInterval: 24 * time.Hour,
 		DownloadTimeout:  5 * time.Minute,
 		MetricDims:       true,

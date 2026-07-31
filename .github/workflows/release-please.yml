@@ -89,28 +89,28 @@ jobs:
             checksums.txt
             checksums.txt.intoto.jsonl
             checksums.txt.sigstore.json
-            opnsense-exporter.cdx.json
-            opnsense-exporter.spdx.json
-            opnsense-exporter_Darwin_arm64.tar.gz
-            opnsense-exporter_Darwin_arm64.tar.gz.sbom.json
-            opnsense-exporter_Darwin_x86_64.tar.gz
-            opnsense-exporter_Darwin_x86_64.tar.gz.sbom.json
-            opnsense-exporter_Freebsd_arm64.tar.gz
-            opnsense-exporter_Freebsd_arm64.tar.gz.sbom.json
-            opnsense-exporter_Freebsd_x86_64.tar.gz
-            opnsense-exporter_Freebsd_x86_64.tar.gz.sbom.json
-            opnsense-exporter_Linux_arm64.tar.gz
-            opnsense-exporter_Linux_arm64.tar.gz.sbom.json
-            opnsense-exporter_Linux_x86_64.tar.gz
-            opnsense-exporter_Linux_x86_64.tar.gz.sbom.json
-            opnsense-exporter_Openbsd_arm64.tar.gz
-            opnsense-exporter_Openbsd_arm64.tar.gz.sbom.json
-            opnsense-exporter_Openbsd_x86_64.tar.gz
-            opnsense-exporter_Openbsd_x86_64.tar.gz.sbom.json
-            opnsense-exporter_Windows_x86_64.zip
-            opnsense-exporter_Windows_x86_64.zip.sbom.json
+            opnsense2otel.cdx.json
+            opnsense2otel.spdx.json
+            opnsense2otel_Darwin_arm64.tar.gz
+            opnsense2otel_Darwin_arm64.tar.gz.sbom.json
+            opnsense2otel_Darwin_x86_64.tar.gz
+            opnsense2otel_Darwin_x86_64.tar.gz.sbom.json
+            opnsense2otel_Freebsd_arm64.tar.gz
+            opnsense2otel_Freebsd_arm64.tar.gz.sbom.json
+            opnsense2otel_Freebsd_x86_64.tar.gz
+            opnsense2otel_Freebsd_x86_64.tar.gz.sbom.json
+            opnsense2otel_Linux_arm64.tar.gz
+            opnsense2otel_Linux_arm64.tar.gz.sbom.json
+            opnsense2otel_Linux_x86_64.tar.gz
+            opnsense2otel_Linux_x86_64.tar.gz.sbom.json
+            opnsense2otel_Openbsd_arm64.tar.gz
+            opnsense2otel_Openbsd_arm64.tar.gz.sbom.json
+            opnsense2otel_Openbsd_x86_64.tar.gz
+            opnsense2otel_Openbsd_x86_64.tar.gz.sbom.json
+            opnsense2otel_Windows_x86_64.zip
+            opnsense2otel_Windows_x86_64.zip.sbom.json
           )
-          required+=("opnsense-exporter-${{ needs.release-please.outputs.version }}.tgz")
+          required+=("opnsense2otel-${{ needs.release-please.outputs.version }}.tgz")
           missing=()
           for asset in "${required[@]}"; do
             if ! printf '%s\n' "${actual[@]}" | grep -Fqx "$asset"; then

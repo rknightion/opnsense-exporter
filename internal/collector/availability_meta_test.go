@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // The probe table is plain data, so nothing in the type system stops a row from
@@ -67,9 +67,9 @@ func TestEveryProbedFeatureHasAFlagToRecommend(t *testing.T) {
 
 func TestEnvarForFlag(t *testing.T) {
 	for _, tc := range []struct{ flag, want string }{
-		{"exporter.enable-smart", "OPNSENSE_EXPORTER_ENABLE_SMART"},
-		{"exporter.disable-crowdsec", "OPNSENSE_EXPORTER_DISABLE_CROWDSEC"},
-		{"exporter.enable-unbound-qstats", "OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS"},
+		{"exporter.enable-smart", "OPN2OTEL_ENABLE_SMART"},
+		{"exporter.disable-crowdsec", "OPN2OTEL_DISABLE_CROWDSEC"},
+		{"exporter.enable-unbound-qstats", "OPN2OTEL_ENABLE_UNBOUND_QSTATS"},
 	} {
 		if got := envarForFlag(tc.flag); got != tc.want {
 			t.Errorf("envarForFlag(%q) = %q, want %q", tc.flag, got, tc.want)

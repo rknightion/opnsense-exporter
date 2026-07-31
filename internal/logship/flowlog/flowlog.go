@@ -21,8 +21,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/flow"
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // subsystem is the coarse, code-defined grouping every flow log record carries. It is

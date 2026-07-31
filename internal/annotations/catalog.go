@@ -200,4 +200,4 @@ func enabledKindSet(configured []string) map[string]bool {
 // BaseTag is on every annotation this exporter writes, and is what a dashboard
 // queries to show them all. Kept deliberately short and product-scoped: a tag
 // query is the only way back to these annotations.
-const BaseTag = "opnsense-exporter"
+const BaseTag = "opnsense2otel"

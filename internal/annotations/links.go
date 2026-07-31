@@ -12,6 +12,11 @@ import (
 // constant out of the Go source and compares the two — a divergence here has no
 // symptom, because a link to a nonexistent dashboard 404s only for the operator who
 // clicks it, months later, during an incident (#419).
+//
+// It still spells the pre-rename project name ON PURPOSE, exactly as MAIN_UID does:
+// the opnsense-exporter -> opnsense2otel rename moved every other surface but not the
+// dashboard UIDs, which are the key in every bookmark and every alert's
+// __dashboardUid__ annotation. See the note above MAIN_UID in grafana/uids.py.
 const DashboardUID = "opnsense-exporter"
 
 // InstanceVar is the dashboard's instance picker, spelled as its URL parameter. The

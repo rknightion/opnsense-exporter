@@ -1,5 +1,5 @@
 """
-Services, Cron & DynDNS tab for the OPNsense Exporter dashboard.
+Services, Cron & DynDNS tab for the opnsense2otel dashboard.
 
 Covers all metrics across three rows:
 

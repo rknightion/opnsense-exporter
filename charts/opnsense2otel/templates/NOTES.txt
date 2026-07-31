@@ -1,4 +1,4 @@
-{{- $name := include "opnsense-exporter.fullname" . }}
+{{- $name := include "opnsense2otel.fullname" . }}
 {{- $namespace := .Release.Namespace }}
 OPNsense exporter {{ $name }} is installed for one firewall.
 

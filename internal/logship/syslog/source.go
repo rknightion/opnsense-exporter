@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 // sourceName is the stable source identifier; it becomes the `source` attribute

@@ -36,8 +36,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
 )
 
 const (
@@ -247,7 +247,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/":
 		// The product-check handshake.
 		writeJSON(w, http.StatusOK, map[string]any{
-			"name":         "opnsense-exporter",
+			"name":         "opnsense2otel",
 			"cluster_name": "elasticsearch",
 			"cluster_uuid": esClusterUUID,
 			"version": map[string]any{

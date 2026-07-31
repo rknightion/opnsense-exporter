@@ -16,62 +16,62 @@ var (
 		"otlp.enabled",
 		"Enable pushing metrics to an OTLP endpoint (in addition to the /metrics pull endpoint). "+
 			"Off by default.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_OTLP_ENABLED").Default("false").Bool()
 	otlpEndpoint = kingpin.Flag(
 		"otlp.endpoint",
 		"OTLP endpoint URL. When empty, the standard OTEL_EXPORTER_OTLP_ENDPOINT env var is used.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_ENDPOINT").Default("").String()
+	).Envar("OPN2OTEL_OTLP_ENDPOINT").Default("").String()
 	otlpProtocol = kingpin.Flag(
 		"otlp.protocol",
 		"OTLP transport protocol: grpc or http/protobuf. Defaults to http/protobuf; an empty value is rejected.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_PROTOCOL").Default("http/protobuf").String()
+	).Envar("OPN2OTEL_OTLP_PROTOCOL").Default("http/protobuf").String()
 	otlpInsecure = kingpin.Flag(
 		"otlp.insecure",
 		"Disable TLS for the OTLP connection (plaintext).",
-	).Envar("OPNSENSE_EXPORTER_OTLP_INSECURE").Default("false").Bool()
+	).Envar("OPN2OTEL_OTLP_INSECURE").Default("false").Bool()
 	otlpHeaders = kingpin.Flag(
 		"otlp.headers",
 		"OTLP headers as comma-separated key=value pairs (e.g. X-Scope-OrgID=1,Authorization=Bearer x). "+
 			"When set, replaces OTEL_EXPORTER_OTLP_HEADERS entirely; when empty, that env var is used.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_HEADERS").Default("").String()
+	).Envar("OPN2OTEL_OTLP_HEADERS").Default("").String()
 	otlpExportInterval = kingpin.Flag(
 		"otlp.export-interval",
 		"Interval between OTLP metric exports (independent of Prometheus scrapes).",
-	).Envar("OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL").Default("60s").Duration()
+	).Envar("OPN2OTEL_OTLP_EXPORT_INTERVAL").Default("60s").Duration()
 	otlpFastExportInterval = kingpin.Flag(
 		"otlp.fast-export-interval",
 		"Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the default) keeps the single-stream behaviour exactly. When set, fast-tier collectors export at this interval while everything else stays on --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier membership is the collectorTiers table in internal/collector/interval_tiers.go, plus whatever --collector.poll-interval-override makes fast; the tier is deliberately small, so 15s here costs far less than setting --otlp.export-interval=15s for everything.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL").Default("0s").Duration()
+	).Envar("OPN2OTEL_OTLP_FAST_EXPORT_INTERVAL").Default("0s").Duration()
 	otlpTLSCAFile = kingpin.Flag(
 		"otlp.tls-ca-file",
 		"Path to a CA certificate file used to verify the OTLP server.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE").Default("").String()
+	).Envar("OPN2OTEL_OTLP_TLS_CA_FILE").Default("").String()
 	otlpTLSCertFile = kingpin.Flag(
 		"otlp.tls-cert-file",
 		"Path to a client certificate file for OTLP mutual TLS (requires --otlp.tls-key-file).",
-	).Envar("OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE").Default("").String()
+	).Envar("OPN2OTEL_OTLP_TLS_CERT_FILE").Default("").String()
 	otlpTLSKeyFile = kingpin.Flag(
 		"otlp.tls-key-file",
 		"Path to a client key file for OTLP mutual TLS (requires --otlp.tls-cert-file).",
-	).Envar("OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE").Default("").String()
+	).Envar("OPN2OTEL_OTLP_TLS_KEY_FILE").Default("").String()
 	otlpServiceName = kingpin.Flag(
 		"otlp.service-name",
 		"service.name resource attribute for exported metrics.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_SERVICE_NAME").Default("opnsense-exporter").String()
+	).Envar("OPN2OTEL_OTLP_SERVICE_NAME").Default("opnsense2otel").String()
 	otlpGCInstanceID = kingpin.Flag(
 		"otlp.grafana-cloud-instance-id",
 		"Grafana Cloud OTLP instance ID. With --otlp.grafana-cloud-token, synthesizes basic-auth. "+
-			"This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID").Default("").String()
+			"This flag/ENV or OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set.",
+	).Envar("OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID").Default("").String()
 	otlpGCToken = kingpin.Flag(
 		"otlp.grafana-cloud-token",
 		"Grafana Cloud Access Policy token. "+
-			"This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.",
-	).Envar("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN").Default("").String()
+			"This flag/ENV or OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.",
+	).Envar("OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN").Default("").String()
 	otlpGCEndpoint = kingpin.Flag(
 		"otlp.grafana-cloud-endpoint",
 		"Grafana Cloud OTLP gateway base URL (required when using the Grafana Cloud shortcut).",
-	).Envar("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT").Default("").String()
+	).Envar("OPN2OTEL_OTLP_GRAFANA_CLOUD_ENDPOINT").Default("").String()
 )
 
 // OTLPConfig holds the resolved configuration for OTLP metrics export.
@@ -207,7 +207,7 @@ func parseHeaders(s string) (map[string]string, error) {
 
 // assembleOTLP applies precedence and the Grafana Cloud shortcut to raw inputs,
 // returning the resolved config and whether OTLP export is enabled. Precedence
-// (highest first): explicit flags/OPNSENSE_EXPORTER_OTLP_* env, then the Grafana
+// (highest first): explicit flags/OPN2OTEL_OTLP_* env, then the Grafana
 // Cloud shortcut, then standard OTEL_* env consulted later by the SDK when a field
 // is left empty.
 func assembleOTLP(in otlpRawInputs) (*OTLPConfig, bool, error) {
@@ -298,11 +298,11 @@ func OTLPTransport() (*OTLPConfig, error) {
 // --otlp.enabled). The returned bool is always true on success; it exists so
 // OTLP() can return it directly.
 func resolveOTLPTransport() (*OTLPConfig, bool, error) {
-	gcID, err := resolveSecret("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE", *otlpGCInstanceID)
+	gcID, err := resolveSecret("OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE", *otlpGCInstanceID)
 	if err != nil {
 		return nil, false, err
 	}
-	gcToken, err := resolveSecret("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE", *otlpGCToken)
+	gcToken, err := resolveSecret("OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN_FILE", *otlpGCToken)
 	if err != nil {
 		return nil, false, err
 	}

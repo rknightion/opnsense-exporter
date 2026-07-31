@@ -15,7 +15,7 @@ never metric labels - they stay as structured metadata on the shipped record, wh
 they are still filterable but cannot multiply series.
 
 The rollup, the NetFlow receiver and the flow correlator are implemented in
-[`internal/flow/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/flow).
+[`internal/flow/` on GitHub](https://github.com/rknightion/opnsense2otel/tree/main/internal/flow).
 
 ## Enabling it
 

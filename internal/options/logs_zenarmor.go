@@ -26,7 +26,7 @@ var (
 			"under Configuration/Zenarmor > Settings > Streaming Data > 'Stream Reporting Data to "+
 			"External Elasticsearch' - NOT the initial wizard's 'Remote Elasticsearch Database', which "+
 			"replaces local reporting irreversibly.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_ENABLED").Default("false").Bool()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_ENABLED").Default("false").Bool()
 
 	// 9200 is the Elasticsearch convention and what Zenarmor's port field defaults
 	// to. Nothing needs it to be 9200 — the receiver is not an Elasticsearch — but
@@ -34,7 +34,7 @@ var (
 	logsZenarmorListenHTTP = kingpin.Flag(
 		"logs.zenarmor.listen-http",
 		"Listen address for the Zenarmor receiver. Point Zenarmor's streaming URI at it.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_LISTEN_HTTP").Default(":9200").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_LISTEN_HTTP").Default(":9200").String()
 
 	// The ingress is unauthenticated unless auth-user is set: anything that can reach
 	// the port can inject arbitrary records into the observability stack.
@@ -43,7 +43,7 @@ var (
 		"Comma-separated CIDR allowlist of hosts permitted to stream (e.g. 10.0.0.254/32). Empty "+
 			"accepts any sender. The receiver is unauthenticated unless --logs.zenarmor.auth-user is "+
 			"set, so set this on a shared network.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_ALLOWED_PEERS").Default("").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_ALLOWED_PEERS").Default("").String()
 
 	// Cutting families here is defence in depth. The better place is Zenarmor's own
 	// `indexes` setting: data cut at source never crosses the wire at all, and
@@ -54,7 +54,7 @@ var (
 			"all of them. Prefer restricting this at the Zenarmor end instead - data cut at source "+
 			"never crosses the wire. Zenarmor streams ~2.5-3.3M records/day (~4-6 GB/day of JSON), "+
 			"of which conn is ~61%.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_FAMILIES").Default("").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_FAMILIES").Default("").String()
 
 	// Default ON. Zenarmor inspects the link the receiver listens on, so it reports
 	// the _bulk connection delivering its own records — measured at ~15% of all
@@ -69,7 +69,7 @@ var (
 			"Matched on the streaming peer's address plus the receiver's listen port, never the "+
 			"destination address, which a containerised exporter cannot know. Set false to keep "+
 			"them; drops are counted as logs_rejected_total{reason=\"self_traffic\"}.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_DROP_SELF_TRAFFIC").Default("true").Bool()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_DROP_SELF_TRAFFIC").Default("true").Bool()
 
 	// Repeatable, and default off: no implicit blind spots. Unlike --logs.syslog.sample
 	// this is LOSSY in a way no counter makes up for — see the ExcludeRules doc in the
@@ -87,43 +87,43 @@ var (
 			"EXCLUSION IS LOSSY: the derived counters carry no server_name, query or device_name, "+
 			"so an excluded record's forensic detail is gone for good. Prefer a query-time filter "+
 			"unless volume genuinely forces this. Set via env as one rule per LINE.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_EXCLUDE").Strings()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_EXCLUDE").Strings()
 
 	logsZenarmorEnrich = kingpin.Flag(
 		"logs.zenarmor.enrich",
 		"Enrich received Zenarmor records from the OPNsense API: friendly interface names, "+
 			"local/remote scope and well-known service names. Zenarmor resolves hostnames, MACs and "+
 			"device identity itself, so this adds only what it does not already know.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_ENRICH").Default("true").Bool()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_ENRICH").Default("true").Bool()
 
 	logsZenarmorAuthUser = kingpin.Flag(
 		"logs.zenarmor.auth-user",
 		"Require HTTP basic auth on the Zenarmor receiver, with this username. Set the same "+
 			"credentials in Zenarmor's streaming settings. Empty disables auth.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_AUTH_USER").Default("").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_AUTH_USER").Default("").String()
 
 	logsZenarmorAuthPassword = kingpin.Flag(
 		"logs.zenarmor.auth-password",
 		"Password for --logs.zenarmor.auth-user.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_AUTH_PASSWORD").Default("").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_AUTH_PASSWORD").Default("").String()
 
 	logsZenarmorMaxConcurrentRequests = kingpin.Flag(
 		"logs.zenarmor.max-concurrent-requests",
 		"Maximum bulk requests processed concurrently by the Zenarmor receiver. The per-request body "+
 			"limit bounds one request; without this, N simultaneous requests each buffer that full allowance. "+
 			"Excess requests are refused with 503 before a body is read. 0 disables the limit.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS").Default("8").Int()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS").Default("8").Int()
 
 	logsZenarmorTLSCertFile = kingpin.Flag(
 		"logs.zenarmor.tls-cert-file",
 		"PEM server certificate for the Zenarmor receiver. Set with --logs.zenarmor.tls-key-file to "+
 			"serve HTTPS, and use an https:// URI in Zenarmor's streaming settings.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_TLS_CERT_FILE").Default("").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_TLS_CERT_FILE").Default("").String()
 
 	logsZenarmorTLSKeyFile = kingpin.Flag(
 		"logs.zenarmor.tls-key-file",
 		"PEM private key for --logs.zenarmor.tls-cert-file.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_TLS_KEY_FILE").Default("").String()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_TLS_KEY_FILE").Default("").String()
 
 	logsZenarmorDebugCapture = kingpin.Flag(
 		"logs.zenarmor.debug-capture",
@@ -131,7 +131,7 @@ var (
 			"unknown families, documents that would not parse) to --logs.debug-capture.dir for "+
 			"inspection. Requires --logs.debug-capture.dir. While on, the unhandled-endpoint warning "+
 			"is suppressed - the capture file carries the same signal.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE").Default("false").Bool()
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_DEBUG_CAPTURE").Default("false").Bool()
 
 	logsZenarmorTransport = kingpin.Flag(
 		"logs.zenarmor.transport",
@@ -140,7 +140,7 @@ var (
 			"it through the shared syslog receiver (requires --logs.syslog.enabled and a "+
 			"business-tier Zenarmor licence). families/exclude/enrich/drop-self-traffic apply "+
 			"to either transport.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_TRANSPORT").Default("elasticsearch").Enum("elasticsearch", "syslog")
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_TRANSPORT").Default("elasticsearch").Enum("elasticsearch", "syslog")
 )
 
 // ZenarmorConfig is the resolved Zenarmor receiver configuration. It mirrors

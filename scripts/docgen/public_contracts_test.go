@@ -45,9 +45,9 @@ func TestPublicDocumentationContracts(t *testing.T) {
 		t.Error("release-process.md must show no-leading-v container tags")
 	}
 	for _, artifact := range []string{
-		"opnsense-exporter_Darwin_arm64.tar.gz",
-		"opnsense-exporter_Linux_x86_64.tar.gz",
-		"opnsense-exporter_Windows_x86_64.zip",
+		"opnsense2otel_Darwin_arm64.tar.gz",
+		"opnsense2otel_Linux_x86_64.tar.gz",
+		"opnsense2otel_Windows_x86_64.zip",
 		"checksums.txt.sigstore.json",
 		"THIRD_PARTY_NOTICES.md",
 	} {
@@ -123,8 +123,8 @@ func TestMandatoryReleaseAssetsFollowWorkflowList(t *testing.T) {
 	root := t.TempDir()
 	writeTestReleasePlan(t, root, []string{
 		"attestation.custom.json",
-		"opnsense-exporter_Linux_x86_64.tar.gz",
-		"opnsense-exporter_Linux_x86_64.tar.gz.sbom.json",
+		"opnsense2otel_Linux_x86_64.tar.gz",
+		"opnsense2otel_Linux_x86_64.tar.gz.sbom.json",
 	})
 
 	got, err := mandatoryReleaseAssets(root)
@@ -133,8 +133,8 @@ func TestMandatoryReleaseAssetsFollowWorkflowList(t *testing.T) {
 	}
 	want := []string{
 		"attestation.custom.json",
-		"opnsense-exporter_Linux_x86_64.tar.gz",
-		"opnsense-exporter_Linux_x86_64.tar.gz.sbom.json",
+		"opnsense2otel_Linux_x86_64.tar.gz",
+		"opnsense2otel_Linux_x86_64.tar.gz.sbom.json",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mandatory assets = %v, want workflow list %v", got, want)
@@ -145,9 +145,9 @@ func TestMandatoryReleaseAssetsRejectUnknownArchiveFilename(t *testing.T) {
 	root := t.TempDir()
 	writeTestReleasePlan(t, root, []string{
 		"checksums.txt",
-		"opnsense-exporter_Linux_x86_64.tar.gz",
-		"opnsense-exporter_Linux_x86_64.tar.gz.sbom.json",
-		"opnsense-exporter_Linux_386.tar.gz",
+		"opnsense2otel_Linux_x86_64.tar.gz",
+		"opnsense2otel_Linux_x86_64.tar.gz.sbom.json",
+		"opnsense2otel_Linux_386.tar.gz",
 	})
 
 	_, err := mandatoryReleaseAssets(root)
@@ -160,19 +160,19 @@ func TestDocumentedReleaseAssetsRejectUnknownFilename(t *testing.T) {
 	doc := `before
 <!-- docgen:begin:release-assets -->
 - ` + "`checksums.txt`" + `
-- ` + "`opnsense-exporter_Linux_386.tar.gz`" + `
+- ` + "`opnsense2otel_Linux_386.tar.gz`" + `
 <!-- docgen:end:release-assets -->
 after
 `
 	err := validateDocumentedReleaseAssets(doc, []string{"checksums.txt"})
-	if err == nil || !strings.Contains(err.Error(), "opnsense-exporter_Linux_386.tar.gz") {
+	if err == nil || !strings.Contains(err.Error(), "opnsense2otel_Linux_386.tar.gz") {
 		t.Fatalf("validateDocumentedReleaseAssets error = %v, want unknown filename rejection", err)
 	}
 }
 
 func TestGoreleaserArchivesRejectUnsupportedNameTemplate(t *testing.T) {
 	root := t.TempDir()
-	config := `project_name: opnsense-exporter
+	config := `project_name: opnsense2otel
 builds:
   - goos:
       - linux
@@ -192,7 +192,7 @@ archives:
 
 func TestGoreleaserArchivesRejectUnsupportedFormats(t *testing.T) {
 	root := t.TempDir()
-	config := `project_name: opnsense-exporter
+	config := `project_name: opnsense2otel
 builds:
   - goos:
       - linux
@@ -221,7 +221,7 @@ archives:
 func TestLeadingVContainerTagIsVersionAgnostic(t *testing.T) {
 	for _, doc := range []string{
 		"| `v4.7.2` | Specific version |",
-		"`ghcr.io/rknightion/opnsense-exporter:v12.0.1`",
+		"`ghcr.io/rknightion/opnsense2otel:v12.0.1`",
 	} {
 		if !leadingVContainerTag(doc) {
 			t.Errorf("leading-v container tag not rejected: %q", doc)
@@ -246,7 +246,7 @@ func TestPrepareOutputDirsCheckModeDoesNotCreateDirectories(t *testing.T) {
 
 func writeTestReleasePlan(t *testing.T, root string, assets []string) {
 	t.Helper()
-	config := `project_name: opnsense-exporter
+	config := `project_name: opnsense2otel
 builds:
   - goos:
       - linux

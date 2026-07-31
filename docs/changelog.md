@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: Release history and changelog for the OPNsense Exporter
+description: Release history and changelog for opnsense2otel
 tags:
   - OPNsense
 ---

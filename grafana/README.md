@@ -1,11 +1,11 @@
-# OPNsense Exporter - Grafana assets
+# opnsense2otel - Grafana assets
 
-This folder ships everything you need to visualise and alert on the metrics exposed by the
-OPNsense Exporter:
+This folder ships everything you need to visualise and alert on the metrics exposed by
+opnsense2otel:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | The **operational** dashboard: a **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) organised into 7 top-level domains, rendering conditionally. UID `opnsense-exporter`. |
+| `dashboard.json` | The **operational** dashboard: a **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) organised into 7 top-level domains, rendering conditionally. UID `opnsense-exporter` (frozen pre-rename; see [Navigation](#navigation-dashboard-uids-links-and-drilldowns)). |
 | `dashboard-health.json` | The **self-observability companion** (UID `opnsense-exporter-health`): an Overview of health tiles, then Collection (scrape/poll, OPNsense API), Delivery (metrics & OTLP, log shipping, flow pipeline), Runtime, and the bundled recording rules' output — the exporter watching itself. Cross-linked with the operational dashboard, carrying the selected instance and time range. |
 | `build_dashboard.py` | Generator for BOTH dashboards. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
@@ -159,10 +159,10 @@ How it works, and why it is built this way:
 - **The push set follows the dashboard's own defaults.** A watch marked `DefaultOff` in
   `internal/annotations/catalog.go` is not written, and `tests/test_annotations.py` fails if that
   flag and the layer's `enable` disagree. This is not cosmetic: **`Exporter-pushed events` is a
-  catch-all** on the single `opnsense-exporter` tag, so a pushed kind renders on this dashboard no
+  catch-all** on the single `opnsense2otel` tag, so a pushed kind renders on this dashboard no
   matter what its per-kind toggle says — the toggle only governs the derived layer (#540). Override
   the set with `--annotations.kinds`, which is exact once given.
-- **Tags are closed vocabularies**: `opnsense-exporter`, the event kind, `instance:<name>`, and any
+- **Tags are closed vocabularies**: `opnsense2otel`, the event kind, `instance:<name>`, and any
   identifier named in the catalogue (`interface:LAN`, `ruleset:…`). Never an address, an identity or
   free text. `--annotations.extra-tags` adds your own.
 - Delivery is observable — `opnsense_exporter_annotations_written_total`, `_failed_total`,
@@ -197,6 +197,13 @@ upstream-authored timestamps (ClamAV's signature *build* date) are the recurring
 Every link is generated from `uids.py`, which is the single source of truth for dashboard
 UIDs (#419). A UID is never typed at a call site, and `tests/test_links.py` fails the build on
 any link that breaks the contract below.
+
+**The UIDs deliberately still spell the pre-rename project name** (`opnsense-exporter` /
+`opnsense-exporter-health`), even though the dashboard **titles** are `opnsense2otel` /
+`opnsense2otel Health`. A UID is the key in every bookmark and every alert's
+`__dashboardUid__` annotation; renaming it is a delete-and-recreate that 404s all of those at
+once. Do not "tidy" it to match the new project name — see the note on `MAIN_UID` in
+`uids.py`.
 
 **Destinations.** `opnsense-exporter` is this dashboard. `opnsense-exporter-health` is
 **reserved** for the self-observability dashboard (#431): the UID is frozen so work can be built
@@ -251,9 +258,9 @@ Do not run those update/push commands against a GitSync-managed production UID. 
 scratch UID first, then publish the canonical manifest only through the synced repository:
 
 ```bash
-DASH_NAME=opnsense-exporter-review python3 build_dashboard.py
+DASH_NAME=opnsense2otel-review python3 build_dashboard.py
 gcx dashboards create -f dashboard.json
-gcx dashboards snapshot opnsense-exporter-review --since 6h --width 1920
+gcx dashboards snapshot opnsense2otel-review --since 6h --width 1920
 
 # Restore the canonical UID, then copy/commit this file in the GitSync repository.
 python3 build_dashboard.py
@@ -294,8 +301,8 @@ convention.
 
 `alerts/grafana-managed/` holds one `rules.alerting.grafana.app/v0alpha1` manifest per rule
 plus two folder manifests. Rules are sorted into **two Grafana folders**: firewall-operational
-ones in `opnsense-alerts` (`_folder.json`) and exporter self-health ones in
-`opnsense-exporter-health-alerts` (`_folder-health.json`). The split is for the 3am read — an
+ones in `opnsense2otel-alerts` (`_folder.json`) and exporter self-health ones in
+`opnsense2otel-health-alerts` (`_folder-health.json`). The split is for the 3am read — an
 `OPNsenseFirewallUnhealthy` page means go look at the firewall, an `OPNsenseLogShipSinkErrors`
 page means the firewall is probably fine and the monitoring is not. Membership is declared per
 rule and cross-checked: a rule built purely from `opnsense_exporter_*` metrics that is not

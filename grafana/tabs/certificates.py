@@ -1,5 +1,5 @@
 """
-Certificates tab for the OPNsense Exporter dashboard.
+Certificates tab for the opnsense2otel dashboard.
 
 Covers all 10 opnsense_certificate_* and opnsense_acme_certificate* metrics:
 

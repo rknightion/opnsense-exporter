@@ -2,7 +2,7 @@
 
 # Complete Metrics Reference
 
-This page provides a complete reference of all Prometheus metrics exposed by the OPNsense Exporter.
+This page provides a complete reference of all Prometheus metrics exposed by opnsense2otel.
 The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
@@ -15,7 +15,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description |
 |-------------|------|--------|-------------|
-| opnsense_exporter_build_info | Gauge | version, goversion | Build information of the opnsense exporter (value is always 1; see labels) |
+| opnsense_exporter_build_info | Gauge | version, goversion | Build information of opnsense2otel (value is always 1; see labels) |
 | opnsense_exporter_collector_enabled | Gauge | collector | Whether a collector is enabled (1) or disabled (0) in this exporter instance, by subsystem |
 | opnsense_exporter_scrape_collector_duration_seconds | Gauge | collector | Duration of the latest scheduled sub-collector poll in seconds. The metric name retains its historical scrape_collector prefix for compatibility |
 | opnsense_exporter_scrape_collector_success | Gauge | collector | Whether the latest scheduled sub-collector poll succeeded (1 = ok, 0 = error or panic). The metric name retains its historical scrape_collector prefix for compatibility |

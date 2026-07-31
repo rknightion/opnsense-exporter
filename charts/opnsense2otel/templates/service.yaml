@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "opnsense-exporter.fullname" . }}
+  name: {{ include "opnsense2otel.fullname" . }}
   labels:
-    {{- include "opnsense-exporter.labels" . | nindent 4 }}
+    {{- include "opnsense2otel.labels" . | nindent 4 }}
   {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -11,7 +11,7 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   selector:
-    {{- include "opnsense-exporter.selectorLabels" . | nindent 4 }}
+    {{- include "opnsense2otel.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       protocol: TCP

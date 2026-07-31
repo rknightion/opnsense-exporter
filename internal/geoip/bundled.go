@@ -33,7 +33,7 @@ const (
 	// --geoip.download.dir on purpose: that directory is operator state (a
 	// writable volume the MaxMind downloader owns), while this one is read-only
 	// image content the exporter never writes.
-	BundledDir = "/usr/share/opnsense-exporter/geoip"
+	BundledDir = "/usr/share/opnsense2otel/geoip"
 
 	// BundledCountryPath and BundledASNPath are the flag defaults for
 	// --geoip.country-database / --geoip.asn-database. The filenames carry no

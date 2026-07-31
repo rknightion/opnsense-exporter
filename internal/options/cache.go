@@ -35,12 +35,12 @@ var (
 	firmwareCacheTTL = kingpin.Flag(
 		"exporter.firmware-cache-ttl",
 		"How long to cache firmware API responses (status and, when enabled, package details). The firmware data OPNsense serves is the stored result of the box's own update check, which it refreshes roughly daily, so re-fetching it on every poll only costs firewall CPU. Set to 0 to fetch on every poll.",
-	).Envar("OPNSENSE_EXPORTER_FIRMWARE_CACHE_TTL").Default(DefaultFirmwareCacheTTL.String()).Duration()
+	).Envar("OPN2OTEL_FIRMWARE_CACHE_TTL").Default(DefaultFirmwareCacheTTL.String()).Duration()
 
 	cacheTTL = kingpin.Flag(
 		"exporter.cache-ttl",
 		"How long to cache responses from slow-moving API endpoints (system/CPU identity, certificate inventory, Unbound DNS blocklist policy config) and to remember that a plugin-gated endpoint is absent (its 404). This data changes only on an admin action - a config edit, a certificate renewal, a plugin install - so re-fetching it on every poll only costs firewall CPU. Set it above the collector poll interval or it can never serve a hit. The cost is staleness: a newly installed plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch everything on every poll. Live data (counters, rates, service run-state) is never cached regardless of this setting.",
-	).Envar("OPNSENSE_EXPORTER_CACHE_TTL").Default(DefaultCacheTTL.String()).Duration()
+	).Envar("OPN2OTEL_CACHE_TTL").Default(DefaultCacheTTL.String()).Duration()
 )
 
 // ruleIDsCacheTTL bounds how long the firewall rule-id map may be served from

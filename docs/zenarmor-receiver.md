@@ -15,9 +15,9 @@ This is off by default. It needs configuration on **both** sides: the receiver o
 exporter, and the streaming destination in the Zenarmor GUI.
 
 Zenarmor changes its payloads between releases. If a record family stops being ingested,
-[open an issue on GitHub](https://github.com/rknightion/opnsense-exporter/issues/new) with a
+[open an issue on GitHub](https://github.com/rknightion/opnsense2otel/issues/new) with a
 captured document, or read the receiver in
-[`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship).
+[`internal/logship/` on GitHub](https://github.com/rknightion/opnsense2otel/tree/main/internal/logship).
 
 ## Why this exists
 
@@ -73,7 +73,7 @@ target described below.
 ## Set up the exporter
 
 ```bash
-opnsense-exporter \
+opnsense2otel \
   --logs.enabled \
   --logs.zenarmor.enabled
 ```
@@ -165,7 +165,7 @@ parse before being discarded.
 Each rule is `FIELD=~REGEX`. Only the regex operator `=~` exists; use `^value$` for an
 exact match. The regex tests **that field's value only** - a `server_name` rule never
 matches the value of `host`. Rules are OR-ed: any one match drops the record. Via the
-environment, put **one rule per line** (`OPNSENSE_EXPORTER_LOGS_ZENARMOR_EXCLUDE`), not
+environment, put **one rule per line** (`OPN2OTEL_LOGS_ZENARMOR_EXCLUDE`), not
 comma-separated, so a regex containing a comma survives.
 
 The field name is **validated at startup** against the receiver's attribute vocabulary.

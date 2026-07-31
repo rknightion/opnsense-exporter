@@ -20,27 +20,27 @@ import (
 	promcollectors "github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/exporter-toolkit/web"
-	"github.com/rknightion/opnsense-exporter/internal/annotations"
-	"github.com/rknightion/opnsense-exporter/internal/collector"
-	"github.com/rknightion/opnsense-exporter/internal/cpustream"
-	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
-	"github.com/rknightion/opnsense-exporter/internal/flow"
-	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
-	"github.com/rknightion/opnsense-exporter/internal/geoip"
-	"github.com/rknightion/opnsense-exporter/internal/healthprobe"
-	"github.com/rknightion/opnsense-exporter/internal/logship"
-	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
-	"github.com/rknightion/opnsense-exporter/internal/logship/flowlog"
-	logshipsyslog "github.com/rknightion/opnsense-exporter/internal/logship/syslog" // registers the syslog push source; also the log-lane GeoIP enricher (#528)
-	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor"           // registers the zenarmor push source
-	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
-	"github.com/rknightion/opnsense-exporter/internal/options"
-	"github.com/rknightion/opnsense-exporter/internal/profiling"
-	"github.com/rknightion/opnsense-exporter/internal/server"
-	"github.com/rknightion/opnsense-exporter/internal/telemetry"
-	"github.com/rknightion/opnsense-exporter/internal/webui"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/internal/annotations"
+	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v4/internal/cpustream"
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow/netflow"
+	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v4/internal/healthprobe"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/flowlog"
+	logshipsyslog "github.com/rknightion/opnsense2otel/v4/internal/logship/syslog" // registers the syslog push source; also the log-lane GeoIP enricher (#528)
+	_ "github.com/rknightion/opnsense2otel/v4/internal/logship/zenarmor"           // registers the zenarmor push source
+	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/profiling"
+	"github.com/rknightion/opnsense2otel/v4/internal/server"
+	"github.com/rknightion/opnsense2otel/v4/internal/telemetry"
+	"github.com/rknightion/opnsense2otel/v4/internal/webui"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 var version = ""
@@ -537,7 +537,7 @@ func main() {
 	if code, handled := dispatchSubcommand(os.Args[1:], os.Stdout, os.Stderr); handled {
 		os.Exit(code)
 	}
-	// Register --version before flag parsing so `opnsense-exporter --version`
+	// Register --version before flag parsing so `opnsense2otel --version`
 	// prints the ldflags-embedded version and exits — used by the publish/CI
 	// smoke check to prove the built image embeds a real version (see #79).
 	kingpin.Version(version)
@@ -561,7 +561,7 @@ func main() {
 
 	logger := promslog.New(options.PromLogConfig)
 
-	logger.Info("starting opnsense-exporter", "version", version)
+	logger.Info("starting opnsense2otel", "version", version)
 
 	if len(cfgErrs) > 0 {
 		for _, cErr := range cfgErrs {
@@ -1856,7 +1856,7 @@ func main() {
 			mux.Handle("/", webSrv.Handler())
 		} else {
 			landingConfig := web.LandingConfig{
-				Name:        "OPNsense Exporter",
+				Name:        "opnsense2otel",
 				Description: "Prometheus OPNsense Firewall Exporter",
 				Version:     version,
 				Links: []web.LandingLinks{

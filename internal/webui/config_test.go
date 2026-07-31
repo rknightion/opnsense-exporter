@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 func configDeps(disable bool, sections []options.ConfigSection) Deps {

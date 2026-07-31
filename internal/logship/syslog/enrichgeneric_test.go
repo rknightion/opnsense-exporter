@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // enrichSnap is a snapshot that knows about one LAN host and the firewall itself.

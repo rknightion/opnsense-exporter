@@ -11,7 +11,7 @@ var logsIDSEnabled = kingpin.Flag(
 		"polled via ids/service/query_alerts. Off by default. Requires --logs.enabled. "+
 		"If the box already forwards EVE JSON via syslog (ids.general.syslog_eve), prefer "+
 		"that native path instead of also enabling this source - do not ship the same alerts twice.",
-).Envar("OPNSENSE_EXPORTER_LOGS_IDS_ENABLED").Default("false").Bool()
+).Envar("OPN2OTEL_LOGS_IDS_ENABLED").Default("false").Bool()
 
 // LogsIDSEnabled reports whether the IDS log source is enabled.
 func LogsIDSEnabled() bool {

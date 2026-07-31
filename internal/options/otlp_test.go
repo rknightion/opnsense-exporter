@@ -14,7 +14,7 @@ func validRaw() otlpRawInputs {
 		enabled:     true,
 		protocol:    "http/protobuf",
 		interval:    60 * time.Second,
-		serviceName: "opnsense-exporter",
+		serviceName: "opnsense2otel",
 	}
 }
 

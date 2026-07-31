@@ -63,7 +63,7 @@
   "dashboards": [
     {
       "uid": "opnsense-exporter",
-      "title": "OPNsense Exporter",
+      "title": "opnsense2otel",
       "panels": 814,
       "tabs": 39,
       "tab_names": [
@@ -110,7 +110,7 @@
     },
     {
       "uid": "opnsense-exporter-health",
-      "title": "OPNsense Exporter Health",
+      "title": "opnsense2otel Health",
       "panels": 100,
       "tabs": 8,
       "tab_names": [

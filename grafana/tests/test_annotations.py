@@ -74,7 +74,7 @@ def go_watched_metrics() -> set:
     """The metric names in the Go emitter's catalogue.
 
     Every `opnsense_*` string literal in that file is a metric name — the tag
-    constant is `opnsense-exporter`, hyphenated, so it cannot be confused for one.
+    constant is `opnsense2otel`, hyphenated, so it cannot be confused for one.
     Deliberately NOT filtered by EPOCH_METRIC: the interface marker is named
     `..._uptime_seconds` because it is an uptime reading until the boot epoch is
     added to it, and filtering on the suffix would quietly exempt it from parity.

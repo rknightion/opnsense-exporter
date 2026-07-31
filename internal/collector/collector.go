@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // namespace is the prefix for all metrics.
@@ -1238,7 +1238,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	c.buildInfo = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "build_info"),
-		"Build information of the opnsense exporter (value is always 1; see labels)",
+		"Build information of opnsense2otel (value is always 1; see labels)",
 		[]string{"version", "goversion", instanceLabelName},
 		nil,
 	)

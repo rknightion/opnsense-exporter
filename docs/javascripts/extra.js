@@ -1,4 +1,4 @@
-/* Custom JavaScript for OPNsense Exporter documentation */
+/* Custom JavaScript for opnsense2otel documentation */
 /* global gtag, mermaid */
 
 // Enhanced search functionality

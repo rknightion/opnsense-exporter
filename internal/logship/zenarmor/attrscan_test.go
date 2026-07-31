@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
 // attributeKeysSetByParser derives, from parse.go's source, every attribute key the

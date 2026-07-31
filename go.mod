@@ -1,4 +1,4 @@
-module github.com/rknightion/opnsense-exporter
+module github.com/rknightion/opnsense2otel/v4
 
 go 1.26.4
 

@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
-	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/flow/netflow"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
 // Processor turns decoded NetFlow datagrams into normalized flow.Records and hands

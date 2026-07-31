@@ -17,7 +17,7 @@ import (
 // precisely because it must NOT need the server's required flags).
 //
 // It deliberately has NO env var binding, which is the one place this flag
-// departs from the project's env-driven convention. OPNSENSE_EXPORTER_CONFIG_CHECK
+// departs from the project's env-driven convention. OPN2OTEL_CONFIG_CHECK
 // left set in a deployment's environment would make every start validate and exit
 // 0, and a container that exits 0 immediately looks like a success while serving
 // nothing. Preflight is invoked by deployment tooling as an argument
