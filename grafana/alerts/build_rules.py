@@ -18,7 +18,7 @@ Usage:
     python3 build_rules.py                       # generic labels
     python3 build_rules.py --stack               # add domain=infra (+page on critical)
     python3 build_rules.py --datasource <uid>    # datasource UID (default grafanacloud-prom)
-    python3 build_rules.py --folder <name>       # grafana folder (default opnsense-alerts)
+    python3 build_rules.py --folder <name>       # grafana folder (default opnsense2otel-alerts)
     python3 build_rules.py --health-folder <name>  # exporter self-health folder (#431)
 
 Alerts are defined as a value-producing query `A` plus a threshold condition, rendered to the
@@ -2430,10 +2430,13 @@ def emit_grafana_managed(ds: str, ops_folder: str, stack: bool, health_folder: s
     # Folder manifests (named so each UID == its folder); pushed first so the rules
     # resolve. Two folders since #431: firewall-operational and exporter-health.
     #
-    # The slug (== UID) keeps the pre-opnsense2otel spelling; only the TITLE carries
-    # the new name. Moving the UID needs folder-CREATE permission the CI token does
-    # not have (the attempt failed with a bare 403 and deployed nothing) and would
-    # strand the old folders, whose rules keep evaluating. See grafana-sync.yml.
+    # The slug is the folder UID. Renaming it needs folder-CREATE permission that the
+    # CI token does NOT have — a push naming a folder that does not exist yet fails
+    # with a bare 403 and deploys nothing at all. Both current folders were created out
+    # of band by an admin first. Two consequences if these ever move again: create the
+    # new folder BEFORE merging, and delete the old one afterwards, because
+    # `gcx resources push --prune` only prunes within the folders it is given, so a
+    # stranded folder keeps evaluating its copy of every rule.
     for slug, title, fname in (
             (ops_folder, "opnsense2otel Alerts", "_folder.json"),
             (health_folder, "opnsense2otel Health Alerts", "_folder-health.json")):
@@ -2652,9 +2655,9 @@ def write_runbooks_md() -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasource", default="grafanacloud-prom")
-    ap.add_argument("--folder", default="opnsense-alerts",
+    ap.add_argument("--folder", default="opnsense2otel-alerts",
                     help="grafana folder for firewall-operational rules")
-    ap.add_argument("--health-folder", default="opnsense-exporter-health-alerts",
+    ap.add_argument("--health-folder", default="opnsense2otel-health-alerts",
                     help="grafana folder for exporter self-health rules (#431)")
     ap.add_argument("--stack", action="store_true",
                     help="add IRM label contract (domain=infra; page=true on critical)")

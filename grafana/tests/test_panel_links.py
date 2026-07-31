@@ -34,8 +34,8 @@ sys.path.insert(0, str(ALERTS_DIR))
 
 import build_rules  # noqa: E402
 
-OPS_FOLDER = "opnsense-alerts"
-HEALTH_FOLDER = "opnsense-exporter-health-alerts"
+OPS_FOLDER = "opnsense2otel-alerts"
+HEALTH_FOLDER = "opnsense2otel-health-alerts"
 
 
 def _dashboard_panels():

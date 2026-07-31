@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-logship-queue-near-capacity",
     "annotations": {
-      "grafana.app/folder": "opnsense-exporter-health-alerts"
+      "grafana.app/folder": "opnsense2otel-health-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-exporter-health-alerts"
+      "grafana.app/folder": "opnsense2otel-health-alerts"
     }
   },
   "spec": {

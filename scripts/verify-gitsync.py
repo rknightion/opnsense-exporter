@@ -205,8 +205,11 @@ def main() -> int:
                 messages.extend(summary.get("warnings") or [])
                 messages.extend(summary.get("errors") or [])
     except Exception as exc:  # noqa: BLE001 - never let the extra signal break the gate
-        print(f"verify-gitsync: could not read job history ({exc}); "
-              f"relying on repository status and the content comparison below")
+        # EXPECTED in CI: GRAFANA_TOKEN cannot read historicjobs (403). This costs only
+        # the explanatory message on a failure, never the verdict, which comes from the
+        # content comparison below. Not worth widening the token's permissions for.
+        print(f"verify-gitsync: job history unavailable, continuing without it "
+              f"(403 is expected for the CI token): {str(exc)[:120]}")
     # These are DIAGNOSTICS, not the verdict. A warning may be stale — from a pull that
     # has since been fixed — and failing on the job history alone would wedge this gate
     # permanently on an error that no longer applies. The live-content comparison below

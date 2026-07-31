@@ -77,7 +77,7 @@ func folderFixture() []byte {
 	return []byte(`{
 		"apiVersion": "folder.grafana.app/v1beta1",
 		"kind": "Folder",
-		"metadata": {"name": "opnsense-alerts"},
+		"metadata": {"name": "opnsense2otel-alerts"},
 		"spec": {"title": "opnsense2otel Alerts"}
 	}`)
 }
