@@ -185,10 +185,6 @@
       "kind": "number"
     },
     {
-      "path": "serverZones.*.overCounts.responseMsecCounter",
-      "kind": "number"
-    },
-    {
       "path": "serverZones.*.overCounts.revalidated",
       "kind": "number"
     },
@@ -333,28 +329,12 @@
       "kind": "number"
     },
     {
-      "path": "upstreamZones.*[].overCounts.bypass",
-      "kind": "number"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.expired",
-      "kind": "number"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.hit",
-      "kind": "number"
-    },
-    {
       "path": "upstreamZones.*[].overCounts.inBytes",
       "kind": "number"
     },
     {
       "path": "upstreamZones.*[].overCounts.maxIntegerSize",
       "kind": "any"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.miss",
-      "kind": "number"
     },
     {
       "path": "upstreamZones.*[].overCounts.outBytes",
@@ -370,22 +350,6 @@
     },
     {
       "path": "upstreamZones.*[].overCounts.responseMsecCounter",
-      "kind": "number"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.revalidated",
-      "kind": "number"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.scarce",
-      "kind": "number"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.stale",
-      "kind": "number"
-    },
-    {
-      "path": "upstreamZones.*[].overCounts.updating",
       "kind": "number"
     },
     {

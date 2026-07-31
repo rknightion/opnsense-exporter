@@ -55,26 +55,39 @@ type nginxVtsCacheZoneResponses struct {
 	Scarce      float64 `json:"scarce"`
 }
 
-// nginxVtsOverCounts is an overCounts group: nginx-module-vts's own
-// wrap-detection counters. The add_oc macro
-// (ngx_http_vhost_traffic_status_module.h) bumps a dedicated _oc field by 1 each
-// time a worker-shard's raw counter is found to be LESS than the already-
-// accumulated total, i.e. that shard's counter wrapped. Each _oc field is
-// itself monotonic and resets only alongside every other vts counter on an
+// The overCounts groups are nginx-module-vts's own wrap-detection counters. The
+// add_oc macro (ngx_http_vhost_traffic_status_module.h) bumps a dedicated _oc
+// field by 1 each time a worker-shard's raw counter is found to be LESS than the
+// already-accumulated total, i.e. that shard's counter wrapped. Each _oc field
+// is itself monotonic and resets only alongside every other vts counter on an
 // nginx reload, so all of these are COUNTERS.
 //
-// #609: there is one wrap counter PER underlying counter, and
-// display_json.h emits them as an OBJECT keyed exactly like the counters they
-// shadow. #584 modelled the group as a single float64, which made the entire
-// payload fail to unmarshal — and since unmarshalBody turns any decode error
-// into an APICallError, that lost every VTS metric rather than just this one.
+// #609: there is one wrap counter PER underlying counter, and display_json.h
+// emits them as an OBJECT keyed exactly like the counters they shadow. #584
+// modelled the group as a single float64, which made the entire payload fail to
+// unmarshal — and since unmarshalBody turns any decode error into an
+// APICallError, that lost every VTS metric rather than just this one.
 //
-// Which keys are present varies by build and by zone kind, and absent is NOT
-// the same as zero-that-was-sent: the eight cache keys appear only on an
-// NGX_HTTP_CACHE build, responseMsecCounter only on upstream zones. Absent keys
-// decode to 0 and contribute 0 to total(), which is the correct reading — a
-// counter that cannot wrap has not wrapped.
-type nginxVtsOverCounts struct {
+// THE THREE ZONE KINDS DO NOT CARRY THE SAME KEYS, and modelling them as one
+// union type is what left nine paths permanently "missing" on every canary run.
+// Read straight off ngx_http_vhost_traffic_status_display_json.h:
+//
+//   - SERVER zones (FMT_SERVER_END): the common keys, plus requestMsecCounter,
+//     plus the eight cache keys — the latter only on an NGX_HTTP_CACHE build.
+//     NEVER responseMsecCounter.
+//   - UPSTREAM zones (FMT_UPSTREAM): the common keys, plus requestMsecCounter
+//     AND responseMsecCounter. NEVER any cache key, because an upstream peer has
+//     no cache to account for.
+//   - CACHE zones (FMT_CACHE): inBytes/outBytes and the eight cache keys only —
+//     no requestCounter, no status classes, no msec counters. Not modelled here;
+//     nginxVtsCacheZone reads no overCounts at all.
+//
+// A separate type per kind is what lets the golden schema state each kind's real
+// key set, so the live-box canary keeps ENFORCING those keys rather than being
+// exempted out of checking any of them.
+
+// nginxVtsOverCountsServer is a server zone's wrap-detection group.
+type nginxVtsOverCountsServer struct {
 	// MaxIntegerSize is the build's counter ceiling (2^64-1 on a 64-bit box),
 	// emitted with a %s conversion as a bare literal. It overflows int64, so it
 	// is carried as a flexString: it is a capability constant, never exported,
@@ -91,8 +104,9 @@ type nginxVtsOverCounts struct {
 	R4xx float64 `json:"4xx"`
 	R5xx float64 `json:"5xx"`
 
-	// Cache-status wrap counters: NGX_HTTP_CACHE builds only, server zones and
-	// cache zones only.
+	// Cache-status wrap counters: NGX_HTTP_CACHE builds only. A non-cache build
+	// omits all eight, they decode to 0, and total() is correct either way — a
+	// counter that cannot exist has not wrapped.
 	Miss        float64 `json:"miss"`
 	Bypass      float64 `json:"bypass"`
 	Expired     float64 `json:"expired"`
@@ -103,7 +117,25 @@ type nginxVtsOverCounts struct {
 	Scarce      float64 `json:"scarce"`
 
 	RequestMsecCounter float64 `json:"requestMsecCounter"`
-	// ResponseMsecCounter is emitted for upstream zones only.
+}
+
+// nginxVtsOverCountsUpstream is one upstream peer's wrap-detection group.
+type nginxVtsOverCountsUpstream struct {
+	MaxIntegerSize flexString `json:"maxIntegerSize"`
+
+	RequestCounter float64 `json:"requestCounter"`
+	InBytes        float64 `json:"inBytes"`
+	OutBytes       float64 `json:"outBytes"`
+
+	R1xx float64 `json:"1xx"`
+	R2xx float64 `json:"2xx"`
+	R3xx float64 `json:"3xx"`
+	R4xx float64 `json:"4xx"`
+	R5xx float64 `json:"5xx"`
+
+	RequestMsecCounter float64 `json:"requestMsecCounter"`
+	// ResponseMsecCounter exists on upstream zones and nowhere else: only an
+	// upstream peer has a response time distinct from the request time.
 	ResponseMsecCounter float64 `json:"responseMsecCounter"`
 }
 
@@ -117,11 +149,18 @@ type nginxVtsOverCounts struct {
 // permanently 0 on any 64-bit box, and the operational question — did anything
 // wrap in this zone, so is a rate() here discontinuous — is answered exactly by
 // the sum.
-func (o nginxVtsOverCounts) total() float64 {
+func (o nginxVtsOverCountsServer) total() float64 {
 	return o.RequestCounter + o.InBytes + o.OutBytes +
 		o.R1xx + o.R2xx + o.R3xx + o.R4xx + o.R5xx +
 		o.Miss + o.Bypass + o.Expired + o.Stale +
 		o.Updating + o.Revalidated + o.Hit + o.Scarce +
+		o.RequestMsecCounter
+}
+
+// total sums every wrap counter in the group; see the server-zone twin above.
+func (o nginxVtsOverCountsUpstream) total() float64 {
+	return o.RequestCounter + o.InBytes + o.OutBytes +
+		o.R1xx + o.R2xx + o.R3xx + o.R4xx + o.R5xx +
 		o.RequestMsecCounter + o.ResponseMsecCounter
 }
 
@@ -132,8 +171,8 @@ type nginxVtsServerZone struct {
 	OutBytes           float64                     `json:"outBytes"`
 	Responses          nginxVtsServerZoneResponses `json:"responses"`
 	RequestMsecCounter float64                     `json:"requestMsecCounter"` // cumulative sum of request times, ms
-	// OverCounts is this zone's wrap-detection group -- see nginxVtsOverCounts.
-	OverCounts nginxVtsOverCounts `json:"overCounts"`
+	// OverCounts is this zone's wrap-detection group -- see nginxVtsOverCountsServer.
+	OverCounts nginxVtsOverCountsServer `json:"overCounts"`
 }
 
 // nginxVtsUpstream is one upstream server entry inside the upstreamZones map.
@@ -147,10 +186,10 @@ type nginxVtsUpstream struct {
 	RequestMsecCounter  float64           `json:"requestMsecCounter"`  // cumulative sum of request times, ms
 	ResponseMsecCounter float64           `json:"responseMsecCounter"` // cumulative sum of response times, ms
 	Down                bool              `json:"down"`
-	// OverCounts: see nginxVtsOverCounts -- same wrap-detection group, one per
-	// upstream server entry. An upstream group additionally carries
-	// responseMsecCounter and never carries the cache keys.
-	OverCounts nginxVtsOverCounts `json:"overCounts"`
+	// OverCounts: see nginxVtsOverCountsUpstream -- one per upstream server
+	// entry. An upstream group carries responseMsecCounter and NEVER carries the
+	// cache keys, which is why it is a distinct type from the server zone's.
+	OverCounts nginxVtsOverCountsUpstream `json:"overCounts"`
 }
 
 // nginxVtsCacheZone is one entry from the cacheZones map in the VTS payload —
@@ -200,7 +239,7 @@ type NginxServerZone struct {
 	CacheResponsesByCode        map[string]float64 // keys: hit, miss, bypass, expired, stale, updating, revalidated, scarce
 	RequestSecondsTotal         float64            // requestMsecCounter / 1000 (cumulative)
 	// CounterWraps is nginx-module-vts's own overCounts wrap-detection
-	// counter for this zone (see nginxVtsServerZone.OverCounts) -- a COUNTER,
+	// counter for this zone (see nginxVtsOverCountsServer) -- a COUNTER,
 	// not a gauge: it only increases, and a non-zero value means one of this
 	// zone's other counters above wrapped and its rate() has a discontinuity.
 	CounterWraps float64

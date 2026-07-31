@@ -26,11 +26,17 @@ var Exemptions = map[string]string{
 		"(nvmeprint.cpp:505, ataprint.cpp:1206-1208); no emitter writes it for " +
 		"endurance_used. #615 was a decode fix that deliberately left the metric surface " +
 		"unchanged, so a spare-threshold gauge is an opportunity, not part of it.",
-	// opnsense/nginx.go:82  json:"maxIntegerSize"
-	"opnsense.nginxVtsOverCounts.MaxIntegerSize": "Modelled deliberately so the canary does not report it as unmodelled drift, and " +
+	// opnsense/nginx.go:95  json:"maxIntegerSize"
+	"opnsense.nginxVtsOverCountsServer.MaxIntegerSize": "Modelled deliberately so the canary does not report it as unmodelled drift, and " +
 		"deliberately never read (#609). It is nginx-module-vts's build-time counter " +
 		"ceiling (2^64-1 on any 64-bit box), a capability constant rather than a reading, " +
-		"so it is excluded from nginxVtsOverCounts.total() and never reaches a metric. " +
+		"so it is excluded from the group's total() and never reaches a metric. " +
+		"Carried as flexString because the bare literal overflows int64.",
+	// opnsense/nginx.go:124  json:"maxIntegerSize"
+	"opnsense.nginxVtsOverCountsUpstream.MaxIntegerSize": "Modelled deliberately so the canary does not report it as unmodelled drift, and " +
+		"deliberately never read (#609). It is nginx-module-vts's build-time counter " +
+		"ceiling (2^64-1 on any 64-bit box), a capability constant rather than a reading, " +
+		"so it is excluded from the group's total() and never reaches a metric. " +
 		"Carried as flexString because the bare literal overflows int64.",
 	// opnsense/schema_coverage.go:83  json:"pruneTrigger"
 	"opnsense.CoveragePath.PruneTrigger": "Documentary field in a committed ledger/golden file, not an OPNsense response: it is " +
