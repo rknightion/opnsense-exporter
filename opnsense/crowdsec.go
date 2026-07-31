@@ -402,6 +402,28 @@ func (c *Client) FetchCrowdSecDecisions() ([]CrowdSecDecision, *APICallError) {
 // Timestamp parsing uses time.RFC3339Nano (handles both plain RFC3339 and
 // fractional seconds from cscli); unparseable timestamps set Has* = false.
 func (c *Client) FetchCrowdSecStatus() (CrowdSecStatus, *APICallError) {
+	return c.FetchCrowdSecStatusWithHub(true)
+}
+
+// FetchCrowdSecStatusWithHub is FetchCrowdSecStatus with the six hub-inventory
+// searches made optional (#575).
+//
+// The eleven requests this call makes split cleanly in two. The live half (alerts,
+// decisions, bouncer LastSeen, machines, service status) genuinely needs the
+// collector's 60s tier. The hub half (collections, scenarios, parsers,
+// postoverflows, appsec configs, appsec rules) is a count of INSTALLED hub items,
+// which changes only on a `cscli hub upgrade` or an admin install — asking for it
+// sixty times an hour costs 8,640 requests a day, each paying the #535 tax of two
+// configd RPCs and two audit lines whatever it returns.
+//
+// A body cache cannot help: all six are POST bootgrid searches, and a POST response
+// is never replayed (#194), so cadence is the only lever. When includeHub is false
+// the six calls are skipped and HasHubItems is left FALSE, which tells the caller
+// "no fresh hub data this poll" — NOT "this box has no hub items". The caller is
+// responsible for re-emitting its last good values so the gauges stay continuous;
+// see crowdsecCollector. Conflating the two would make the hub gauges vanish and
+// reappear, which reads as a fault rather than as slow-moving data.
+func (c *Client) FetchCrowdSecStatusWithHub(includeHub bool) (CrowdSecStatus, *APICallError) {
 	var data CrowdSecStatus
 
 	// Alerts (count-only).
@@ -511,6 +533,13 @@ func (c *Client) FetchCrowdSecStatus() (CrowdSecStatus, *APICallError) {
 	// argument at the call site — can see all six (#145).
 	counts := map[[2]string]int{} // key: [component, normalised status]
 	var hubItemsFetched bool
+
+	// The whole hub half is behind one branch rather than six, so a caller either
+	// gets a complete hub picture or none — a partially-refreshed set of component
+	// counts would be a silently wrong total.
+	if !includeHub {
+		return c.fetchCrowdSecVersion(data)
+	}
 
 	accumulateHubRows := func(component string, rows json.RawMessage) {
 		var items []crowdsecHubItemRow
@@ -633,6 +662,14 @@ func (c *Client) FetchCrowdSecStatus() (CrowdSecStatus, *APICallError) {
 		})
 	}
 
+	return c.fetchCrowdSecVersion(data)
+}
+
+// fetchCrowdSecVersion appends the engine version to data and returns it. Split out
+// of FetchCrowdSecStatusWithHub so both the with-hub and without-hub paths end the
+// same way (#575) — the version read is cheap, cached by a body TTL, and belongs to
+// neither half.
+func (c *Client) fetchCrowdSecVersion(data CrowdSecStatus) (CrowdSecStatus, *APICallError) {
 	// Engine version (#205): version/get returns raw multi-line cscli version
 	// text, NOT JSON — bypass the JSON envelope via the *[]byte sentinel in
 	// unmarshalBody (see client.go). Parsing is tolerant: a format this exporter

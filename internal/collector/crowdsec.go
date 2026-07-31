@@ -3,6 +3,8 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/opnsense"
@@ -32,13 +34,31 @@ type crowdsecCollector struct {
 	hubItems         *prometheus.Desc
 	versionInfo      *prometheus.Desc
 
+	// hubCadence gates the six hub-inventory POSTs to a slower rate than the
+	// collector's 60s tier, and lastHubItems is what keeps their gauges continuous
+	// on the polls in between (#575). Both are written only from Update, which the
+	// scheduler runs on one goroutine per collector, but the mutex is cheap and
+	// makes that assumption explicit rather than load-bearing.
+	hubCadence   *subCadence
+	hubMu        sync.Mutex
+	lastHubItems []opnsense.CrowdSecHubItemCount
+	hasLastHub   bool
+
 	subsystem string
 	instance  string
 }
 
+// crowdsecHubInterval is how often the hub inventory is actually fetched. The hub
+// item set changes only on `cscli hub upgrade` or an admin install, so 15m of
+// staleness is invisible in practice, and no alert or recording rule reads any
+// opnsense_crowdsec_hub_* series. It takes those six POSTs from 8,640 to 576
+// requests a day.
+const crowdsecHubInterval = 15 * time.Minute
+
 func init() {
 	collectorInstances = append(collectorInstances, &crowdsecCollector{
-		subsystem: CrowdSecSubsystem,
+		subsystem:  CrowdSecSubsystem,
+		hubCadence: newSubCadence(crowdsecHubInterval),
 	})
 }
 
@@ -95,8 +115,32 @@ func (c *crowdsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	}
 }
 
+// hubItemsToEmit returns the hub counts for this poll: the freshly fetched ones
+// when the sub-cadence let the hub half run and it succeeded, otherwise the last
+// good set. It also owns the cadence bookkeeping, so "we fetched" and "we recorded
+// that we fetched" cannot drift apart.
+func (c *crowdsecCollector) hubItemsToEmit(data opnsense.CrowdSecStatus, includedHub bool) []opnsense.CrowdSecHubItemCount {
+	c.hubMu.Lock()
+	defer c.hubMu.Unlock()
+
+	if includedHub && data.HasHubItems {
+		c.lastHubItems = data.HubItems
+		c.hasLastHub = true
+		c.hubCadence.mark()
+		return data.HubItems
+	}
+	if !c.hasLastHub {
+		// Nothing fetched successfully yet — emit nothing rather than a fabricated
+		// zero for every component/status pair we have never seen.
+		return nil
+	}
+	return c.lastHubItems
+}
+
 func (c *crowdsecCollector) Update(_ context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
-	data, err := client.FetchCrowdSecStatus()
+	// The live half every poll; the hub half at crowdsecHubInterval (#575).
+	includeHub := c.hubCadence.due()
+	data, err := client.FetchCrowdSecStatusWithHub(includeHub)
 	if err != nil {
 		return err
 	}
@@ -156,11 +200,20 @@ func (c *crowdsecCollector) Update(_ context.Context, client *opnsense.Client, c
 	// Hub component health (#205): aggregated counts per component + normalised
 	// status. Never per-item name labels — a collection pulls in 50-200
 	// scenarios/parsers.
-	if data.HasHubItems {
-		for _, item := range data.HubItems {
-			ch <- prometheus.MustNewConstMetric(c.hubItems, prometheus.GaugeValue,
-				float64(item.Count), item.Component, item.Status, c.instance)
-		}
+	//
+	// On a poll where the hub half was skipped (#575), the LAST GOOD counts are
+	// re-emitted rather than omitted. That is the whole contract of the sub-cadence:
+	// the series must stay continuous and simply update less often. Omitting them
+	// would make every hub gauge vanish for fourteen of every fifteen minutes, which
+	// reads as a fault, breaks any `last_over_time` window, and would be a fidelity
+	// loss rather than the freshness tradeoff this change is allowed to make.
+	//
+	// The cadence is marked only HERE, on a fetch that actually produced items, so a
+	// failed or message-enveloped hub read retries on the next poll instead of
+	// parking stale counts for another fifteen minutes.
+	for _, item := range c.hubItemsToEmit(data, includeHub) {
+		ch <- prometheus.MustNewConstMetric(c.hubItems, prometheus.GaugeValue,
+			float64(item.Count), item.Component, item.Status, c.instance)
 	}
 
 	// Engine version (#205).

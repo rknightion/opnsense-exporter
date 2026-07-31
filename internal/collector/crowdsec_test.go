@@ -4,8 +4,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -281,5 +284,176 @@ func TestCrowdSecCollector_Name(t *testing.T) {
 	c := &crowdsecCollector{subsystem: CrowdSecSubsystem}
 	if c.Name() != CrowdSecSubsystem {
 		t.Errorf("expected %q, got %q", CrowdSecSubsystem, c.Name())
+	}
+}
+
+// countingCrowdSecMux is crowdsecCollectorMux with a per-path request counter, so a
+// test can assert that the firewall was NOT asked — which is the entire point of
+// #575 and is invisible to an assertion that only looks at the emitted metrics.
+func countingCrowdSecMux(t *testing.T) (*http.ServeMux, func(path string) int) {
+	t.Helper()
+	var mu sync.Mutex
+	hits := map[string]int{}
+	count := func(path string) { mu.Lock(); hits[path]++; mu.Unlock() }
+
+	mux := http.NewServeMux()
+	for path, body := range map[string]string{
+		"/api/crowdsec/alerts/search":    crowdsecCollectorAlertsFixture,
+		"/api/crowdsec/decisions/search": crowdsecCollectorDecisionsFixture,
+		"/api/crowdsec/bouncers/search":  crowdsecCollectorBouncersFixture,
+		"/api/crowdsec/machines/search":  crowdsecCollectorMachinesFixture,
+		"/api/crowdsec/service/status":   `{"status":"running"}`,
+		"/api/crowdsec/version/get":      crowdsecCollectorVersionFixture,
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			count(r.URL.Path)
+			_, _ = w.Write([]byte(body))
+		})
+	}
+	for _, path := range []string{
+		"/api/crowdsec/collections/search",
+		"/api/crowdsec/scenarios/search",
+		"/api/crowdsec/parsers/search",
+		"/api/crowdsec/postoverflows/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			count(r.URL.Path)
+			_, _ = w.Write([]byte(crowdsecCollectorHubEnabledFixture))
+		})
+	}
+	for _, path := range []string{
+		"/api/crowdsec/appsecconfigs/search",
+		"/api/crowdsec/appsecrules/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			count(r.URL.Path)
+			_, _ = w.Write([]byte(crowdsecCollectorHubEmptyFixture))
+		})
+	}
+	return mux, func(path string) int { mu.Lock(); defer mu.Unlock(); return hits[path] }
+}
+
+func countCrowdSecHubMetrics(t *testing.T, metrics []prometheus.Metric) int {
+	t.Helper()
+	n := 0
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "crowdsec_hub_items") {
+			n++
+		}
+	}
+	return n
+}
+
+// TestCrowdSecCollector_HubSubCadence_SkipsFetchButKeepsSeries is the core
+// assertion of #575, and it asserts BOTH halves because either one alone would be a
+// bug: the second poll must not touch the six hub endpoints, and it must still emit
+// exactly the same hub gauges. A version that skipped the fetch and dropped the
+// series would look like a saving while actually deleting data for 14 of every 15
+// minutes.
+func TestCrowdSecCollector_HubSubCadence_SkipsFetchButKeepsSeries(t *testing.T) {
+	mux, hits := countingCrowdSecMux(t)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &crowdsecCollector{subsystem: CrowdSecSubsystem, hubCadence: newSubCadence(15 * time.Minute)}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	first := collectMetrics(t, c, client)
+	wantHub := countCrowdSecHubMetrics(t, first)
+	if wantHub == 0 {
+		t.Fatal("precondition: the first poll emitted no hub items")
+	}
+	if got := hits("/api/crowdsec/collections/search"); got != 1 {
+		t.Fatalf("precondition: collections fetched %d times on the first poll, want 1", got)
+	}
+
+	second := collectMetrics(t, c, client)
+
+	for _, path := range []string{
+		"/api/crowdsec/collections/search",
+		"/api/crowdsec/scenarios/search",
+		"/api/crowdsec/parsers/search",
+		"/api/crowdsec/postoverflows/search",
+		"/api/crowdsec/appsecconfigs/search",
+		"/api/crowdsec/appsecrules/search",
+	} {
+		if got := hits(path); got != 1 {
+			t.Errorf("%s was fetched %d times across two polls, want 1: the hub half must be "+
+				"gated to crowdsecHubInterval", path, got)
+		}
+	}
+	// The live half is NOT gated and must still be fetched every poll.
+	if got := hits("/api/crowdsec/alerts/search"); got != 2 {
+		t.Errorf("alerts fetched %d times across two polls, want 2: the live half must keep the "+
+			"collector's own tier", got)
+	}
+	if got := countCrowdSecHubMetrics(t, second); got != wantHub {
+		t.Errorf("second poll emitted %d hub_items series, want the same %d as the first: a "+
+			"skipped hub fetch must re-emit the last good counts, not drop the series", got, wantHub)
+	}
+}
+
+// TestCrowdSecCollector_HubSubCadence_FailedFetchRetriesNextPoll pins the reason
+// the cadence is marked only on a fetch that produced items. If it were marked on
+// every attempt, one hub read failing (a message envelope, an undecodable rows
+// shape) would leave the hub gauges absent — never having had a good value — for a
+// full fifteen minutes, with nothing saying why.
+func TestCrowdSecCollector_HubSubCadence_FailedFetchRetriesNextPoll(t *testing.T) {
+	var mu sync.Mutex
+	hubCalls := 0
+	failFirst := true
+
+	mux := crowdsecCollectorMux(t)
+	// Re-register the four content-bearing hub endpoints to fail on the first pass.
+	failing := http.NewServeMux()
+	failing.HandleFunc("/api/crowdsec/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/crowdsec/collections/search", "/api/crowdsec/scenarios/search",
+			"/api/crowdsec/parsers/search", "/api/crowdsec/postoverflows/search",
+			"/api/crowdsec/appsecconfigs/search", "/api/crowdsec/appsecrules/search":
+			mu.Lock()
+			hubCalls++
+			envelope := failFirst
+			mu.Unlock()
+			if envelope {
+				_, _ = w.Write([]byte(crowdsecMessageEnvelopeCollector))
+				return
+			}
+			_, _ = w.Write([]byte(crowdsecCollectorHubEnabledFixture))
+		default:
+			mux.ServeHTTP(w, r)
+		}
+	})
+
+	server := httptest.NewServer(failing)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &crowdsecCollector{subsystem: CrowdSecSubsystem, hubCadence: newSubCadence(15 * time.Minute)}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	first := collectMetrics(t, c, client)
+	if got := countCrowdSecHubMetrics(t, first); got != 0 {
+		t.Fatalf("precondition: hub read returned the message envelope but %d hub series were "+
+			"emitted; a never-successful fetch must emit nothing, not a fabricated zero", got)
+	}
+
+	mu.Lock()
+	failFirst = false
+	callsAfterFirst := hubCalls
+	mu.Unlock()
+
+	second := collectMetrics(t, c, client)
+
+	mu.Lock()
+	callsAfterSecond := hubCalls
+	mu.Unlock()
+	if callsAfterSecond == callsAfterFirst {
+		t.Fatal("the hub half was not re-fetched on the next poll after a failed read; a failure " +
+			"must retry immediately rather than parking for the whole interval")
+	}
+	if got := countCrowdSecHubMetrics(t, second); got == 0 {
+		t.Error("the retry produced no hub series")
 	}
 }
