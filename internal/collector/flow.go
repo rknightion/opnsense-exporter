@@ -302,6 +302,7 @@ type flowCollector struct {
 	uniqueDestsCapped *prometheus.Desc
 	topTalker         *prometheus.Desc
 	deltaRatio        *prometheus.Desc
+	deltaExcluded     *prometheus.Desc
 
 	dnsCacheEntries  *prometheus.Desc
 	dnsCacheHits     *prometheus.Desc
@@ -435,8 +436,32 @@ func (c *flowCollector) registerExtras() {
 			"payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a value well "+
 			"above 1 means Zenarmor inspected far fewer bytes than crossed the wire, which is a security "+
 			"signal, not an error. Present only where both lanes run and correlate (--flow.log-mode="+
-			"per_flow); absent otherwise, since there is no disagreement to measure.",
+			"per_flow); absent otherwise, since there is no disagreement to measure. "+
+			"READ THE DEVIATION CAREFULLY: it is not all source disagreement (#604). NetFlow counts "+
+			"WIRE bytes; Zenarmor falls back to PAYLOAD bytes on roughly half of all flow records "+
+			"(short UDP, where it has not yet accumulated wire bytes), so on that population the "+
+			"histogram is reporting per-packet header overhead - the gap clusters at 28 bytes, the "+
+			"IPv4 IP+UDP header, and the p90 there alone reaches 1.96. The record states its own basis, "+
+			"so a consumer can tell the two apart. Window partials - where this window's NetFlow bytes "+
+			"would be compared against a whole connection's Zenarmor bytes - are EXCLUDED entirely and "+
+			"counted in source_byte_delta_excluded_total, so the impossible sub-1.0 tail is gone rather "+
+			"than explained away. For the underlying security question (is traffic evading inspection) "+
+			"prefer a BYTE-WEIGHTED comparison - the ratio of summed bytes on merged records - over a "+
+			"percentile of per-flow ratios.",
 		ifaceLabel,
+	)
+	c.deltaExcluded = buildPrometheusDesc(c.subsystem, "source_byte_delta_excluded_total",
+		"Merged flow records deliberately kept OUT of source_byte_delta_ratio because their two "+
+			"sides are not totalling the same thing (#604). Today that is exactly the window-partial "+
+			"case: corrKey buckets by flow-end, so a connection longer than --flow.correlate.window "+
+			"emits one record per window carrying only THAT window's NetFlow bytes, while the single "+
+			"Zenarmor conn document carries the whole connection's counters and merges into one of "+
+			"them. Comparing those reads as \"the firewall counted 75x fewer bytes than crossed the "+
+			"wire\", which is impossible. The records still SHIP with both sides' counters - only the "+
+			"comparison is meaningless - so this is the histogram's coverage gap, not lost volume. "+
+			"On a box with a long active timeout expect a steady non-zero rate; a sudden rise means "+
+			"connections are outliving the correlate window more often.",
+		nil,
 	)
 
 	c.dnsCacheEntries = buildPrometheusDesc(c.subsystem, "dns_cache_entries",
@@ -965,6 +990,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.uniqueDestsCapped
 	ch <- c.topTalker
 	ch <- c.deltaRatio
+	ch <- c.deltaExcluded
 	ch <- c.dnsCacheEntries
 	ch <- c.dnsCacheHits
 	ch <- c.dnsCacheMisses
@@ -1025,6 +1051,11 @@ func (c *flowCollector) collectExtras(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(c.topTalker, prometheus.CounterValue, float64(e.Bytes),
 			e.Host, e.Direction, c.instance)
 	}
+	// Emitted unconditionally, including zero: an exclusion counter that only appears
+	// once something has been excluded cannot be alerted on, and "the histogram is
+	// complete" is exactly the claim it exists to let a reader check.
+	ch <- prometheus.MustNewConstMetric(c.deltaExcluded, prometheus.CounterValue,
+		float64(c.store.delta.Excluded()), c.instance)
 	for iface, h := range c.store.delta.Snapshot() {
 		ch <- prometheus.MustNewConstHistogram(c.deltaRatio, h.Count, h.Sum, h.Buckets, iface, c.instance)
 	}

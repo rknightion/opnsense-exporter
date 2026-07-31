@@ -85655,7 +85655,7 @@
         "spec": {
           "id": 784,
           "title": "Source Byte-Delta Ratio (NetFlow / Zenarmor)",
-          "description": "Distribution of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface \u2014 the payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a p90/p99 well above 1 means Zenarmor inspected far fewer bytes than crossed the wire on those flows, which is a security signal (traffic Zenarmor is not seeing), not an error. Present only where both lanes run and correlate (--flow.log-mode=per_flow); absent otherwise, since there is no disagreement to measure.",
+          "description": "Distribution of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface \u2014 the payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a p90/p99 well above 1 means Zenarmor inspected far fewer bytes than crossed the wire on those flows, which is a security signal (traffic Zenarmor is not seeing), not an error. Present only where both lanes run and correlate (--flow.log-mode=per_flow); absent otherwise, since there is no disagreement to measure. READ THE DEVIATION CAREFULLY \u2014 most of it is accounting basis, not blindness (#604). NetFlow counts WIRE bytes; Zenarmor falls back to PAYLOAD bytes on roughly HALF of all flow records, because it does not accumulate wire bytes until it has tracked a flow past its first packets \u2014 which is every short UDP flow. On that population this panel is showing per-packet header overhead: the gap clusters at 28 bytes (the IPv4 IP+UDP header) and p90 there alone reaches 1.96. Records carry flow.zen_bytes_are_payload so the two bases can be told apart in the logs. The excluded series is the other half of #604: a connection longer than --flow.correlate.window would compare one window of NetFlow bytes against a whole connection's Zenarmor bytes, reading as an impossible ratio near 0.01, so those records are kept out of the histogram entirely and counted here instead. They still ship with both sides' volume \u2014 only the comparison is dropped. If the question is really \"is traffic evading inspection\", use a BYTE-WEIGHTED comparison (summed NetFlow bytes over summed Zenarmor bytes on merged records) rather than a percentile of per-flow ratios; byte-weighted, the reference box reads 1.22-1.36.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -85733,6 +85733,32 @@
                         "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.99, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "C",
                         "legendFormat": "p99 {{interface}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "D",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_source_byte_delta_excluded_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "D",
+                        "legendFormat": "excluded (window partial)/sec",
                         "instant": false,
                         "range": true
                       }

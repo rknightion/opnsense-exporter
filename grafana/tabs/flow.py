@@ -202,14 +202,30 @@ def build(b: Builder):
          (f'histogram_quantile(0.9, sum {grp("le", "interface")} '
           f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p90 {{interface}}"),
          (f'histogram_quantile(0.99, sum {grp("le", "interface")} '
-          f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p99 {{interface}}")],
+          f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p99 {{interface}}"),
+         (f'rate({sel("opnsense_flow_source_byte_delta_excluded_total")}[{RATE}])',
+          "excluded (window partial)/sec")],
         unit="ops",
         desc="Distribution of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — "
              "the payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a p90/p99 "
              "well above 1 means Zenarmor inspected far fewer bytes than crossed the wire on those "
              "flows, which is a security signal (traffic Zenarmor is not seeing), not an error. Present "
              "only where both lanes run and correlate (--flow.log-mode=per_flow); absent otherwise, "
-             "since there is no disagreement to measure.",
+             "since there is no disagreement to measure. "
+             "READ THE DEVIATION CAREFULLY — most of it is accounting basis, not blindness (#604). "
+             "NetFlow counts WIRE bytes; Zenarmor falls back to PAYLOAD bytes on roughly HALF of all "
+             "flow records, because it does not accumulate wire bytes until it has tracked a flow past "
+             "its first packets — which is every short UDP flow. On that population this panel is "
+             "showing per-packet header overhead: the gap clusters at 28 bytes (the IPv4 IP+UDP "
+             "header) and p90 there alone reaches 1.96. Records carry flow.zen_bytes_are_payload so "
+             "the two bases can be told apart in the logs. The excluded series is the other half of "
+             "#604: a connection longer than --flow.correlate.window would compare one window of "
+             "NetFlow bytes against a whole connection's Zenarmor bytes, reading as an impossible "
+             "ratio near 0.01, so those records are kept out of the histogram entirely and counted "
+             "here instead. They still ship with both sides' volume — only the comparison is dropped. "
+             "If the question is really \"is traffic evading inspection\", use a BYTE-WEIGHTED "
+             "comparison (summed NetFlow bytes over summed Zenarmor bytes on merged records) rather "
+             "than a percentile of per-flow ratios; byte-weighted, the reference box reads 1.22-1.36.",
     )
 
     # ---- drilldowns (#419) ------------------------------------------------

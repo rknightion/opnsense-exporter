@@ -686,6 +686,35 @@ and the payload figure is not, and counts every fallback in
 repair working, not a fault. The byte impact is negligible - these are one and two
 packet flows - the point is not reporting zero for traffic that plainly happened.
 
+### What `source_byte_delta_ratio` actually measures
+
+`opnsense_flow_source_byte_delta_ratio` divides NetFlow bytes by Zenarmor bytes on a
+merged record, and 1.0 is documented as agreement. Most of the deviation from 1.0 is
+**accounting basis, not a source disagreement**, in two independent ways.
+
+**Wire bytes against payload bytes.** NetFlow always counts wire bytes. Zenarmor's
+figure is wire bytes when it has them and payload bytes when it does not, and the
+fallback above fires on roughly **half** of all Zenarmor flow records. On that
+population the ratio is reporting per-packet header overhead: the gap clusters at 28
+bytes, the IPv4 IP+UDP header, and the p90 there alone is 1.96. Those records stay in
+the histogram - excluding half the data would be worse - but each one carries
+`flow.zen_bytes_are_payload`, so the two bases can be told apart.
+
+**A window partial against a whole connection.** The correlator buckets by flow-end,
+so a connection longer than `--flow.correlate.window` emits one record per window
+carrying only *that window's* NetFlow bytes, while the single Zenarmor conn document
+carries the *whole connection's* counters and merges into one of them. With the
+reference box's 1800-second active timeout this is routine, and it reads as ratios
+near 0.01 - "the firewall counted 75x fewer bytes than crossed the wire", which is
+impossible. Those records are **excluded from the histogram entirely** and counted in
+`opnsense_flow_source_byte_delta_excluded_total`; they still ship, with both sides'
+volume and a `flow.window_partial` marker. Only the comparison is dropped.
+
+If the underlying question is "is traffic evading inspection", use a **byte-weighted**
+comparison - summed NetFlow bytes over summed Zenarmor bytes across merged records -
+rather than a percentile of per-flow ratios. Byte-weighted, the reference box reads
+1.22-1.36, i.e. no blind spot.
+
 ## Watching the accumulator
 
 Four self-metrics, all published from zero so a healthy exporter reads a flat line

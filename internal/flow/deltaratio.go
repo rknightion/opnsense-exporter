@@ -40,6 +40,11 @@ type HistogramData struct {
 type DeltaRatio struct {
 	mu    sync.Mutex
 	cells map[string]*ratioCell
+	// excluded counts merged records deliberately kept OUT of the histogram because
+	// the two sides are not comparable (#604). Every other bounded or lossy path in
+	// this pipeline counts its refusals, and a histogram that silently drops a
+	// population is a histogram nobody can size the bias of.
+	excluded uint64
 }
 
 // ratioCell is one interface's running histogram. counts is indexed by bucket, with
@@ -65,6 +70,17 @@ func (d *DeltaRatio) Observe(r Record) {
 	if !r.NF.Present || !r.Zen.Present {
 		return
 	}
+	if r.Repairs.WindowPartial {
+		// A window partial compares this window's NetFlow bytes against the WHOLE
+		// connection's Zenarmor bytes. That is not a disagreement between the two
+		// sources, it is a difference in what each one is totalling, and folding it in
+		// puts an impossible sub-1.0 tail into a metric whose entire job is to make a
+		// real disagreement legible. Excluded and counted, never silently dropped.
+		d.mu.Lock()
+		d.excluded++
+		d.mu.Unlock()
+		return
+	}
 	ratio := ratioOf(r.NF.Bytes(), r.Zen.Bytes())
 	iface := interfaceLabel(r)
 
@@ -79,6 +95,15 @@ func (d *DeltaRatio) Observe(r Record) {
 	c.counts[bucketOf(ratio)]++
 	c.sum += ratio
 	c.total++
+}
+
+// Excluded is how many merged records were kept out of the histogram because their
+// two sides were not comparable. It is published as a self-metric so the histogram's
+// coverage is knowable rather than assumed.
+func (d *DeltaRatio) Excluded() uint64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.excluded
 }
 
 // Snapshot returns each interface's histogram with cumulative bucket counts. Calling

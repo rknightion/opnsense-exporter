@@ -1,6 +1,6 @@
 ---
 title: Metrics Reference
-description: Overview of all 1000 Prometheus metrics exposed by opnsense2otel
+description: Overview of all 1001 Prometheus metrics exposed by opnsense2otel
 tags:
   - Prometheus
   - Monitoring
@@ -8,7 +8,7 @@ tags:
 
 # Metrics Reference
 
-opnsense2otel provides 1000 Prometheus metrics across 65 collectors, covering every major subsystem of the firewall platform.
+opnsense2otel provides 1001 Prometheus metrics across 65 collectors, covering every major subsystem of the firewall platform.
 
 Every metric on this page is generated from the collector source, so it always matches the shipped
 binary. Read the collector implementations in
@@ -38,7 +38,7 @@ is missing.
 
 ## Quick facts
 
-- **1000 metrics** across 65 collectors
+- **1001 metrics** across 65 collectors
 - **Naming convention:** `opnsense_<subsystem>_<metric_name>`
 - **Common label:** `opnsense_instance` on every metric
 - **Metric types:** Gauge (most metrics), Counter (`_total` suffix)

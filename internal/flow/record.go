@@ -197,6 +197,40 @@ type Repairs struct {
 	// VLANSubnetAttributed does: ifaceIsWAN reads that flag as proof that an interface
 	// is a WAN by construction, an invariant only the phase-2 repair may assert.
 	PolicyRouteCorrected bool
+
+	// ZenBytesArePayload states the BYTE BASIS of the Zenarmor side on a merged
+	// record: true means the figure is Zenarmor's PAYLOAD bytes (pbytes), false that
+	// it is wire bytes (nbytes).
+	//
+	// It exists because opnsense_flow_source_byte_delta_ratio compares that figure
+	// against NetFlow's WIRE bytes, and on the reference box the fallback fires on
+	// roughly HALF of all Zenarmor flow records — 2-3 packet UDP flows, where the
+	// per-packet gap clusters at 28 bytes (the IPv4 IP+UDP header) and the ratio's
+	// p90 reaches 1.96 on that sub-population alone (#604). Without this the metric
+	// reports header overhead as source disagreement and nothing downstream can tell
+	// the two apart.
+	//
+	// It is distinct from PayloadByteFallback, which is the ZENARMOR LANE's own
+	// record-level flag. finalize() builds the merged record from a NETFLOW half, so
+	// the lane's flag does not survive the merge — this is the field that does.
+	ZenBytesArePayload bool
+
+	// WindowPartial states that this record's NetFlow side covers only PART of the
+	// connection its Zenarmor side counts in full.
+	//
+	// corrKey buckets by floor(End / window), so a connection longer than the window
+	// emits one record per window carrying only that window's NetFlow bytes, while
+	// the single conn document carries the whole connection's counters and merges
+	// into whichever bucket its End falls in. The reference box runs
+	// activeTimeout=1800, so this is routine: 3.2% of merged records overall and
+	// 12.3% of the default WAN's read a ratio below 0.9, some as low as 0.013 — "the
+	// firewall counted 75x fewer bytes than crossed the wire", which is impossible
+	// and is a partial total against a complete one (#604).
+	//
+	// The delta-ratio histogram EXCLUDES these and counts the exclusions. The record
+	// still ships, and still carries both sides' counters: the volume is real, only
+	// the COMPARISON is meaningless.
+	WindowPartial bool
 }
 
 // Record is one normalized flow. Both lanes produce it; the rollup, the correlator

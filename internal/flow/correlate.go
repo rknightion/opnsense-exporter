@@ -416,10 +416,35 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 		// #520's per-field precedence so a merged record means the same thing as a
 		// Zenarmor-only one. The NetFlow side already carries OUR lookup.
 		MergeGeo(&out.Geo, e.zen.Geo)
+		// The BYTE BASIS of the figure the delta ratio is about to compare (#604).
+		// out came from a NetFlow half, so the Zenarmor lane's own record-level flag
+		// does not survive the merge unless it is carried explicitly.
+		out.Repairs.ZenBytesArePayload = e.zen.Repairs.PayloadByteFallback
+		// And whether the two sides are totalling the same thing at all. A conn
+		// document whose own span crosses a window boundary describes a connection
+		// this bucket's NetFlow fragments cover only part of — the Zenarmor side is
+		// the whole connection, the NetFlow side is one window of it. Read from the
+		// ZENARMOR side's clock alone, so it needs no agreement between the two
+		// sources' timestamps.
+		out.Repairs.WindowPartial = c.spansWindows(e.zen.Start, e.zen.End)
 	} else {
 		out.Source = SourceNetflow
 	}
 	return out, true
+}
+
+// spansWindows reports whether [start, end] falls in more than one correlator
+// window bucket, using the SAME arithmetic corrKey does.
+//
+// A zero start states nothing (a conn document that reported no open time), and a
+// zero window would divide by zero, so both answer false: the marker suppresses a
+// comparison, and suppressing one on no evidence is its own kind of wrong.
+func (c *Correlator) spansWindows(start, end time.Time) bool {
+	if c.window <= 0 || start.IsZero() || end.IsZero() {
+		return false
+	}
+	w := int64(c.window)
+	return start.UnixNano()/w != end.UnixNano()/w
 }
 
 // orientation picks which of the conversation's two halves describes the emitted

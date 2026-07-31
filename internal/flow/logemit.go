@@ -77,6 +77,20 @@ func (r Record) LogAttributes() map[string]string {
 	if r.Repairs.PolicyRouteCorrected {
 		a["flow.policy_route_corrected"] = "true"
 	}
+	// The byte BASIS of the two sides on a merged record (#604). Without it a reader
+	// comparing netflow.bytes against zenarmor.bytes on one record cannot tell wire
+	// against wire from wire against payload, and on roughly half of all Zenarmor
+	// records it is the latter — so the difference is IP+UDP header overhead, not
+	// traffic that evaded inspection.
+	if r.Repairs.ZenBytesArePayload {
+		a["flow.zen_bytes_are_payload"] = "true"
+	}
+	// And whether the two sides are totalling the same span at all. On a window
+	// partial the NetFlow side is one correlate-window of a connection the Zenarmor
+	// side counts whole, so their ratio means nothing — the volume is still real.
+	if r.Repairs.WindowPartial {
+		a["flow.window_partial"] = "true"
+	}
 	if r.Fragments > 1 {
 		a["flow.fragments"] = strconv.Itoa(r.Fragments)
 	}
