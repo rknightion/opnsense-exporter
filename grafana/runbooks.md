@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **64 alert rules** and **14 recording rules**.
+Total: **63 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -1917,36 +1917,6 @@ opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"}
 
 **Verify recovery:**
 - opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"} for that neighbor returns to 0
-
-## OPNsenseFlowSourceDivergence
-
-**Severity:** warning  
-**Pending window:** 30m0s  
-**Rule name:** `opnsense-flow-source-divergence`
-
-**Expression:**
-```promql
-histogram_quantile(0.9, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket[15m])))
-```
-
-**What it measures:** The 90th-percentile of opnsense_flow_source_byte_delta_ratio (NetFlow bytes / Zenarmor bytes on the same merged flow record) per interface, over a 15m rolling window - the same p90 series already on the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel, so the alert threshold and the chart read the same number.
-
-**Threshold & window:** gt 1.5 sustained for 30m. The histogram's own bucket bounds (0.9, 1, 1.05, 1.1, 1.25, 1.5, 2, 3, 5, 10, 100 - internal/flow/deltaratio.go:16) cluster tightly from 0.9 to 1.25 to capture legitimate per-packet header overhead; 1.5 is the first bound past that cluster, so it is the line between 'NetFlow counts the IP/TCP headers Zenarmor's payload accounting does not' and 'the two sources have genuinely stopped agreeing'. The 30m pending period exceeds the 15m rate() window on purpose (#594): a single anomalous flow keeps the p90 elevated for exactly the window's 15m and then drops out, which cannot reach a 30m pending period, while a genuinely sustained divergence keeps every rolling 15m window elevated throughout and does fire.
-
-**Absent / no-data semantics:** Default noDataState (Ok) - the metric is only emitted where both NetFlow and Zenarmor run and correlate (--flow.log-mode=per_flow); absent means there is no second source to disagree with, not that they agree.
-
-**First checks:**
-- Open the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel for the named interface to see the full p50/p90/p99 distribution and how long it has been elevated
-- Check whether Zenarmor's own engine/service health looks normal (a running-but-blind engine looks identical to a healthy one on service-status checks alone)
-- Look for a traffic pattern change on that interface - new encrypted/tunnelled/QUIC-heavy traffic is a plausible reason Zenarmor's DPI stops accounting for a flow's bytes correctly while NetFlow (packet-path counting) keeps counting it
-
-**Likely causes:**
-- Traffic evading Zenarmor's inspection engine (a protocol or encapsulation its DPI does not recognise) while still being counted at the packet path by NetFlow
-- A Zenarmor accounting bug or misconfiguration undercounting bytes on a class of flows
-- A genuinely malicious flow deliberately structured to minimise what a DPI engine attributes to it
-
-**Verify recovery:**
-- The p90 series on the 'Source Byte-Delta Ratio' panel drops back under 1.5 and stays there for a full 15m window
 
 ## Recording rules
 

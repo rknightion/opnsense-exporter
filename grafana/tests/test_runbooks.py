@@ -102,7 +102,7 @@ class RunbookDocumentParityTest(unittest.TestCase):
         cls.markdown = build_rules.generate_runbooks_md()
         cls.headings = _headings(cls.markdown)
 
-    def test_exact_alert_count_is_64(self):
+    def test_exact_alert_count_is_63(self):
         # Re-measured against current main (#430 audit found the tracked issue's
         # figures - 31/19 rows - stale; the epic's 2026-07-27 revalidation corrected
         # it to 42/14, confirmed again here structurally). 43 since #520 added
@@ -118,8 +118,20 @@ class RunbookDocumentParityTest(unittest.TestCase):
         # mbuf jumbo pool saturation, Unbound upstream lame, and OSPF LSA
         # retransmission stuck. 64 since #592 item 2 (OPNsenseFlowSourceDivergence),
         # handed to this lane by the annotation lane because the underlying metric
-        # is a histogram an annotation Watch cannot carry.
-        self.assertEqual(len(build_rules.RULES), 64)
+        # is a histogram an annotation Watch cannot carry. Back to 63 in #602:
+        # OPNsenseFlowSourceDivergence was deleted, not retuned. Its threshold
+        # (p90 > 1.5) sat BELOW the metric's normal operating range on every
+        # interface that produces data - measured over 24h of live prod, AAISP
+        # breached 100% of the time at ~40k observations/hour, so it was not a
+        # small-sample artifact. The floor is set by per-packet header overhead on
+        # the 2-3 packet UDP flows that are 54% of merged records by count, where
+        # NetFlow counts wire bytes and Zenarmor's payload fallback does not (#604).
+        # No threshold on an UNWEIGHTED per-flow ratio can express "X% of bytes went
+        # uninspected" - the bytes that matter sit in a handful of large flows at
+        # ~=1.0 while p90 is set by thousands of tiny ones. Byte-weighted, the two
+        # sources agree (1.22-1.36). The histogram and its panel stay; only the
+        # alert was wrong.
+        self.assertEqual(len(build_rules.RULES), 63)
 
     def test_exact_recording_count_is_14(self):
         self.assertEqual(len(build_rules.RECORDING), 14)

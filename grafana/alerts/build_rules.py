@@ -2111,88 +2111,6 @@ RULES = [
                 'opnsense_frr_ospf_neighbor_lsa_queue_depth{queue="ls_retransmission"} for that neighbor returns to 0',
             ],
          )),
-    # #592 item 2, handed to this lane by the annotation lane after it declined to
-    # build this as an annotation layer: opnsense_flow_source_byte_delta_ratio is a
-    # cumulative per-interface HISTOGRAM (internal/collector/flow.go:428-435,
-    # MustNewConstHistogram at flow.go:971) with no instant value for the Go
-    # annotation Watch mechanism to diff, and edge detection inside an annotation
-    # query is step-dependent (smears above the scrape interval, returns nothing
-    # below it). Threshold + dwell + a marker at the transition IS an alert rule,
-    # and a firing Grafana-managed rule already annotates the panel named in its
-    # __dashboardUid__/__panelId__ - the same mechanism 20+ rules here already use -
-    # so the annotation comes for free from this rule pointed at "Source Byte-Delta
-    # Ratio (NetFlow / Zenarmor)" (grafana/tabs/flow.py).
-    #
-    # Threshold derivation: the real bucket bounds, read from
-    # internal/flow/deltaratio.go:16, are
-    #   {0.9, 1, 1.05, 1.1, 1.25, 1.5, 2, 3, 5, 10, 100}.
-    # That file's own comment says the buckets "cluster tightly just above [1.0]"
-    # to separate legitimate per-packet header overhead (NetFlow counts at L3,
-    # Zenarmor's payload accounting does not) from genuine disagreement, and
-    # explicitly groups 1.05/1.1/1.25 together as that cluster. 1.5 is the first
-    # bound outside it - a 50%+ discrepancy is not plausible as header overhead
-    # even on tiny-packet-heavy flows - so it is the threshold, with one whole
-    # bucket (1.25) of margin between "known-normal" and "alerts".
-    #
-    # p90 (matching the dashboard panel's own p90 series exactly, so the alert
-    # line and the chart the operator lands on read the same number) rather than
-    # p50 or p99: p50 would trip on ordinary overhead half the time, p99 waits for
-    # the tail to be almost the whole population before firing at all.
-    #
-    # #594 check: NOT covered by test_single_event_sensitivity.py's automated
-    # classifier (it only scans op="gt"/params[0]==0 rules; this one's threshold is
-    # 1.5, not 0), so verified by hand instead, same arithmetic the classifier
-    # applies elsewhere: rate() smears one observation across the entire window it
-    # sits inside, so a single anomalous flow makes histogram_quantile read high
-    # for exactly the 15m window and then drops out - that cannot by itself
-    # satisfy a 30m pending period (30m > 15m, strictly), while a genuinely
-    # sustained divergence keeps every rolling 15m window elevated throughout the
-    # 30m and does fire. Same shape as OPNsenseNetmapRingFull (15m window, 30m
-    # pending, "an isolated burst ... is normal, a persistent one is not").
-    #
-    # Severity: warning, not info. In this file's own convention only "critical"
-    # ever pages (emit_grafana_managed sets the "page" label solely on critical
-    # under --stack), so "warning" already means "annotate and let someone look",
-    # never a wake-up - choosing it does not conflict with "the marker is the
-    # deliverable". And the metric's own doc comment calls sustained divergence "a
-    # security signal, not an error": traffic silently evading Zenarmor's
-    # inspection while both services keep reporting healthy is exactly the kind of
-    # thing this file uses warning for elsewhere (e.g. OPNsenseIDSAlertSpike), not
-    # the info tier reserved for pure housekeeping nuance (OPNsenseCollectorDegraded,
-    # OPNsenseUnboundDNSSECBogus).
-    dict(name="opnsense-flow-source-divergence", title="OPNsenseFlowSourceDivergence",
-         A="histogram_quantile(0.9, sum by (opnsense_instance, le, interface) "
-           "(rate(opnsense_flow_source_byte_delta_ratio_bucket[15m])))",
-         op="gt", params=[1.5, 0], for_min=30, severity="warning",
-         summary="OPNsense NetFlow/Zenarmor byte counts diverging on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
-         description="The 90th-percentile NetFlow-over-Zenarmor byte ratio on merged flow records for "
-                     "{{ $labels.interface }} has stayed above 1.5x for 30m - well past the 0.9-1.25 "
-                     "range that per-packet header overhead alone accounts for. NetFlow is authoritative "
-                     "(it counts at the packet path), so this means Zenarmor is inspecting far fewer "
-                     "bytes than are actually crossing the wire on a meaningful share of flows: a "
-                     "security-relevant blind spot (traffic evading inspection), not necessarily an "
-                     "error in either lane. #346 decision 3 forbids summing the two sources, so this "
-                     "ratio is the only signal for 'one ingest lane is losing data' - the histogram "
-                     "panel shows the distribution, this rule marks WHEN it crossed into the abnormal "
-                     "range.",
-         runbook=dict(
-             measures="The 90th-percentile of opnsense_flow_source_byte_delta_ratio (NetFlow bytes / Zenarmor bytes on the same merged flow record) per interface, over a 15m rolling window - the same p90 series already on the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel, so the alert threshold and the chart read the same number.",
-             threshold="gt 1.5 sustained for 30m. The histogram's own bucket bounds (0.9, 1, 1.05, 1.1, 1.25, 1.5, 2, 3, 5, 10, 100 - internal/flow/deltaratio.go:16) cluster tightly from 0.9 to 1.25 to capture legitimate per-packet header overhead; 1.5 is the first bound past that cluster, so it is the line between 'NetFlow counts the IP/TCP headers Zenarmor's payload accounting does not' and 'the two sources have genuinely stopped agreeing'. The 30m pending period exceeds the 15m rate() window on purpose (#594): a single anomalous flow keeps the p90 elevated for exactly the window's 15m and then drops out, which cannot reach a 30m pending period, while a genuinely sustained divergence keeps every rolling 15m window elevated throughout and does fire.",
-             absent="Default noDataState (Ok) - the metric is only emitted where both NetFlow and Zenarmor run and correlate (--flow.log-mode=per_flow); absent means there is no second source to disagree with, not that they agree.",
-             checks=[
-                "Open the 'Source Byte-Delta Ratio (NetFlow / Zenarmor)' panel for the named interface to see the full p50/p90/p99 distribution and how long it has been elevated",
-                "Check whether Zenarmor's own engine/service health looks normal (a running-but-blind engine looks identical to a healthy one on service-status checks alone)",
-                "Look for a traffic pattern change on that interface - new encrypted/tunnelled/QUIC-heavy traffic is a plausible reason Zenarmor's DPI stops accounting for a flow's bytes correctly while NetFlow (packet-path counting) keeps counting it",
-            ],
-             causes=[
-                "Traffic evading Zenarmor's inspection engine (a protocol or encapsulation its DPI does not recognise) while still being counted at the packet path by NetFlow",
-                "A Zenarmor accounting bug or misconfiguration undercounting bytes on a class of flows",
-                "A genuinely malicious flow deliberately structured to minimise what a DPI engine attributes to it",
-            ],
-             verify=[
-                "The p90 series on the 'Source Byte-Delta Ratio' panel drops back under 1.5 and stays there for a full 15m window",
-            ],
-         )),
 ]
 
 # Recording rules: metric name (level:metric:operation) + value query.
@@ -2459,7 +2377,11 @@ PANEL_LINKS = {
     "OPNsenseMbufJumboPoolSaturated": "Jumbo Pool Utilization %",
     "OPNsenseUnboundUpstreamLame": "Unhealthy Upstreams",
     "OPNsenseOSPFLSARetransmissionStuck": "OSPF Neighbor LSA Queue Depth",
-    "OPNsenseFlowSourceDivergence": "Source Byte-Delta Ratio (NetFlow / Zenarmor)",
+    # OPNsenseFlowSourceDivergence's entry (-> "Source Byte-Delta Ratio (NetFlow /
+    # Zenarmor)") went with the rule in #602. The PANEL still exists and is still
+    # worth looking at - the distribution is informative - it just has no alert
+    # pointing at it, because no threshold on a per-flow ratio percentile can
+    # express the byte-volume question the rule claimed to answer.
 }
 
 # Alerts that deliberately carry NO panel link, with the reason. Empty today — every
