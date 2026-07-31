@@ -194,7 +194,7 @@ func (c *Client) FetchGateways() (Gateways, *APICallError) {
 	url, ok := c.endpoints["gatewaysStatus"]
 	if !ok {
 		return data, &APICallError{
-			Endpoint:   "gateways",
+			Endpoint:   "gatewaysStatus",
 			Message:    "endpoint not found in client endpoints",
 			StatusCode: 0,
 		}

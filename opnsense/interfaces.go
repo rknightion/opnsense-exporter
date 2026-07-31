@@ -233,7 +233,7 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 	url, ok := c.endpoints["interfaces"]
 	if !ok {
 		return data, &APICallError{
-			Endpoint:   "arp",
+			Endpoint:   "interfaces",
 			Message:    "endpoint not found in client endpoints",
 			StatusCode: 0,
 		}
