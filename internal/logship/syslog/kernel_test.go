@@ -85,6 +85,21 @@ func TestNetmapCapturedRingFullLines(t *testing.T) {
 			message: "[1016] 100.204884 [ 902] netmap_transmit           ixl0 full hwcur 736 hwtail 736 qlen 1023",
 			device:  "ixl0", hwcur: "736", hwtail: "736", qlen: "1023",
 		},
+		// #610's line, pinned because that issue asserted this grammar "does not match"
+		// any real line and named the run of spaces as the prime suspect. It DOES match,
+		// and always did: the counter carries 952 samples over 7d on the live stack with
+		// device="ixl0". Both halves of the kernel's rate-limited pair are here — see
+		// TestNetmapRateLimitedPairCountsTwice for why they are two events and not one.
+		{
+			name:    "#610 prod line, first of the rate-limited pair",
+			message: "[232659] 743.279886 [4335] netmap_transmit           ixl0 full hwcur 839 hwtail 842 qlen 1020",
+			device:  "ixl0", hwcur: "839", hwtail: "842", qlen: "1020",
+		},
+		{
+			name:    "#610 prod line, second of the pair - 70us later, same ring state",
+			message: "[232659] 743.279956 [4335] netmap_transmit           ixl0 full hwcur 839 hwtail 842 qlen 1020",
+			device:  "ixl0", hwcur: "839", hwtail: "842", qlen: "1020",
+		},
 	}
 
 	for _, tt := range tests {
@@ -108,6 +123,54 @@ func TestNetmapCapturedRingFullLines(t *testing.T) {
 				t.Errorf("Body = %q, want the message verbatim", rec.Body)
 			}
 		})
+	}
+}
+
+// THE DUPLICATE-EMISSION DECISION (#610): the pair counts TWICE, once per emitted
+// kernel line, and this test is the decision rather than an observation of it.
+//
+// #610 read the pair as "identical content ... the kernel's own double-log" and
+// argued for de-duplicating within a scrape interval. The premise is wrong on the
+// capture: the two lines differ in their UPTIME field — 743.279886 against
+// 743.279956, 70us apart — so they are two distinct netmap_transmit() calls that
+// each found the host ring full and each passed nm_prlim's limiter, not one event
+// logged twice. Their hwcur/hwtail/qlen agree because the ring state had not moved
+// in 70us, which is what you would expect of a ring that is full.
+//
+// Counting once per line is also the only reading consistent with the metric's own
+// help text, which documents the ceiling as "FLAT-TOPS at 2/s" — nm_prlim(2, ...)
+// permits two lines per second, so a per-second dedupe would make the true ceiling
+// 1/s and the documented one wrong. The value carries no severity information
+// either way (1 and 2 both mean "the ring was full during that second"); what is
+// read is the SHAPE of the rise, and halving it buys nothing while costing
+// per-(device, second) state in the store.
+func TestNetmapRateLimitedPairCountsTwice(t *testing.T) {
+	pair := []string{
+		"[232659] 743.279886 [4335] netmap_transmit           ixl0 full hwcur 839 hwtail 842 qlen 1020",
+		"[232659] 743.279956 [4335] netmap_transmit           ixl0 full hwcur 839 hwtail 842 qlen 1020",
+	}
+
+	sink := &fakeSink{}
+	for _, line := range pair {
+		rec, ok := parseKernel(kernelEnv(t, line), nil, nil)
+		if !ok {
+			t.Fatalf("parseKernel(%q) ok = false, want true", line)
+		}
+		if !observeDerived(sink, "kernel", rec.Attributes) {
+			t.Fatalf("observeDerived(%q) counted = false, want true", line)
+		}
+	}
+
+	if len(sink.calls) != 2 {
+		t.Fatalf("calls = %d, want 2 - the rate-limited pair is two events, not one", len(sink.calls))
+	}
+	for i, call := range sink.calls {
+		if call.method != "netmap" {
+			t.Errorf("call %d method = %q, want netmap", i, call.method)
+		}
+		if len(call.args) != 1 || call.args[0] != "ixl0" {
+			t.Errorf("call %d args = %v, want exactly [ixl0]", i, call.args)
+		}
 	}
 }
 

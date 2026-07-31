@@ -1077,8 +1077,12 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 	)
 
 	c.netmapRingFull = buildPrometheusDesc(c.subsystem, "netmap_ring_full_events_total",
-		"Intervals in which the FreeBSD kernel reported a netmap host transmit ring full on this "+
+		"Reports the FreeBSD kernel emitted that a netmap host transmit ring was full on this "+
 			"device - Zenarmor's packet-capture datapath having nowhere to put a packet. "+
+			"ONE PER KERNEL LINE, not one per interval: nm_prlim lets two lines through per "+
+			"second and both are counted, because they are two distinct netmap_transmit() calls "+
+			"that each found the ring full (#610 read the pair as one event double-logged; the "+
+			"capture disagrees - their uptime fields differ by ~70us). "+
 			"THIS COUNTS OCCURRENCES, NOT DROPPED PACKETS, and the difference matters: "+
 			"netmap_transmit() logs through nm_prlim(2, ...), which rate-limits the kernel to 2 "+
 			"lines per second, so this counter FLAT-TOPS at 2/s and under-reports hardest exactly "+
