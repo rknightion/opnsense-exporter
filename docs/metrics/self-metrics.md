@@ -16,7 +16,7 @@ library's own collectors rather than from this codebase, they carry no
 `opnsense_instance` label, and they are charted from the Exporter Runtime row behind
 the `has_go_runtime` sentinel.
 
-Total: 53 self-metrics.
+Total: 54 self-metrics.
 
 | Metric | Type | Declared in |
 | --- | --- | --- |
@@ -44,6 +44,7 @@ Total: 53 self-metrics.
 | opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds | Gauge | `internal/logship/enrich` |
 | opnsense_exporter_logs_enrich_misses_total | Counter | `internal/logship/enrich` |
 | opnsense_exporter_logs_enrich_refresh_errors_total | Counter | `internal/logship/enrich` |
+| opnsense_exporter_logs_enrich_seam_reads_total | Counter | `internal/logship/enrich` |
 | opnsense_exporter_logs_last_exported_timestamp_seconds | Gauge | `internal/logship` |
 | opnsense_exporter_logs_last_received_timestamp_seconds | Gauge | `internal/logship` |
 | opnsense_exporter_logs_parse_errors_total | Counter | `internal/logship` |

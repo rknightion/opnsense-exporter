@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"math"
 	"net"
 	"strings"
@@ -212,6 +213,9 @@ func (c *Client) fetchKeaLeases(endpointName EndpointName) (KeaLeases, *APICallE
 		}
 	}
 
+	// Keyed by the endpoint this helper was called for, so v4 and v6 land under
+	// their own keys rather than overwriting one another.
+	c.publishResult(fetchshare.Key(endpointName), data)
 	return data, nil
 }
 

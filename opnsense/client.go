@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
@@ -309,6 +310,18 @@ type Client struct {
 	// has a TTL, so the collector layer can record cache self-metrics. nil means no
 	// instrumentation.
 	cacheObserver CacheObserver
+	// results, when set, receives the decoded result of the handful of Fetch* methods
+	// that more than one consumer in this process wants (#571) — the syslog enrichment
+	// refresher was independently re-fetching twelve endpoints the metrics collectors
+	// had just decoded. It is NOT a cache: nothing in this package ever reads from it,
+	// and no Fetch* is ever served from it. Publication is a pure side effect, and the
+	// only reader is a consumer that explicitly asks fetchshare for a result of a
+	// stated maximum age. See the package comment on internal/fetchshare for why the
+	// distinction is load-bearing rather than pedantic.
+	//
+	// A pointer, for the same reason as cache: the per-scrape WithContext clone must
+	// share one seam with its parent. nil means nothing is published.
+	results *fetchshare.Store
 	// sem bounds the number of upstream API requests in flight across the whole
 	// exporter. A default scrape fans ~61 collectors out as goroutines and several of
 	// them nest further sub-fetches (runConcurrentFetches), so without a cap a single

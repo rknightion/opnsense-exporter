@@ -189,6 +189,23 @@ def build(b: Builder):
              "the API is failing and enrichment is silently going stale.",
     )
 
+    seam_hits = sel("opnsense_exporter_logs_enrich_seam_reads_total", 'outcome="hit"')
+    seam_all = sel("opnsense_exporter_logs_enrich_seam_reads_total")
+    enrich_seam = b.ts(
+        "Enrichment Seam Hit Rate",
+        [(f'sum {grp("endpoint")} (rate({seam_hits}[{RATE}]))'
+          f' / clamp_min(sum {grp("endpoint")} (rate({seam_all}[{RATE}])), 0.0001)',
+          "{{endpoint}}")],
+        unit="percentunit",
+        desc="Share of enrichment inputs served from the shared-result seam instead of a second "
+             "API call, by endpoint, from opnsense_exporter_logs_enrich_seam_reads_total (#571). "
+             "A hit is a request the firewall never received because a metrics collector had "
+             "already decoded that endpoint. This should sit at or near 1 for every endpoint "
+             "listed; an endpoint dropping toward 0 means its owning collector was disabled, its "
+             "poll is failing, or its plugin was removed -- enrichment still works (it falls back "
+             "to fetching), but the ~10.9k requests/day this saves have quietly come back.",
+    )
+
     # ---- debug capture (#428) ---------------------------------------------
     # These two series existed with no panel anywhere, and the coverage gate could not
     # notice because it only ever read the collector catalogue.
@@ -240,7 +257,7 @@ def build(b: Builder):
         b.row("Queue & Errors", [queue_len, queue_bytes, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [received_lag, exported_lag, possible_gaps], present="has_logs"),
         b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
-        b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
+        b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale, enrich_seam], present="has_logs"),
         b.row("Debug Capture", [debug_captured, debug_dropped], present="has_debug_capture"),
         # #523: the derived-metric budget. It belongs to this pipeline — these are the
         # counters that say whether a received line became a metric observation or was

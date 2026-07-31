@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"encoding/json"
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"net/http"
 	"sort"
 	"strconv"
@@ -177,6 +178,7 @@ func (c *Client) FetchIPsecPhase1() (IPsecPhase1, *APICallError) {
 		})
 	}
 
+	c.publishResult(fetchshare.KeyIPsecPhase1, data)
 	return data, nil
 }
 

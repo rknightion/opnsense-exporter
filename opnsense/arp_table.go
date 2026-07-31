@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"strings"
 )
 
@@ -82,5 +83,6 @@ func (c *Client) FetchArpTable() (ArpTable, *APICallError) {
 
 	arpTable.TotalEntries = resp.Total
 
+	c.publishResult(fetchshare.KeyArpTable, arpTable)
 	return arpTable, nil
 }

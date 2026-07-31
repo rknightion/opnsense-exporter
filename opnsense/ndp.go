@@ -1,5 +1,9 @@
 package opnsense
 
+import (
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+)
+
 type ndpEntry struct {
 	Mac             string `json:"mac"`
 	IP              string `json:"ip"`
@@ -61,5 +65,6 @@ func (c *Client) FetchNDPTable() (NDPTable, *APICallError) {
 
 	data.TotalEntries = len(resp)
 
+	c.publishResult(fetchshare.KeyNDPTable, data)
 	return data, nil
 }

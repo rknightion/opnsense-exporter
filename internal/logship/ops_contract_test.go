@@ -229,10 +229,16 @@ func logMetricDispositions() map[string]string {
 		"opnsense_exporter_logs_enrich_misses_total":                   "dashboard",
 		"opnsense_exporter_logs_enrich_refresh_errors_total":           "dashboard",
 		"opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds": "dashboard",
-		"opnsense_exporter_logs_debug_captured_total":                  "docs",
-		"opnsense_exporter_logs_debug_capture_dropped_total":           "docs",
-		"opnsense_exporter_logs_zenarmor_excluded_total":               "docs",
-		"opnsense_exporter_logs_zenarmor_bulk_requests_total":          "docs",
-		"opnsense_exporter_logs_zenarmor_bulk_bytes_total":             "docs",
+		// #571. Dashboarded rather than docs-only because it is the only in-process
+		// evidence that the collector/refresher dedupe is actually paying: a deduped
+		// fetch leaves no other trace, and the miss ratio silently going to 1 (a
+		// collector disabled, a plugin removed, a poll failing) is exactly the
+		// regression nobody would otherwise notice.
+		"opnsense_exporter_logs_enrich_seam_reads_total":      "dashboard",
+		"opnsense_exporter_logs_debug_captured_total":         "docs",
+		"opnsense_exporter_logs_debug_capture_dropped_total":  "docs",
+		"opnsense_exporter_logs_zenarmor_excluded_total":      "docs",
+		"opnsense_exporter_logs_zenarmor_bulk_requests_total": "docs",
+		"opnsense_exporter_logs_zenarmor_bulk_bytes_total":    "docs",
 	}
 }

@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"regexp"
 	"sort"
 	"strconv"
@@ -302,6 +303,7 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 		})
 	}
 
+	c.publishResult(fetchshare.KeyInterfaces, data)
 	return data, nil
 }
 
@@ -769,5 +771,6 @@ func (c *Client) FetchInterfacesOverview() (InterfacesOverview, *APICallError) {
 		}
 	}
 
+	c.publishResult(fetchshare.KeyInterfacesOverview, data)
 	return data, nil
 }

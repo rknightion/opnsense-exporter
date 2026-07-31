@@ -23,6 +23,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/annotations"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/cpustream"
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
 	"github.com/rknightion/opnsense-exporter/internal/geoip"
@@ -617,6 +618,15 @@ func main() {
 	}
 
 	logger.Debug(fmt.Sprintf("OPNsense registered endpoints %s", opnsenseClient.Endpoints()))
+
+	// The shared-result seam (#571). Collector polls publish their decoded results
+	// here; the syslog enrichment refresher reads one instead of asking the box for
+	// an endpoint a collector decoded moments ago. Wired unconditionally and before
+	// the client is cloned per scrape (WithContext), for the same reason as the
+	// response cache: clones share the seam pointer, but only one that already
+	// exists. It costs a map write per published poll when nothing reads it.
+	resultSeam := fetchshare.New()
+	opnsenseClient.SetResultSeam(resultSeam)
 
 	// Slow-moving endpoints are served from an in-memory cache rather than re-fetched
 	// every scrape. Must happen before the client is cloned per scrape (WithContext):
@@ -1465,7 +1475,8 @@ func main() {
 		}
 		enrichCache = enrich.NewCache()
 		enrichRefresher = enrich.NewRefresher(
-			&opnsenseClient, enrichCache, enrich.NewMetrics(logSelfMetricsRegisterer), logger)
+			&opnsenseClient, enrichCache, enrich.NewMetrics(logSelfMetricsRegisterer), logger).
+			WithResultSeam(resultSeam)
 		ectx, cancel := context.WithCancel(context.Background())
 		stopEnrich = cancel
 		go enrichRefresher.Run(ectx)

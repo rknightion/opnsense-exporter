@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -66,6 +67,24 @@ type Refresher struct {
 	m      *Metrics
 	log    *slog.Logger
 
+	// seam is the shared-result store the metrics collectors publish their decoded
+	// results to (#571). Eleven of this refresher's inputs are endpoints a collector
+	// already polls, and re-fetching them cost 10,872 requests and 21,744 audit lines
+	// a day. nil is valid and means every input is fetched, exactly as before.
+	//
+	// FRESHNESS, stated rather than assumed. An input read from the seam is up to its
+	// table's TTL old at the moment the table is rebuilt, so worst-case enrichment
+	// staleness rises from one TTL to two (leases: 60s to 120s; typical ~90s rather
+	// than ~30s). That is a freshness change within a stated bound, not a data or
+	// fidelity loss: these tables map an identifier to a LABEL — rid to rule
+	// description, IP to hostname/MAC, UUID to tunnel name — so the cost of a stale
+	// entry is a log line carrying the previous label, or none, for one extra cycle.
+	// No metric moves, no record is dropped, and NoteMiss remains the correctness
+	// backstop for the case that actually matters (an identifier never seen before),
+	// unchanged: the rule table it guards is not seam-backed at all, because no
+	// collector fetches firewallRuleIDs.
+	seam *fetchshare.Store
+
 	now func() time.Time
 
 	// buildMu serialises every load->build->store. Held across the API call, which
@@ -100,6 +119,15 @@ type Refresher struct {
 	refreshLeases     func() error
 	refreshTunnels    func() error
 	refreshIfaceOrder func() error
+}
+
+// WithResultSeam makes the refresher source an input from store when a metrics
+// collector has already decoded it recently enough, instead of fetching it again
+// (#571). Call before Run. A refresher with no seam fetches everything, as it did
+// before the seam existed.
+func (r *Refresher) WithResultSeam(store *fetchshare.Store) *Refresher {
+	r.seam = store
+	return r
 }
 
 // NewRefresher wires a Refresher to the API client and the cache it publishes to.
@@ -318,7 +346,9 @@ func (r *Refresher) doRefreshRules() error {
 // (SelfIPs) and configured subnets (LocalNets), which together drive Scope — and
 // the ordered Ifaces table internal/flow derives the NetFlow ifIndex map from.
 func (r *Refresher) doRefreshIfaces() error {
-	ov, err := r.client.FetchInterfacesOverview()
+	// The fast-tier interfaces collector polls this endpoint every 15s, so the seam
+	// almost always has one far fresher than this table's 5m TTL (#571).
+	ov, err := seamOr(r, fetchshare.KeyInterfacesOverview, r.ifacesTTL, r.client.FetchInterfacesOverview)
 	if err != nil {
 		return err
 	}
@@ -436,7 +466,7 @@ func (r *Refresher) doRefreshIfaceOrder() error {
 	// guard either: an empty guard reads as "nothing disagrees" when the truth is
 	// "nothing was checked". So a failed fetch carries the previous values forward.
 	stated := r.cache.Load().IfaceStatedIndex
-	if ifaces, ferr := r.client.FetchInterfaces(); ferr == nil {
+	if ifaces, ferr := seamOr(r, fetchshare.KeyInterfaces, r.ifaceOrderTTL, r.client.FetchInterfaces); ferr == nil {
 		fresh := make(map[string]uint32, len(ifaces.Interfaces))
 		for _, iface := range ifaces.Interfaces {
 			if iface.Device == "" || iface.Index <= 0 {
@@ -553,8 +583,14 @@ func (r *Refresher) doRefreshLeases() error {
 		}
 	}
 
+	// Every source below is also polled by a metrics collector on the medium (60s)
+	// tier, so each is read from the shared-result seam when one has published
+	// recently enough and fetched only when it has not (#571). This is the largest
+	// single duplication the 2026-07-31 audit found: six collectors and this
+	// refresher were asking the box for the same six lease tables every minute.
+	//
 	// ARP and NDP are core: a failure there is a real failure.
-	arp, arpErr := r.client.FetchArpTable()
+	arp, arpErr := seamOr(r, fetchshare.KeyArpTable, r.leasesTTL, r.client.FetchArpTable)
 	if arpErr != nil {
 		return arpErr
 	}
@@ -562,7 +598,7 @@ func (r *Refresher) doRefreshLeases() error {
 		set(a.IP, a.Hostname, a.Mac)
 	}
 
-	ndp, ndpErr := r.client.FetchNDPTable()
+	ndp, ndpErr := seamOr(r, fetchshare.KeyNDPTable, r.leasesTTL, r.client.FetchNDPTable)
 	if ndpErr != nil {
 		return ndpErr
 	}
@@ -570,7 +606,7 @@ func (r *Refresher) doRefreshLeases() error {
 		set(n.IP, "", n.Mac)
 	}
 
-	kea4, kea4Err := r.client.FetchKeaLeases4()
+	kea4, kea4Err := seamOr(r, fetchshare.KeyKeaLeases4, r.leasesTTL, r.client.FetchKeaLeases4)
 	if err := skipAbsent(kea4Err); err != nil {
 		return err
 	}
@@ -578,7 +614,7 @@ func (r *Refresher) doRefreshLeases() error {
 		set(l.Address, l.Hostname, l.HWAddr)
 	}
 
-	kea6, kea6Err := r.client.FetchKeaLeases6()
+	kea6, kea6Err := seamOr(r, fetchshare.KeyKeaLeases6, r.leasesTTL, r.client.FetchKeaLeases6)
 	if err := skipAbsent(kea6Err); err != nil {
 		return err
 	}
@@ -586,7 +622,7 @@ func (r *Refresher) doRefreshLeases() error {
 		set(l.Address, l.Hostname, l.HWAddr)
 	}
 
-	dnsmasq, dnsmasqErr := r.client.FetchDnsmasqLeases()
+	dnsmasq, dnsmasqErr := seamOr(r, fetchshare.KeyDnsmasqLeases, r.leasesTTL, r.client.FetchDnsmasqLeases)
 	if err := skipAbsent(dnsmasqErr); err != nil {
 		return err
 	}
@@ -595,7 +631,7 @@ func (r *Refresher) doRefreshLeases() error {
 	}
 
 	// The legacy ISC backends already fold 404 into "absent" themselves.
-	v4, v4Err := r.client.FetchDHCPv4Leases()
+	v4, v4Err := seamOr(r, fetchshare.KeyDHCPv4Leases, r.leasesTTL, r.client.FetchDHCPv4Leases)
 	if err := skipAbsent(v4Err); err != nil {
 		return err
 	}
@@ -603,7 +639,7 @@ func (r *Refresher) doRefreshLeases() error {
 		set(l.Address, l.Hostname, l.MAC)
 	}
 
-	v6, v6Err := r.client.FetchDHCPv6Leases()
+	v6, v6Err := seamOr(r, fetchshare.KeyDHCPv6Leases, r.leasesTTL, r.client.FetchDHCPv6Leases)
 	if err := skipAbsent(v6Err); err != nil {
 		return err
 	}
@@ -660,6 +696,13 @@ func parseAddrPrefix(cidr string) (netip.Addr, netip.Prefix, error) {
 // endpoints are ALREADY fetched by the metrics collectors, so resolving the UUID to
 // its configured description costs no extra API call.
 //
+// That last sentence was FALSE from the day it was written until #571: both
+// endpoints were indeed already fetched by the collectors, and this function then
+// went and fetched them again anyway — 432 duplicate requests a day. The seam is
+// what finally makes the claim true. Note the ipsec saving is larger than one
+// request per tick: FetchIPsecPhase1 fans out to a phase2 search PER TUNNEL, and a
+// seam hit skips the whole fan-out.
+//
 // Verified against a live OPNsense 26.7 box: the UUID charon logs is exactly the
 // `ikeid` that ipsec/sessions/search_phase1 returns alongside `phase1desc`, and the
 // UUID in OpenVPN's socket path is exactly the `uuid` from openvpn/instances/search.
@@ -669,7 +712,7 @@ func parseAddrPrefix(cidr string) (netip.Addr, netip.Prefix, error) {
 // independently and a failure leaves the previous snapshot in place).
 func (r *Refresher) doRefreshTunnels() error {
 	tunnels := map[string]string{}
-	p1, err := r.client.FetchIPsecPhase1()
+	p1, err := seamOr(r, fetchshare.KeyIPsecPhase1, r.tunnelsTTL, r.client.FetchIPsecPhase1)
 	if e := skipAbsent(err); e != nil {
 		return e
 	}
@@ -689,7 +732,7 @@ func (r *Refresher) doRefreshTunnels() error {
 	}
 
 	instances := map[string]string{}
-	ov, verr := r.client.FetchOpenVPNInstances()
+	ov, verr := seamOr(r, fetchshare.KeyOpenVPNInstances, r.tunnelsTTL, r.client.FetchOpenVPNInstances)
 	if e := skipAbsent(verr); e != nil {
 		return e
 	}

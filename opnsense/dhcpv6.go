@@ -1,6 +1,10 @@
 package opnsense
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+)
 
 // dhcpv6LeaseRow mirrors the JSON fields returned by the ISC DHCPv6
 // api/dhcpv6/leases/searchLease endpoint (opnsense/plugins net/isc-dhcp).
@@ -125,6 +129,7 @@ func (c *Client) FetchDHCPv6Leases() (DHCPv6Leases, *APICallError) {
 		}
 	}
 
+	c.publishResult(fetchshare.KeyDHCPv6Leases, data)
 	return data, nil
 }
 

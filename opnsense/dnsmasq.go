@@ -1,5 +1,9 @@
 package opnsense
 
+import (
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+)
+
 type dnsmasqLeaseRow struct {
 	Expire     int      `json:"expire"`
 	HWAddr     string   `json:"hwaddr"`
@@ -149,5 +153,6 @@ func (c *Client) FetchDnsmasqLeases() (DnsmasqLeases, *APICallError) {
 		}
 	}
 
+	c.publishResult(fetchshare.KeyDnsmasqLeases, data)
 	return data, nil
 }

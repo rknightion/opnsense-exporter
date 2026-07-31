@@ -541,6 +541,15 @@ labels are listed exactly below; `source`, `reason`, `stage`, `table`, `receiver
 - `opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds{table}` - when each
   lookup table last refreshed successfully. Alert on
   `time() - ...` to catch a silently-stale cache.
+- `opnsense_exporter_logs_enrich_seam_reads_total{endpoint,outcome}` - attempts to
+  source an enrichment input from the shared-result seam rather than the OPNsense
+  API. A `hit` is a request the firewall never received, because a metrics collector
+  had already decoded that endpoint on its own poll; a `miss` means the refresher
+  fetched it itself. Expect a hit ratio at or near 1 for every endpoint listed. An
+  endpoint sliding toward all-misses means its owning collector is disabled, its poll
+  is failing, or its plugin was removed - enrichment is unaffected (it falls back to
+  fetching, exactly as it did before the seam existed), but the duplicate requests
+  are back.
 - `opnsense_exporter_logs_possible_gap_total{source}` - a bounded-window source found
   no continuity with its previous cursor, so an unknown amount may have been skipped.
 - `opnsense_exporter_logs_resource_capped_total` - records shipped without their

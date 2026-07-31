@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"encoding/json"
+	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
 	"strings"
 )
 
@@ -141,6 +142,7 @@ func (c *Client) FetchOpenVPNInstances() (OpenVPNInstances, *APICallError) {
 		})
 	}
 
+	c.publishResult(fetchshare.KeyOpenVPNInstances, data)
 	return data, nil
 }
 
