@@ -263,6 +263,29 @@ type Repairs struct {
 	WindowPartial bool
 }
 
+// merge folds another fragment's repairs into these, keeping anything either one
+// recorded.
+//
+// A conversation arrives as several NetFlow records — a mean of 3.75 on the
+// reference box — and the correlator takes every non-volume dimension from ONE
+// chosen orientation. A repair applied to any other fragment therefore vanished at
+// the merge: the record still carried the corrected interface (that IS the chosen
+// half's field when the chosen half is the corrected one) but the marker saying so
+// could be dropped, which is precisely the "a repair nobody can observe" failure
+// this type exists to prevent. Unioning is the same treatment TCPFlags already gets
+// and for the same reason: it is a merge by design, not a loss.
+//
+// PayloadByteFallback is unioned too, but note the merged record's Zenarmor byte
+// basis is stated by ZenBytesArePayload, which finalize sets from the conn document
+// itself rather than from any NetFlow half.
+func (r *Repairs) merge(o Repairs) {
+	r.PayloadByteFallback = r.PayloadByteFallback || o.PayloadByteFallback
+	r.VLANSubnetAttributed = r.VLANSubnetAttributed || o.VLANSubnetAttributed
+	r.PolicyRouteCorrected = r.PolicyRouteCorrected || o.PolicyRouteCorrected
+	r.ZenBytesArePayload = r.ZenBytesArePayload || o.ZenBytesArePayload
+	r.WindowPartial = r.WindowPartial || o.WindowPartial
+}
+
 // Record is one normalized flow. Both lanes produce it; the rollup, the correlator
 // and the OTLP emitter all consume it.
 type Record struct {

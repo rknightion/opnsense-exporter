@@ -96,6 +96,10 @@ type corrEntry struct {
 	// "SYN" on practically every TCP flow and a refused connection (client SYN, server
 	// RST) becomes indistinguishable from a scan that got no reply at all (#585).
 	tcpFlags uint8
+	// repairs is the UNION of every fragment's repair markers, for the same reason
+	// tcpFlags is unioned: finalize takes every non-volume dimension from ONE chosen
+	// orientation, so a repair applied to any other fragment vanished at the merge.
+	repairs Repairs
 }
 
 // CorrelatorStats is the correlator's own health, published as self-metrics so a
@@ -264,6 +268,7 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 	e.nf.Present = true
 	e.hasNF = true
 	e.tcpFlags |= r.TCPFlags
+	e.repairs.merge(r.Repairs)
 	e.fragments += fragmentsOf(r)
 	if r.Start.Before(e.start) {
 		e.start = r.Start
@@ -430,6 +435,8 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 		Present:   e.nf.Present,
 	}
 	out.TCPFlags = e.tcpFlags
+	// Every fragment's markers, not just the chosen orientation's.
+	out.Repairs.merge(e.repairs)
 	out.Fragments = e.fragments
 	out.Start = e.start
 	out.End = e.end

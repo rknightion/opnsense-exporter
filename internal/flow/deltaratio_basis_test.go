@@ -142,3 +142,38 @@ func TestCorrelator_CarriesTheZenarmorByteBasisOntoTheMerge(t *testing.T) {
 		t.Error("Repairs.ZenBytesArePayload = false; the merged record must state its own byte basis")
 	}
 }
+
+// A repair applied to ONE fragment must survive the merge. finalize() takes
+// every non-volume dimension from the chosen orientation, so a marker set on the
+// other half — or on a later fragment of the same half — vanished silently. That
+// is the same class of loss #604 fixed for the byte basis, and it hit the
+// policy-route marker (#603) on any conversation whose corrected fragment was not
+// the one orientation() picked.
+func TestCorrelator_UnionsRepairMarkersAcrossFragments(t *testing.T) {
+	c, sink := newCorr(t, true, time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+
+	// The chosen orientation (earlier Start) carries NO marker.
+	fwd := baseNF("cid-A", 100, 1, t0, t0)
+	fwd.Start = t0.Add(-10 * time.Second)
+	c.Observe(fwd)
+
+	// A later fragment of the same conversation was policy-route corrected.
+	other := baseNF("cid-A", 200, 2, t0, t0.Add(time.Second))
+	other.Start = t0.Add(-5 * time.Second)
+	other.Repairs.PolicyRouteCorrected = true
+	other.Repairs.VLANSubnetAttributed = true
+	c.Observe(other)
+
+	c.Flush()
+	if len(sink.recs) != 1 {
+		t.Fatalf("emitted %d records, want 1", len(sink.recs))
+	}
+	got := sink.recs[0].Repairs
+	if !got.PolicyRouteCorrected {
+		t.Error("PolicyRouteCorrected lost at merge; a repair nobody can observe is a repair nobody will trust")
+	}
+	if !got.VLANSubnetAttributed {
+		t.Error("VLANSubnetAttributed lost at merge")
+	}
+}
