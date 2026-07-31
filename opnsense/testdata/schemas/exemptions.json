@@ -867,6 +867,21 @@
     ],
     "note": "GUI widget metadata on service-status responses; never consumed"
   },
+  "unboundBlocklistPolicies": {
+    "knownExtraPaths": [
+      "*.address",
+      "*.allowlists",
+      "*.blocklists",
+      "*.cache_ttl",
+      "*.description",
+      "*.lists",
+      "*.nxdomain",
+      "*.source_nets",
+      "*.type",
+      "*.wildcards"
+    ],
+    "note": "FIRST LEDGER ENTRY (#613, from the 2026-07-31T14:10Z live-canary run on both testbeds). Newly visible only because #589's second-stage descent reached inside the UUID-keyed policy map; the subtree is not new upstream data. api/unbound/overview/get_policies is a bare $this->mdl->dnsbl->blocklist->getNodeContent() (Unbound/Api/OverviewController.php getPoliciesAction), so the response IS the model node verbatim - every path below is a configuration field of the dnsbl.blocklist ArrayField, verified field-by-field against models/OPNsense/Unbound/Unbound.xml (core master, 2026-07-31), not bucketed by name. unboundPolicyEntry (opnsense/unbound_dns.go) deliberately models ONLY `enabled`, because FetchUnboundBlockListStatus needs exactly the any-policy-enabled boolean the deprecated isBlockListEnabled endpoint used to compute server-side (#210). CONFIG, no metric use: `type` is an OptionField with Multiple=Y over ~37 curated feed identifiers (General/Hagezi/OISD groups) - a multi-select selection set, not a quantity; `lists`, `allowlists`, `blocklists` and `wildcards` are CSVListFields of operator-supplied URLs and domains, unbounded free text; `source_nets` is a Multiple NetworkField naming which client networks a policy applies to; `address` is the ipv4 sinkhole address returned for a blocked name; `description` is a Required DescriptionField, a free-text label (1-255 chars) - identity, and unbounded, so never a label. TWO GENUINE CANDIDATES, recorded rather than written off (#613 acceptance): `nxdomain` is a plain BooleanField (return NXDOMAIN instead of sinkholing to `address`) and `cache_ttl` is an IntegerField with a 72000 default. Both are bounded and low-cardinality, and both are the same shape as the already-modelled `enabled`, so a per-policy config gauge is technically available. Neither is exported today and that is a deliberate scope call, not an oversight: they are admin-edit-only settings rather than moving quantities, and the exporter's whole interest in this endpoint is the single derived any-policy-enabled boolean. PRUNE TRIGGER: remove an entry from this list once its field is modelled - most plausibly nxdomain/cache_ttl, if per-policy DNSBL configuration ever becomes worth exporting."
+  },
   "vnstatGetJsonData": {
     "missingOK": [
       "interfaces"
