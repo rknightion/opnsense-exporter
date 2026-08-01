@@ -2,6 +2,7 @@ package syslog
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,23 +187,156 @@ func TestUnboundServfail(t *testing.T) {
 	}
 }
 
-// TestUnboundNonQueryLinesDegrade: DNSBL/plugin status chatter is deliberately NOT
-// parsed — it returns ok=false so BuildRecord ships it as a generic record (still
-// shipped, never dropped), exactly as sshd treats its non-auth chatter.
+// TestUnboundNonQueryLinesDegrade: the remaining unbound chatter — the multi-line
+// stats/histogram dump, unrecognized plugin status lines, and a bare startup line
+// missing its [pid:thread] prefix — is deliberately NOT parsed. It returns ok=false
+// so BuildRecord ships it as a generic record (still shipped, never dropped),
+// exactly as sshd treats its non-auth chatter.
 func TestUnboundNonQueryLinesDegrade(t *testing.T) {
 	lines := []string{
-		"[46775:9] info: dnsbl_module: updating blocklist.",
-		"[46775:9] info: dnsbl_module: blocklist loaded. length is 414523",
-		"blocklist parsing done in 1.41 seconds (414523 records)",
 		`Q-Feeds : skip invalid whitelist exclude pattern "*.notion.com"`,
 		"[46775:0] notice: init module 0: iterator",
+		// No [pid:thread] prefix — unlike the verbatim-captured lifecycle lines
+		// (#631), this shape was never actually observed and must keep degrading.
 		"start of service (unbound 1.19.3).",
+		"[46775:3] info: server stats for thread 3: 1234 queries, 5 answers from cache",
+		"[46775:3] info: histogram of recursion processing times",
+		"[46775:3] info: [25%]=0.001 median[50%]=0.002 [75%]=0.004",
+		"[46775:3] info: lower(secs) upper(secs) recursions",
+		"[46775:3] info: average recursion processing time 0.123456 sec",
+		"[46775:0] notice: Closing logger",
+		"[46775:0] notice: Backgrounding unbound logging backend.",
+		"[46775:0] notice: Database auto restore from /var/db/unbound.db",
 		"",
 	}
 	for _, l := range lines {
 		if _, ok := parseUnbound(unboundEnv(l), nil, func(string) {}); ok {
 			t.Errorf("parseUnbound(%q) returned ok=true, want a generic-record fallthrough", l)
 		}
+	}
+}
+
+// TestUnboundDNSBL: the DNSBL/blocklist subsystem (#631), the single largest
+// steady source of previously-unparsed volume on the box (~1550 entries over 8
+// days). All lines except "blocklist parsing done" carry the standard
+// [pid:thread] prefix; that one line does not, verbatim, and unbound.thread must
+// be absent for it specifically.
+func TestUnboundDNSBL(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want map[string]string
+	}{
+		{
+			name: "blocklist update starting",
+			msg:  "[48126:7] info: dnsbl_module: updating blocklist.",
+			want: map[string]string{
+				"dnsbl.event":    "blocklist_updating",
+				"unbound.thread": "7",
+			},
+		},
+		{
+			name: "blocklist loaded, entries reported",
+			msg:  "[48126:7] info: dnsbl_module: blocklist loaded. length is 509328",
+			want: map[string]string{
+				"dnsbl.event":    "blocklist_loaded",
+				"dnsbl.entries":  "509328",
+				"unbound.thread": "7",
+			},
+		},
+		{
+			name: "blocklist parsing done - NO [pid:thread] prefix on this shape",
+			msg:  "blocklist parsing done in 2.26 seconds (509328 records)",
+			want: map[string]string{
+				"dnsbl.event":                  "blocklist_parsed",
+				"dnsbl.entries":                "509328",
+				"dnsbl.parse_duration_seconds": "2.26",
+			},
+		},
+		{
+			name: "pipe opening",
+			msg:  "[10176:8] info: dnsbl_module: attempting to open pipe",
+			want: map[string]string{
+				"dnsbl.event":    "pipe_opening",
+				"unbound.thread": "8",
+			},
+		},
+		{
+			name: "pipe opened",
+			msg:  "[10176:7] info: dnsbl_module: successfully opened pipe",
+			want: map[string]string{
+				"dnsbl.event":    "pipe_opened",
+				"unbound.thread": "7",
+			},
+		},
+		{
+			name: "no logging backend",
+			msg:  "[10176:8] info: dnsbl_module: no logging backend found.",
+			want: map[string]string{
+				"dnsbl.event":    "backend_missing",
+				"unbound.thread": "8",
+			},
+		},
+		{
+			name: "logging backend closed pipe",
+			msg:  "[92242:5] info: dnsbl_module: Logging backend closed connection. Closing pipe and continuing.",
+			want: map[string]string{
+				"dnsbl.event":    "pipe_closed",
+				"unbound.thread": "5",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, ok := parseUnbound(unboundEnv(tc.msg), nil, func(string) {})
+			if !ok {
+				t.Fatalf("parseUnbound returned ok=false for %q", tc.msg)
+			}
+			assertAttrs(t, rec, tc.want)
+			if strings.Contains(tc.msg, "parsing done") {
+				if _, ok := rec.Attributes["unbound.thread"]; ok {
+					t.Errorf("unbound.thread must be absent on the unprefixed parsing-done line, got %v", rec.Attributes["unbound.thread"])
+				}
+			}
+		})
+	}
+}
+
+// TestUnboundServiceLifecycle: the start/stop pair (#631), also carrying the
+// [pid:thread] prefix and the unbound version.
+func TestUnboundServiceLifecycle(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want map[string]string
+	}{
+		{
+			name: "service started",
+			msg:  "[10176:0] info: start of service (unbound 1.25.1).",
+			want: map[string]string{
+				"dns.event":      "service_started",
+				"dns.version":    "1.25.1",
+				"unbound.thread": "0",
+			},
+		},
+		{
+			name: "service stopped",
+			msg:  "[53465:0] info: service stopped (unbound 1.25.1).",
+			want: map[string]string{
+				"dns.event":      "service_stopped",
+				"dns.version":    "1.25.1",
+				"unbound.thread": "0",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, ok := parseUnbound(unboundEnv(tc.msg), nil, func(string) {})
+			if !ok {
+				t.Fatalf("parseUnbound returned ok=false for %q", tc.msg)
+			}
+			assertAttrs(t, rec, tc.want)
+		})
 	}
 }
 

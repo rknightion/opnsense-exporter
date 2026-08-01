@@ -35,9 +35,11 @@ import (
 // scan, exactly like the other structured lanes: it is a positional field, not
 // something to discover by scanning.
 //
-// Only the local-action query log is parsed. Everything else unbound logs —
-// SERVFAIL/error lines, startup and cache chatter — returns ok=false and degrades
-// to a generic record carrying the raw body, so a line is never dropped.
+// Alongside the query log, this parser also structures the SERVFAIL error shape
+// (below) and the DNSBL/blocklist subsystem + service lifecycle chatter (#631).
+// Everything else unbound logs — the multi-line recursion-stats/histogram dump,
+// unrecognized plugin status lines — returns ok=false and degrades to a generic
+// record carrying the raw body, so a line is never dropped.
 //
 // The client is `(\S+)@(\d+)`: a single non-space token before the port, so an IPv6
 // client (colons and all) is captured whole, and the greedy match locks onto the
@@ -45,10 +47,7 @@ import (
 var reUnboundQuery = regexp.MustCompile(
 	`^\[\d+:\d+\]\s+info:\s+(\S+)\s+(\S+)\s+(\S+)@(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$`)
 
-// A resolution failure, the only other unbound shape worth structuring (#334). The
-// remaining unparsed unbound lines are DNSBL/plugin status chatter (dnsbl_module,
-// Q-Feeds, "blocklist parsing done"); those deliberately fall through to a generic
-// record, exactly as sshd's non-auth chatter does — still shipped, never dropped.
+// A resolution failure, the only other unbound shape worth structuring (#334).
 //
 // Captured verbatim:
 //
@@ -60,6 +59,71 @@ var reUnboundQuery = regexp.MustCompile(
 // server timeout") is the discriminating signal and kept as dns.error.
 var reUnboundServfail = regexp.MustCompile(
 	`^\[\d+:\d+\]\s+error:\s+SERVFAIL\s+<(\S+)\s+(\S+)\s+(\S+)>:\s+.*?,\s+at zone\s+(\S+)\s+from\s+(\S+)\s+(.*?)\s*$`)
+
+// The DNSBL/blocklist subsystem (#631) — dnsbl_module status chatter plus the
+// service lifecycle pair. This was originally left to fall through to a generic
+// record; that call is reversed as of #631 because it turned out to be the
+// single largest steady source of unparsed volume on the box (~1550 entries over
+// 8 days: blocklist reload cycles logging thousands of times).
+//
+// Captured verbatim:
+//
+//	[48126:7] info: dnsbl_module: updating blocklist.
+//	[48126:7] info: dnsbl_module: blocklist loaded. length is 509328
+//	blocklist parsing done in 2.26 seconds (509328 records)
+//	[10176:8] info: dnsbl_module: attempting to open pipe
+//	[10176:7] info: dnsbl_module: successfully opened pipe
+//	[10176:8] info: dnsbl_module: no logging backend found.
+//	[92242:5] info: dnsbl_module: Logging backend closed connection. Closing pipe and continuing.
+//	[10176:0] info: start of service (unbound 1.25.1).
+//	[53465:0] info: service stopped (unbound 1.25.1).
+//
+// The "blocklist parsing done" line is the odd one out: every other line here
+// carries the standard [pid:thread] prefix, this one never does (verified against
+// the capture, not an oversight) — so its regex has no prefix and its record
+// never carries unbound.thread.
+//
+// dnsbl.event is a CLOSED, code-defined vocabulary (blocklist_updating,
+// blocklist_loaded, blocklist_parsed, pipe_opening, pipe_opened, pipe_closed,
+// backend_missing); an unrecognized dnsbl_module line falls through to a generic
+// record rather than inventing a catch-all event value. dnsbl.entries is the
+// blocklist size and is emitted on both "blocklist loaded" and "blocklist parsing
+// done" — they report the same quantity by two different routes, and a consumer
+// should not have to know which line it came from.
+//
+// The pid ([48126:...]) is deliberately NOT captured: it changes on every unbound
+// restart and carries no operational meaning. Only the thread number is kept, as
+// unbound.thread.
+//
+// The remaining unbound chatter — the "server stats for thread N" / histogram /
+// percentile / "average recursion processing time" block, "init module N:",
+// "Closing logger", "Backgrounding unbound logging backend.", and "Database auto
+// restore from ..." — is a multi-line statistics dump whose shape varies per
+// thread and per build. Half-parsing one line of a multi-line report produces a
+// record that looks complete but is not, so all of it deliberately keeps falling
+// through to a generic record, exactly as sshd's non-auth chatter does — still
+// shipped, never dropped.
+var (
+	reDnsblUpdating = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+dnsbl_module:\s+updating blocklist\.\s*$`)
+	reDnsblLoaded = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+dnsbl_module:\s+blocklist loaded\. length is (\d+)\s*$`)
+	reDnsblParsed = regexp.MustCompile(
+		`^blocklist parsing done in ([\d.]+) seconds \((\d+) records\)\s*$`)
+	reDnsblPipeOpening = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+dnsbl_module:\s+attempting to open pipe\s*$`)
+	reDnsblPipeOpened = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+dnsbl_module:\s+successfully opened pipe\s*$`)
+	reDnsblBackendMissing = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+dnsbl_module:\s+no logging backend found\.\s*$`)
+	reDnsblPipeClosed = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+dnsbl_module:\s+Logging backend closed connection\. Closing pipe and continuing\.\s*$`)
+
+	reUnboundServiceStarted = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+start of service \(unbound ([\d.]+)\)\.\s*$`)
+	reUnboundServiceStopped = regexp.MustCompile(
+		`^\[\d+:(\d+)\]\s+info:\s+service stopped \(unbound ([\d.]+)\)\.\s*$`)
+)
 
 func init() {
 	RegisterParser(parseUnbound, "unbound")
@@ -78,28 +142,89 @@ func parseUnbound(env Envelope, snap *enrich.Snapshot, _ func(table string)) (lo
 		return rec, true
 	}
 
-	m := reUnboundQuery.FindStringSubmatch(env.Message)
-	if m == nil {
-		return logship.Record{}, false
+	if m := reUnboundQuery.FindStringSubmatch(env.Message); m != nil {
+		localZone, zoneType := m[1], m[2]
+		ip, port := m[3], m[4]
+		qname, qtype, qclass := m[5], m[6], m[7]
+
+		rec, set := newRecord(env)
+		set("dns.query_name", qname)
+		set("dns.query_type", qtype)
+		set("dns.query_class", qclass)
+		set("dns.local_zone", localZone)
+		set("dns.local_action", zoneType)
+		set("src.ip", ip)
+		set("src.port", port)
+
+		// Best-effort client enrichment. An unknown client is normal (a device
+		// that has never held a lease, or unbound's own loopback reverse
+		// lookups from 127.0.0.1), so a miss is silent and NEVER signals a
+		// stale snapshot. Empty port+proto skips the service lookup: a
+		// resolver client's ephemeral source port names no service.
+		enrichEndpoint(set, snap, "src", ip, "", "")
+
+		return rec, true
 	}
-	localZone, zoneType := m[1], m[2]
-	ip, port := m[3], m[4]
-	qname, qtype, qclass := m[5], m[6], m[7]
 
-	rec, set := newRecord(env)
-	set("dns.query_name", qname)
-	set("dns.query_type", qtype)
-	set("dns.query_class", qclass)
-	set("dns.local_zone", localZone)
-	set("dns.local_action", zoneType)
-	set("src.ip", ip)
-	set("src.port", port)
+	if m := reDnsblUpdating.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "blocklist_updating")
+		set("unbound.thread", m[1])
+		return rec, true
+	}
+	if m := reDnsblLoaded.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "blocklist_loaded")
+		set("dnsbl.entries", m[2])
+		set("unbound.thread", m[1])
+		return rec, true
+	}
+	if m := reDnsblParsed.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "blocklist_parsed")
+		set("dnsbl.parse_duration_seconds", m[1])
+		set("dnsbl.entries", m[2])
+		return rec, true
+	}
+	if m := reDnsblPipeOpening.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "pipe_opening")
+		set("unbound.thread", m[1])
+		return rec, true
+	}
+	if m := reDnsblPipeOpened.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "pipe_opened")
+		set("unbound.thread", m[1])
+		return rec, true
+	}
+	if m := reDnsblBackendMissing.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "backend_missing")
+		set("unbound.thread", m[1])
+		return rec, true
+	}
+	if m := reDnsblPipeClosed.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dnsbl.event", "pipe_closed")
+		set("unbound.thread", m[1])
+		return rec, true
+	}
 
-	// Best-effort client enrichment. An unknown client is normal (a device that has
-	// never held a lease, or unbound's own loopback reverse lookups from 127.0.0.1),
-	// so a miss is silent and NEVER signals a stale snapshot. Empty port+proto skips
-	// the service lookup: a resolver client's ephemeral source port names no service.
-	enrichEndpoint(set, snap, "src", ip, "", "")
+	if m := reUnboundServiceStarted.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dns.event", "service_started")
+		set("dns.version", m[2])
+		set("unbound.thread", m[1])
+		return rec, true
+	}
+	if m := reUnboundServiceStopped.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dns.event", "service_stopped")
+		set("dns.version", m[2])
+		set("unbound.thread", m[1])
+		return rec, true
+	}
 
-	return rec, true
+	return logship.Record{}, false
 }

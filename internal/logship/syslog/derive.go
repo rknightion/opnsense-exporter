@@ -485,6 +485,31 @@ var nonDerivedPrograms = map[string]bool{
 	"radvd":          true,
 	"unbound":        true,
 
+	// The #631 wave. All four parse into structured attributes and derive no counter
+	// YET — the decision here is "not counted", not "never countable", and each is a
+	// deliberate deferral rather than an oversight:
+	//
+	//   ppp        — mpd5's PPPoE link state machine. A link-flap counter is the
+	//                obvious follow-up, but the useful metric is a TRANSITION rate and
+	//                the grammar has three separate layers (Link/LCP/IPCP) that each
+	//                report a state change for one physical event, so counting them
+	//                naively would triple every flap.
+	//   firewall   — alias resolution and URL fetch timing. What is worth having is a
+	//                DURATION and a SIZE, not a count of lines, and this sink deals
+	//                only in counters.
+	//   acme.sh    — the acme.sh client's own progress log. Certificate lifecycle is
+	//                already a first-class metric family fed by the ACME collector's
+	//                API data, which carries expiry dates a progress line cannot.
+	//   opnsense   — a CATCH-ALL program, like kernel above: every OPNsense PHP log
+	//                line lands on it, not just AcmeClient's. Safe only because the
+	//                parser returns ok=false for everything outside a captured
+	//                AcmeClient shape. If that is ever loosened, this entry becomes a
+	//                way to mis-bucket every PHP log line on the box.
+	"ppp":      true,
+	"firewall": true,
+	"acme.sh":  true,
+	"opnsense": true,
+
 	// wireguard, tailscaled (#596) and netbird (#601) are the awkward group here, and the
 	// decision is deliberate rather than an oversight: all three DO write the vpn.event
 	// attribute, so they feed the dashboard's Tunnel lifecycle annotation layer (a Loki

@@ -197,8 +197,14 @@ var subsystems = map[string]string{
 	// "everything DHCP" should reach it — and its records are told apart from the
 	// server families by their dhcp_client.* attributes, not by the subsystem (#541).
 	// Before this entry existed its lines shipped with a BLANK subsystem.
-	"dhclient":  "dhcp",
-	"radvd":     "dhcp",
+	"dhclient": "dhcp",
+	"radvd":    "dhcp",
+	// ppp is mpd5, the PPPoE dialler that brings the WAN up (#631). `opnsense` is
+	// deliberately NOT in this map even though its AcmeClient lines are parsed: it is a
+	// catch-all for every OPNsense PHP log line, so any fixed subsystem here would
+	// mislabel the majority of them. Those lines keep the blank subsystem they have
+	// today, and the parsed ones are told apart by their cert.* attributes.
+	"ppp":       "wan",
 	"charon":    "ipsec",
 	"openvpn":   "vpn",
 	"wireguard": "vpn",
