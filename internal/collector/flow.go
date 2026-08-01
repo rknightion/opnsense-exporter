@@ -800,14 +800,18 @@ func (c *flowCollector) registerNetflow() {
 			"kind=\"skipped\" is rows that could not be keyed at all (an unmodelled protocol, an "+
 			"unparseable address or port) and kind=\"conflict\" is keys that were already taken - "+
 			"measured zero on the reference box, so a non-zero value means the tuple stopped being "+
-			"unique upstream and every answer from this table wants re-checking.",
+			"unique upstream and every answer from this table wants re-checking. kind=\"carried\" is "+
+			"the subset of \"total\" answered from an EARLIER snapshot rather than the current one - "+
+			"states that have expired but are still inside the retention window, which is how a flow "+
+			"whose state died before its NetFlow record arrived still gets corrected. Persistently "+
+			"zero means that rolling union is contributing nothing.",
 		[]string{"kind"},
 	)
 	c.pfStateAge = buildPrometheusDesc(c.subsystem, "pf_state_age_seconds",
-		"Age of the pf state snapshot the policy-route repair resolves against. It is polled on the "+
-			"cold tier (the full table is ~3 MB and ~650 ms on the reference box), so a value rising "+
-			"past a few multiples of that interval means the fetch is failing and corrections are "+
-			"being made against a stale routing picture.",
+		"Age of the pf state snapshot the policy-route repair resolves against. It is rebuilt every "+
+			"minute (the full table is ~3 MB and ~650 ms on the reference box, so this is not a free "+
+			"request), and a value rising past a few multiples of that means the fetch is failing and "+
+			"corrections are being made against a stale routing picture.",
 		nil,
 	)
 	c.dedupeEntries = buildPrometheusDesc(c.subsystem, "dedupe_entries",
@@ -1169,6 +1173,7 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTablePolicyRouted), "policy_routed")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableSkipped), "skipped")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableConflicts), "conflict")
+	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableCarried), "carried")
 	gauge(c.pfStateAge, nf.Repair.RouteTableAge.Seconds())
 	gauge(c.dedupeEntries, float64(nf.Repair.DedupeEntries))
 	counter(c.dedupeDropped, nf.Repair.DedupeEvicted, "ttl")

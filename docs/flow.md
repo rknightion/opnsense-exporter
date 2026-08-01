@@ -135,7 +135,7 @@ every inspected byte that actually left by WAN2 onto WAN1, while WAN2's correlat
 series stayed empty against 11.1 GB of real traffic.
 
 The exporter resolves this from **pf's own state table**
-(`api/diagnostics/firewall/query_states`, polled every 5 minutes and held as a lookup
+(`api/diagnostics/firewall/query_states`, polled every minute and held as a lookup
 map - never a per-flow call). pf keeps both states for a NAT'd conversation, and the
 `direction: "in"` state is the pre-NAT view: its 5-tuple *is* the pre-NAT record's
 5-tuple, and it already carries pf's `route-to` - the routing decision verbatim, not
@@ -147,12 +147,32 @@ Its limits, which are counted rather than hidden:
 
 - **A state that carries no `route-to` is left alone.** That means pf used the FIB,
   which is precisely when `OUTPUT_SNMP` is already right.
-- **A short flow may have no state left.** OPNsense's `inactiveTimeout` lets a record
-  arrive 15-30 s after the conversation ended, by which point a short state is gone.
-  Those records are emitted exactly as reported and counted under
-  `opnsense_flow_policy_route_refused_total{reason="no_state"}`. No poll interval
-  closes that window; the flows this repair recovers are long ones, whose states live
-  for hours.
+- **A short flow may have no state to resolve against.** The window has two halves,
+  and they behave differently.
+
+  A state can **expire before its record arrives**: OPNsense's `inactiveTimeout` lets
+  a record land 15-30 s after the conversation ended. The lookup map handles this by
+  carrying a tuple forward for **three minutes** after it was last seen in a snapshot,
+  so an expired state stays answerable. That carried subset is published as
+  `opnsense_flow_pf_state_entries{kind="carried"}`; a fresh snapshot always overrides
+  a carried entry, so a re-routed flow is corrected on the next poll rather than
+  pinned by its own history.
+
+  A state can also be **created after the last poll** - born, used and closed entirely
+  between two snapshots, so it appears in none of them. Nothing but a poll faster than
+  the state lifetime reaches that, and no interval reaches the shortest states. Those
+  records are emitted exactly as reported and counted under
+  `opnsense_flow_policy_route_refused_total{reason="no_state"}`, which is a floor
+  rather than a fault.
+
+  The one-minute poll is sized for this. It was five minutes on the reasoning that
+  the flows this repair recovers are long ones - which measurement disproved: on the
+  reference box 18 of the 19 policy-routed states are sub-90-second TCP connections,
+  one arriving about every ten seconds, and roughly 30% of decoded records were being
+  refused. A minute reaches a ~90-second state most of the time and a 30-second one
+  never. The cost is real - the full table is ~3 MB and ~650 ms, and every API request
+  also costs two configd RPCs - so it is not tunable: the only thing tuning it changes
+  is firewall load.
 - **Ambiguity cannot arise.** The key is the tuple pf itself keys states by, so two
   LAN hosts to the same destination over different WANs get their own answers. A
   duplicate key would be a signal, not an input: it is counted as

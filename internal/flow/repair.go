@@ -146,7 +146,13 @@ type RepairStats struct {
 	RouteTablePolicyRouted int
 	RouteTableSkipped      int
 	RouteTableConflicts    int
-	RouteTableAge          time.Duration
+	// RouteTableCarried is the subset of RouteTableEntries answered from an EARLIER
+	// snapshot rather than the current one (#620) — expired states still inside the
+	// retention window. Persistently zero means the rolling union is contributing
+	// nothing; a value that dwarfs the fresh count means states are dying much faster
+	// than we poll and most answers describe a table that no longer exists.
+	RouteTableCarried int
+	RouteTableAge     time.Duration
 
 	// DedupeCapped counts entries forced out EARLY because the table was at
 	// maxDedupeEntries. This is not housekeeping: a capped instance can no longer be
@@ -510,6 +516,7 @@ func (r *Repairer) StatsAt(now time.Time) RepairStats {
 		RouteTablePolicyRouted: rt.PolicyRouted,
 		RouteTableSkipped:      rt.Skipped,
 		RouteTableConflicts:    rt.Conflicts,
+		RouteTableCarried:      rt.Carried,
 		RouteTableAge:          r.routes.Load().Age(now),
 		// dueEarly counts as held: those records have left the buffer but not yet the
 		// stage, and a gauge that dropped them would make the accounting look short for

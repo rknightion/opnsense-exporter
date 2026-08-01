@@ -104,17 +104,52 @@ const ifIndexRefreshInterval = 60 * time.Second
 const ifIndexColdRetryInterval = time.Second
 
 // pfStateRefreshInterval rebuilds the pf state snapshot the policy-route repair
-// resolves against (#603).
+// resolves against (#603, re-costed by #620).
 //
-// Five minutes — the COLD tier — because the whole table is a real request: measured
-// against the production firewall it is 3.3 MB and ~650 ms for 6,602 rows. A shorter
-// interval buys nothing the repair can use, because the flows the repair recovers are
-// long ones (state ages in the live table run to 36 hours) while the ones it misses
-// are short flows whose state is already gone by the time their record arrives — a
-// window no poll cadence closes. It is deliberately not a flag: the only thing tuning
-// it changes is firewall API load, and the staleness it trades against is bounded by
-// the state lifetimes, not by us.
-const pfStateRefreshInterval = 5 * time.Minute
+// ONE MINUTE. This was five, on the reasoning that "the flows the repair recovers are
+// long, so a shorter interval buys nothing". That reasoning was WRONG and is recorded
+// here so it does not get re-derived: measured on the production box 2026-07-31, the
+// policy-routed population is 19 states of which EIGHTEEN are sub-90-second TCP
+// connections, one arriving about every ten seconds. With a five-minute poll those
+// states were born, used and closed entirely between two snapshots, appeared in
+// neither, and were refused every time — about 30% of decoded records.
+//
+// The cost is real and was weighed rather than waved through: the full table is 3.3
+// MB and ~650 ms for 6,602 rows on that box, and every API request also costs two
+// configd RPCs on OPNsense's auth middleware whatever it asks for. So this is 5x the
+// request load of the old cadence. Two cheaper options were investigated and do not
+// exist: query_states' searchPhrase cannot select route-to-carrying states — it is a
+// post-parse AND-substring match over record VALUES applied after pfctl has already
+// dumped and Python has already parsed the whole table, so it saves bytes but none of
+// the firewall-side work — and a rolling union alone reaches only states that expired,
+// not states created after the last poll, which is where this population lives.
+//
+// One minute reaches a ~90-second state most of the time. It does NOT reach a
+// 30-second one, and nothing short of a poll faster than the state lifetime would;
+// those stay refused and counted, which is honest.
+//
+// Still deliberately not a flag. The only thing tuning it changes is firewall API
+// load, and the staleness it trades against is bounded by pf's state lifetimes.
+const pfStateRefreshInterval = time.Minute
+
+// pfStateRetention is how long a pf state stays answerable after it stops appearing
+// in snapshots — the rolling union half of #620's fix.
+//
+// Three minutes, i.e. three poll intervals of grace. It closes the OTHER half of the
+// miss window: a state alive at a poll that expires before its NetFlow record lands
+// (the reference box runs inactiveTimeout=15, so a record can arrive 15-30s after the
+// conversation ended). Without it the grace period is whatever is left of the current
+// poll interval, so an identical flow is resolvable or not depending on where in the
+// cycle it died — this makes it uniform.
+//
+// Sized against being WRONG rather than against memory, which is negligible here. A
+// carried entry is a claim about a state that no longer exists, and it goes bad on a
+// WAN failover: pf re-routes, the tuple stops appearing, and until it ages out the
+// table keeps naming the dead egress. Three intervals is comfortably longer than any
+// plausible export delay and short enough that a failover mislabels for seconds, not
+// minutes. Do not raise it to "cover more" — past the export delay it buys nothing
+// and only widens that window.
+const pfStateRetention = 3 * time.Minute
 
 // ifIndexNamelessDeadline bounds the cold retry when the map keeps arriving with
 // indices but no interface NAMES.
@@ -1721,6 +1756,11 @@ func main() {
 		// staleness visible. The first fetch runs immediately so the repair is live
 		// well inside the first tick.
 		go func() {
+			// The table this goroutine last published, so the next build can union
+			// the still-valid part of it forward (#620). Held as a plain local
+			// rather than read back off the Repairer because this goroutine is the
+			// only writer, so there is no state to share and nothing to lock.
+			var previous *flow.RouteTable
 			refresh := func() {
 				states, ferr := opnsenseClient.FetchFirewallStates()
 				if ferr != nil {
@@ -1740,10 +1780,14 @@ func main() {
 						RouteToDevice: st.RouteToDevice,
 					})
 				}
-				repairer.SetRouteTable(flow.BuildRouteTable(flow.RouteTableInput{
-					Rows:  rows,
-					Built: time.Now(),
-				}))
+				table := flow.BuildRouteTable(flow.RouteTableInput{
+					Rows:     rows,
+					Built:    time.Now(),
+					Previous: previous,
+					Retain:   pfStateRetention,
+				})
+				previous = table
+				repairer.SetRouteTable(table)
 			}
 			refresh()
 			ticker := time.NewTicker(pfStateRefreshInterval)

@@ -153,3 +153,179 @@ func TestRouteTableUnmapsV4MappedAddresses(t *testing.T) {
 		t.Fatalf("v4-mapped lookup: egress = %q ok=%v, want ixl1", dev, ok)
 	}
 }
+
+// --- the rolling union (#620) -------------------------------------------------
+
+// shortFlow is the population #620 measured on prod: a sub-90-second TCP
+// connection from a LAN host, policy-routed onto a non-default WAN.
+func shortFlow(port string, device string) StateRow {
+	return StateRow{
+		Proto: "tcp", Direction: "in",
+		SrcAddr: "10.0.0.6", SrcPort: port,
+		DstAddr: "203.0.113.203", DstPort: "8007",
+		RouteToDevice: device,
+	}
+}
+
+// The case the union exists for: a state seen at one poll, gone by the next, whose
+// NetFlow record has not arrived yet. Before #620 the answer went from correct to
+// refused the instant the table was rebuilt.
+func TestRouteTableCarriesExpiredStatesForwardWithinRetention(t *testing.T) {
+	first := BuildRouteTable(RouteTableInput{
+		Rows:  []StateRow{shortFlow("52824", "ixl1")},
+		Built: time.Unix(1000, 0),
+	})
+
+	// One minute later the conversation has ended and pf has dropped the state.
+	second := BuildRouteTable(RouteTableInput{
+		Rows:     nil,
+		Built:    time.Unix(1060, 0),
+		Previous: first,
+		Retain:   3 * time.Minute,
+	})
+
+	dev, ok := second.Egress(6, addr(t, "10.0.0.6"), 52824, addr(t, "203.0.113.203"), 8007)
+	if !ok {
+		t.Fatalf("expired state was not carried forward; the record would be refused")
+	}
+	if dev != "ixl1" {
+		t.Fatalf("carried egress device = %q, want ixl1", dev)
+	}
+	if got := second.Stats().Carried; got != 1 {
+		t.Fatalf("Carried = %d, want 1", got)
+	}
+	if got := second.Stats().Entries; got != 1 {
+		t.Fatalf("Entries = %d, want 1 (a carried entry is answerable, so it counts)", got)
+	}
+	if got := second.Stats().PolicyRouted; got != 1 {
+		t.Fatalf("PolicyRouted = %d, want 1; a carried route-to still moves a record", got)
+	}
+}
+
+// Retention is a bound on being WRONG, so it has to actually bind. Past it the
+// table must go back to refusing rather than keep asserting a dead route.
+func TestRouteTableDropsCarriedStatesPastRetention(t *testing.T) {
+	first := BuildRouteTable(RouteTableInput{
+		Rows:  []StateRow{shortFlow("52824", "ixl1")},
+		Built: time.Unix(1000, 0),
+	})
+	later := BuildRouteTable(RouteTableInput{
+		Built:    time.Unix(1000, 0).Add(3*time.Minute + time.Second),
+		Previous: first,
+		Retain:   3 * time.Minute,
+	})
+
+	if _, ok := later.Egress(6, addr(t, "10.0.0.6"), 52824, addr(t, "203.0.113.203"), 8007); ok {
+		t.Fatalf("a state past the retention window is still answerable")
+	}
+	if got := later.Stats().Carried; got != 0 {
+		t.Fatalf("Carried = %d, want 0", got)
+	}
+}
+
+// Age-out measures the state's own absence, not how many rebuilds have happened
+// since. A long-lived state seen in every snapshot must never expire out of the
+// union — that would make the union actively worse than no union at all.
+func TestRouteTableCarryAgesFromLastSeenNotFirstSeen(t *testing.T) {
+	table := BuildRouteTable(RouteTableInput{
+		Rows:  []StateRow{shortFlow("52824", "ixl1")},
+		Built: time.Unix(1000, 0),
+	})
+	// Ten rebuilds over ten minutes, the state present in every one. Total elapsed
+	// time far exceeds Retain.
+	for i := 1; i <= 10; i++ {
+		table = BuildRouteTable(RouteTableInput{
+			Rows:     []StateRow{shortFlow("52824", "ixl1")},
+			Built:    time.Unix(1000, 0).Add(time.Duration(i) * time.Minute),
+			Previous: table,
+			Retain:   3 * time.Minute,
+		})
+	}
+	if _, ok := table.Egress(6, addr(t, "10.0.0.6"), 52824, addr(t, "203.0.113.203"), 8007); !ok {
+		t.Fatalf("a continuously-present state aged out of the union")
+	}
+	if got := table.Stats().Carried; got != 0 {
+		t.Fatalf("Carried = %d, want 0; the state is fresh in every snapshot", got)
+	}
+}
+
+// The failover hazard, stated as a test: pf re-routes an existing tuple onto a
+// different WAN. The fresh snapshot must win outright — a union that let history
+// pin the answer would turn a bounded miss into a silent mislabel.
+func TestRouteTableFreshRowBeatsCarriedEntry(t *testing.T) {
+	first := BuildRouteTable(RouteTableInput{
+		Rows:  []StateRow{shortFlow("52824", "ixl1")},
+		Built: time.Unix(1000, 0),
+	})
+	second := BuildRouteTable(RouteTableInput{
+		Rows:     []StateRow{shortFlow("52824", "ixl2")},
+		Built:    time.Unix(1060, 0),
+		Previous: first,
+		Retain:   3 * time.Minute,
+	})
+
+	dev, ok := second.Egress(6, addr(t, "10.0.0.6"), 52824, addr(t, "203.0.113.203"), 8007)
+	if !ok {
+		t.Fatalf("tuple missing from the rebuilt table")
+	}
+	if dev != "ixl2" {
+		t.Fatalf("egress device = %q, want ixl2; the fresh snapshot must beat the carried entry", dev)
+	}
+	if got := second.Stats().Conflicts; got != 0 {
+		t.Fatalf("Conflicts = %d, want 0; a tuple in both snapshots is a live state, not an ambiguous key", got)
+	}
+	if got := second.Stats().Carried; got != 0 {
+		t.Fatalf("Carried = %d, want 0", got)
+	}
+	if got := second.Stats().PolicyRouted; got != 1 {
+		t.Fatalf("PolicyRouted = %d, want 1; the carried copy must not be double-counted", got)
+	}
+}
+
+// Retain=0 is the pre-#620 behaviour, and it has to stay reachable: it is what
+// every test written before the union asserts, and it is the fallback if carrying
+// ever needs disabling.
+func TestRouteTableZeroRetentionCarriesNothing(t *testing.T) {
+	first := BuildRouteTable(RouteTableInput{
+		Rows:  []StateRow{shortFlow("52824", "ixl1")},
+		Built: time.Unix(1000, 0),
+	})
+	second := BuildRouteTable(RouteTableInput{
+		Built:    time.Unix(1001, 0),
+		Previous: first,
+		Retain:   0,
+	})
+
+	if _, ok := second.Egress(6, addr(t, "10.0.0.6"), 52824, addr(t, "203.0.113.203"), 8007); ok {
+		t.Fatalf("Retain=0 still carried an entry forward")
+	}
+	if got := second.Stats().Entries; got != 0 {
+		t.Fatalf("Entries = %d, want 0", got)
+	}
+}
+
+// A carried FIB state (route-to empty) must stay distinguishable from "no state at
+// all". Collapsing the two is the one thing Egress's contract forbids, and the
+// union is a new way to get it wrong.
+func TestRouteTableCarriesFIBStatesAsAKnownEmptyAnswer(t *testing.T) {
+	first := BuildRouteTable(RouteTableInput{
+		Rows:  []StateRow{shortFlow("52824", "")},
+		Built: time.Unix(1000, 0),
+	})
+	second := BuildRouteTable(RouteTableInput{
+		Built:    time.Unix(1060, 0),
+		Previous: first,
+		Retain:   3 * time.Minute,
+	})
+
+	dev, ok := second.Egress(6, addr(t, "10.0.0.6"), 52824, addr(t, "203.0.113.203"), 8007)
+	if !ok {
+		t.Fatalf("a carried FIB state must still answer; ok=false means a genuine miss")
+	}
+	if dev != "" {
+		t.Fatalf("carried device = %q, want empty (the FIB decided)", dev)
+	}
+	if got := second.Stats().PolicyRouted; got != 0 {
+		t.Fatalf("PolicyRouted = %d, want 0; a route-to-less state cannot move a record", got)
+	}
+}

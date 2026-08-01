@@ -25,13 +25,27 @@ import (
 // keys, ZERO keys mapping to more than one egress device. So the lookup is a full
 // exact match with no ambiguity class at all.
 //
-// WHAT IT CANNOT DO. A short flow may have no live state left by the time its
-// NetFlow record arrives (the reference box runs inactiveTimeout=15, so a record
-// can land 15-30s after the conversation ended). That is a genuine miss window, it
-// is NOT something a shorter poll interval fixes, and the repair refuses and counts
-// rather than guessing. The flows this bug actually hurts are long ones — state ages
-// in the live table run to 36 hours — so the miss window and the damage do not
-// overlap.
+// WHAT IT CANNOT DO, AND THE HALF OF THAT WE FIXED (#620). The miss window is
+// BIDIRECTIONAL, and #603 accounted for only one side of it:
+//
+//   - EXPIRED-BEFORE-THE-RECORD. The state was alive at a poll, then died before its
+//     NetFlow record arrived (the reference box runs inactiveTimeout=15, so a record
+//     can land 15-30s after the conversation ended). A rolling union closes this:
+//     see BuildRouteTable's Previous/Retain, which keeps a tuple answerable for a
+//     bounded time after it stops appearing in snapshots.
+//   - CREATED-AFTER-THE-LAST-POLL. The state was born, used and closed entirely
+//     between two snapshots, so it appears in NO snapshot and is refused, correctly,
+//     every time. NOTHING closes this except a poll interval shorter than the state
+//     lifetime, and no interval reaches the shortest states.
+//
+// #603 claimed the flows the bug hurts are long — "state ages run to 36 hours". That
+// was WRONG, and it is the reason this file used to say a shorter poll buys nothing.
+// Measured on the production box 2026-07-31, the policy-routed population is 19
+// states of which EIGHTEEN are short: sub-90-second TCP connections, a new one about
+// every ten seconds. Exactly one is long. So the second half of the window above is
+// where the damage is, the poll interval does matter, and it was cut from five
+// minutes to one (main.go's pfStateRefreshInterval). Short states still get refused
+// and counted rather than guessed at; that is a floor, not a bug.
 
 // StateRow is one pf state as the API reports it, in the API's own string shapes.
 //
@@ -65,6 +79,37 @@ type StateRow struct {
 type RouteTableInput struct {
 	Rows  []StateRow
 	Built time.Time
+
+	// Previous is the table this build supersedes, or nil on the first build.
+	// Entries it holds that are ABSENT from Rows are carried forward while they
+	// are younger than Retain — the rolling union that closes the
+	// expired-before-the-record half of the miss window (#620).
+	//
+	// Fresh rows always win. A tuple present in Rows takes its answer from Rows,
+	// never from Previous, so a re-routed flow is corrected on the very next poll
+	// rather than being pinned by its own history.
+	Previous *RouteTable
+
+	// Retain bounds how long a carried entry stays answerable after it was last
+	// SEEN in a snapshot. Zero disables carrying entirely, which is exactly the
+	// pre-#620 behaviour and what the tests that predate it assert.
+	//
+	// It is a bound on being WRONG, not just on memory. A carried entry is a claim
+	// about a state that no longer exists, and the way it goes bad is a WAN
+	// failover: pf re-routes, the old tuple stops appearing, and until it ages out
+	// the table keeps naming the dead egress. Keeping Retain to a few poll
+	// intervals is what makes that window short enough not to matter; a large
+	// value would trade a real miss for a silent mislabel, which is the worse of
+	// the two.
+	Retain time.Duration
+}
+
+// routeEntry is one answerable tuple. LastSeen is when the tuple was last present
+// in an actual snapshot — NOT when the table was built — so age-out measures the
+// state's own absence rather than how many times we have rebuilt since.
+type routeEntry struct {
+	device   string
+	lastSeen time.Time
 }
 
 // routeKey is the pre-NAT directional 5-tuple, exactly as pf keys its own states.
@@ -93,6 +138,13 @@ type RouteTableStats struct {
 	// zero on the live table; a non-zero value means the key stopped being unique
 	// upstream and every answer from it wants re-checking.
 	Conflicts int
+	// Carried is the subset of Entries answered from a PREVIOUS snapshot rather
+	// than from this one — states that have since expired but are still inside the
+	// retention window (#620). It is the size of the rolling union's contribution,
+	// and the number to watch: persistently zero means the union is doing nothing,
+	// while a value that dwarfs the fresh count means states are expiring far
+	// faster than we poll and the retention is carrying a mostly-dead picture.
+	Carried int
 }
 
 // RouteTable answers "which device did pf route this pre-NAT tuple out of".
@@ -101,7 +153,7 @@ type RouteTableStats struct {
 // number of record-path readers may use one concurrently with no locking — the same
 // contract as IfMap.
 type RouteTable struct {
-	byTuple map[routeKey]string
+	byTuple map[routeKey]routeEntry
 	built   time.Time
 	stats   RouteTableStats
 }
@@ -128,10 +180,11 @@ var protoNumbers = map[string]uint8{
 	"sctp":      132,
 }
 
-// BuildRouteTable indexes the direction="in" states by their pre-NAT 5-tuple.
+// BuildRouteTable indexes the direction="in" states by their pre-NAT 5-tuple, then
+// unions in whatever the previous table can still vouch for (#620).
 func BuildRouteTable(in RouteTableInput) *RouteTable {
 	t := &RouteTable{
-		byTuple: make(map[routeKey]string, len(in.Rows)),
+		byTuple: make(map[routeKey]routeEntry, len(in.Rows)),
 		built:   in.Built,
 	}
 	for _, row := range in.Rows {
@@ -150,11 +203,36 @@ func BuildRouteTable(in RouteTableInput) *RouteTable {
 			t.stats.Conflicts++
 			continue
 		}
-		t.byTuple[key] = row.RouteToDevice
+		t.byTuple[key] = routeEntry{device: row.RouteToDevice, lastSeen: in.Built}
 		if row.RouteToDevice != "" {
 			t.stats.PolicyRouted++
 		}
 	}
+
+	// Carry forward states that have since expired but are still within the
+	// retention window. Deliberately AFTER the fresh pass and guarded on the key
+	// being untaken, so a fresh row always wins and a carried entry can only ever
+	// answer where this snapshot has nothing to say.
+	//
+	// Conflicts is NOT incremented here: a tuple appearing in both the previous
+	// and the current snapshot is the normal life of a long-lived state, not the
+	// upstream-uniqueness failure that counter exists to surface.
+	if in.Previous != nil && in.Retain > 0 {
+		for key, prev := range in.Previous.byTuple {
+			if _, taken := t.byTuple[key]; taken {
+				continue
+			}
+			if in.Built.Sub(prev.lastSeen) > in.Retain {
+				continue
+			}
+			t.byTuple[key] = prev
+			t.stats.Carried++
+			if prev.device != "" {
+				t.stats.PolicyRouted++
+			}
+		}
+	}
+
 	t.stats.Entries = len(t.byTuple)
 	return t
 }
@@ -193,11 +271,20 @@ func keyOfState(row StateRow) (routeKey, bool) {
 //
 // The two negatives are DIFFERENT and callers must keep them apart:
 //
-//   - ok == false: no state exists for this tuple. Either the flow ended and its
-//     state expired (the miss window), or the record is not a pre-NAT egress copy
-//     at all. Nothing may be concluded — refuse, do not guess.
-//   - ok == true, device == "": a state exists and pf applied NO route-to, so the
+//   - ok == false: no state is answerable for this tuple. Either it was never in a
+//     snapshot at all (born and died between two polls), or it expired and has now
+//     aged past Retain, or the record is not a pre-NAT egress copy. Nothing may be
+//     concluded — refuse, do not guess.
+//   - ok == true, device == "": a state was seen and pf applied NO route-to, so the
 //     FIB decided and OUTPUT_SNMP is already right. Nothing to do.
+//
+// A hit may come from the current snapshot or be CARRIED from a recent one (#620),
+// and the caller deliberately cannot tell the two apart. Both are pf's own recorded
+// decision for this exact 5-tuple; the only difference is that a carried answer
+// describes a state that has since expired, and the retention window is what bounds
+// how wrong that can be. Splitting the return value would push a judgement call onto
+// every call site for a distinction none of them could act on — the aggregate is
+// visible instead as pf_state_entries{kind="carried"}.
 //
 // Safe on a nil receiver: the table is late-bound and a record arriving before the
 // first poll must not panic and must not be corrected.
@@ -205,14 +292,14 @@ func (t *RouteTable) Egress(proto uint8, src netip.Addr, sport uint16, dst netip
 	if t == nil {
 		return "", false
 	}
-	device, ok := t.byTuple[routeKey{
+	entry, ok := t.byTuple[routeKey{
 		proto: proto,
 		src:   src.Unmap(),
 		dst:   dst.Unmap(),
 		sport: sport,
 		dport: dport,
 	}]
-	return device, ok
+	return entry.device, ok
 }
 
 // Stats reports the table's accounting. Nil-safe.
