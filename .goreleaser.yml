@@ -1,3 +1,5 @@
+version: 2
+
 # Pinned rather than derived. GoReleaser defaults project_name to the repository
 # directory name, and scripts/docgen reads this key to build the release-asset names
 # it documents — so without it, running `make docs` from a git worktree derives the
