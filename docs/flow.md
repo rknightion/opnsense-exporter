@@ -162,8 +162,16 @@ Its limits, which are counted rather than hidden:
   between two snapshots, so it appears in none of them. Nothing but a poll faster than
   the state lifetime reaches that, and no interval reaches the shortest states. Those
   records are emitted exactly as reported and counted under
-  `opnsense_flow_policy_route_refused_total{reason="no_state"}`, which is a floor
-  rather than a fault.
+  `opnsense_flow_policy_route_refused_total{reason="no_state"}`.
+
+  **That counter is NOT all floor, and an earlier version of this page said it was.**
+  Measured on the reference box 2026-08-01, most refusals are a third case the two above
+  do not cover: the state *was* visible in a snapshot, just not in the snapshot the
+  record was resolved against. A record is repaired the moment it arrives, roughly 15-30 s
+  after its conversation ended, against a table up to a minute old - typically built
+  before the state existed. The next build has it, and nothing ever re-asks. Split the
+  counter by `interface` to see how much of your own refusal rate sits on the
+  default-route WAN; the open work is [#624](https://github.com/rknightion/opnsense2otel/issues/624).
 
   The one-minute poll is sized for this. It was five minutes on the reasoning that
   the flows this repair recovers are long ones - which measurement disproved: on the
@@ -715,6 +723,69 @@ total since process start, not merely its recent rate.
 `top-n` caps what is emitted; `max-keys` caps what is held in memory between
 scrapes. A combination first seen when the accumulator is already at `max-keys`
 folds into `__other__` and is counted by `opnsense_flow_rollup_capped_total`.
+
+## Multi-WAN: what per-WAN attribution can and cannot tell you
+
+On a box with more than one WAN, per-WAN byte totals on this lane are **approximate,
+and currently biased in a known direction**. Two open defects drive it, both measured
+against a production multi-WAN OPNsense on 2026-08-01, and neither is a Zenarmor
+problem — they live entirely in the NetFlow lane and its repairs.
+
+!!! warning "Do not treat `interface` on a NetFlow record as ground truth for WAN volume"
+
+    For per-WAN billing, capacity or failover questions, read
+    `opnsense_interfaces_transmitted_bytes_total` /
+    `opnsense_interfaces_received_bytes_total` instead. Those come from the kernel's own
+    counters and are exact. This lane's value is *what the traffic was* — hosts,
+    applications, destinations, ports — not how many bytes crossed a link.
+
+**A NAT'd conversation can be counted twice on a WAN.** `ng_netflow` exports one record
+where the flow enters (LAN, pre-NAT) and another where it leaves (WAN, post-NAT). Where
+both copies resolve to the same WAN, that WAN's bytes double. On the reference box the
+policy-routed WAN read **62.40 GB against 45.05 GB actual, +38.5%**, while the WAN whose
+capture hook does not work at all — a PPPoE link, see below — read +6.2%, ordinary
+overhead. The exporter does not yet de-duplicate the pair. Tracked as
+[#623](https://github.com/rknightion/opnsense2otel/issues/623); the fix is exact, because
+pf's own state table already carries the NAT mapping.
+
+**A policy-routed flow can be labelled with the wrong WAN.** The pre-NAT copy inherits
+`OUTPUT_SNMP` from a FIB lookup, so it names the default-route WAN whatever pf did. Repair
+4 corrects that from pf's `route-to`, but it resolves each record against a route table
+built up to a minute earlier, and short connections are typically resolved before their
+state has ever appeared in a snapshot. On the reference box that refuses about 78% of
+candidates — and because the pre-NAT copy is the only one that correlates with Zenarmor,
+the mislabel lands specifically on **merged** records. Tracked as
+[#624](https://github.com/rknightion/opnsense2otel/issues/624).
+
+The two interact, and the direction matters: fixing the second without the first would make
+the first worse, by moving more bytes into the doubled bucket.
+
+**How to tell whether your box is affected.** Split the refusal counter by the interface
+the bytes are currently attributed to:
+
+```promql
+sum by (interface) (rate(opnsense_flow_policy_route_refused_total{reason="no_state"}[5m]))
+```
+
+A large `interface="<your default WAN>"` share means candidates are being left on the
+default-route WAN — some of which really did leave by another one. Then compare the lane
+against the kernel:
+
+```promql
+sum by (interface) (increase(opnsense_flow_bytes_total{source="netflow",direction="outbound"}[24h]))
+  / on (interface)
+sum by (interface) (increase(opnsense_interfaces_transmitted_bytes_total[24h]))
+```
+
+A ratio near 1.05 is normal overhead. A ratio near 1.4 is #623. A ratio well under 1 means
+the WAN's traffic is being attributed to a different WAN.
+
+**A PPPoE WAN exports nothing at all**, whatever the GUI says. Selecting a PPPoE interface
+for NetFlow capture is silently a no-op upstream: `ng_netflow` attaches to mpd's framing
+node rather than the `ng_iface` node, and `ng_pppoe` accepts the hooks without complaint.
+The node appears in `ngctl list` and exports zero records. On such a box there is no
+post-NAT copy, so #623 cannot bite — and equally, nothing on the WAN side to cross-check
+against.
 
 ## Never sum the two sources
 

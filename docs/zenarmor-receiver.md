@@ -284,6 +284,27 @@ keep working whether or not you promote.
 Promoting any of them needs the same tenant `otlp_config` change - see
 [Promoting the opnsense.* attributes](log-shipping.md#promoting-the-opnsense-attributes).
 
+### `interface` on this lane is a LAN segment, never a WAN
+
+Zenarmor inspects the LAN side, so `opnsense.interface` on a Zenarmor record is the
+segment the client sits on — the VLAN child, not the WAN the traffic left by. On the
+reference box the Zenarmor lane reports **zero bytes on any WAN interface**, which is
+correct and expected, not a gap.
+
+The NetFlow lane is the opposite: its `interface` names the WAN-facing side. So the two
+lanes describe one flow with two different, both-correct interface values, which is a
+second reason to pin `source` in every query — see
+[Never sum the two sources](flow.md#never-sum-the-two-sources).
+
+!!! warning "On a multi-WAN box, a merged record's WAN can be wrong"
+
+    A **merged** record (`opnsense.source=merged`) takes its `interface` from the NetFlow
+    side, and on a multi-WAN box that value is currently unreliable for policy-routed
+    traffic — the pre-NAT NetFlow copy, which is the only one that can correlate with
+    Zenarmor, is the copy most likely to name the wrong WAN. The application, device,
+    category and byte figures on the record are unaffected. Details and the open issues
+    are in [Multi-WAN: what per-WAN attribution can and cannot tell you](flow.md#multi-wan-what-per-wan-attribution-can-and-cannot-tell-you).
+
 ## Derived counters
 
 `opnsense_log_events_zenarmor_total{family,action,category,interface,rcode,severity,status_class}`
