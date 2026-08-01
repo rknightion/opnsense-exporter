@@ -252,7 +252,36 @@ def build(b: Builder):
              "the reference box, so any non-zero value means the pre-NAT 5-tuple stopped being unique "
              "upstream and every correction from this table wants re-checking. pf state age rising "
              "past a few multiples of the 5-minute poll means the fetch is failing and corrections "
-             "are being made against a stale routing picture.",
+             "are being made against a stale routing picture. The poll is ONE minute (it was five "
+             "until #620 measured the policy-routed states as mostly sub-90-second), so judge the age "
+             "against that.",
+    )
+
+    nat_pairs = b.ts(
+        "NAT-Pair De-duplication",
+        [(f'sum {grp("outcome")} (rate({sel("opnsense_flow_nat_pair_deduped_total")}[{RATE}]))',
+          "{{outcome}}/sec"),
+         (f'sum {grp("kind")} ({sel("opnsense_flow_nat_pair_entries")})', "{{kind}}")],
+        unit="short",
+        desc="A NAT'd conversation crossing a captured LAN interface AND a captured ETHERNET WAN is "
+             "exported TWICE by ng_netflow - pre-NAT where it entered, post-NAT where it left - and "
+             "nothing in either record says so, because the whole point of NAT is that the tuples "
+             "differ. Both used to be counted: the reference box's policy-routed WAN read 62.40 GB "
+             "against 45.05 GB on the kernel's own interface counter, +38.5%. pf's nat_addr/nat_port "
+             "pairs them exactly. "
+             "outcome=\"suppressed\" is the post-NAT copy discarded. ONLY the post-NAT copy is ever "
+             "suppressed, because the pre-NAT copy carries the LAN host's own 5-tuple and is the only "
+             "one that can correlate with Zenarmor - dropping it would trade a visible double count "
+             "for an invisible hole in correlation coverage. outcome=\"late_pre_nat\" is the "
+             "residual, where the pre-NAT copy arrived after its twin had already shipped and the "
+             "double count could no longer be prevented; measured at ~8-11% of pairs, it should stay "
+             "a small fraction of \"suppressed\" and the two move together. "
+             "BOTH FLAT ZERO IS CORRECT on a box with no captured ethernet WAN - including one whose "
+             "WAN is PPPoE, which exports nothing at all upstream however the GUI presents it. "
+             "kind=\"translations\" counts BOTH directional forms of each translated state, so it "
+             "is roughly twice the translated-state count; kind=\"conflict\" is small and normal "
+             "(6-14 per build against ~7,000 entries measured) and fails safe toward emitting rather "
+             "than suppressing.",
     )
 
     ifindex = b.ts(
@@ -402,7 +431,7 @@ def build(b: Builder):
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("NetFlow Receiver", [ingest, ingest_bytes, funnel, decoder],
               present="has_flow_netflow"),
-        b.row("NetFlow Repairs & Topology", [repairs, policy_route, ifindex], present="has_flow_netflow"),
+        b.row("NetFlow Repairs & Topology", [repairs, policy_route, nat_pairs, ifindex], present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs]),
         b.row("GeoIP Enrichment", [geoip_lookups, geoip_freshness, geoip_agreement],
               present="has_flow_geoip"),

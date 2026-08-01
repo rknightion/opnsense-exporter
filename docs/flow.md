@@ -186,6 +186,57 @@ Its limits, which are counted rather than hidden:
   duplicate key would be a signal, not an input: it is counted as
   `opnsense_flow_pf_state_entries{kind="conflict"}` and the first row wins.
 
+### NAT-pair de-duplication
+
+A conversation that crosses a captured LAN interface **and** a captured ethernet WAN is
+exported **twice**: pre-NAT where it entered, post-NAT where it left. They are the same
+bytes, and nothing in either record says so, because the whole point of NAT is that the
+5-tuples differ.
+
+The repair pairs them from pf's own translation. The `direction="out"` state row carries
+`nat_addr`/`nat_port` holding the pre-NAT endpoint, so the mapping is stated rather than
+inferred - the same class of evidence the policy-route repair rests on, read from the same
+snapshot on the same poll.
+
+**Only the post-NAT copy is ever suppressed.** The pre-NAT copy carries the LAN host's own
+5-tuple, which is the only tuple Zenarmor ever saw, so it is the only copy that can reach a
+merged record. Suppressing it to keep the post-NAT one would trade a double count, which
+shows up against the interface counter, for a hole in correlation coverage, which does not.
+
+Measured against a live production box on 2026-08-01 - 15 minutes, 4,257 export datagrams,
+85,919 flow records, 14 one-minute pf snapshots, with a 100 Mbit/s backup running over the
+policy-routed WAN:
+
+- **399 of 399 pairs matched bytes and packets exactly.** NAT does not change a packet's
+  size, so volume is conserved and is what the key rests on.
+- **Only 61% also matched the flow timestamps.** The two copies are expired by two
+  independent `ng_netflow` nodes, so `first`/`last` differ by up to a second. The key
+  deliberately omits them; including them would miss two pairs in five.
+- **The copies arrive p50 20 s, p90 49 s, p99 60 s apart** (max 7m11s). A hold buffer is
+  therefore the wrong mechanism - the 2-second VLAN window would pair 15.8% - and the
+  existing two-minute de-duplication window is the right one, pairing 99.7%.
+- **The pf mapping was available when the post-NAT copy arrived in 98.8% of pairs**, with
+  the live one-minute poll and three-minute retention. That is much better than the
+  policy-route repair manages, for a structural reason: this repair needs the state when
+  the *later* copy lands, by which time it has been through a poll.
+- **1,009 records carried a WAN address but had no twin at all** - the firewall's own
+  traffic, never translated. Keying on "has a WAN address" instead of on pf's mapping
+  would have destroyed every one of them.
+
+Its limits, counted rather than hidden:
+
+- **The residual is arrival order.** The pre-NAT copy arrives first in 89.2% of pairs. In
+  the rest the post-NAT copy is already through the rollup and shipped by the time its twin
+  lands, and it cannot be taken back; the pair is emitted and counted as
+  `opnsense_flow_nat_pair_deduped_total{outcome="late_pre_nat"}`. Suppressing the pre-NAT
+  copy at that point would fix the byte total at the cost of the correlatable record.
+- **A PPPoE WAN has nothing to de-duplicate**, because it exports nothing at all. Both
+  counters flat at zero on such a box is correct, not a fault.
+- **Conflicts fail safe.** A post-NAT tuple already mapped to a different conversation is
+  counted as `kind="conflict"` (6-14 per build against ~7,000 entries, measured) and
+  resolves to the wrong conversation, whose twin then will not match on volume - so the
+  record is emitted rather than suppressed.
+
 **Direction is not exported at all.** Field 61 is absent, so direction is inferred
 from the firewall's own topology and the ifIndex evidence, by the same rules the
 Zenarmor lane uses. `unknown` is emitted honestly rather than guessed.
@@ -739,14 +790,13 @@ problem — they live entirely in the NetFlow lane and its repairs.
     counters and are exact. This lane's value is *what the traffic was* — hosts,
     applications, destinations, ports — not how many bytes crossed a link.
 
-**A NAT'd conversation can be counted twice on a WAN.** `ng_netflow` exports one record
-where the flow enters (LAN, pre-NAT) and another where it leaves (WAN, post-NAT). Where
-both copies resolve to the same WAN, that WAN's bytes double. On the reference box the
-policy-routed WAN read **62.40 GB against 45.05 GB actual, +38.5%**, while the WAN whose
-capture hook does not work at all — a PPPoE link, see below — read +6.2%, ordinary
-overhead. The exporter does not yet de-duplicate the pair. Tracked as
-[#623](https://github.com/rknightion/opnsense2otel/issues/623); the fix is exact, because
-pf's own state table already carries the NAT mapping.
+**A NAT'd conversation used to be counted twice on a WAN — fixed in #623.**
+`ng_netflow` exports one record where the flow enters (LAN, pre-NAT) and another where it
+leaves (WAN, post-NAT). Where both copies resolved to the same WAN, that WAN's bytes
+doubled: the reference box's policy-routed WAN read **62.40 GB against 45.05 GB actual,
++38.5%**, while the WAN whose capture hook does not work at all — a PPPoE link, see below
+— read +6.2%, ordinary overhead. This is now repaired; see
+[NAT-pair de-duplication](#nat-pair-de-duplication) below.
 
 **A policy-routed flow can be labelled with the wrong WAN.** The pre-NAT copy inherits
 `OUTPUT_SNMP` from a FIB lookup, so it names the default-route WAN whatever pf did. Repair
@@ -777,8 +827,10 @@ sum by (interface) (increase(opnsense_flow_bytes_total{source="netflow",directio
 sum by (interface) (increase(opnsense_interfaces_transmitted_bytes_total[24h]))
 ```
 
-A ratio near 1.05 is normal overhead. A ratio near 1.4 is #623. A ratio well under 1 means
-the WAN's traffic is being attributed to a different WAN.
+A ratio near 1.05 is normal overhead. A ratio well under 1 means the WAN's traffic is
+being attributed to a different WAN. A ratio near 1.4 was the NAT double count, and on a
+current build means the de-duplication is not firing — check
+`opnsense_flow_nat_pair_deduped_total`.
 
 **A PPPoE WAN exports nothing at all**, whatever the GUI says. Selecting a PPPoE interface
 for NetFlow capture is silently a no-op upstream: `ng_netflow` attaches to mpd's framing

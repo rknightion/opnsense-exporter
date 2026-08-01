@@ -37,6 +37,12 @@ import (
 //     that actually left by WAN2 was reported as WAN1. This repair resolves it from
 //     pf's own state table, which carries the routing decision verbatim; see
 //     routetable.go for why that beats every inferential join.
+//  5. NAT-pair de-duplication (#623). A conversation crossing a captured LAN
+//     interface AND a captured ethernet WAN is exported TWICE — pre-NAT on one node,
+//     post-NAT on the other — and nothing in either record says so, because the
+//     whole point of NAT is that the tuples differ. Both were counted, and the
+//     reference box's policy-routed WAN read 62.40 GB against 45.05 GB actual.
+//     pf's own nat_addr/nat_port pairs them exactly; see nattable.go.
 
 // dedupeTTL bounds how long an instance stays in the de-dup table.
 //
@@ -170,6 +176,33 @@ type RepairStats struct {
 	// than we poll and most answers describe a table that no longer exists.
 	RouteTableCarried int
 	RouteTableAge     time.Duration
+
+	// NATDuplicatesDropped counts POST-NAT copies suppressed because the pre-NAT
+	// copy of the same conversation had already been emitted (#623). On a box whose
+	// WAN is captured alongside its LAN this is the difference between per-WAN byte
+	// totals that agree with the kernel's interface counters and totals that do not;
+	// the reference box read +38.5% before it existed. Zero on a box with no
+	// captured WAN, or one whose WAN is PPPoE and therefore exports nothing.
+	NATDuplicatesDropped uint64
+	// NATLatePreNATCopies counts the RESIDUAL: the pre-NAT copy arrived AFTER its
+	// post-NAT twin had already been emitted, so the double count could not be
+	// prevented without discarding the only correlatable copy of that conversation.
+	// Measured at 10.8% of pairs (43 of 399). It is a fraction of
+	// NATDuplicatesDropped, not a fault, and the two should move together.
+	NATLatePreNATCopies uint64
+	// NATSeenEntries is the live size of the canonical-identity table, and
+	// NATSeenCapped counts entries forced out early because it was full. A non-zero
+	// cap rate means NAT duplicates are reaching the rollup.
+	NATSeenEntries int
+	NATSeenCapped  uint64
+	// NATTableEntries, NATTableCarried, NATTableConflicts and NATTableSkipped
+	// describe the pf translation index itself, on the same terms as the
+	// RouteTable* fields above. Entries counts BOTH directional forms of each
+	// translation, so it is roughly twice the number of translated states.
+	NATTableEntries   int
+	NATTableCarried   int
+	NATTableConflicts int
+	NATTableSkipped   int
 
 	// DedupeCapped counts entries forced out EARLY because the table was at
 	// maxDedupeEntries. This is not housekeeping: a capped instance can no longer be
@@ -335,6 +368,22 @@ type Repairer struct {
 	// routes is the pf state snapshot repair 4 resolves against, swapped wholesale by
 	// the cold-tier poller. Readers take no lock; the table is immutable after build.
 	routes atomic.Pointer[RouteTable]
+	// nats is the NAT translation index repair 5 resolves against, built from the
+	// SAME snapshot on the same poll and swapped on the same terms (#623).
+	nats atomic.Pointer[NATTable]
+
+	// natSeen remembers the CANONICAL identity of every record that has been
+	// emitted, so the post-NAT copy of the same conversation can be recognised when
+	// it lands — on the reference box a median of 20 seconds later, p99 60 seconds.
+	//
+	// It is kept apart from seen for the same reason held is: a different key (no
+	// timestamps — the two copies' first/last disagree in 39% of real pairs) and a
+	// different question. Sharing one table would need one of the two questions to
+	// be answered with the wrong key.
+	natSeen   map[natKey]natSeenEntry
+	natOrder  []natKey
+	natHead   int
+	natCapped uint64
 
 	maxEntries int
 	maxHeld    int
@@ -355,6 +404,9 @@ type Repairer struct {
 	// never refuses anything and should carry no map at all.
 	policyRouteNoStateBy    map[string]uint64
 	policyRouteUnresolvedBy map[string]uint64
+
+	natDuplicates    uint64
+	natLatePreCopies uint64
 }
 
 // bumpByInterface increments the per-interface tally for a record's REPORTED
@@ -431,6 +483,7 @@ func NewRepairer(maxDedupeEntries, maxHeld int) *Repairer {
 	return &Repairer{
 		seen:       make(map[instanceKey]dedupeEntry),
 		held:       make(map[instanceKey]*heldRecord),
+		natSeen:    make(map[natKey]natSeenEntry),
 		maxEntries: maxDedupeEntries,
 		maxHeld:    maxHeld,
 	}
@@ -511,6 +564,11 @@ func (r *Repairer) release(now time.Time, all bool) []Record {
 	}
 	out := make([]Record, 0, len(due))
 	for _, h := range due {
+		// Repair 5 runs at RELEASE for a held record, not at arrival: the copy that
+		// wins the VLAN contest is the one whose identity belongs in the NAT table.
+		if !r.natAdmit(&h.rec, now) {
+			continue
+		}
 		r.correctEgress(&h.rec, h.m)
 		r.correctPolicyRoute(&h.rec, h.m)
 		r.setDirection(&h.rec, h.m, h.snap)
@@ -538,6 +596,11 @@ func (r *Repairer) repairWith(rec *Record, m ifTopology, snap *enrich.Snapshot, 
 		// spent on a copy that loses is at best wasted and at worst reaches a counter.
 		return v
 	}
+	if !r.natAdmit(rec, now) {
+		// Repair 5: the pre-NAT copy of this conversation is already through the
+		// rollup. Emitting this one would count the same bytes twice (#623).
+		return RepairDrop
+	}
 	r.correctEgress(rec, m)
 	r.correctPolicyRoute(rec, m)
 	r.setDirection(rec, m, snap)
@@ -551,6 +614,7 @@ func (r *Repairer) Stats() RepairStats { return r.StatsAt(time.Now()) }
 // without sleeping.
 func (r *Repairer) StatsAt(now time.Time) RepairStats {
 	rt := r.routes.Load().Stats()
+	nt := r.nats.Load().Stats()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return RepairStats{
@@ -573,6 +637,15 @@ func (r *Repairer) StatsAt(now time.Time) RepairStats {
 		RouteTableConflicts:    rt.Conflicts,
 		RouteTableCarried:      rt.Carried,
 		RouteTableAge:          r.routes.Load().Age(now),
+
+		NATDuplicatesDropped: r.natDuplicates,
+		NATLatePreNATCopies:  r.natLatePreCopies,
+		NATSeenEntries:       len(r.natSeen),
+		NATSeenCapped:        r.natCapped,
+		NATTableEntries:      nt.Entries,
+		NATTableCarried:      nt.Carried,
+		NATTableConflicts:    nt.Conflicts,
+		NATTableSkipped:      nt.Skipped,
 		// dueEarly counts as held: those records have left the buffer but not yet the
 		// stage, and a gauge that dropped them would make the accounting look short for
 		// as long as they sat there.
@@ -1225,4 +1298,212 @@ func ifaceIsWAN(m ifTopology, ifc Iface, selfAddr netip.Addr) bool {
 	}
 	w, ok := m.WANFor(selfAddr)
 	return ok && w.Device != "" && w.Device == ifc.Device
+}
+
+// ---------------------------------------------------------------------------
+// Repair 5: NAT-pair de-duplication (#623).
+//
+// The mechanism and every number behind it are documented in nattable.go. What
+// lives here is the decision: WHICH copy is suppressed, and what happens in the
+// order this cannot fix.
+//
+// ONLY THE POST-NAT COPY IS EVER SUPPRESSED. That is not arbitrary. The pre-NAT
+// copy carries the LAN host's own 5-tuple, which is the only tuple Zenarmor ever
+// saw, so it is the only copy that can reach a merged record. Suppressing it to
+// keep the post-NAT one would trade a double count for a hole in correlation
+// coverage, which is the worse of the two because it is invisible in the totals.
+//
+// THE RESIDUAL, COUNTED RATHER THAN HIDDEN. The pre-NAT copy arrives first in
+// 89.2% of real pairs (356/399 measured). In the other 10.8% the post-NAT copy is
+// already emitted — through the rollup, counted, shipped — by the time its twin
+// lands, and it cannot be taken back. Suppressing the pre-NAT copy at that point
+// would fix the byte total at the cost of the correlatable record, so the pair is
+// emitted and counted as NATLatePreNATCopies instead. This is the same trade, for
+// the same reason, as VLANLateChildCopies above.
+
+// natKey is the CANONICAL identity of one export: the pre-NAT directional tuple
+// plus the volume, and DELIBERATELY NOT the timestamps.
+//
+// instanceKey next door includes First/Last because the two copies it compares are
+// produced by ONE expiry sweep and agree on them exactly. These two are produced by
+// two INDEPENDENT ng_netflow nodes with their own timers, and measured against a
+// live box only 244 of 399 real pairs (61%) agreed on both. Keying on them would
+// silently miss two pairs in five.
+//
+// The volume stays, and does the work the timestamps used to: NAT does not change
+// the size of a packet, so bytes and packets are conserved across the translation —
+// 399 of 399 pairs matched both EXACTLY. It is what stops two different exports of
+// one long-lived conversation, which share a tuple, from being folded together.
+type natKey struct {
+	canon       routeKey
+	bytes, pkts uint64
+}
+
+// natRole records which side of a pair an entry was.
+type natRole uint8
+
+const (
+	// natRolePre is a record emitted under its own (pre-NAT) tuple. A post-NAT copy
+	// finding one of these is a proven duplicate.
+	natRolePre natRole = iota
+	// natRolePost is a post-NAT copy emitted because its twin had not arrived. It
+	// exists ONLY so the late twin is countable; it never suppresses anything.
+	natRolePost
+)
+
+type natSeenEntry struct {
+	role natRole
+	seen time.Time
+}
+
+// SetNATTable publishes a new NAT translation index. Safe to call while records are
+// in flight; a nil table makes repair 5 inert rather than failing.
+func (r *Repairer) SetNATTable(t *NATTable) { r.nats.Store(t) }
+
+// NATTable returns the current NAT translation index, which may be nil.
+func (r *Repairer) NATTable() *NATTable { return r.nats.Load() }
+
+// natAdmit reports whether a record should be emitted, suppressing it when it is the
+// post-NAT copy of a conversation already emitted from its pre-NAT side.
+//
+// It runs at the point a record is decided to be EMITTED — after repair 1 has
+// resolved the VLAN contest — so a held record is considered when it is released
+// rather than when it arrived, and a copy that loses the VLAN contest is never
+// entered here at all.
+func (r *Repairer) natAdmit(rec *Record, now time.Time) bool {
+	t := r.nats.Load()
+	if t == nil {
+		// No snapshot yet, or a box whose pf table records no translations. Nothing
+		// can be identified as a post-NAT copy, so remembering anything would be pure
+		// cost. The mechanism is absent, not failing.
+		return true
+	}
+	own, ok := tupleOfRecord(rec)
+	if !ok {
+		return true
+	}
+	bytes, packets := volumeOf(*rec)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.natExpire(now)
+
+	if canon, isPost := t.Canonical(own); isPost {
+		k := natKey{canon: canon, bytes: bytes, pkts: packets}
+		if e, seen := r.natSeen[k]; seen && e.role == natRolePre {
+			// The pre-NAT copy of this conversation has already been emitted. These are
+			// the same bytes; counting them again is the whole bug.
+			delete(r.natSeen, k)
+			r.natDuplicates++
+			return false
+		}
+		// The twin has not arrived. Emit — never drop what is not PROVEN a duplicate —
+		// and leave a marker so that if it does arrive the residual is visible.
+		r.natRemember(natKey{canon: canon, bytes: bytes, pkts: packets}, natRolePost, now)
+		return true
+	}
+
+	if !couldBeTranslated(rec) {
+		// Both ends private, or neither: this record can have no post-NAT twin, so
+		// remembering it would only fill the table. Internal traffic is the bulk of
+		// most boxes' records and none of it is ever translated.
+		return true
+	}
+	k := natKey{canon: own, bytes: bytes, pkts: packets}
+	if e, seen := r.natSeen[k]; seen && e.role == natRolePost {
+		// The post-NAT copy went out first and is already shipped. Emitting this one
+		// double-counts, suppressing it loses the only correlatable copy; the residual
+		// is counted instead. See the block comment above.
+		delete(r.natSeen, k)
+		r.natLatePreCopies++
+		return true
+	}
+	r.natRemember(k, natRolePre, now)
+	return true
+}
+
+// couldBeTranslated reports whether a record has the shape of one side of a NAT'd
+// conversation: exactly one endpoint on a private address.
+//
+// A cheap address test rather than a table lookup, so it cannot go stale. It is
+// deliberately conservative — a box translating a public range is not recognised, and
+// the cost of that is a double count, which shows up against the interface counter,
+// rather than a suppressed record, which would not.
+func couldBeTranslated(rec *Record) bool {
+	return rec.SrcAddr.Unmap().IsPrivate() != rec.DstAddr.Unmap().IsPrivate()
+}
+
+// tupleOfRecord is the record's own directional 5-tuple in the shape the pf tables
+// key by.
+func tupleOfRecord(rec *Record) (routeKey, bool) {
+	src, dst := rec.SrcAddr.Unmap(), rec.DstAddr.Unmap()
+	if !src.IsValid() || !dst.IsValid() {
+		return routeKey{}, false
+	}
+	return routeKey{proto: rec.Proto, src: src, dst: dst, sport: rec.SrcPort, dport: rec.DstPort}, true
+}
+
+// natRemember records a canonical identity, making room first if the table is full.
+// Callers hold mu.
+//
+// An existing entry is left ALONE rather than refreshed, exactly as insert does, so
+// insertion order stays age order and the expiry scan can stop at the first live
+// entry.
+func (r *Repairer) natRemember(k natKey, role natRole, now time.Time) {
+	if _, exists := r.natSeen[k]; exists {
+		return
+	}
+	if r.maxEntries > 0 && len(r.natSeen) >= r.maxEntries {
+		r.natDropOldest()
+		r.natCapped++
+	}
+	r.natSeen[k] = natSeenEntry{role: role, seen: now}
+	r.natOrder = append(r.natOrder, k)
+}
+
+// natExpire drops entries past dedupeTTL. Callers hold mu.
+//
+// It shares the instance table's TTL rather than defining its own, and that is a
+// measurement, not a convenience: the arrival gap between the two copies of a NAT
+// pair is p50 20s, p90 49s, p99 60s on the reference box, so two minutes pairs 99.7%
+// of them. The one pair in the sample that exceeded it was 7m11s apart, and buying it
+// would mean holding every record's identity for eight minutes.
+func (r *Repairer) natExpire(now time.Time) {
+	cutoff := now.Add(-dedupeTTL)
+	for r.natHead < len(r.natOrder) {
+		k := r.natOrder[r.natHead]
+		e, ok := r.natSeen[k]
+		if ok && e.seen.After(cutoff) {
+			break
+		}
+		if ok {
+			delete(r.natSeen, k)
+		}
+		r.natHead++
+	}
+	r.natCompact()
+}
+
+// natDropOldest evicts the oldest entry to make room. Callers hold mu.
+func (r *Repairer) natDropOldest() {
+	for r.natHead < len(r.natOrder) {
+		k := r.natOrder[r.natHead]
+		r.natHead++
+		if _, ok := r.natSeen[k]; ok {
+			delete(r.natSeen, k)
+			return
+		}
+	}
+}
+
+// natCompact reclaims the consumed prefix of natOrder, on the same terms as compact.
+func (r *Repairer) natCompact() {
+	if r.natHead == 0 {
+		return
+	}
+	if r.natHead < len(r.natOrder)/2 {
+		return
+	}
+	r.natOrder = append(r.natOrder[:0], r.natOrder[r.natHead:]...)
+	r.natHead = 0
 }

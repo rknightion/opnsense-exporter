@@ -19,6 +19,15 @@ import (
 // "192.0.2.1@ixl1"), so its presence is an exact discriminator: a state without
 // it followed the FIB, which is precisely the case where ng_netflow's
 // OUTPUT_SNMP is already right (#603).
+//
+// `nat_addr`/`nat_port` are the second reason (#623). They appear on the
+// direction="out" row and hold the PRE-NAT endpoint of the translation, so the
+// pair (src_addr:src_port -> nat_addr:nat_port) is pf's own NAT mapping, stated
+// rather than inferred. That is what lets the flow lane recognise the post-NAT
+// copy of a conversation as the same conversation as its pre-NAT copy. Both are
+// null on a direction="in" row and on any state that was never translated, and
+// both are therefore modelled as pointers-in-effect: the zero value means "no
+// translation recorded", which is a real answer, not a missing one.
 type firewallStatesResponse struct {
 	Rows []struct {
 		Proto     string `json:"proto"`
@@ -28,6 +37,8 @@ type firewallStatesResponse struct {
 		DstAddr   string `json:"dst_addr"`
 		DstPort   string `json:"dst_port"`
 		RouteTo   string `json:"route-to"`
+		NatAddr   string `json:"nat_addr"`
+		NatPort   string `json:"nat_port"`
 	} `json:"rows"`
 	Total    int `json:"total"`
 	RowCount int `json:"rowCount"`
@@ -51,6 +62,13 @@ type FirewallState struct {
 	// Both are empty when the state carries none, which means the FIB decided.
 	RouteToGateway string
 	RouteToDevice  string
+
+	// NatAddr and NatPort are the PRE-NAT endpoint pf recorded for this state,
+	// present only on direction="out" rows of a translated conversation (#623).
+	// Empty means no translation was recorded, which is a real answer: an
+	// un-NAT'd flow has exactly one copy and nothing to de-duplicate.
+	NatAddr string
+	NatPort string
 }
 
 // FirewallStates is the whole state table as one snapshot.
@@ -101,6 +119,8 @@ func (c *Client) FetchFirewallStates() (FirewallStates, *APICallError) {
 			SrcPort:   row.SrcPort,
 			DstAddr:   row.DstAddr,
 			DstPort:   row.DstPort,
+			NatAddr:   row.NatAddr,
+			NatPort:   row.NatPort,
 		}
 		st.RouteToGateway, st.RouteToDevice = splitRouteTo(row.RouteTo)
 		data.States = append(data.States, st)

@@ -26,7 +26,7 @@
       "description": "The loaded {{ $labels.database }} database was built more than 45 days ago, which is past the publish interval of every database this exporter can load - GeoLite2 rebuilds twice a week, the bundled DB-IP Lite monthly - so whatever refreshes it has stopped. With --geoip.download.enabled that is a failed fetch (expired license key, blocked egress, exhausted download quota); with an operator-managed file it is a geoipupdate cron, sidecar or mounted volume that is no longer refreshing it; and on a stock deployment running the database baked into the image it means the image itself is old. Enrichment is fail-open, so nothing has broken and no attribute has disappeared - the countries and ASNs on flow records are simply drifting out of date, which is exactly why this needs an alert rather than being noticed.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseflowgeoipdatabasestale",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "35"
+      "__panelId__": "36"
     },
     "expressions": {
       "A": {

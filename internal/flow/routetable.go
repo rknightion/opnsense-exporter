@@ -71,6 +71,13 @@ type StateRow struct {
 	// state carries no route-to. Empty is a REAL ANSWER — it means the FIB decided,
 	// which is precisely when OUTPUT_SNMP is already correct.
 	RouteToDevice string
+
+	// NatAddr and NatPort are the PRE-NAT endpoint pf recorded, present only on
+	// direction="out" rows of a translated conversation. This file ignores them
+	// entirely; they are read by nattable.go, which is built from the SAME rows on
+	// the same poll (#623).
+	NatAddr string
+	NatPort string
 }
 
 // RouteTableInput is everything BuildRouteTable needs, in the shape of the frozen

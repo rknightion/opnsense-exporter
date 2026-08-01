@@ -1761,6 +1761,10 @@ func main() {
 			// rather than read back off the Repairer because this goroutine is the
 			// only writer, so there is no state to share and nothing to lock.
 			var previous *flow.RouteTable
+			// The NAT index is built from the SAME rows on the same poll, with the
+			// same retention, so the two tables can never describe different
+			// instants (#623).
+			var previousNAT *flow.NATTable
 			refresh := func() {
 				states, ferr := opnsenseClient.FetchFirewallStates()
 				if ferr != nil {
@@ -1778,16 +1782,28 @@ func main() {
 						DstAddr:       st.DstAddr,
 						DstPort:       st.DstPort,
 						RouteToDevice: st.RouteToDevice,
+						NatAddr:       st.NatAddr,
+						NatPort:       st.NatPort,
 					})
 				}
+				built := time.Now()
 				table := flow.BuildRouteTable(flow.RouteTableInput{
 					Rows:     rows,
-					Built:    time.Now(),
+					Built:    built,
 					Previous: previous,
 					Retain:   pfStateRetention,
 				})
 				previous = table
 				repairer.SetRouteTable(table)
+
+				nats := flow.BuildNATTable(flow.NATTableInput{
+					Rows:     rows,
+					Built:    built,
+					Previous: previousNAT,
+					Retain:   pfStateRetention,
+				})
+				previousNAT = nats
+				repairer.SetNATTable(nats)
 			}
 			refresh()
 			ticker := time.NewTicker(pfStateRefreshInterval)

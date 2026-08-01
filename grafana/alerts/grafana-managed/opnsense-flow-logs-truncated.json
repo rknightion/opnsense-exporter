@@ -26,7 +26,7 @@
       "description": "Flow log records have been dropped by the --flow.max-logs-per-window budget for 10m. Metrics are unaffected, but per-flow logs are incomplete. Raise the budget if this is expected volume, or restrict the unauthenticated NetFlow ingress with --flow.netflow.allowed-peers if it is a flood.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseflowlogstruncated",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "33"
+      "__panelId__": "34"
     },
     "expressions": {
       "A": {

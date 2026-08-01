@@ -39,6 +39,14 @@
       "kind": "string"
     },
     {
+      "path": "rows[].nat_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].nat_port",
+      "kind": "string"
+    },
+    {
       "path": "rows[].proto",
       "kind": "string"
     },
