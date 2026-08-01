@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+# PROVIDE: netbird_canary2
+# REQUIRE: NETWORKING netbird
+# KEYWORD: shutdown
+#
+# Second NetBird peer on the nightly testbed firewall (VM 102), existing purely
+# so the schema canary can see a non-empty peers.details[].
+#
+# WHY THIS EXISTS: a NetBird peer never lists ITSELF, so a single-peer tenant
+# reports peers.total 0 and an empty details[] — and every
+# opnsense_netbird_peer_* metric goes unverified. coverage.json's
+# netbirdStatus.exercise note describes this peer, but it was started BY HAND
+# and did not survive a reboot, so the coverage lapsed silently and was in fact
+# already dead when #625 went looking. Making it a real rc.d service closes
+# that for every reboot, not just the scheduled power cycle.
+#
+# It runs in NETSTACK (userspace) mode with its own state dir and its own
+# daemon socket, so it creates no host interface, no routes and no wt0 conflict
+# with the primary netbird daemon. That is why this script — unlike the stock
+# /usr/local/etc/rc.d/netbird it is modelled on — has no TUN teardown logic:
+# there is no tunnel interface to orphan.
+#
+# Enable via /etc/rc.conf.d/netbird_canary2 (NOT /etc/rc.conf, which OPNsense
+# rewrites):
+#
+#     netbird_canary2_enable="YES"
+#
+
+. /etc/rc.subr
+
+name="netbird_canary2"
+rcvar="${name}_enable"
+
+load_rc_config "$name"
+
+: ${netbird_canary2_enable:="NO"}
+: ${netbird_canary2_config:="/var/db/netbird-canary2/default.json"}
+: ${netbird_canary2_socket:="/var/run/netbird-canary2.sock"}
+: ${netbird_canary2_loglevel:="info"}
+
+pidfile="/var/run/${name}.pid"
+command="/usr/sbin/daemon"
+daemon_args="-P ${pidfile} -r -t \"netbird-canary2\""
+command_args="${daemon_args} /usr/local/bin/netbird service run --config ${netbird_canary2_config} --log-level ${netbird_canary2_loglevel} --daemon-addr unix://${netbird_canary2_socket} --log-file syslog"
+
+# Netstack mode is what keeps this peer from touching the host's network stack.
+# It is set here rather than in the environment because rc does not inherit one.
+export NB_USE_NETSTACK_MODE=true
+
+start_precmd="${name}_start_precmd"
+
+netbird_canary2_start_precmd() {
+    # A stale socket from an unclean shutdown makes the daemon fail to bind.
+    if [ -S "${netbird_canary2_socket}" ] && ! [ -f "${pidfile}" ]; then
+        logger -s -t netbird_canary2 "Removing stale socket ${netbird_canary2_socket}"
+        rm -f "${netbird_canary2_socket}"
+    fi
+}
+
+run_rc_command "$1"

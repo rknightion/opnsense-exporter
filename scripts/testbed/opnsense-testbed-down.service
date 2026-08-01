@@ -1,0 +1,10 @@
+[Unit]
+Description=Take the OPNsense testbed guests down after the live canary (#625)
+After=pve-guests.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/opnsense-testbed-power.sh down
+# Six guests, each allowed 180s of graceful ACPI shutdown before the script
+# escalates to a hard stop. This bounds the whole sequence with headroom.
+TimeoutStartSec=1500

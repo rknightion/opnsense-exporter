@@ -1,0 +1,12 @@
+[Unit]
+Description=Bring the OPNsense testbed guests up before the live canary (#625)
+After=pve-guests.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/opnsense-testbed-power.sh up
+# The readiness gate inside the script bounds itself at 600s; this is the outer
+# backstop for a guest that hangs before qm even returns. It must stay well
+# under the 47 minutes between this timer and the 06:47 canary.
+TimeoutStartSec=1500

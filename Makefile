@@ -139,11 +139,15 @@ deployment-test: tools-kubeconform
 	$(TOOLS_DIR)/kubeconform -strict -summary deploy/k8s/deployment.yaml
 	PATH="$(TOOLS_DIR):$(PATH)" charts/opnsense2otel/tests/test-chart.sh
 
-# Unit tests for the testbed config linter (scripts/testbed/config_lint.py, #504). The
-# linter itself runs against a config.xml pulled off a firewall, which CI has no access
-# to — these tests pin its checks against synthetic configs so the checks cannot rot
-# between the rare occasions someone runs it for real.
+# Unit tests for the testbed tooling in scripts/testbed. Neither script can run in CI —
+# the config linter (config_lint.py, #504) needs a config.xml pulled off a firewall, and
+# the power scheduler (opnsense-testbed-power.sh, #625) needs oli's Proxmox. So these
+# pin the parts that can be checked without a host: the linter's checks against synthetic
+# configs, and the scheduler's --decide-only seam (guest allowlist, start/stop ordering,
+# hold expiry). The allowlist test is the load-bearing one — it is what stands between a
+# typo and powering off Rob's home automation or the CI runners.
 testbed-test:
+	bash -n scripts/testbed/opnsense-testbed-power.sh
 	cd scripts/testbed && python3 -m unittest discover -p '*_test.py' -q
 
 # Unit tests for camden's prod canary decision logic (scripts/canary, #612). The

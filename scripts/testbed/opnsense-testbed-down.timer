@@ -1,0 +1,17 @@
+[Unit]
+Description=Stop the OPNsense testbed after the daily canary window
+
+[Timer]
+# 08:30 UTC — after live-canary.yml (06:47) and camden's prod canary (07:20),
+# with slack for a slow or retried run. The down is skipped entirely while a
+# hold is active, so ad-hoc work is never fighting this.
+OnCalendar=*-*-* 08:30:00 UTC
+# TRUE here, unlike the up timer. All six guests are onboot:0, so an oli reboot
+# leaves them down and this is normally a no-op — it is kept as the backstop for
+# the case that actually costs money: a hold, a manual `up`, or a failed earlier
+# down leaving the lab running while oli happens to reboot past 08:30.
+# It is safe to fire spuriously because down is idempotent on a stopped guest.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
