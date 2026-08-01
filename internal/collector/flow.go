@@ -277,6 +277,7 @@ type flowCollector struct {
 	policyRouteRefused *prometheus.Desc
 	pfStateEntries     *prometheus.Desc
 	natPairDeduped     *prometheus.Desc
+	policyRouteSkipped *prometheus.Desc
 	natPairEntries     *prometheus.Desc
 	pfStateAge         *prometheus.Desc
 	dedupeEntries      *prometheus.Desc
@@ -802,6 +803,25 @@ func (c *flowCollector) registerNetflow() {
 			"pre-NAT egress copy) and the mechanism has nothing left to find.",
 		[]string{"reason", "interface"},
 	)
+	c.policyRouteSkipped = buildPrometheusDesc(c.subsystem, "policy_route_skipped_total",
+		"Records the policy-route repair declined to act on WITHOUT it being a miss, by reason. "+
+			"These are NOT failures - they are the four ways the repair correctly has nothing to do - "+
+			"but before they were counted, three of them moved no counter at all, so a box where the "+
+			"repair was never running produced the same telemetry as one where it had nothing to "+
+			"correct. "+
+			"reason=\"not_wan_egress\" is the record not leaving by a WAN. It is the MAJORITY of "+
+			"records on any box and healthy - but it is also exactly what a wrong interface map looks "+
+			"like, because if the map stops reporting a device as a WAN then every record on it lands "+
+			"here and the repair silently ceases to exist. Watch it as a SHARE of decoded records, not "+
+			"as a rate: a step change in that share with no configuration change is the alarm. "+
+			"reason=\"post_nat\" is the copy repair 2 already resolved from its source address. "+
+			"reason=\"fib_agreed\" is a pf state carrying no route-to, i.e. the FIB decided and "+
+			"OUTPUT_SNMP was already right. reason=\"already_on_wan\" is a policy-routed state whose "+
+			"device ng_netflow had ALSO named, so the correction would be a no-op; it is kept apart "+
+			"from fib_agreed because a high fib_agreed means the box barely policy-routes while a high "+
+			"already_on_wan means it does and the exporter is agreeing with it.",
+		[]string{"reason"},
+	)
 	c.pfStateEntries = buildPrometheusDesc(c.subsystem, "pf_state_entries",
 		"Pre-NAT pf states the policy-route repair can resolve against, by kind. kind=\"total\" is "+
 			"every direction=\"in\" state that could be keyed; kind=\"policy_routed\" is the subset "+
@@ -1025,6 +1045,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.policyRouteCorr
 	ch <- c.policyRouteRefused
 	ch <- c.pfStateEntries
+	ch <- c.policyRouteSkipped
 	ch <- c.natPairDeduped
 	ch <- c.natPairEntries
 	ch <- c.pfStateAge
@@ -1215,6 +1236,10 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	for iface, n := range nf.Repair.PolicyRouteUnresolvedDeviceByInterface {
 		counter(c.policyRouteRefused, n, "unresolved_device", iface)
 	}
+	counter(c.policyRouteSkipped, nf.Repair.PolicyRouteSkippedNotWANEgress, "not_wan_egress")
+	counter(c.policyRouteSkipped, nf.Repair.PolicyRouteSkippedPostNAT, "post_nat")
+	counter(c.policyRouteSkipped, nf.Repair.PolicyRouteSkippedFIBAgreed, "fib_agreed")
+	counter(c.policyRouteSkipped, nf.Repair.PolicyRouteSkippedAlreadyOnWAN, "already_on_wan")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableEntries), "total")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTablePolicyRouted), "policy_routed")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableSkipped), "skipped")

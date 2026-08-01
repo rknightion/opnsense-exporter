@@ -229,6 +229,11 @@ def build(b: Builder):
           f'{sel("opnsense_flow_policy_route_refused_total", 'reason="no_state"')}[{RATE}]))',
           "no_state by attributed iface: {{interface}}"),
          (f'sum {grp("kind")} ({sel("opnsense_flow_pf_state_entries")})', "pf states: {{kind}}"),
+         # The four ways the repair correctly declines to act. Three of them moved no
+         # counter at all until #624, so a box where the repair was never running looked
+         # exactly like one where it had nothing to correct.
+         (f'sum {grp("reason")} (rate({sel("opnsense_flow_policy_route_skipped_total")}[{RATE}]))',
+          "skipped: {{reason}}"),
          (f'{sel("opnsense_flow_pf_state_age_seconds")}', "pf state age (s)")],
         unit="short",
         overrides=[{"matcher": {"id": "byRegexp", "options": "^pf state age \\(s\\)$"},
@@ -254,7 +259,17 @@ def build(b: Builder):
              "past a few multiples of the 5-minute poll means the fetch is failing and corrections "
              "are being made against a stale routing picture. The poll is ONE minute (it was five "
              "until #620 measured the policy-routed states as mostly sub-90-second), so judge the age "
-             "against that.",
+             "against that. "
+             "skipped=\"not_wan_egress\" is the biggest series here and that is normal - it is every "
+             "record not leaving by a WAN, about half of them on the reference box. Watch it as a "
+             "SHARE of decoded records rather than as a rate: if the interface map stops reporting a "
+             "device as a WAN, every record on it moves into this bucket and the repair silently "
+             "ceases to exist, with no other counter moving at all. skipped=\"fib_agreed\" is a state "
+             "with no route-to (the FIB decided, so OUTPUT_SNMP was already right) and "
+             "skipped=\"already_on_wan\" is a policy-routed state naming the device ng_netflow had "
+             "also named; a high fib_agreed means the box barely policy-routes, a high "
+             "already_on_wan means it does and we agree with it. skipped=\"post_nat\" belongs to "
+             "repair 2.",
     )
 
     nat_pairs = b.ts(

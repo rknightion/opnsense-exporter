@@ -28,7 +28,7 @@ This page provides a summary of all collectors in opnsense2otel.
 | Firewall Aliases | alias | 8 | Enabled | --exporter.disable-alias | OPN2OTEL_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPN2OTEL_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 20 | Enabled | --exporter.disable-firmware | OPN2OTEL_DISABLE_FIRMWARE |
-| Flow Volume | flow | 65 | Enabled | --exporter.disable-flow | OPN2OTEL_DISABLE_FLOW |
+| Flow Volume | flow | 66 | Enabled | --exporter.disable-flow | OPN2OTEL_DISABLE_FLOW |
 | Gateways | gateways | 19 | Enabled | --exporter.disable-gateways | OPN2OTEL_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPN2OTEL_ENABLE_HASYNC |
 | HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPN2OTEL_DISABLE_HAPROXY |

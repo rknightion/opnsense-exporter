@@ -176,11 +176,32 @@ Its limits, which are counted rather than hidden:
   on the default-route WAN are consistent with policy-routed traffic hiding inside them;
   spread evenly, they are structural.
 
+  **Where the rest of the records go is now countable too.**
+  `opnsense_flow_policy_route_skipped_total` splits the four ways the repair correctly
+  declines to act, three of which previously moved no counter at all - so a box where the
+  repair was never running produced the same telemetry as one where it had nothing to
+  correct. `not_wan_egress` is about half of all records and healthy, but it is also
+  exactly what a wrong interface map looks like, so watch it as a *share* of decoded
+  records; a step change there with no configuration change is the alarm.
+
+  The reference replay's full split, for comparison against your own box:
+
+  | bucket | records | share of decoded |
+  | --- | ---: | ---: |
+  | decoded | 85,919 | |
+  | `skipped{not_wan_egress}` | 43,791 | 51.0% |
+  | `skipped{already_on_wan}` | 20,570 | 23.9% |
+  | `refused{no_state}` | 8,391 | 9.8% |
+  | `skipped{fib_agreed}` | 6,423 | 7.5% |
+  | `corrected` | 402 | 0.5% |
+  | `skipped{post_nat}` | 297 | 0.3% |
+
   One thing does not add up yet and is tracked as
   [#624](https://github.com/rknightion/opnsense2otel/issues/624): in that replay the repair
   made 402 corrections, while the live exporter processing the byte-identical export
   stream over the same window made about 45. The input is confirmed identical, so the
-  difference is somewhere in the running exporter's own state, not in the data.
+  difference is somewhere in the running exporter's own state - which is what the split
+  above was added to find.
 
   The one-minute poll is sized for this. It was five minutes on the reasoning that
   the flows this repair recovers are long ones - which measurement disproved: on the

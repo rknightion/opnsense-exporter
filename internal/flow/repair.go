@@ -153,6 +153,28 @@ type RepairStats struct {
 	//
 	// Cardinality is one series per WAN, on an exporter using ~4.6k of a 100k budget.
 	PolicyRouteNoStateByInterface map[string]uint64
+	// PolicyRouteSkipped* count the four ways repair 4 declines to act WITHOUT it
+	// being a miss (#624). Before they existed, three of the four moved no counter,
+	// so "the repair is finding nothing to do" and "the repair is never running"
+	// produced identical telemetry — which is how a 9x gap between the code and a
+	// deployment went unexplained.
+	//
+	// NotWANEgress is the record not leaving by a WAN at all. It is the majority of
+	// records on any box and healthy, but it is ALSO what a wrong interface map looks
+	// like: if the map stops reporting a device as a WAN, every record on it moves
+	// here and the repair silently ceases to exist. Watch it as a SHARE of decoded
+	// records, not as a rate.
+	//
+	// PostNAT is repair 2's population, already resolved from the source address.
+	// FIBAgreed is a state found carrying no route-to, i.e. pf used the FIB and
+	// OUTPUT_SNMP was already right. AlreadyOnWAN is a policy-routed state whose
+	// device ng_netflow had ALSO named, so the correction would be a no-op — kept
+	// apart from FIBAgreed because the two say different things about whether the
+	// mechanism is earning its keep.
+	PolicyRouteSkippedNotWANEgress uint64
+	PolicyRouteSkippedPostNAT      uint64
+	PolicyRouteSkippedFIBAgreed    uint64
+	PolicyRouteSkippedAlreadyOnWAN uint64
 	// PolicyRouteUnresolvedDevice counts states whose route-to named a device the
 	// interface map does not know. Kept apart again: the fix is the interface
 	// enumeration, not the poll cadence. The record is left alone rather than
@@ -407,6 +429,17 @@ type Repairer struct {
 
 	natDuplicates    uint64
 	natLatePreCopies uint64
+
+	// Repair 4's SILENT EXITS, made countable (#624). Three of the four ways
+	// correctPolicyRoute can decline to act moved no counter at all, so a box where
+	// the repair was doing nothing looked identical to a box where it had nothing to
+	// do. They are atomics rather than mutex-guarded fields because notWANEgress
+	// fires on the majority of records and the existing early return deliberately
+	// does not take the lock.
+	prNotWANEgress atomic.Uint64
+	prPostNAT      atomic.Uint64
+	prFIBAgreed    atomic.Uint64
+	prAlreadyOnWAN atomic.Uint64
 }
 
 // bumpByInterface increments the per-interface tally for a record's REPORTED
@@ -627,6 +660,11 @@ func (r *Repairer) StatsAt(now time.Time) RepairStats {
 		PolicyRouteCorrected:        r.policyRouteCorrected,
 		PolicyRouteNoState:          r.policyRouteNoState,
 		PolicyRouteUnresolvedDevice: r.policyRouteUnresolved,
+
+		PolicyRouteSkippedNotWANEgress: r.prNotWANEgress.Load(),
+		PolicyRouteSkippedPostNAT:      r.prPostNAT.Load(),
+		PolicyRouteSkippedFIBAgreed:    r.prFIBAgreed.Load(),
+		PolicyRouteSkippedAlreadyOnWAN: r.prAlreadyOnWAN.Load(),
 
 		PolicyRouteNoStateByInterface:          copyCounts(r.policyRouteNoStateBy),
 		PolicyRouteUnresolvedDeviceByInterface: copyCounts(r.policyRouteUnresolvedBy),
@@ -1136,9 +1174,15 @@ func (r *Repairer) correctPolicyRoute(rec *Record, m ifTopology) {
 		return
 	}
 	if !ifaceIsWAN(m, rec.Out, rec.SrcAddr) {
-		return // not leaving by a WAN; the FIB answer cannot be the multi-WAN bug
+		// Not leaving by a WAN; the FIB answer cannot be the multi-WAN bug. This is
+		// the majority of records on any box and a healthy number, but it is also the
+		// one place a WRONG interface map silently removes the whole repair, so it is
+		// counted rather than merely returned from.
+		r.prNotWANEgress.Add(1)
+		return
 	}
 	if _, isPostNAT := m.WANFor(rec.SrcAddr); isPostNAT {
+		r.prPostNAT.Add(1)
 		return // repair 2's population, resolved from the source address already
 	}
 
@@ -1150,8 +1194,18 @@ func (r *Repairer) correctPolicyRoute(rec *Record, m ifTopology) {
 		r.mu.Unlock()
 		return
 	}
-	if device == "" || device == rec.Out.Device {
-		return // pf used the FIB, or it agrees with what was reported
+	if device == "" {
+		// pf used the FIB, which is precisely when OUTPUT_SNMP is already right. On a
+		// mostly-single-WAN box this is the bulk of resolved lookups.
+		r.prFIBAgreed.Add(1)
+		return
+	}
+	if device == rec.Out.Device {
+		// pf policy-routed it and ng_netflow already named the same device, so there
+		// is nothing to correct. Distinguished from the FIB case because the two say
+		// different things about whether the mechanism is earning its keep.
+		r.prAlreadyOnWAN.Add(1)
+		return
 	}
 
 	resolver, canResolve := m.(deviceResolver)

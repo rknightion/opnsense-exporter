@@ -3799,7 +3799,7 @@
         "spec": {
           "id": 30,
           "title": "Multi-WAN Policy-Route Attribution",
-          "description": "This is the PRE-NAT half of the multi-WAN problem, and it is a different repair from egress_corrected on the panel beside it. egress_corrected resolves the POST-NAT copy from its source address; the pre-NAT copy carries a private LAN address, so that repair cannot see it at all - yet the pre-NAT copy is the ONLY one that can ever correlate with a Zenarmor conn document. Left alone it inherits ng_netflow's OUTPUT_SNMP, which is a FIB lookup and therefore always names the default-route WAN. On the reference box that put every inspected byte that actually left by WAN2 onto WAN1, and WAN2's correlated series read empty against 11.1 GB of real traffic. The correction reads pf's own state table, whose route-to field IS the routing decision. refused reason=\"no_state\" is the genuine miss window - the flow ended and its pf state expired before the NetFlow record arrived, which is short flows, and NO poll interval closes it; those records are emitted exactly as reported rather than guessed. reason=\"unresolved_device\" means pf named an egress device the interface enumeration does not know, so the fix is the enumeration. pf states kind=\"policy_routed\" is the subset of states that can change anything: a flat zero there on a box with policy-route rules means the mechanism has nothing to work with. kind=\"conflict\" measured zero on the reference box, so any non-zero value means the pre-NAT 5-tuple stopped being unique upstream and every correction from this table wants re-checking. pf state age rising past a few multiples of the 5-minute poll means the fetch is failing and corrections are being made against a stale routing picture. The poll is ONE minute (it was five until #620 measured the policy-routed states as mostly sub-90-second), so judge the age against that.",
+          "description": "This is the PRE-NAT half of the multi-WAN problem, and it is a different repair from egress_corrected on the panel beside it. egress_corrected resolves the POST-NAT copy from its source address; the pre-NAT copy carries a private LAN address, so that repair cannot see it at all - yet the pre-NAT copy is the ONLY one that can ever correlate with a Zenarmor conn document. Left alone it inherits ng_netflow's OUTPUT_SNMP, which is a FIB lookup and therefore always names the default-route WAN. On the reference box that put every inspected byte that actually left by WAN2 onto WAN1, and WAN2's correlated series read empty against 11.1 GB of real traffic. The correction reads pf's own state table, whose route-to field IS the routing decision. refused reason=\"no_state\" is the genuine miss window - the flow ended and its pf state expired before the NetFlow record arrived, which is short flows, and NO poll interval closes it; those records are emitted exactly as reported rather than guessed. reason=\"unresolved_device\" means pf named an egress device the interface enumeration does not know, so the fix is the enumeration. pf states kind=\"policy_routed\" is the subset of states that can change anything: a flat zero there on a box with policy-route rules means the mechanism has nothing to work with. kind=\"conflict\" measured zero on the reference box, so any non-zero value means the pre-NAT 5-tuple stopped being unique upstream and every correction from this table wants re-checking. pf state age rising past a few multiples of the 5-minute poll means the fetch is failing and corrections are being made against a stale routing picture. The poll is ONE minute (it was five until #620 measured the policy-routed states as mostly sub-90-second), so judge the age against that. skipped=\"not_wan_egress\" is the biggest series here and that is normal - it is every record not leaving by a WAN, about half of them on the reference box. Watch it as a SHARE of decoded records rather than as a rate: if the interface map stops reporting a device as a WAN, every record on it moves into this bucket and the repair silently ceases to exist, with no other counter moving at all. skipped=\"fib_agreed\" is a state with no route-to (the FIB decided, so OUTPUT_SNMP was already right) and skipped=\"already_on_wan\" is a policy-routed state naming the device ng_netflow had also named; a high fib_agreed means the box barely policy-routes, a high already_on_wan means it does and we agree with it. skipped=\"post_nat\" belongs to repair 2.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3926,8 +3926,34 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_pf_state_age_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, reason) (rate(opnsense_flow_policy_route_skipped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "E",
+                        "legendFormat": "skipped: {{reason}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "F",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_pf_state_age_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "F",
                         "legendFormat": "pf state age (s)",
                         "instant": false,
                         "range": true
