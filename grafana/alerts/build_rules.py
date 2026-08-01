@@ -2155,8 +2155,26 @@ RECORDING = [
               '(rate(opnsense_flow_bytes_total{source="netflow"}[5m]))'),
 ]
 
-def grafana_for(for_min: int) -> str:
-    return "0s" if not for_min else f"{for_min}m0s"
+# A reboot of the firewall takes 10-15 minutes end to end, and where the firewall is also
+# the monitoring path out to Grafana that window takes every collector down with it. Rules
+# go Pending during the outage and Alerting on the recovery transient — one IRM alert group
+# each, and an IRM route posts to its channel the instant a group is created, so no
+# escalation-chain wait absorbs it. The rule's own pending period is the only lever. #629.
+#
+# Deployment-specific, hence --stack only: the shipped profile keeps its 5m defaults for
+# deployments whose firewall is not also their monitoring path.
+#
+# Rules declaring no pending period stay instant on purpose. The flap detectors (CARP state,
+# CARP demotion, gateway alarm) and the cert-expiry / log-ship pairs are 0s by design, none
+# of them tripped on the reboot this was measured against, and a floor would quietly turn
+# "flapping" into "flapping continuously for ten minutes".
+STACK_MIN_FOR_MIN = 10
+
+
+def grafana_for(for_min: int, stack: bool = False) -> str:
+    if not for_min:
+        return "0s"
+    return f"{max(for_min, STACK_MIN_FOR_MIN) if stack else for_min}m0s"
 
 
 # ---- self-health routing (#431 step 4) ------------------------------------
@@ -2464,7 +2482,7 @@ def emit_grafana_managed(ds: str, ops_folder: str, stack: bool, health_folder: s
                          "labels": {"grafana.app/folder": folder}},
             "spec": {
                 "title": r["title"], "noDataState": r.get("nodata", "Ok"),
-                "execErrState": "Error", "for": grafana_for(r["for_min"]),
+                "execErrState": "Error", "for": grafana_for(r["for_min"], stack),
                 "trigger": {"interval": "1m"}, "labels": labels,
                 "annotations": {"summary": r["summary"], "description": r["description"],
                                 "runbook_url": runbook_url(r["title"]),

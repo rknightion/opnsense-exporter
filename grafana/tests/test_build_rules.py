@@ -671,3 +671,72 @@ class SelfHealthFolderRoutingTest(unittest.TestCase):
                         f"rules reference folders with no manifest: {rule_folders - folders}")
         self.assertIn(self.HEALTH, rule_folders,
                       "the health folder manifest ships but no rule is routed to it")
+
+
+class StackRebootToleranceTest(unittest.TestCase):
+    """--stack floors the pending window at 10m so a 10-15 minute firewall reboot,
+    which takes the whole monitoring path down with it on this deployment, cannot
+    storm IRM. #629."""
+
+    def _emit(self, stack):
+        with tempfile.TemporaryDirectory() as tmp:
+            original_here = build_rules.HERE
+            try:
+                build_rules.HERE = tmp
+                _, written = build_rules.emit_grafana_managed(
+                    "test-prometheus", "test-ops", stack=stack,
+                    health_folder="test-health",
+                )
+                manifests = [json.loads(Path(p).read_text()) for p in written]
+            finally:
+                build_rules.HERE = original_here
+        return [m for m in manifests if m["kind"] == "AlertRule"]
+
+    @staticmethod
+    def _minutes(value):
+        match = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", value)
+        hours, minutes, seconds = (int(g or 0) for g in match.groups())
+        return hours * 60 + minutes + seconds / 60
+
+    def test_stack_floors_every_nonzero_pending_window_at_ten_minutes(self):
+        # The 10 is written out rather than read from build_rules.STACK_MIN_FOR_MIN:
+        # sourcing the bound from the module under test makes the assertion hold for
+        # any value of it, including 0, which is the regression it exists to catch.
+        self.assertEqual(build_rules.STACK_MIN_FOR_MIN, 10)
+        short = [
+            m["metadata"]["name"] for m in self._emit(stack=True)
+            if 0 < self._minutes(m["spec"]["for"]) < 10
+        ]
+        self.assertEqual(short, [], f"below the reboot floor in --stack mode: {short}")
+
+    def test_stack_leaves_deliberately_instant_rules_instant(self):
+        # The flap detectors and the cert-expiry / log-ship pairs are 0s on purpose.
+        # Flooring them would turn "flapping" into "flapping continuously for ten
+        # minutes", which is a different alert.
+        instant = {
+            m["metadata"]["name"] for m in self._emit(stack=False)
+            if m["spec"]["for"] == "0s"
+        }
+        self.assertTrue(instant, "no instant rules left to guard the floor against")
+        still_instant = {
+            m["metadata"]["name"] for m in self._emit(stack=True)
+            if m["spec"]["for"] == "0s"
+        }
+        self.assertEqual(instant, still_instant)
+
+    def test_shipped_profile_keeps_its_own_defaults(self):
+        # The floor is deployment-specific. Without --stack nothing moves, so the
+        # committed manifests and the published runbook stay as authored.
+        generic = {
+            m["metadata"]["name"]: m["spec"]["for"] for m in self._emit(stack=False)
+        }
+        authored = {
+            rule["name"]: build_rules.grafana_for(rule["for_min"])
+            for rule in build_rules.RULES
+        }
+        self.assertEqual(generic, authored)
+        self.assertTrue(
+            any(0 < self._minutes(v) < build_rules.STACK_MIN_FOR_MIN
+                for v in generic.values()),
+            "no sub-floor default left, so this test no longer proves anything",
+        )
