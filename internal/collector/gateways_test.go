@@ -639,12 +639,8 @@ func TestGatewaysCollector_Describe_CoversUpdateMetrics(t *testing.T) {
 	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
 	c.Register(namespace, "test", promslog.NewNopLogger())
 
-	ch := make(chan *prometheus.Desc, 64)
-	c.Describe(ch)
-	close(ch)
-
 	described := make([]string, 0, 32)
-	for d := range ch {
+	for _, d := range collectDescs(t, c) {
 		described = append(described, d.String())
 	}
 

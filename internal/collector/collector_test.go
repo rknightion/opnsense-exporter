@@ -1248,11 +1248,8 @@ func TestScrapeSkipsCounterIsRetired(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	descs := make(chan *prometheus.Desc, 8192)
-	c.Describe(descs)
-	close(descs)
 	sawScrapes := false
-	for d := range descs {
+	for _, d := range collectDescs(t, c) {
 		s := d.String()
 		if strings.Contains(s, "exporter_scrape_skips_total") {
 			t.Errorf("retired metric still described: %s", s)

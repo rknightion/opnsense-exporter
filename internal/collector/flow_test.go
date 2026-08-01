@@ -35,6 +35,28 @@ func descVarLabels(t *testing.T, d *prometheus.Desc) []string {
 	return out
 }
 
+// collectDescs drains a collector's Describe into a slice.
+//
+// It exists because the obvious spelling — a fixed-capacity buffered channel,
+// Describe, close, range — DEADLOCKS the moment a collector describes more metrics
+// than the buffer holds, and Describe's blocked send is a 10-minute CI timeout with
+// a goroutine dump rather than a test failure naming the cause. That is exactly how
+// adding three descs to flowCollector reddened main. Draining concurrently has no
+// capacity to outgrow.
+func collectDescs(t *testing.T, d interface{ Describe(chan<- *prometheus.Desc) }) []*prometheus.Desc {
+	t.Helper()
+	ch := make(chan *prometheus.Desc)
+	go func() {
+		defer close(ch)
+		d.Describe(ch)
+	}()
+	var out []*prometheus.Desc
+	for desc := range ch {
+		out = append(out, desc)
+	}
+	return out
+}
+
 func newFlowTestCollector(t *testing.T, store *FlowStore) *flowCollector {
 	t.Helper()
 	c := &flowCollector{subsystem: FlowSubsystem, store: store}
@@ -94,10 +116,7 @@ func TestFlowCollector_NoHighCardinalityLabels(t *testing.T) {
 		"hostname": true, "src_hostname": true, "dst_hostname": true,
 		"community_id": true, "conn_uuid": true, "domain": true, "ja3": true, "host": true,
 	}
-	ch := make(chan *prometheus.Desc, 64)
-	c.Describe(ch)
-	close(ch)
-	for d := range ch {
+	for _, d := range collectDescs(t, c) {
 		// top_talker_bytes_total is the ONE deliberate exception: it carries a host
 		// label, which is exactly why it is opt-in behind --flow.top-talkers and bounded
 		// by top-N + __other__ (§9). Every other flow metric stays under the rule.

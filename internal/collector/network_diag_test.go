@@ -446,11 +446,8 @@ func TestNetworkDiagCollector_DescribeCoversNetisr(t *testing.T) {
 		c := &networkDiagCollector{subsystem: NetworkDiagSubsystem, netisrPerCPU: enabled}
 		c.Register(namespace, "test", promslog.NewNopLogger())
 
-		ch := make(chan *prometheus.Desc, 64)
-		c.Describe(ch)
-		close(ch)
 		seen := make(map[string]bool)
-		for d := range ch {
+		for _, d := range collectDescs(t, c) {
 			seen[d.String()] = true
 		}
 
