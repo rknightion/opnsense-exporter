@@ -42,13 +42,34 @@ Grafana dashboard UIDs are the exception - see the last item below.
 - **Go module path** - `github.com/rknightion/opnsense-exporter` becomes
   `github.com/rknightion/opnsense2otel/v4`. Relevant only if you import packages
   from this module directly rather than running the binary or image.
+- **Telemetry identities change with the project name.** Three default identities
+  become `opnsense2otel`: the OTLP resource `service.name` used by metrics and
+  logs, the Pyroscope application name, and the base tag on exporter-written
+  Grafana annotations. Update selectors that pin the old project name:
+
+  | Consumer | v3 selector | v4 selector |
+  | --- | --- | --- |
+  | Loki logs | `{service_name="opnsense-exporter"}` | `{service_name="opnsense2otel"}` |
+  | OTLP-derived Prometheus series | `{job="opnsense-exporter"}` or `{service_name="opnsense-exporter"}` | `{job="opnsense2otel"}` or `{service_name="opnsense2otel"}` |
+  | Pyroscope profiles | `{service_name="opnsense-exporter"}` | `{service_name="opnsense2otel"}` |
+  | Grafana annotations | tag `opnsense-exporter` | tag `opnsense2otel` |
+
+  The exact Prometheus label depends on which OTLP resource attributes your
+  backend promotes: the standard OTLP-to-Prometheus mapping derives `job` from
+  `service.name`, while Grafana Cloud also exposes the promoted `service_name`
+  resource label. If retaining historical continuity matters more than adopting
+  the new identity immediately, explicitly set
+  `OPN2OTEL_OTLP_SERVICE_NAME=opnsense-exporter` and
+  `OPN2OTEL_PYROSCOPE_APPLICATION_NAME=opnsense-exporter`. The annotation base
+  tag is fixed, but `--annotations.extra-tags=opnsense-exporter` can add the old
+  tag during a transition.
 - **Metric names and dashboard UIDs did not change.** Every `opnsense_*` and
   `opnsense_exporter_*` metric keeps its existing name, and the Grafana dashboard
   UIDs stay `opnsense-exporter` / `opnsense-exporter-health` on purpose - changing
   a UID breaks every existing bookmark and every alert's `__dashboardUid__` link.
-  Existing dashboards, alert rules, and PromQL/LogQL queries keep working
-  unmodified; only the image reference, environment variables, chart path and
-  docs URL need updating.
+  The bundled dashboards and alert rules keep working unmodified. Custom queries
+  that select only metric names also keep working, but queries filtering on one
+  of the telemetry identities above must migrate that selector.
 
 - **CPU metrics are now cumulative counters fed by a stream, not percentage gauges** -
   `opnsense_activity_cpu_user_percent` and its `nice`/`system`/`interrupt`/`idle`
