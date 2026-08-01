@@ -272,7 +272,14 @@ func normalizeNetflow(nr netflow.Record, now time.Time) (Record, bool) {
 		// meaning is "what the exporter put in element 6", and ng_netflow already zeroes
 		// it for non-TCP, so a gate would only ever hide a non-zero value on a record
 		// whose protocol we read wrong — which is exactly the case worth seeing.
-		TCPFlags:  nr.TCPFlags,
+		TCPFlags: nr.TCPFlags,
+		// Element 5 and the two mask elements, modelled since #630. Copied raw for the
+		// same reason TCPFlags is: the meaning is "what the exporter put in the
+		// element", and a gate here could only ever hide a value worth seeing.
+		DSCP:      nr.DSCP,
+		ECN:       nr.ECN,
+		SrcMask:   nr.SrcMask,
+		DstMask:   nr.DstMask,
 		Fragments: 1,
 	}
 	if r.End.IsZero() {

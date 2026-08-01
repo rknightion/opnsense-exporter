@@ -756,8 +756,11 @@ func (c *flowCollector) registerNetflow() {
 		"Things in the export this decoder could not interpret and stepped over, by kind. "+
 			"kind=\"unknown_field\" is a template element the decoder does not model, counted once "+
 			"per element when a template shape is first learned or CHANGED (never on the ~2-minutely "+
-			"re-send); a non-zero value is EXPECTED on OPNsense, whose IPv4 template declares four "+
-			"such elements, so it is a CHANGE here that means the export gained something. "+
+			"re-send). Every element OPNsense actually sends is modelled, so this reads ZERO on a "+
+			"healthy box and any non-zero value means the export gained something new. It was "+
+			"expected-non-zero until #630, when the four elements the templates had always carried "+
+			"(TOS, both masks, next hop) were modelled rather than stepped over - a permanently "+
+			"non-zero counter and its WARN could never be acted on. "+
 			"kind=\"options_template\" and kind=\"unknown_flowset\" are control flowsets stepped "+
 			"over by length. Stepping over is the correct parse behaviour - doing it silently was "+
 			"not, and --flow.netflow.debug-capture=unidentified keeps the datagrams. The element and "+

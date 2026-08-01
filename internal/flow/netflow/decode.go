@@ -298,6 +298,23 @@ func (d *Decoder) readRecord(buf []byte, t *template, exportTime time.Time, sysU
 			if num(v) != 0 {
 				outUnexpected = true
 			}
+		case FieldSrcTOS:
+			// Split at decode, not at export: the raw byte is unreadable as either
+			// half, and every consumer would otherwise repeat the same shift.
+			b := uint8(num(v))
+			rec.DSCP, rec.ECN = b>>2, b&0x03
+		case FieldSrcMask:
+			rec.SrcMask = uint8(num(v))
+		case FieldDstMask:
+			rec.DstMask = uint8(num(v))
+		case FieldIPv4NextHop, FieldIPv6NextHop:
+			// An all-zero next-hop means "directly connected". addrOf yields a valid
+			// zero Addr for it, so it is filtered here to keep Record.NextHop's
+			// invalid-means-none contract — a consumer must not have to know that
+			// 0.0.0.0 and :: are sentinels.
+			if a, ok := addrOf(v); ok && !a.IsUnspecified() {
+				rec.NextHop = a
+			}
 		case FieldSrcVLAN, FieldDstVLAN:
 			// Record carries one VLAN id. Source wins: on this export the two are
 			// equal for intra-VLAN traffic and only the ingress tag is meaningful for

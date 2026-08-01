@@ -115,6 +115,32 @@ func (r Record) LogAttributes() map[string]string {
 	if r.TCPFlags != 0 {
 		a["netflow.tcp_flags"] = tcpFlagsString(r.TCPFlags)
 	}
+	// The QoS marking the sender asked for (#630), under netflow.* for the same
+	// reason tcp_flags is: only NetFlow states it. Both the number and the standard
+	// name go out — the number is what a query filters on and survives a codepoint
+	// with no name, the name is what makes "this is voice traffic" readable without a
+	// DSCP table to hand.
+	//
+	// Unmarked is emitted as nothing. It is ~89% of records on the reference box, so
+	// a literal "0" would be pure volume, and its absence reads correctly.
+	if r.DSCP != 0 {
+		a["netflow.dscp"] = strconv.Itoa(int(r.DSCP))
+		if name := dscpClass(r.DSCP); name != "" {
+			a["netflow.dscp_class"] = name
+		}
+	}
+	if r.ECN != 0 {
+		a["netflow.ecn"] = ecnState(r.ECN)
+	}
+	// The masks ride on NF.Present rather than on a non-zero test: zero is a real
+	// answer here (no covering route), and it is the one that explains a next-hop
+	// naming the default gateway rather than the destination's own router. Gating on
+	// the NetFlow side having spoken keeps a Zenarmor-only record from carrying a
+	// fabricated zero.
+	if r.NF.Present {
+		a["netflow.src_mask"] = strconv.Itoa(int(r.SrcMask))
+		a["netflow.dst_mask"] = strconv.Itoa(int(r.DstMask))
+	}
 
 	if r.L7.AppName != "" {
 		a["app.name"] = r.L7.AppName
@@ -296,4 +322,45 @@ func endpoint(ip string, port uint16) string {
 		return ip
 	}
 	return ip + ":" + strconv.Itoa(int(port))
+}
+
+// dscpStandardNames maps the differentiated-services codepoints that have a
+// conventional name to it: the RFC 2474 class selectors, the RFC 2597 assured-
+// forwarding classes, and RFC 3246's expedited forwarding.
+//
+// Deliberately NOT exhaustive over 0-63. A codepoint outside this table is a real
+// value that some sender chose, so it still reports its NUMBER — dropping it would
+// hide the non-standard markings that are usually the interesting ones. The table
+// only decides whether a friendly name can be added alongside.
+//
+// DSCP 0 (CS0, "default") is absent on purpose: unmarked is emitted as no attribute
+// at all, so naming it would be unreachable.
+var dscpStandardNames = map[uint8]string{
+	8: "CS1", 16: "CS2", 24: "CS3", 32: "CS4", 40: "CS5", 48: "CS6", 56: "CS7",
+	10: "AF11", 12: "AF12", 14: "AF13",
+	18: "AF21", 20: "AF22", 22: "AF23",
+	26: "AF31", 28: "AF32", 30: "AF33",
+	34: "AF41", 36: "AF42", 38: "AF43",
+	46: "EF",
+}
+
+// dscpClass returns the conventional name for a codepoint, or "" when it has none.
+func dscpClass(d uint8) string { return dscpStandardNames[d] }
+
+// ecnStates are the four ECN codepoints of RFC 3168 in numeric order. The spellings
+// are the RFC's own, because "CE" and "ECT(0)" are what an operator searches for;
+// the raw numbers 0-3 convey nothing without the table.
+//
+// Index 0, Not-ECT, is the empty string: like an unmarked DSCP it is the default and
+// is emitted as no attribute rather than as noise on every record.
+var ecnStates = [4]string{"", "ECT(1)", "ECT(0)", "CE"}
+
+// ecnState renders the two ECN bits. Values above 3 are impossible — the caller
+// masks to 2 bits at decode — but the bound is checked rather than assumed, because
+// this runs on data from an unauthenticated socket.
+func ecnState(e uint8) string {
+	if int(e) >= len(ecnStates) {
+		return ""
+	}
+	return ecnStates[e]
 }

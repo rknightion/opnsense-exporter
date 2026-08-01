@@ -279,10 +279,12 @@ Each is stepped over by its *template-declared* length, which is the only safe t
 to do - assuming a width shifts every following field and corrupts records with no
 parse error to show for it. What changed is that it no longer happens in silence.
 
-`opnsense_flow_netflow_unidentified_total` counts them by `kind`. A non-zero
-`unknown_field` is **expected**: the box's IPv4 template declares four elements the
-decoder does not read (TOS, the two masks, the next hop), so it is a *change* here
-that means the export gained something. It is counted once per element when a
+`opnsense_flow_netflow_unidentified_total` counts them by `kind`. On a healthy box it
+reads **zero**, so any non-zero value means the export gained something new. This is a
+change: until #630 the box's own templates declared four elements the decoder did not
+read (TOS, the two masks, the next hop), which made a non-zero count and its warning
+permanent on every install and therefore impossible to act on. All four are now
+modelled. It is counted once per element when a
 template shape is first learned or changes, never on the roughly two-minutely
 re-send, so the counter is a drift signal rather than a clock. Alongside it, a
 rate-limited log line names the element or flowset ids and the exporter that sent

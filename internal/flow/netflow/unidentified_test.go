@@ -103,11 +103,17 @@ func TestDecode_UnknownTemplateElementIsReportedAgainOnAReplacement(t *testing.T
 	}
 }
 
-// The production IPv4 template declares four elements the decoder does not model
-// (TOS, SRC_MASK, DST_MASK, IPV4_NEXT_HOP). A non-zero count on a healthy box is
-// therefore EXPECTED, and the metric's help says so — it is a change in the set that
-// matters, not its existence.
-func TestDecode_ProductionTemplateReportsItsFourUnmodelledElements(t *testing.T) {
+// The production IPv4 template USED to declare four elements the decoder did not
+// model (TOS, SRC_MASK, DST_MASK, IPV4_NEXT_HOP), and this test pinned that as
+// expected-and-therefore-fine. It was not fine: because the set is identical on
+// every OPNsense box, the WARN it produced fired on every exporter start and could
+// never be acted on, so it taught operators to ignore the one channel that reports
+// genuine template drift (#630).
+//
+// All four are now modelled — the fix was to read the data, not to suppress the
+// message — so a healthy box reports nothing at all here, and UnknownFields recovers
+// its literal meaning: an element arrived that this decoder does not understand.
+func TestDecode_ProductionTemplateReportsNothingUnmodelled(t *testing.T) {
 	d := New()
 	peer := netip.MustParseAddr("192.0.2.1")
 	dg, err := d.Decode(
@@ -116,13 +122,11 @@ func TestDecode_ProductionTemplateReportsItsFourUnmodelledElements(t *testing.T)
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	if got := d.Stats().UnknownFields; got != 4 {
-		t.Fatalf("UnknownFields = %d, want 4 (TOS, SRC_MASK, DST_MASK, IPV4_NEXT_HOP)", got)
+	if got := d.Stats().UnknownFields; got != 0 {
+		t.Fatalf("UnknownFields = %d, want 0: every element of the production template is modelled", got)
 	}
-	for _, id := range []uint16{5, 9, 13, 15} {
-		if !hasUnidentified(dg, UnidentifiedField, id) {
-			t.Errorf("element %d not reported: %+v", id, dg.Unidentified)
-		}
+	if len(dg.Unidentified) != 0 {
+		t.Fatalf("Unidentified = %+v, want none", dg.Unidentified)
 	}
 }
 

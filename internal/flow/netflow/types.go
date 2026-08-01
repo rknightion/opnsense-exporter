@@ -50,6 +50,48 @@ type Record struct {
 	TCPFlags uint8
 	VLANID   uint16
 
+	// DSCP and ECN are the two halves of the IPv4 ToS byte (element 5), split at
+	// decode because the raw byte is not readable as either one: 0xB8 is DSCP 46
+	// (EF) with no ECN, and an operator looking for latency-critical traffic cannot
+	// see that without the shift. DSCP occupies the upper 6 bits, ECN the lower 2.
+	//
+	// Zero DSCP is by far the common case (~89% of records on the live box) and
+	// means "unmarked", which is a real answer rather than a missing one — so there
+	// is no presence bit. The values that do appear are conventional: EF on NTP and
+	// ssh, AF31 on 443, CS6 on IGMP (#630).
+	DSCP uint8
+	ECN  uint8
+
+	// SrcMask/DstMask are the prefix lengths of the FIB entries covering each end
+	// (elements 9 and 13). Zero is a real value — the box reports it when no route
+	// covers the address — not an absence.
+	SrcMask, DstMask uint8
+
+	// NextHop is ng_netflow's FIB lookup for the DESTINATION (element 15 for IPv4,
+	// 62 for IPv6). It is NOT an egress-gateway label and must never be presented as
+	// one: a destination with no covering route falls through to the default route,
+	// so on the live box 893 of 899 purely-INTERNAL flows carried the AAISP default
+	// gateway (#630). It is exact in one case only — when the flow genuinely egresses
+	// a WAN, where it matched the egress gateway on 465/465 records.
+	//
+	// It is decoded but NOT yet consumed, and the reason is a correction worth keeping:
+	// #630 first proposed it as an independent cross-check on the ifIndex map, on the
+	// reasoning that ifIndex comes from the ng_netflow hook and NextHop from the FIB.
+	// They are not independent. OUTPUT_SNMP is itself derived from the SAME FIB lookup
+	// (see internal/flow/repair.go, repairs 2 and 4, which exist precisely because that
+	// lookup does not know what pf's policy routing did), so the two agreeing proves
+	// nothing — which is what the observed 465/465 match actually reflects.
+	//
+	// A narrower check may still hold: comparing the GATEWAY ADDRESS here against the
+	// gateway of the interface out-ifIndex resolved to is enumeration-independent,
+	// because one side never passes through the positional ifinfo mapping. That needs
+	// the gateways collector's data and has not been built. Do not resurrect the
+	// original framing without re-reading repair.go.
+	//
+	// The zero Addr means "directly connected" (the box sends all-zero), which is
+	// deliberately distinguishable from a valid address.
+	NextHop netip.Addr
+
 	TemplateID uint16 // 0 for v5; the v9 template this record was decoded with
 }
 
@@ -168,9 +210,14 @@ type Stats struct {
 	// The three things the decoder used to step over in TOTAL silence (#360). Each
 	// is counted per occurrence, not per record: UnknownFields at template-learn
 	// time (once per unmodelled element of a stored template), the other two per
-	// flowset. A non-zero UnknownFields is EXPECTED on OPNsense — the production
-	// IPv4 template declares four elements this decoder does not model — so it is a
-	// CHANGE in these that is the signal, not their existence.
+	// flowset. All three read zero on a healthy OPNsense box, so ANY non-zero value
+	// is the signal.
+	//
+	// UnknownFields used to be expected-non-zero: the production templates declare
+	// SRC_TOS, SRC_MASK, DST_MASK and the two next-hops, which this decoder did not
+	// model. Because that set is identical on every box, the WARN behind it fired on
+	// every exporter start and could never be acted on. #630 modelled all five rather
+	// than suppressing the message, so the counter now means what it says.
 	UnknownFields    uint64
 	OptionsTemplates uint64
 	UnknownFlowsets  uint64
@@ -193,6 +240,8 @@ var modelledFields = map[uint16]bool{
 	FieldFirstSwitched: true, FieldLastSwitched: true,
 	FieldOutBytes: true, FieldOutPkts: true,
 	FieldSrcVLAN: true, FieldDstVLAN: true,
+	FieldSrcTOS: true, FieldSrcMask: true, FieldDstMask: true,
+	FieldIPv4NextHop: true, FieldIPv6NextHop: true,
 }
 
 // Decoder errors. A caller distinguishes "this datagram was not for us" from "this
@@ -209,16 +258,25 @@ var (
 // by its template-declared length — never by guesswork, which would desynchronise
 // every subsequent record in the set.
 const (
-	FieldInBytes       = 1
-	FieldInPkts        = 2
-	FieldProtocol      = 4
-	FieldTCPFlags      = 6
-	FieldL4SrcPort     = 7
-	FieldIPv4SrcAddr   = 8
-	FieldInputSNMP     = 10
-	FieldL4DstPort     = 11
-	FieldIPv4DstAddr   = 12
-	FieldOutputSNMP    = 14
+	FieldInBytes  = 1
+	FieldInPkts   = 2
+	FieldProtocol = 4
+	// FieldSrcTOS is the IPv4 ToS byte, carrying DSCP in its upper 6 bits and ECN in
+	// its lower 2. ng_netflow sends it on both the IPv4 and the IPv6 template.
+	FieldSrcTOS      = 5
+	FieldTCPFlags    = 6
+	FieldL4SrcPort   = 7
+	FieldIPv4SrcAddr = 8
+	// FieldSrcMask/FieldDstMask are FIB prefix lengths for the two ends.
+	FieldSrcMask     = 9
+	FieldInputSNMP   = 10
+	FieldL4DstPort   = 11
+	FieldIPv4DstAddr = 12
+	FieldDstMask     = 13
+	FieldOutputSNMP  = 14
+	// FieldIPv4NextHop/FieldIPv6NextHop are a FIB lookup on the DESTINATION, not an
+	// egress-gateway label — see Record.NextHop for why the difference matters.
+	FieldIPv4NextHop   = 15
 	FieldSrcAS         = 16
 	FieldDstAS         = 17
 	FieldLastSwitched  = 21
@@ -238,5 +296,6 @@ const (
 	// The comment here used to read "handled if it appears", which was wrong in a way
 	// that mattered: it invited a reader to trust a switch case that does not exist
 	// (#586).
-	FieldDirection = 61
+	FieldDirection   = 61
+	FieldIPv6NextHop = 62
 )

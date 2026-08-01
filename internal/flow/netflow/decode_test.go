@@ -890,3 +890,167 @@ func TestDecode_ConcurrentDecodesAreRaceFree(t *testing.T) {
 		t.Fatalf("TemplatesReplaced = %d, want 0: an identical re-send is a refresh", s.TemplatesReplaced)
 	}
 }
+
+// --- #630: the box's own template must decode with nothing left unidentified ---
+
+// The five elements below are what ng_netflow ACTUALLY sends and what this decoder
+// used to step over in silence-with-a-WARN: SRC_TOS(5), SRC_MASK(9), DST_MASK(13),
+// IPV4_NEXT_HOP(15), IPV6_NEXT_HOP(62). Because that set is fixed and identical on
+// every OPNsense box, a WARN naming them fired on every single exporter start and
+// could never be acted on — which trained operators to ignore the one channel that
+// reports genuine template drift (#630).
+//
+// The fix is NOT an allowlist that suppresses the message. It is to model the
+// elements, so "unidentified" recovers its literal meaning: something arrived that
+// this decoder genuinely does not understand.
+func TestDecodeV9_OPNsenseTemplatesLeaveNothingUnidentified(t *testing.T) {
+	d := New()
+	v4 := flowVals{inBytes: 100, inPkts: 1, proto: 17, srcPort: 5353, src: "192.0.2.55",
+		dstPort: 53, dst: "198.51.100.7", nextHop: "192.0.2.254"}
+	v6 := flowVals{inBytes: 200, inPkts: 2, proto: 6, srcPort: 40000, src: "2001:db8::5",
+		dstPort: 443, dst: "2001:db8:1::7", nextHop: "2001:db8::1"}
+
+	pkt := v9Datagram(testHead(1000),
+		templateFlowset(ipv4Template(), ipv6Template()),
+		dataFlowset(256, ipv4Record(t, v4)),
+		dataFlowset(259, ipv6Record(t, v6)),
+	)
+	dg, err := d.Decode(pkt, testExporter, testNow)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(dg.Unidentified) != 0 {
+		t.Errorf("Unidentified = %v, want none: every element of the box's own two templates "+
+			"is modelled, so a stock OPNsense box must produce no unidentified notice at all", dg.Unidentified)
+	}
+	if s := d.Stats(); s.UnknownFields != 0 {
+		t.Errorf("UnknownFields = %d, want 0", s.UnknownFields)
+	}
+}
+
+// DIRECTION(61) is the control: it is a real, named element that this decoder still
+// does not model, and it must STILL be reported. Modelling the box's five must not
+// turn the unidentified channel off wholesale.
+func TestDecodeV9_UnmodelledElementIsStillReported(t *testing.T) {
+	d := New()
+	tmpl := tDef{id: 320, fields: []tField{{7, 2}, {FieldDirection, 1}, {11, 2}}}
+	pkt := v9Datagram(testHead(1000), templateFlowset(tmpl),
+		dataFlowset(320, cat(be16(1234), []byte{0}, be16(443))))
+
+	dg, err := d.Decode(pkt, testExporter, testNow)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	want := Unidentified{Kind: UnidentifiedField, Detail: FieldDirection}
+	if len(dg.Unidentified) != 1 || dg.Unidentified[0] != want {
+		t.Fatalf("Unidentified = %v, want exactly [%v]", dg.Unidentified, want)
+	}
+}
+
+// SRC_TOS is the IPv4 ToS byte: the upper 6 bits are the DSCP codepoint, the lower
+// 2 are ECN. Splitting them at decode is what makes the value usable — a raw 0xB8
+// means nothing to an operator, DSCP 46 (EF) means "this is voice/latency-critical".
+//
+// The values below are real markings observed on the live box across 1740 captured
+// records (#630): EF on udp/123 and tcp/22, AF31 on 443, CS6 on IGMP.
+func TestDecodeV9_TOSSplitsIntoDSCPAndECN(t *testing.T) {
+	cases := []struct {
+		name     string
+		tos      uint8
+		wantDSCP uint8
+		wantECN  uint8
+	}{
+		{"unmarked", 0x00, 0, 0},
+		{"EF with no ECN", 0xB8, 46, 0},
+		{"AF31 with ECT(0)", 0x6A, 26, 2},
+		{"CS6", 0xC0, 48, 0},
+		{"ECN only, CE", 0x03, 0, 3},
+		{"all bits set", 0xFF, 63, 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := New()
+			v := flowVals{inBytes: 1, inPkts: 1, proto: 6, tos: tc.tos,
+				src: "192.0.2.55", dst: "198.51.100.7", nextHop: "192.0.2.254"}
+			pkt := v9Datagram(testHead(1000), templateFlowset(ipv4Template()),
+				dataFlowset(256, ipv4Record(t, v)))
+			dg, err := d.Decode(pkt, testExporter, testNow)
+			if err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			r := dg.Records[0]
+			if r.DSCP != tc.wantDSCP || r.ECN != tc.wantECN {
+				t.Fatalf("tos %#02x decoded to DSCP=%d ECN=%d, want DSCP=%d ECN=%d",
+					tc.tos, r.DSCP, r.ECN, tc.wantDSCP, tc.wantECN)
+			}
+		})
+	}
+}
+
+// SRC_MASK/DST_MASK are the prefix lengths of the FIB entries covering each end.
+// Zero is a real, common answer — it is what the box reports when no route covers
+// the address — so it must be readable as "0", not as "absent".
+func TestDecodeV9_PrefixMasksDecoded(t *testing.T) {
+	d := New()
+	v := flowVals{inBytes: 1, inPkts: 1, proto: 6, srcMask: 24, dstMask: 0,
+		src: "192.0.2.55", dst: "198.51.100.7", nextHop: "192.0.2.254"}
+	pkt := v9Datagram(testHead(1000), templateFlowset(ipv4Template()),
+		dataFlowset(256, ipv4Record(t, v)))
+
+	dg, err := d.Decode(pkt, testExporter, testNow)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if r := dg.Records[0]; r.SrcMask != 24 || r.DstMask != 0 {
+		t.Fatalf("masks = %d/%d, want 24/0", r.SrcMask, r.DstMask)
+	}
+}
+
+// NextHop is ng_netflow's FIB lookup for the DESTINATION, and the decoder stores it
+// verbatim. It is emphatically NOT an egress-interface label: on the live box it
+// reported the AAISP default gateway for 893 of 899 purely-internal flows, because a
+// destination with no covering route falls through to the default route (#630).
+// Its one honest use is as a cross-check against the WAN implied by out-ifIndex,
+// which is why it lands on Record and nowhere else.
+func TestDecodeV9_NextHopDecodedForBothFamilies(t *testing.T) {
+	d := New()
+	v4 := flowVals{inBytes: 1, inPkts: 1, proto: 6, src: "192.0.2.55",
+		dst: "198.51.100.7", nextHop: "192.0.2.254"}
+	v6 := flowVals{inBytes: 1, inPkts: 1, proto: 6, src: "2001:db8::5",
+		dst: "2001:db8:1::7", nextHop: "fe80::1"}
+	pkt := v9Datagram(testHead(1000),
+		templateFlowset(ipv4Template(), ipv6Template()),
+		dataFlowset(256, ipv4Record(t, v4)),
+		dataFlowset(259, ipv6Record(t, v6)),
+	)
+	dg, err := d.Decode(pkt, testExporter, testNow)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if got := dg.Records[0].NextHop; got != netip.MustParseAddr("192.0.2.254") {
+		t.Errorf("v4 NextHop = %v, want 192.0.2.254", got)
+	}
+	if got := dg.Records[1].NextHop; got != netip.MustParseAddr("fe80::1") {
+		t.Errorf("v6 NextHop = %v, want fe80::1", got)
+	}
+}
+
+// An all-zero next-hop is what the box sends for a directly-connected destination.
+// It must stay an invalid/zero Addr rather than becoming "0.0.0.0", so a consumer
+// can tell "no gateway" from "a gateway that happens to be unrouteable".
+func TestDecodeV9_ZeroNextHopIsNotAnAddress(t *testing.T) {
+	d := New()
+	v := flowVals{inBytes: 1, inPkts: 1, proto: 6, src: "192.0.2.55",
+		dst: "198.51.100.7", nextHop: "0.0.0.0"}
+	pkt := v9Datagram(testHead(1000), templateFlowset(ipv4Template()),
+		dataFlowset(256, ipv4Record(t, v)))
+
+	dg, err := d.Decode(pkt, testExporter, testNow)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if got := dg.Records[0].NextHop; got.IsValid() {
+		t.Fatalf("NextHop = %v, want the zero Addr: an all-zero next-hop means "+
+			"directly connected, not a host at 0.0.0.0", got)
+	}
+}

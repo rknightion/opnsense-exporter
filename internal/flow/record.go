@@ -328,6 +328,29 @@ type Record struct {
 	// are not modelled — so this stays zero on a Zenarmor-only record.
 	TCPFlags uint8
 
+	// DSCP is the differentiated-services codepoint from NetFlow element 5, and ECN
+	// the two congestion bits beside it. Both are NetFlow-only — Zenarmor supplies
+	// neither — so both stay zero on a Zenarmor-only record.
+	//
+	// Zero means unmarked, which is the overwhelming majority (~89% of records on the
+	// reference box) and is why neither reaches the emitted attributes: a
+	// `netflow.dscp="0"` on nine flow logs in ten is bytes carrying no information.
+	// Absent therefore reads as "unmarked, or NetFlow never described this flow", and
+	// the two are deliberately not distinguished — no consumer has yet needed to, and
+	// a presence bit nothing reads is the dead weight #586 removed from SRC_AS.
+	//
+	// Unioning is wrong here, unlike TCPFlags: a codepoint is a value, not a bit set,
+	// and OR-ing EF with AF31 yields a codepoint nobody sent. The correlator takes
+	// both from the chosen orientation's sample, like every other non-volume field.
+	DSCP uint8
+	ECN  uint8
+
+	// SrcMask/DstMask are the FIB prefix lengths NetFlow reported for each end
+	// (elements 9 and 13). Zero is a real answer — no covering route — and is emitted,
+	// unlike a zero DSCP: it is uncommon enough to be worth seeing, and it is the
+	// value that explains a next-hop naming the default gateway.
+	SrcMask, DstMask uint8
+
 	In        Iface
 	Out       Iface
 	Direction Direction

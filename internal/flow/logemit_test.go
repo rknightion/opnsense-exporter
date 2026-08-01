@@ -183,3 +183,81 @@ func TestLogSeverityBlocked(t *testing.T) {
 		t.Error("passed flow must not report blocked severity")
 	}
 }
+
+// --- #630: DSCP / ECN / prefix masks ---------------------------------------
+
+// A marked flow must say so in terms an operator reads, not as a raw byte. The
+// codepoints below are real markings observed on the live box across 1740 captured
+// records: EF on udp/123 and tcp/22, AF31 on 443, CS6 on IGMP.
+func TestLogAttributes_DSCPEmittedByNameAndNumber(t *testing.T) {
+	cases := []struct {
+		dscp      uint8
+		wantNum   string
+		wantClass string
+	}{
+		{46, "46", "EF"},
+		{26, "26", "AF31"},
+		{48, "48", "CS6"},
+		{10, "10", "AF11"},
+		{0, "", ""},    // unmarked: emitted as nothing at all
+		{37, "37", ""}, // a codepoint with no standard name still reports its number
+	}
+	for _, tc := range cases {
+		r := sampleMerged()
+		r.DSCP = tc.dscp
+		a := r.LogAttributes()
+		if got := a["netflow.dscp"]; got != tc.wantNum {
+			t.Errorf("dscp %d -> netflow.dscp = %q, want %q", tc.dscp, got, tc.wantNum)
+		}
+		if got := a["netflow.dscp_class"]; got != tc.wantClass {
+			t.Errorf("dscp %d -> netflow.dscp_class = %q, want %q", tc.dscp, got, tc.wantClass)
+		}
+	}
+}
+
+// ECN is four states, and the numbers 0-3 do not convey them. Not-ECT is the
+// default and is emitted as nothing, exactly like an unmarked DSCP.
+func TestLogAttributes_ECNEmittedByState(t *testing.T) {
+	cases := []struct {
+		ecn  uint8
+		want string
+	}{
+		{0, ""},
+		{1, "ECT(1)"},
+		{2, "ECT(0)"},
+		{3, "CE"},
+	}
+	for _, tc := range cases {
+		r := sampleMerged()
+		r.ECN = tc.ecn
+		if got := r.LogAttributes()["netflow.ecn"]; got != tc.want {
+			t.Errorf("ecn %d -> %q, want %q", tc.ecn, got, tc.want)
+		}
+	}
+}
+
+// Masks are emitted even at zero, unlike DSCP: zero means "no covering route", which
+// is uncommon and is the value that explains a next-hop naming the default gateway.
+func TestLogAttributes_PrefixMasksEmittedIncludingZero(t *testing.T) {
+	r := sampleMerged()
+	r.SrcMask, r.DstMask = 24, 0
+	a := r.LogAttributes()
+	if a["netflow.src_mask"] != "24" || a["netflow.dst_mask"] != "0" {
+		t.Fatalf("masks = %q/%q, want 24/0", a["netflow.src_mask"], a["netflow.dst_mask"])
+	}
+}
+
+// A Zenarmor-only record never had a NetFlow element 5 or 9/13 to read, so it must
+// carry none of these attributes rather than a fabricated zero.
+func TestLogAttributes_ZenarmorOnlyCarriesNoNetflowTOSFields(t *testing.T) {
+	r := sampleMerged()
+	r.Source = SourceZenarmor
+	r.NF = Counters{}
+	a := r.LogAttributes()
+	for _, k := range []string{"netflow.dscp", "netflow.dscp_class", "netflow.ecn",
+		"netflow.src_mask", "netflow.dst_mask"} {
+		if _, ok := a[k]; ok {
+			t.Errorf("%s present on a Zenarmor-only record: %q", k, a[k])
+		}
+	}
+}
