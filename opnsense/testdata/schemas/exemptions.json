@@ -837,9 +837,14 @@
       "Self.TailscaleIPs",
       "Self.UserID"
     ],
-    "missingOK": [
-      "Self.KeyExpiry"
-    ]
+    "profiles": {
+      "prod": {
+        "missingOK": [
+          "Self.KeyExpiry"
+        ],
+        "note": "PROD ONLY, ON PURPOSE - the two-step prune of #614 completed 2026-08-01. Step 1: key expiry was re-enabled on the two TESTBED Tailscale nodes from the admin console, so nightly and release-vm now report Self.KeyExpiry present and ENFORCE it; the base-scoped entry that used to blind all three profiles is gone. Step 2 is this entry. The production firewall's node keeps key expiry DISABLED deliberately and must not have it enabled: an expired node key drops that box off the tailnet, which is the transport for both camden's exporter polling and this canary, so enabling it would take the canary offline to clear its own warning. Upstream (tailscale ipn/ipnstate/ipnstate.go:338) declares KeyExpiry as `*time.Time json:\",omitempty\"`, so a non-expiring node omits the key entirely - box state, not drift. The field backs opnsense_tailscale_key_expiry_seconds (#583), which is exactly why this is scoped to the one profile that cannot enforce it rather than left at base scope. PRUNE TRIGGER: none that we would want - it prunes only if the prod firewall stops being tailnet-tagged or gains key expiry, and the latter is a thing to avoid, not to wait for. Do NOT promote back to base."
+      }
+    }
   },
   "unboundDNSStatus": {
     "missingOK": [
