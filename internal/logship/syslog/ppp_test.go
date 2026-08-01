@@ -214,12 +214,12 @@ func TestPPPCapturedShapes(t *testing.T) {
 		},
 		{
 			name: "IPv4 address assigned",
-			msg:  "[opt7]   81.187.237.31 -> 81.187.81.187",
+			msg:  "[opt7]   203.0.113.31 -> 198.51.100.187",
 			want: map[string]string{
 				"ppp.event":         "address_assigned",
 				"ppp.bundle":        "opt7",
-				"ppp.address.local": "81.187.237.31",
-				"ppp.address.peer":  "81.187.81.187",
+				"ppp.address.local": "203.0.113.31",
+				"ppp.address.peer":  "198.51.100.187",
 			},
 		},
 	}
@@ -265,7 +265,7 @@ func TestPPPIPv6InterfaceIdentifierIsNotAnAddress(t *testing.T) {
 func TestPPPUnmatchedShapesDegradeToGeneric(t *testing.T) {
 	tests := []string{
 		`PPPoE: rec'd ACNAME "acc-aln3.elh"`,
-		"[opt7]     81.187.81.187 is OK",
+		"[opt7]     198.51.100.187 is OK",
 		"[opt7]   COMPPROTO VJCOMP, 16 comp. channels, no comp-cid",
 		"[opt7] IFACE: Rename interface ng0 to pppoe0",
 		`[opt7]   IPADDR 0.0.0.0`,
