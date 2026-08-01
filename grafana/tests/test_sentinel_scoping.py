@@ -62,7 +62,7 @@ TARGET_JOIN_FRAGMENTS = (
 def prometheus_sentinels(builder) -> dict[str, str]:
     """Hidden Prometheus QueryVariables -> their query string, as shipped."""
     found = {}
-    for variable in builder.variables:
+    for variable in builder.all_variables():
         spec = variable["spec"]
         if variable["kind"] != "QueryVariable" or spec["hide"] != "hideVariable":
             continue

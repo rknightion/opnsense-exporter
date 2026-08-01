@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/prometheus/promql/parser"
@@ -34,7 +35,19 @@ type dashboard struct {
 		Elements    map[string]element `json:"elements"`
 		Variables   []variable         `json:"variables"`
 		Annotations []annotation       `json:"annotations"`
+		// Layout is raw and walked generically (#619). Variables no longer live
+		// only at spec.variables: a RowsLayoutRow and a TabsLayoutTab may each
+		// declare their own, and a variable declared on a tab exists ONLY inside
+		// that tab. Decoding this into typed layout kinds would be the quiet
+		// failure mode — an unknown kind deserialises to an empty struct, every
+		// panel underneath drops out of the check, and the tool still reports
+		// success.
+		Layout json.RawMessage `json:"layout"`
 	} `json:"spec"`
+
+	// raw is the undecoded document, kept so the scoping walk can look at whole
+	// elements rather than the narrow typed view the query checks use.
+	raw []byte
 }
 
 // A v2 AnnotationQuery keeps its expression in legacyOptions rather than in
@@ -185,13 +198,260 @@ func validateExpression(normalized string) error {
 	return err
 }
 
-func validateVariables(document dashboard) (int, validationErrors) {
+// --- grouping-level variable scoping (#619) ---------------------------------
+//
+// Two things break quietly the moment a variable stops living at spec.variables,
+// and they are opposite failures:
+//
+//   - UNDER-COVERAGE. Reading only spec.variables means every variable that moved
+//     onto a tab stops being query-checked. The tool keeps passing and simply
+//     validates less — it went from 119 variable queries to 21 the first time
+//     placement moved, with a green exit.
+//   - UNDER-STRICTNESS. Checking that a name exists SOMEWHERE on the dashboard is
+//     too weak once scoping exists. A row gating on a sibling tab's variable
+//     passes that check, then renders permanently hidden — on screen identical to
+//     a row correctly hidden for want of data. A walker that simply unions every
+//     declaration in the document passes the obvious test and accepts exactly this
+//     bug, so resolution is tracked positionally instead.
+//
+// The walk therefore carries a VISIBLE SET down the tree rather than collecting
+// paths: a level's own declarations are added before descending into it, and a
+// level's own conditionalRendering is checked BEFORE they are added, because a tab
+// cannot gate itself on a variable scoped to itself.
+
+// variableReference matches both spellings Grafana accepts.
+var variableReference = regexp.MustCompile(
+	`\$\{([A-Za-z_][A-Za-z0-9_]*)[:}]|\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+// referencedVariables returns the variable names interpolated anywhere in a blob
+// of dashboard JSON, minus Grafana's own `__`-prefixed built-ins ($__rate_interval,
+// $__from, $__field.labels.x and friends), which no dashboard declares.
+func referencedVariables(blob string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, match := range variableReference.FindAllStringSubmatch(blob, -1) {
+		name := match[1]
+		if name == "" {
+			name = match[2]
+		}
+		if name == "" || strings.HasPrefix(name, "__") || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// scopedVariable is one declaration plus where it was declared, so a diagnostic can
+// say which level owns a broken query.
+type scopedVariable struct {
+	variable
+	where string
+}
+
+type layoutWalk struct {
+	elements    map[string]json.RawMessage
+	variables   []scopedVariable
+	panels      int
+	rows        int
+	diagnostics validationErrors
+}
+
+func specOf(node map[string]any) map[string]any {
+	spec, _ := node["spec"].(map[string]any)
+	return spec
+}
+
+// declaredVariables decodes a level's own `variables: [...]`.
+func declaredVariables(spec map[string]any, where string) []scopedVariable {
+	raw, ok := spec["variables"]
+	if !ok {
+		return nil
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var decoded []variable
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		return nil
+	}
+	out := make([]scopedVariable, 0, len(decoded))
+	for _, v := range decoded {
+		out = append(out, scopedVariable{variable: v, where: where})
+	}
+	return out
+}
+
+// gateVariables reads a level's conditionalRendering variable names.
+func gateVariables(spec map[string]any) []string {
+	cond, ok := spec["conditionalRendering"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	inner, ok := cond["spec"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	items, ok := inner["items"].([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok || item["kind"] != "ConditionalRenderingVariable" {
+			continue
+		}
+		if itemSpec, ok := item["spec"].(map[string]any); ok {
+			if name, ok := itemSpec["variable"].(string); ok {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
+}
+
+func extend(visible map[string]bool, added []scopedVariable) map[string]bool {
+	if len(added) == 0 {
+		return visible
+	}
+	next := make(map[string]bool, len(visible)+len(added))
+	for name := range visible {
+		next[name] = true
+	}
+	for _, v := range added {
+		next[v.Spec.Name] = true
+	}
+	return next
+}
+
+func (w *layoutWalk) require(names []string, visible map[string]bool, where, what string) {
+	for _, name := range names {
+		if !visible[name] {
+			w.diagnostics = append(w.diagnostics, fmt.Sprintf(
+				"%s: %s references $%s, which does not resolve here — it is not "+
+					"declared at dashboard level nor by any enclosing tab or row. "+
+					"A gate on an out-of-scope variable renders permanently hidden.",
+				where, what, name))
+		}
+	}
+}
+
+func (w *layoutWalk) walk(node any, visible map[string]bool, where string) {
+	switch typed := node.(type) {
+	case map[string]any:
+		kind, _ := typed["kind"].(string)
+		switch kind {
+		case "TabsLayoutTab":
+			spec := specOf(typed)
+			title, _ := spec["title"].(string)
+			inner := where + " > tab " + strconv.Quote(title)
+			// Checked against the PARENT's visible set, on purpose.
+			w.require(gateVariables(spec), visible, inner, "its own visibility gate")
+			own := declaredVariables(spec, inner)
+			w.variables = append(w.variables, own...)
+			w.walk(spec["layout"], extend(visible, own), inner)
+			return
+		case "RowsLayoutRow":
+			spec := specOf(typed)
+			title, _ := spec["title"].(string)
+			inner := where + " > row " + strconv.Quote(title)
+			w.require(gateVariables(spec), visible, inner, "its own visibility gate")
+			own := declaredVariables(spec, inner)
+			w.variables = append(w.variables, own...)
+			before := w.panels
+			w.walk(spec["layout"], extend(visible, own), inner)
+			// A row the reader sees as empty is a reader bug, not a dashboard:
+			// the generator cannot build one. This is the floor assertion that
+			// stops a future layout kind silently emptying the walk (#619).
+			if w.panels == before {
+				w.diagnostics = append(w.diagnostics, fmt.Sprintf(
+					"%s: read as having ZERO panels. The generator cannot build an "+
+						"empty row, so this is a layout kind the walker does not "+
+						"understand — every check below it has passed vacuously.",
+					inner))
+			}
+			return
+		case "GridLayoutItem", "AutoGridLayoutItem":
+			spec := specOf(typed)
+			name := ""
+			if ref, ok := spec["element"].(map[string]any); ok {
+				name, _ = ref["name"].(string)
+			}
+			w.panels++
+			element, ok := w.elements[name]
+			if !ok {
+				w.diagnostics = append(w.diagnostics, fmt.Sprintf(
+					"%s: references element %q, which is not in spec.elements",
+					where, name))
+				return
+			}
+			w.require(referencedVariables(string(element)), visible,
+				where, "panel "+strconv.Quote(name))
+			return
+		}
+		for _, value := range typed {
+			w.walk(value, visible, where)
+		}
+	case []any:
+		for _, value := range typed {
+			w.walk(value, visible, where)
+		}
+	}
+}
+
+// collectScopedVariables walks the layout and returns every variable declared
+// anywhere in the document, plus any resolution diagnostics.
+func collectScopedVariables(document dashboard) ([]scopedVariable, validationErrors) {
+	all := make([]scopedVariable, 0, len(document.Spec.Variables))
+	visible := map[string]bool{}
+	for _, v := range document.Spec.Variables {
+		all = append(all, scopedVariable{variable: v, where: "dashboard"})
+		visible[v.Spec.Name] = true
+	}
+	if len(document.Spec.Layout) == 0 {
+		return all, nil
+	}
+
+	elements := map[string]json.RawMessage{}
+	var rawSpec struct {
+		Spec struct {
+			Elements map[string]json.RawMessage `json:"elements"`
+		} `json:"spec"`
+	}
+	// Re-decoding rather than reusing the typed elements map: the resolution check
+	// has to see the WHOLE element (titles, legends, link URLs, transformations,
+	// overrides), not just the query strings the typed reader keeps.
+	if err := json.Unmarshal(document.raw, &rawSpec); err == nil {
+		elements = rawSpec.Spec.Elements
+	}
+
+	var layout any
+	if err := json.Unmarshal(document.Spec.Layout, &layout); err != nil {
+		return all, validationErrors{fmt.Sprintf("decode spec.layout: %v", err)}
+	}
+	walk := &layoutWalk{elements: elements}
+	walk.walk(layout, visible, "dashboard")
+	if walk.panels == 0 {
+		return all, validationErrors{
+			"spec.layout yielded ZERO panels — the walker does not understand this " +
+				"layout and every scoping check has passed vacuously"}
+	}
+	return append(all, walk.variables...), walk.diagnostics
+}
+
+func validateVariables(variables []scopedVariable) (int, validationErrors) {
 	var (
 		names       []string
 		queries     = map[string]string{}
+		wheres      = map[string]string{}
 		diagnostics validationErrors
 	)
-	for _, v := range document.Spec.Variables {
+	for _, sv := range variables {
+		v := sv.variable
 		if v.Kind != "QueryVariable" || len(v.Spec.Query) == 0 {
 			continue
 		}
@@ -207,6 +467,7 @@ func validateVariables(document dashboard) (int, validationErrors) {
 		}
 		names = append(names, v.Spec.Name)
 		queries[v.Spec.Name] = query.Spec.Query
+		wheres[v.Spec.Name] = sv.where
 	}
 	sort.Strings(names)
 
@@ -216,7 +477,8 @@ func validateVariables(document dashboard) (int, validationErrors) {
 		expression, present, err := unwrapVariableQuery(query)
 		if err != nil {
 			diagnostics = append(diagnostics, fmt.Sprintf(
-				"variable %q: %v\nquery: %s", name, err, query))
+				"variable %q (declared at %s): %v\nquery: %s",
+				name, wheres[name], err, query))
 			continue
 		}
 		if !present {
@@ -225,7 +487,8 @@ func validateVariables(document dashboard) (int, validationErrors) {
 		validated++
 		if err := validateExpression(grafanaTokens.Replace(expression)); err != nil {
 			diagnostics = append(diagnostics, fmt.Sprintf(
-				"variable %q: %v\nquery: %s", name, err, query))
+				"variable %q (declared at %s): %v\nquery: %s",
+				name, wheres[name], err, query))
 		}
 	}
 	return validated, diagnostics
@@ -262,6 +525,7 @@ func validateDashboard(data []byte) (int, int, int, error) {
 	if err := json.Unmarshal(data, &document); err != nil {
 		return 0, 0, 0, fmt.Errorf("decode dashboard JSON: %w", err)
 	}
+	document.raw = data
 
 	var targets []target
 	for elementID, dashboardElement := range document.Spec.Elements {
@@ -321,7 +585,10 @@ func validateDashboard(data []byte) (int, int, int, error) {
 		}
 	}
 
-	prometheusVariables, variableDiagnostics := validateVariables(document)
+	scopedVariables, scopeDiagnostics := collectScopedVariables(document)
+	diagnostics = append(diagnostics, scopeDiagnostics...)
+
+	prometheusVariables, variableDiagnostics := validateVariables(scopedVariables)
 	diagnostics = append(diagnostics, variableDiagnostics...)
 
 	prometheusAnnotations, annotationDiagnostics := validateAnnotations(document)

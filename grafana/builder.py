@@ -23,7 +23,20 @@ This file is the FROZEN API used by every tab module under `tabs/`. See
 
 from __future__ import annotations
 
+import json
 import re
+
+
+def _references_variable(blob: str, name: str) -> bool:
+    """Does `blob` interpolate the Grafana variable `name`?
+
+    Both spellings, and the word boundary matters in both: `$has_dhcp` must not
+    match a reference to `$has_dhcpv6_isc`, or a variable gets pinned to the union
+    of two unrelated tabs and quietly hoisted to the dashboard.
+    """
+    return re.search(r"\$\{" + re.escape(name) + r"[:}]", blob) is not None or \
+        re.search(r"\$" + re.escape(name) + r"(?![0-9A-Za-z_])", blob) is not None
+
 
 INSTANCE_LABEL = "opnsense_instance"
 INSTANCE_SEL = f'{INSTANCE_LABEL}=~"$opnsense_instance"'
@@ -1130,6 +1143,209 @@ class Builder:
         if c:
             spec["conditionalRendering"] = c
         self.tabs.append({"kind": "TabsLayoutTab", "spec": spec})
+
+    # ---- grouping-level variable placement (#619) ------------------------
+    #
+    # `RowsLayoutRowSpec` and `TabsLayoutTabSpec` both accept their own
+    # `variables: [...]`, and a variable declared on a tab only runs its query when
+    # that tab is OPENED. This repo declares 98 hidden presence sentinels, every one
+    # of which currently fires on cold load whether or not the operator ever visits
+    # the tab it gates.
+    #
+    # Placement is DERIVED here rather than declared at the 127 call sites. The rule
+    # that makes derivation worth it is the awkward one:
+    #
+    #   A TAB CANNOT GATE ITSELF ON A VARIABLE SCOPED TO ITSELF.
+    #
+    # The variable does not exist until the tab renders, so the gate evaluates
+    # against nothing and the tab is hidden forever — on screen indistinguishable
+    # from a tab correctly hidden for want of data. A variable that gates a tab
+    # therefore belongs to that tab's PARENT, while a variable merely USED inside a
+    # tab belongs to the tab. Getting that backwards is silent, and hand-writing it
+    # 86 times is 86 chances to get it backwards. Computing it is one.
+    #
+    # Everything else falls out of one rule: a variable lives at the DEEPEST
+    # grouping level that encloses every reference to it. Referenced from two
+    # sibling leaves, or from anywhere outside the layout, and the deepest common
+    # level is the dashboard, which is where it stays.
+
+    # Reference positions are tuples of enclosing tab titles; () is the dashboard.
+    _DASHBOARD_LEVEL: tuple = ()
+
+    @staticmethod
+    def _condition_variables(spec: dict) -> list:
+        """Variable names a row/tab spec gates its own visibility on."""
+        cond = spec.get("conditionalRendering")
+        if not cond:
+            return []
+        return [item["spec"]["variable"] for item in cond["spec"]["items"]
+                if item.get("kind") == "ConditionalRenderingVariable"]
+
+    def _variable_references(self) -> dict:
+        """Map each sentinel name to the set of layout positions that reference it.
+
+        A position is the tuple of tab titles enclosing the reference. Walking is
+        GENERIC — dispatch on `kind`, recurse into everything else — rather than
+        against a typed list of layout kinds. A typed reader that meets a layout
+        kind it does not know returns no panels for it and every check underneath
+        passes vacuously, reporting success while covering less.
+        """
+        refs = {name: set() for name in self._sentinels}
+        panel_positions: dict = {}
+
+        def note(name, position):
+            if name in refs:
+                refs[name].add(position)
+
+        def walk(node, position):
+            if isinstance(node, dict):
+                kind = node.get("kind")
+                if kind == "TabsLayoutTab":
+                    spec = node["spec"]
+                    inner = position + (spec["title"],)
+                    # A tab's own gate resolves in the PARENT, not in the tab.
+                    for name in self._condition_variables(spec):
+                        note(name, position)
+                    walk(spec.get("layout"), inner)
+                    return
+                if kind == "RowsLayoutRow":
+                    spec = node["spec"]
+                    for name in self._condition_variables(spec):
+                        note(name, position)
+                    walk(spec.get("layout"), position)
+                    return
+                if kind == "GridLayoutItem":
+                    panel_positions.setdefault(
+                        node["spec"]["element"]["name"], set()).add(position)
+                    return
+                if kind == "AutoGridLayoutItem":
+                    panel_positions.setdefault(
+                        node["spec"]["element"]["name"], set()).add(position)
+                    return
+                for value in node.values():
+                    walk(value, position)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value, position)
+
+        walk({"kind": "TabsLayout", "spec": {"tabs": self.tabs}}, self._DASHBOARD_LEVEL)
+
+        # Panel queries. Matched against the serialised element so a reference is
+        # caught wherever it hides — a query, a title, a legend, a link URL, a
+        # transformation, a threshold — rather than only in the places a targeted
+        # reader thought to look.
+        for element_name, positions in panel_positions.items():
+            element = self.elements.get(element_name)
+            if element is None:
+                continue
+            blob = json.dumps(element)
+            for name in self._sentinels:
+                if _references_variable(blob, name):
+                    refs[name].update(positions)
+
+        # Anything referencing a sentinel from OUTSIDE the layout — another
+        # variable's query, an annotation, a dashboard link — pins it to the
+        # dashboard, because there is no grouping level enclosing those at all.
+        outside = json.dumps([self.variables, self.annotations, self.links])
+        for name in self._sentinels:
+            if _references_variable(outside, name):
+                refs[name].add(self._DASHBOARD_LEVEL)
+
+        return refs
+
+    @staticmethod
+    def _common_level(positions: set) -> tuple:
+        """Deepest grouping level enclosing every position (their common prefix)."""
+        if not positions:
+            return Builder._DASHBOARD_LEVEL
+        common = min(positions, key=len)
+        for position in positions:
+            while common != position[:len(common)]:
+                common = common[:-1]
+        return common
+
+    def place_variables(self) -> dict:
+        """Move each sentinel onto the deepest grouping level that encloses its uses.
+
+        Returns {variable name: level path} for every sentinel, so the caller (and
+        the tests) can assert placement without re-deriving it.
+
+        A sentinel referenced by NOTHING is left at dashboard level rather than
+        dropped. Dropping it would delete a variable somebody is about to use and
+        turn an unused declaration into a mystery; leaving it costs one cold-load
+        query and shows up in the budget test, which is the loud version.
+        """
+        refs = self._variable_references()
+        levels = {name: self._common_level(positions)
+                  for name, positions in refs.items()}
+
+        # Index the tab specs by their full path so a level can be resolved to the
+        # spec that will carry the variable.
+        by_path: dict = {}
+
+        def index(node, position):
+            if isinstance(node, dict):
+                if node.get("kind") == "TabsLayoutTab":
+                    spec = node["spec"]
+                    path = position + (spec["title"],)
+                    by_path[path] = spec
+                    index(spec.get("layout"), path)
+                    return
+                for value in node.values():
+                    index(value, position)
+            elif isinstance(node, list):
+                for value in node:
+                    index(value, position)
+
+        index({"kind": "TabsLayout", "spec": {"tabs": self.tabs}},
+              self._DASHBOARD_LEVEL)
+
+        # Rebuild the dashboard-level list in declaration order, moving the rest.
+        # Order is preserved rather than regrouped: the variable list is what the
+        # cold-load fan-out is read from, and a stable order keeps the artifact diff
+        # legible when one variable moves.
+        remaining = []
+        for variable in self.variables:
+            name = variable["spec"]["name"]
+            level = levels.get(name, self._DASHBOARD_LEVEL)
+            if level == self._DASHBOARD_LEVEL:
+                remaining.append(variable)
+                continue
+            spec = by_path.get(level)
+            if spec is None:  # unreachable via _common_level, but never guess
+                remaining.append(variable)
+                levels[name] = self._DASHBOARD_LEVEL
+                continue
+            spec.setdefault("variables", []).append(variable)
+        self.variables = remaining
+        return levels
+
+    def all_variables(self) -> list:
+        """Every variable this dashboard declares, at any grouping level.
+
+        `self.variables` is the DASHBOARD-level list, and after `place_variables`
+        that is 18 of 104. Anything asking "what does this dashboard declare?" —
+        the sentinel contract, the scoping inventory, coverage checks — has to ask
+        here instead, or it silently starts governing a sixth of what it used to
+        while still reporting success (#619).
+
+        The one caller that must NOT use this is the cold-load budget: its whole
+        subject is which variables fire on load, and a tab-scoped one does not.
+        """
+        found = list(self.variables)
+
+        def walk(node):
+            if isinstance(node, dict):
+                if node.get("kind") in ("TabsLayoutTab", "RowsLayoutRow"):
+                    found.extend(node["spec"].get("variables", []))
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(self.tabs)
+        return found
 
     # ---- manifest --------------------------------------------------------
     def manifest(self, title, description, tags, name="opnsense2otel") -> dict:

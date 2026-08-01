@@ -1843,6 +1843,11 @@ def build_all(tab_groups=TAB_GROUPS) -> Builder:
     build_overview(b)
     register_subsystem_tabs(b, MAIN_TAB_MODULES)   # provided by tabs/ modules
     organize_tabs(b, tab_groups)
+    # LAST, and it has to be: placement is derived from the finished layout, so it
+    # must run after organize_tabs has built the domain level the 27 leaf-gates move
+    # onto. Running it earlier would see leaves at the top level and place every one
+    # of those at dashboard scope, silently achieving nothing (#619).
+    b.place_variables()
     return b
 
 
@@ -1879,6 +1884,7 @@ def build_health(tab_groups=HEALTH_TAB_GROUPS) -> Builder:
     # build_diagnostics register (has_logs, has_otlp), so it has to come after both.
     build_health_overview(b)
     organize_tabs(b, tab_groups)
+    b.place_variables()   # last, for the same reason as build_all (#619)
     return b
 
 

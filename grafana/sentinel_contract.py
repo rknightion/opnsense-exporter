@@ -76,7 +76,7 @@ def _extract_prometheus_sentinels(builder) -> dict[str, str]:
     stale, rather than one importing the other's assumptions.
     """
     found = {}
-    for variable in builder.variables:
+    for variable in builder.all_variables():
         spec = variable["spec"]
         if variable["kind"] != "QueryVariable" or spec["hide"] != "hideVariable":
             continue
@@ -90,7 +90,7 @@ def _extract_prometheus_sentinels(builder) -> dict[str, str]:
 def _extract_loki_sentinels(builder) -> dict[str, str]:
     """Hidden Loki QueryVariables -> their built LogQL string, as shipped."""
     found = {}
-    for variable in builder.variables:
+    for variable in builder.all_variables():
         spec = variable["spec"]
         if variable["kind"] != "QueryVariable" or spec["hide"] != "hideVariable":
             continue

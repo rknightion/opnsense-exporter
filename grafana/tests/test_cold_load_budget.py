@@ -53,12 +53,22 @@ import build_dashboard  # noqa: E402
 #
 # Re-measured 2026-07-27 (#474): converting $zenarmor_client from a TextVariable to a
 # QueryVariable added one onDashboardLoad round trip (104 -> 105); annotations and the
-# cold-tab query count are unchanged. All figures still fit the existing ceilings, so
-# only the measured comments move, not the budgets themselves.
-MAX_LOAD_VARIABLES = 112          # measured 105 (103 onDashboardLoad + 2 onTimeRangeChanged)
-MAX_ENABLED_ANNOTATIONS = 16      # measured 12 enabled of 16 layers
-MAX_COLD_TAB_QUERIES = 26         # measured 20 on Overview
-MAX_COLD_LOAD_QUERIES = 145       # measured 137 in total
+# cold-tab query count are unchanged.
+#
+# RE-MEASURED AND CUT 2026-08-01 (#619): 105 -> 16. Presence sentinels no longer live
+# at dashboard level — each is declared on the grouping level that consumes it, so its
+# query runs when that tab is OPENED rather than on every load. 88 round trips left the
+# cold path without a single panel changing.
+#
+# The budget is lowered ON PURPOSE rather than left at 112 with headroom. A ceiling
+# four times the real figure would never fire, and the whole point of the migration is
+# that this number must not creep back: anything that pushes it up is a variable that
+# has been hoisted to dashboard scope, which is exactly the regression to catch. The
+# long comment that used to explain why the number was large is gone with the number.
+MAX_LOAD_VARIABLES = 22           # measured 16 (14 onDashboardLoad + 2 onTimeRangeChanged)
+MAX_ENABLED_ANNOTATIONS = 22      # measured 16 enabled layers
+MAX_COLD_TAB_QUERIES = 30         # measured 23 on Overview
+MAX_COLD_LOAD_QUERIES = 80        # measured 55 in total
 
 # Panel queries that are deliberately issued twice on the cold tab. Each entry is
 # (panel title, panel title, metric) — the pair of panels that share one query.

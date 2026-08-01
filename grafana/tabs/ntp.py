@@ -187,7 +187,12 @@ def build(b: Builder):
         color_mode="value",
         instant=False,
         desc=(
-            "Number of satellites used in the last GPS fix ($GPGGA sentences only). "
+            # "GPGGA" without the NMEA leading '$': Grafana interpolates panel
+            # descriptions, so "$GPGGA" reads as a variable reference. It renders
+            # literally today only because nothing declares that name, and the
+            # scoping gate (#619) rightly flags it as a reference that resolves
+            # nowhere. The sentence is unambiguous without the sigil.
+            "Number of satellites used in the last GPS fix (GPGGA sentences only). "
             "EXPERIMENTAL: derived from OPNsense source, not validated against real GPS "
             "hardware (#224)."
         ),

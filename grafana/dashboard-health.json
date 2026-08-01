@@ -689,166 +689,6 @@
       {
         "kind": "QueryVariable",
         "spec": {
-          "name": "has_debug_capture",
-          "label": "has_debug_capture",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(opnsense_exporter_logs_debug_captured_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_debug_capture"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_log_events",
-          "label": "has_log_events",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values({__name__=~\"opnsense_log_events_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_log_events"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_flow",
-          "label": "has_flow",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_flow"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_flow_netflow",
-          "label": "has_flow_netflow",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_flow_netflow"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_flow_geoip",
-          "label": "has_flow_geoip",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(opnsense_flow_geoip_lookups_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_flow_geoip"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
           "name": "has_recording_rules",
           "label": "has_recording_rules",
           "hide": "hideVariable",
@@ -881,294 +721,6 @@
       {
         "kind": "QueryVariable",
         "spec": {
-          "name": "has_recording_gateway_loss",
-          "label": "has_recording_gateway_loss",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_gateway_loss"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_ipsec",
-          "label": "has_recording_ipsec",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_ipsec"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_wireguard",
-          "label": "has_recording_wireguard",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_wireguard"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_unbound",
-          "label": "has_recording_unbound",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_unbound"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_zenarmor",
-          "label": "has_recording_zenarmor",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_zenarmor"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_haproxy",
-          "label": "has_recording_haproxy",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_haproxy"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_ids",
-          "label": "has_recording_ids",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_ids"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_recording_flow",
-          "label": "has_recording_flow",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_recording_flow"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_go_runtime",
-          "label": "has_go_runtime",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "query_result(go_goroutines{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
-              "refId": "has_go_runtime"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
           "name": "has_otlp",
           "label": "has_otlp",
           "hide": "hideVariable",
@@ -1182,102 +734,6 @@
             "spec": {
               "query": "label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_otlp"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_process_fds",
-          "label": "has_process_fds",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "query_result(process_open_fds{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
-              "refId": "has_process_fds"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_annotations",
-          "label": "has_annotations",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_annotations"
-            }
-          },
-          "current": {
-            "text": "",
-            "value": ""
-          },
-          "options": [],
-          "multi": false,
-          "includeAll": false,
-          "allowCustomValue": false,
-          "refresh": "onDashboardLoad",
-          "regex": "",
-          "skipUrlSync": true,
-          "sort": "disabled"
-        }
-      },
-      {
-        "kind": "QueryVariable",
-        "spec": {
-          "name": "has_syslog_conn_slots",
-          "label": "has_syslog_conn_slots",
-          "hide": "hideVariable",
-          "query": {
-            "kind": "DataQuery",
-            "version": "v0",
-            "group": "prometheus",
-            "datasource": {
-              "name": "${datasource}"
-            },
-            "spec": {
-              "query": "label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-              "refId": "has_syslog_conn_slots"
             }
           },
           "current": {
@@ -12245,7 +11701,41 @@
                     }
                   ]
                 }
-              }
+              },
+              "variables": [
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_syslog_conn_slots",
+                    "label": "has_syslog_conn_slots",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_syslog_conn_slots"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                }
+              ]
             }
           },
           {
@@ -12816,7 +12306,41 @@
                               }
                             ]
                           }
-                        }
+                        },
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_annotations",
+                              "label": "has_annotations",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_annotations"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          }
+                        ]
                       }
                     },
                     {
@@ -13336,7 +12860,73 @@
                               }
                             ]
                           }
-                        }
+                        },
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_debug_capture",
+                              "label": "has_debug_capture",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_exporter_logs_debug_captured_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_debug_capture"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_log_events",
+                              "label": "has_log_events",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values({__name__=~\"opnsense_log_events_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_log_events"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          }
+                        ]
                       }
                     },
                     {
@@ -13682,12 +13272,112 @@
                               }
                             ]
                           }
-                        }
+                        },
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_flow_netflow",
+                              "label": "has_flow_netflow",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_flow_netflow"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_flow_geoip",
+                              "label": "has_flow_geoip",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_flow_geoip_lookups_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_flow_geoip"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          }
+                        ]
                       }
                     }
                   ]
                 }
-              }
+              },
+              "variables": [
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_flow",
+                    "label": "has_flow",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_flow"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                }
+              ]
             }
           },
           {
@@ -13973,7 +13663,73 @@
                     }
                   ]
                 }
-              }
+              },
+              "variables": [
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_go_runtime",
+                    "label": "has_go_runtime",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "query_result(go_goroutines{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "refId": "has_go_runtime"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_process_fds",
+                    "label": "has_process_fds",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "query_result(process_open_fds{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "refId": "has_process_fds"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                }
+              ]
             }
           },
           {
@@ -14461,7 +14217,265 @@
                     }
                   ]
                 }
-              }
+              },
+              "variables": [
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_gateway_loss",
+                    "label": "has_recording_gateway_loss",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_gateway_loss"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_ipsec",
+                    "label": "has_recording_ipsec",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_ipsec"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_wireguard",
+                    "label": "has_recording_wireguard",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_wireguard"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_unbound",
+                    "label": "has_recording_unbound",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_unbound"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_zenarmor",
+                    "label": "has_recording_zenarmor",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_zenarmor"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_haproxy",
+                    "label": "has_recording_haproxy",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_haproxy"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_ids",
+                    "label": "has_recording_ids",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_ids"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                },
+                {
+                  "kind": "QueryVariable",
+                  "spec": {
+                    "name": "has_recording_flow",
+                    "label": "has_recording_flow",
+                    "hide": "hideVariable",
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "query": "label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "refId": "has_recording_flow"
+                      }
+                    },
+                    "current": {
+                      "text": "",
+                      "value": ""
+                    },
+                    "options": [],
+                    "multi": false,
+                    "includeAll": false,
+                    "allowCustomValue": false,
+                    "refresh": "onDashboardLoad",
+                    "regex": "",
+                    "skipUrlSync": true,
+                    "sort": "disabled"
+                  }
+                }
+              ]
             }
           }
         ]

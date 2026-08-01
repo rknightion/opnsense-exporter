@@ -283,7 +283,7 @@ class CARPOperationalEventSemanticsTest(unittest.TestCase):
         line, which is rarer than CARP itself being configured — so the row must not be
         gated on has_carp alone or it renders permanently empty on a working HA pair."""
         builder = build_dashboard.build_all()
-        names = [v["spec"]["name"] for v in builder.variables]
+        names = [v["spec"]["name"] for v in builder.all_variables()]
         self.assertIn("has_log_events_carp", names)
 
 
