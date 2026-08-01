@@ -376,6 +376,25 @@ func collectUnknownPaths(n *knownKeyNode, v any, prefix string, extra pathSet, o
 	}
 }
 
+// payloadNormalizers maps an endpoint to a transform applied to its decoded
+// response BEFORE validation, for the narrow case where the API client itself
+// discards part of the payload as synthetic. Validating what the client throws
+// away produces findings that are neither drift nor box-state and that an
+// exemption would answer wrongly — a missingOK on such a path also silences the
+// real field for the day the box has real data (#618).
+//
+// This is deliberately NOT a general-purpose tolerance hook. A normalizer is
+// only correct where the discard rule is SHARED with the client, so the two
+// cannot drift; each entry below must call the client's own predicate rather
+// than reimplement it. Anything else — an optional key, a changed
+// representation, an unmodeled extra — belongs in exemptions.json, where it is
+// visible in the compat ledger, rather than being quietly normalised out here.
+var payloadNormalizers = map[EndpointName]func(any) any{
+	// setkey -D's "No SAD entries." sentence, parsed by upstream into a fake
+	// row. FetchIPsecSAD drops it; so must the probe.
+	"ipsecSad": normalizeIPsecSADPayload,
+}
+
 // ValidateResponseSchema checks a raw JSON response against a structure-only
 // schema. The exemption suppresses Missing reports for known-optional paths,
 // UnknownTopKeys reports for acknowledged unmodeled root keys and UnknownPaths
@@ -387,6 +406,16 @@ func ValidateResponseSchema(s EndpointSchema, raw []byte, ex SchemaExemption) (V
 	var root any
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return res, fmt.Errorf("response is not valid JSON: %w", err)
+	}
+
+	// Strip rows the API CLIENT discards as synthetic before validating, so the
+	// probe and the client see the same records (#618). Without this the canary
+	// validates against payload the exporter never models and reports Missing
+	// for keys a placeholder simply does not carry — findings that can never be
+	// resolved and must never be exempted, because the same keys are real and
+	// consumed the moment the box has actual data.
+	if norm, ok := payloadNormalizers[EndpointName(s.Endpoint)]; ok {
+		root = norm(root)
 	}
 
 	// An EMPTY top-level array where an object is expected is the same PHP

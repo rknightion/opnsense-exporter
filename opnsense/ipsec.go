@@ -3,6 +3,7 @@ package opnsense
 import (
 	"encoding/json"
 	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -398,6 +399,75 @@ type IPsecSA struct {
 	AllocatedSoftLimit int64
 }
 
+// IsIPsecSADPlaceholderRow reports whether one api/ipsec/sad/search row is the
+// synthetic "No SAD entries." row rather than a real security association.
+//
+// setkey -D prints the literal text "No SAD entries." when the kernel SAD is
+// empty, and upstream's list_sad.py parses that sentence as a record:
+// src="No", dst="SAD", nat="ntries", every other field null. It is not data —
+// an empty SAD is zero rows, not one row of nulls.
+//
+// spi and satype are the discriminator: a real SA always carries a hex spi and
+// an esp/ah satype, and this row carries neither. Both are checked rather than
+// spi alone so a future upstream that populates one but not the other still
+// reads as a placeholder.
+//
+// This is the SINGLE definition of the rule, deliberately (#618). Both
+// consumers call it: FetchIPsecSAD below, which discards the row, and the
+// apidrift schema probe via normalizeIPsecSADPayload, which must agree or it
+// reports six permanent false "Missing" findings for fields the placeholder
+// simply does not have. They cannot drift apart while they share this function.
+func IsIPsecSADPlaceholderRow(spi, satype string) bool {
+	return spi == "" || satype == ""
+}
+
+// normalizeIPsecSADPayload strips placeholder rows from a decoded ipsecSad
+// response before schema validation, so an empty SAD validates as zero rows
+// (every rows[] path Unverified) instead of one row with six absent keys (six
+// Missing findings). A real SA in the same payload survives and is still fully
+// checked — which is the point: the six byte/allocated counters #578 exports
+// stay enforced rather than being exempted away.
+//
+// Values arrive here as decoded JSON, so a null spi is nil rather than "";
+// anything that is not a JSON string counts as absent, matching the client,
+// where an absent or null spi unmarshals to the zero string.
+func normalizeIPsecSADPayload(root any) any {
+	obj, ok := root.(map[string]any)
+	if !ok {
+		return root
+	}
+	rows, ok := obj["rows"].([]any)
+	if !ok {
+		return root
+	}
+	kept := make([]any, 0, len(rows))
+	for _, r := range rows {
+		row, ok := r.(map[string]any)
+		if !ok {
+			kept = append(kept, r)
+			continue
+		}
+		str := func(k string) string {
+			s, _ := row[k].(string)
+			return s
+		}
+		if IsIPsecSADPlaceholderRow(str("spi"), str("satype")) {
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if len(kept) == len(rows) {
+		return root
+	}
+	// Copy rather than mutate: the caller owns the decoded payload and may hold
+	// other references to it (captures are written from the raw bytes, but the
+	// decoded tree is shared with the unknown-path walker).
+	out := make(map[string]any, len(obj))
+	maps.Copy(out, obj)
+	out["rows"] = kept
+	return out
+}
+
 // IPsecSAD holds the live kernel SA entries (placeholder rows discarded).
 type IPsecSAD struct {
 	Entries []IPsecSA
@@ -423,10 +493,7 @@ func (c *Client) FetchIPsecSAD() (IPsecSAD, *APICallError) {
 	}
 
 	for _, r := range resp.Rows {
-		// Discard the synthetic "No SAD entries." placeholder row: a real SA
-		// always carries a satype (esp/ah) and a hex spi; the placeholder has
-		// both null.
-		if r.SPI == "" || r.SAType == "" {
+		if IsIPsecSADPlaceholderRow(r.SPI, r.SAType) {
 			continue
 		}
 		data.Entries = append(data.Entries, IPsecSA{

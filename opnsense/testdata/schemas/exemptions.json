@@ -352,7 +352,7 @@
     "missingOK": [
       "rows[].nat"
     ],
-    "note": "the NAT-T marker is emitted by list_sad.py only when the SA is NAT-traversed (setkey reports a NAT src/dst); absent as a key otherwise. Box state (whether a peer sits behind NAT), not a version prune. #213 knownExtraPaths (#457): ipsecSadRow (opnsense/ipsec.go) models satype/spi/reqid/state/addtime_diff+hard+soft/nat/ikeid/phase1desc/phase2desc for the ipsecCollector's kernel-SA gauges. Kernel bookkeeping (id/pid/refcnt/seq/sadb_seq), the anti-replay window size, and the ESP/AH algorithm names are identity/config, not metric-worthy; addtime_created/addtime_current are redundant wall-clock forms of the already-modeled addtime_diff age. MODELLED 2026-07-31 (#578): bytes_current/bytes_hard/bytes_soft and allocated/allocated_hard/allocated_soft are now opnsense_ipsec_sa_bytes_* and _allocated_*, aggregated at the (ikeid, phase2desc, reqid) reqid-group granularity the sibling SA gauges already use - never per-SPI, which churns every rekey. A wire 0 on a *_limit is setkey/strongSwan's 'no limit configured', NOT 'zero budget left', so the limit gauges are presence-gated in the collector while the decode keeps the raw 0. usetime_hard/usetime_last/usetime_soft STAY exempted as a deliberate scope cut, not an oversight: they are a third, rarely-configured idle-timeout rekey clock, largely redundant with the already-modelled addtime_* wall-clock lifetime, and would add near-always-zero series. PRUNE TRIGGER for the usetime_* trio: a real deployment configuring margintime.",
+    "note": "the NAT-T marker is emitted by list_sad.py only when the SA is NAT-traversed (setkey reports a NAT src/dst); absent as a key otherwise. Box state (whether a peer sits behind NAT), not a version prune. #213 knownExtraPaths (#457): ipsecSadRow (opnsense/ipsec.go) models satype/spi/reqid/state/addtime_diff+hard+soft/nat/ikeid/phase1desc/phase2desc for the ipsecCollector's kernel-SA gauges. Kernel bookkeeping (id/pid/refcnt/seq/sadb_seq), the anti-replay window size, and the ESP/AH algorithm names are identity/config, not metric-worthy; addtime_created/addtime_current are redundant wall-clock forms of the already-modeled addtime_diff age. MODELLED 2026-07-31 (#578): bytes_current/bytes_hard/bytes_soft and allocated/allocated_hard/allocated_soft are now opnsense_ipsec_sa_bytes_* and _allocated_*, aggregated at the (ikeid, phase2desc, reqid) reqid-group granularity the sibling SA gauges already use - never per-SPI, which churns every rekey. A wire 0 on a *_limit is setkey/strongSwan's 'no limit configured', NOT 'zero budget left', so the limit gauges are presence-gated in the collector while the decode keeps the raw 0. usetime_hard/usetime_last/usetime_soft STAY exempted as a deliberate scope cut, not an oversight: they are a third, rarely-configured idle-timeout rekey clock, largely redundant with the already-modelled addtime_* wall-clock lifetime, and would add near-always-zero series. PRUNE TRIGGER for the usetime_* trio: a real deployment configuring margintime. PLACEHOLDER EXEMPTION RETIRED 2026-08-01 (#618): a prod-scoped missingOK used to carry reqid/state/addtime_diff+hard+soft and bytes_current+hard+soft/allocated+hard+soft, eleven paths absent for one reason - the box had no SA, so the only row was setkey's synthetic \"No SAD entries.\" line. cmd/apidrift was the sole consumer that read that row as data; FetchIPsecSAD has always discarded it. The probe now discards it too, via the SAME predicate (IsIPsecSADPlaceholderRow, opnsense/ipsec.go), so an empty SADB validates as zero rows and all eleven paths stay ENFORCED on every profile including prod - which is the point, since six of them back opnsense_ipsec_sa_bytes_* / _allocated_*. Do not re-add an exemption here for an empty SADB; if those paths ever report Missing again it means a real SA lacks them, which is real drift.",
     "knownExtraPaths": [
       "rows[].addtime_created",
       "rows[].addtime_current",
@@ -369,25 +369,7 @@
       "rows[].usetime_hard",
       "rows[].usetime_last",
       "rows[].usetime_soft"
-    ],
-    "profiles": {
-      "prod": {
-        "missingOK": [
-          "rows[].addtime_diff",
-          "rows[].addtime_hard",
-          "rows[].addtime_soft",
-          "rows[].allocated",
-          "rows[].allocated_hard",
-          "rows[].allocated_soft",
-          "rows[].bytes_current",
-          "rows[].bytes_hard",
-          "rows[].bytes_soft",
-          "rows[].reqid",
-          "rows[].state"
-        ],
-        "note": "Live-verified on the production box 2026-07-29 (#496): when the kernel SADB is EMPTY, setkey -D prints the literal text \"No SAD entries.\", and list_sad.py parses that error string as if it were a tunnel. The line has no leading tab so it becomes a one-line section: seqid 0 sets src=\"No\" dst=\"SAD\", and because Python's \"entries.\".find(\"[\") returns -1 (truthy) the NAT branch fires and sets nat=\"ntries\". seqid never reaches 1, so satype/spi keep their \"\" init and serialise as null, while reqid/state/addtime_diff+hard+soft are never assigned at all and are ABSENT. FetchIPsecSAD already discards the row via its SPI/SAType guard (TestFetchIPsecSAD_EmptyPlaceholder pins the same shape). SCOPED TO prod ON PURPOSE: these five paths back the ipsecCollector's kernel-SA gauges, and the triage rules prefer fixing the testbed over exempting a field that backs a metric, because the exemption blinds the canary to real drift on a consumed field. The nightly and release-vm targets DO hold an established SA (LXC 105 runs strongSwan as initiator), so they keep enforcing these paths; only prod, which happens to have no tunnel up, needs the exemption. PRUNE TRIGGER: none - this is a has-a-tunnel/has-no-tunnel toggle, not version-bound. It should be removed only if prod gains a permanent tunnel, and must never be promoted to the base ledger. EXTENDED 2026-07-31 (#613): the same placeholder row is equally missing bytes_current/bytes_hard/bytes_soft and allocated/allocated_hard/allocated_soft, for exactly the mechanism above - seqid never reaches the \\tcurrent: and \\tallocated: lines of setkey -D, so list_sad.py never assigns them. Source-confirmed against list_sad.py and SadController.php: those six are NOT conditional on an SA being fully resolved (the controller merges only ikeid/phase1desc/phase2desc on top), so their absence is the empty-SADB placeholder and nothing else. Same prod-only scope and the same prune trigger as the five above; the testbeds hold a real SA and keep enforcing all eleven."
-      }
-    }
+    ]
   },
   "ipsecServiceStatus": {
     "knownExtraTopKeys": [
