@@ -128,7 +128,7 @@ def build(b: Builder):
     )
 
     b.tab("Tor", [
-        b.row("Tor Overview",
+        b.autogrid_row("Tor Overview",
               [control_port_up, circuits_built, circuits_total, streams_total, hidden_services_total],
               present="has_tor"),
         b.row("Circuits",

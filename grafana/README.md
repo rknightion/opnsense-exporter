@@ -36,10 +36,10 @@ datasource carrying the exporter's shipped logs is selected.
 
 ## The dashboard
 
-Two dashboards, 47 tabs grouped by feature (generated list, do not hand-edit). The operational dashboard runs from the first `Overview` to `Siproxd`; the health companion starts at the SECOND `Overview` and runs to `Recording rules`:
+Two dashboards, 56 tabs grouped by feature (generated list, do not hand-edit). The operational dashboard runs from the first `Overview` to `Siproxd`; the health companion starts at the SECOND `Overview` and runs to `Recording rules`:
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Kernel Memory, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, Flow Volume, FRR Routing, Captive Portal, Firewall & PF, Authentication & Audit, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Overview, Scrape & Poll, OPNsense API, Metrics & OTLP, Log Shipping, Flow Pipeline, Exporter Runtime, Recording rules
+Overview, System & Resources, Memory & Storage, Firmware & Backup, Hardware & SMART, Kernel Memory, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DNS - Unbound Lists, DHCP, DHCP - ISC & Client, Routing & Neighbors, Protocol Stats, Protocol Stats - IP, NTP, Chrony, Traffic Shaper, NetFlow, Flow Volume, FRR Routing, FRR - OSPF, Captive Portal, Firewall & PF, Firewall Rules & NAT, Authentication & Audit, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, VPN - IPsec, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Overview, Scrape & Poll, OPNsense API, Metrics & OTLP, Log Shipping, Flow Pipeline, Exporter Runtime, Recording rules
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the

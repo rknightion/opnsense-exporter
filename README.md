@@ -123,7 +123,7 @@ The generated flag and collector reference lives in the
 > schema-v1 build, by design. Note that Grafana 12.4 *accepts* this file with HTTP 200 and then
 > renders an empty dashboard with no error at all - that is the version, not a broken export.
 
-Two cross-linked dynamic dashboards cover all 1042 metrics across 47 tabs, auto-hiding tabs and rows
+Two cross-linked dynamic dashboards cover all 1042 metrics across 56 tabs, auto-hiding tabs and rows
 for collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) for the firewall itself and
 [`grafana/dashboard-health.json`](./grafana/dashboard-health.json) for the exporter's own health,

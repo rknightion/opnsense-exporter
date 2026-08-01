@@ -494,6 +494,10 @@ def build(b: Builder):
     # ================================================================
     # Tab assembly
     # ================================================================
+    # Split into sibling leaves (#619): 51 panels in one tab is a tab people
+    # scroll past. The existing rows are regrouped and nothing else changes — no row
+    # split, merged, renamed or reordered within its group, no panel moved between
+    # rows — so this reads as a move.
     b.tab("DHCP", [
         b.row("Dnsmasq DHCP",
               [dnsmasq_total, dnsmasq_reserved, dnsmasq_dynamic,
@@ -518,6 +522,8 @@ def build(b: Builder):
         b.row("Kea DHCPv6 Prefix Delegation",
               [kea6_pd_pool],
               present="has_kea_pd_pools"),
+    ])
+    b.tab("DHCP - ISC & Client", [
         b.row("ISC DHCPv4",
               [dhcpv4_total, dhcpv4_reserved, dhcpv4_dynamic, dhcpv4_by_iface],
               present="has_dhcpv4_isc"),

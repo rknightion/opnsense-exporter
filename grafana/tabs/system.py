@@ -1474,7 +1474,7 @@ def build(b: Builder):
         desc="opnsense_auth_users_password_age_unknown: accounts with no recorded password-change time, because OPNsense only writes one when a password is actually changed. These are the accounts whose password has never been rotated since the box started tracking it — the worst posture on the firewall, and invisible in Oldest Password Age.",
     )
 
-    row_auth = b.row("Local Auth", [
+    row_auth = b.autogrid_row("Local Auth", [
         auth_users_enabled, auth_users_disabled, auth_admin_users,
         auth_expired_users, auth_users_with_otp, auth_api_keys, auth_groups,
         auth_shell_warning, auth_oldest_pwd, auth_unknown_pwd_age,
@@ -1483,23 +1483,37 @@ def build(b: Builder):
     # =========================================================================
     # Assemble tab
     # =========================================================================
+    # Four sibling leaves, not one 95-panel tab (#619). 95 panels is a tab people
+    # scroll past rather than read, and it was more than twice the next largest.
+    #
+    # The groupings are the EXISTING row titles regrouped — no row is split, merged,
+    # renamed or reordered within its group, and no panel moves between rows. That
+    # keeps the change a move: every row lands somewhere obvious and the diff is
+    # reviewable as one. Sibling leaves rather than a fourth grouping level, which
+    # would have worked but is beyond Grafana's documented three-level maximum.
     b.tab("System & Resources", [
         row_host,
         row_subsystem_health,
-        row_mem,
         row_cpu,
         row_processes,
+        row_auth,
+    ])
+    b.tab("Memory & Storage", [
+        row_mem,
+        row_mbuf,
         row_disk,
+    ])
+    b.tab("Firmware & Backup", [
         row_firmware,
         row_firmware_details,
         row_backup,
         row_snapshots,
+    ])
+    b.tab("Hardware & SMART", [
         row_temp,
         row_smart,
         row_smart_errors,
         row_smart_detail,
-        row_mbuf,
         row_hardware_dmi,
         row_hardware_psu,
-        row_auth,
     ])

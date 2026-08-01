@@ -99,7 +99,7 @@ def build(b: Builder):
     )
 
     b.tab("Relayd", [
-        b.row("Relayd Overview",
+        b.autogrid_row("Relayd Overview",
               [vs_active, tables_active, hosts_up, hosts_total],
               present="has_relayd"),
         b.row("Virtual Server & Table Status",

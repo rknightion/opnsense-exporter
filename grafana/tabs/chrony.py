@@ -203,7 +203,7 @@ def build(b: Builder):
     # Tab assembly
     # ================================================================
     b.tab("Chrony", [
-        b.row("Service & Sync",
+        b.autogrid_row("Service & Sync",
               [svc, stratum, leap, sources_total],
               present="has_chrony"),
         b.row("Tracking",

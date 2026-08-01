@@ -1112,6 +1112,45 @@ class Builder:
                          "condition": "or" if len(present_vars) > 1 else "and",
                          "items": items}}
 
+    def _autogrid(self, names: list) -> dict:
+        """A responsive row: Grafana sizes and reflows the panels itself.
+
+        Shape taken verbatim from a live-deployed v2 dashboard rather than derived
+        from the schema — `columnWidthMode`/`rowHeightMode`/`fillScreen` are all
+        required, and a v2 push that omits one 422s with a CUE disjunction error
+        naming `layout.kind`, which points nowhere near the real cause.
+        """
+        return {"kind": "AutoGridLayout", "spec": {
+            "items": [{"kind": "AutoGridLayoutItem",
+                       "spec": {"element": {"kind": "ElementReference", "name": nm}}}
+                      for nm in names],
+            "columnWidthMode": "standard",
+            "rowHeightMode": "standard",
+            "fillScreen": False}}
+
+    def autogrid_row(self, title, names, present=None, absent=None,
+                     collapse=False) -> dict:
+        """A row of N interchangeable panels, laid out responsively (#619).
+
+        Use where a row is N same-size panels and the arrangement carries no
+        meaning. `row()` packs those into a fixed 24-column grid, so at a narrow
+        viewport they clip instead of reflowing.
+
+        It takes NAMES ONLY, and that is the whole point: a helper that still took
+        (name, width, height) would be `row()` with extra steps. Sizes are not
+        stated because stating them is what prevents reflowing.
+
+        Keep `row()` wherever the geometry MEANS something — a wide timeseries
+        beside two stat tiles says "this is the main chart and these annotate it",
+        and AutoGrid would flatten that into three equal boxes.
+        """
+        spec = {"title": title, "collapse": collapse,
+                "layout": self._autogrid(names)}
+        c = self._cond(present, absent)
+        if c:
+            spec["conditionalRendering"] = c
+        return {"kind": "RowsLayoutRow", "spec": spec}
+
     def row(self, title, names, present=None, absent=None, collapse=False) -> dict:
         spec = {"title": title, "collapse": collapse, "layout": self._place(names)}
         c = self._cond(present, absent)

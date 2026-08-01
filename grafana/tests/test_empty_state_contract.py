@@ -178,7 +178,19 @@ def _walk(uid, builder, spec, gates, found):
     for row in layout["spec"]["rows"]:
         rspec = row["spec"]
         row_gates = gates + _gate_variables(rspec)
-        for item in rspec["layout"]["spec"]["items"]:
+        items = rspec["layout"]["spec"]["items"]
+        # Floor assertion (#619). Both GridLayout and AutoGridLayout keep their
+        # panels in `spec.items`, so this walker reads either — but a future layout
+        # kind that did not would hand back an empty list and every per-panel
+        # assertion below would pass VACUOUSLY. No failure, just less coverage,
+        # which is the hardest kind to notice. The generator cannot build an empty
+        # row, so zero items here is a bug in this reader, not in the dashboard.
+        assert items, (
+            f"{path} > {rspec.get('title') or '(unnamed row)'}: read as having zero "
+            f"panels from a {rspec['layout']['kind']} layout. The generator cannot "
+            "build an empty row, so this walker does not understand that layout and "
+            "every check below it has passed vacuously.")
+        for item in items:
             name = item["spec"]["element"]["name"]
             panel = builder.elements[name]["spec"]
             exprs = [q["spec"]["query"]["spec"].get("expr", "")

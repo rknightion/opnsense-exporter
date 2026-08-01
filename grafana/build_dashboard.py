@@ -212,20 +212,29 @@ TAB_GROUPS = [
     # three tabs, no useful domain layer — reuse the same function and the same
     # strict leaf-assignment check (#431 step 3).
     (None, ("Overview",)),
+    # Seven leaves were split into siblings in #619 — each split leaf is listed
+    # immediately after its parent, so the leaf bar reads as related pairs. Sibling
+    # leaves rather than a fourth grouping level: nesting a leaf's layout as another
+    # TabsLayout does work, but Grafana documents a three-level maximum, and buying an
+    # ergonomic win with undocumented behaviour was not worth it when splitting
+    # sideways gets the same result inside support.
     ("System", (
-        "System & Resources", "Kernel Memory", "Services, Cron & DynDNS", "Certificates",
+        "System & Resources", "Memory & Storage", "Firmware & Backup",
+        "Hardware & SMART", "Kernel Memory", "Services, Cron & DynDNS", "Certificates",
         "UPS", "Monit", "HA Sync", "CARP / HA",
     )),
     ("Network", (
-        "Interfaces", "Gateways & WAN", "DNS - Unbound", "DHCP",
-        "Routing & Neighbors", "Protocol Stats", "NTP", "Chrony",
-        "Traffic Shaper", "NetFlow", "Flow Volume", "FRR Routing", "Captive Portal",
+        "Interfaces", "Gateways & WAN", "DNS - Unbound", "DNS - Unbound Lists",
+        "DHCP", "DHCP - ISC & Client",
+        "Routing & Neighbors", "Protocol Stats", "Protocol Stats - IP", "NTP", "Chrony",
+        "Traffic Shaper", "NetFlow", "Flow Volume", "FRR Routing", "FRR - OSPF",
+        "Captive Portal",
     )),
     ("Security", (
-        "Firewall & PF", "Authentication & Audit", "Aliases", "IDS/IPS", "CrowdSec",
-        "ClamAV", "Q-Feeds", "Zenarmor",
+        "Firewall & PF", "Firewall Rules & NAT", "Authentication & Audit", "Aliases",
+        "IDS/IPS", "CrowdSec", "ClamAV", "Q-Feeds", "Zenarmor",
     )),
-    ("VPN & remote access", ("VPN", "Tailscale", "NetBird", "Tor")),
+    ("VPN & remote access", ("VPN", "VPN - IPsec", "Tailscale", "NetBird", "Tor")),
     ("Services", ("Syslog", "HAProxy", "Relayd", "Nginx", "Siproxd")),
 ]
 
@@ -274,8 +283,17 @@ HEALTH_TAB_GROUPS = [
 OPTIONAL_TAB_PRESENCE = {
     "Aliases": "has_alias",
     "DNS - Unbound": "has_unbound",
+    # A leaf split off an optional one in #619 inherits its parent's presence, and
+    # MUST be listed here. organize_tabs only gates a domain when EVERY leaf under it
+    # is optional, so a new leaf missing from this table silently un-gates its whole
+    # domain — the domain tab then renders on a box with none of the feature, empty,
+    # which is precisely what these entries exist to prevent. Caught exactly that way
+    # on "VPN & remote access" while splitting.
+    "DNS - Unbound Lists": "has_unbound",
     "DHCP": ["has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"],
+    "DHCP - ISC & Client": ["has_dhcpv4_isc", "has_dhcpv6_isc"],
     "VPN": ["has_wireguard", "has_openvpn", "has_ipsec"],
+    "VPN - IPsec": "has_ipsec",
     "Tailscale": "has_tailscale",
     "NetBird": "has_netbird",
     "NTP": "has_ntp",
@@ -288,6 +306,7 @@ OPTIONAL_TAB_PRESENCE = {
     "Relayd": "has_relayd",
     "Nginx": "has_nginx",
     "FRR Routing": "has_frr",
+    "FRR - OSPF": "has_frr",
     "Monit": "has_monit",
     "CrowdSec": "has_crowdsec",
     "IDS/IPS": "has_ids",
@@ -589,10 +608,10 @@ def build_overview(b: Builder):
                                   ))
 
     b.tab("Overview", [
-        b.row("Health", [up, fw, crash, reboot, syscode, pkgs, uptime, svc]),
-        b.row("Resource pressure", [mem, pf, load, disk, temp, cpu]),
+        b.autogrid_row("Health", [up, fw, crash, reboot, syscode, pkgs, uptime, svc]),
+        b.autogrid_row("Resource pressure", [mem, pf, load, disk, temp, cpu]),
         b.row("Connectivity & History", [gw_status, wan_rtt, health_hist]),
-        b.row("Exporter Health", exporter_health_summary(b)),
+        b.autogrid_row("Exporter Health", exporter_health_summary(b)),
     ])
 
 
@@ -1945,9 +1964,15 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
         if all(title in OPTIONAL_TAB_PRESENCE for title in leaf_titles):
             for title in leaf_titles:
                 presence = OPTIONAL_TAB_PRESENCE[title]
-                parent_presence.extend(
-                    [presence] if isinstance(presence, str) else presence
-                )
+                for variable in ([presence] if isinstance(presence, str) else presence):
+                    # Deduped, order-preserving. Sibling leaves split from one parent
+                    # in #619 share their parent's sentinels — "VPN" and "VPN - IPsec"
+                    # both carry has_ipsec — and an OR condition listing the same
+                    # variable twice is redundant on its face and would make the
+                    # domain's rendered condition depend on how many ways a feature
+                    # had been split, which is not a fact about the box.
+                    if variable not in parent_presence:
+                        parent_presence.append(variable)
         b.tab_group(
             group_title,
             [leaves.pop(title) for title in leaf_titles],

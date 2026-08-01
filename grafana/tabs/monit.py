@@ -200,7 +200,7 @@ def build(b: Builder):
     )
 
     b.tab("Monit", [
-        b.row("Monit Overview",
+        b.autogrid_row("Monit Overview",
               [svc, status_ok, checks_total, checks_ok, checks_monitored],
               present="has_monit"),
         b.row("Check Status Detail",

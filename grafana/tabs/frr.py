@@ -519,6 +519,10 @@ def build(b: Builder):
              "shut down has NO series here at all (absent, not zero).",
     )
 
+    # Split into sibling leaves (#619): 51 panels in one tab is a tab people
+    # scroll past. The existing rows are regrouped and nothing else changes — no row
+    # split, merged, renamed or reordered within its group, no panel moved between
+    # rows — so this reads as a move.
     b.tab("FRR Routing", [
         b.row("FRR Service & Summary",
               [svc, bgp_peers, bgp_failed, ospf_neighbors, bfd_peers, bgp_rib],
@@ -531,6 +535,12 @@ def build(b: Builder):
               [bgp_conn_flaps, bgp_last_reset, bgp_msg_by_type_rate,
                bgp_pfx_accepted, bgp_queue_depth],
               present="has_frr"),
+        b.row("BFD",
+              [bfd_state, bfd_uptime, bfd_pkt_rate, bfd_events,
+               bfd_diagnostic, bfd_rtt, bfd_downtime],
+              present="has_frr"),
+    ])
+    b.tab("FRR - OSPF", [
         b.row("OSPF",
               [ospf_adj, ospf_area_ifaces, ospf_area_full,
                ospf_lsa, ospf_spf],
@@ -552,8 +562,4 @@ def build(b: Builder):
               [route_count, route_nexthop_count, ospf_route_count,
                ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count],
               present="has_frr_routes"),
-        b.row("BFD",
-              [bfd_state, bfd_uptime, bfd_pkt_rate, bfd_events,
-               bfd_diagnostic, bfd_rtt, bfd_downtime],
-              present="has_frr"),
     ])

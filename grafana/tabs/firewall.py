@@ -489,6 +489,10 @@ def build(b: Builder):
     # rather than on a separate Log-derived Events tab, so the link would navigate the
     # reader to the page they are already on.
 
+    # Split into sibling leaves (#619): 38 panels in one tab is a tab people
+    # scroll past. The existing rows are regrouped and nothing else changes — no row
+    # split, merged, renamed or reordered within its group, no panel moved between
+    # rows — so this reads as a move.
     b.tab("Firewall & PF", [
         b.row("Traffic — Inbound Pass/Block (packets/s)",
               [pkt_pass_in, pkt_block_in]),
@@ -506,6 +510,8 @@ def build(b: Builder):
               [pf_counters_ts, pf_counters_tbl, pf_limit_tbl]),
         b.row("PF Memory & Timeouts",
               [pf_memory, pf_timeouts]),
+    ])
+    b.tab("Firewall Rules & NAT", [
         b.row("Firewall Rules (top 20)",
               [fw_rules_count, rules_configured, fw_rule_evals,
                fw_rule_pkts, fw_rule_bytes,

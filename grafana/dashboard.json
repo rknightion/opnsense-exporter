@@ -86412,16 +86412,12 @@
                         "title": "Health",
                         "collapse": false,
                         "layout": {
-                          "kind": "GridLayout",
+                          "kind": "AutoGridLayout",
                           "spec": {
                             "items": [
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-1"
@@ -86429,12 +86425,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 3,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-2"
@@ -86442,12 +86434,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 6,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-3"
@@ -86455,12 +86443,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 9,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-4"
@@ -86468,12 +86452,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 12,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-5"
@@ -86481,12 +86461,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 15,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-6"
@@ -86494,12 +86470,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 18,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-7"
@@ -86507,19 +86479,18 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 21,
-                                  "y": 0,
-                                  "width": 3,
-                                  "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-8"
                                   }
                                 }
                               }
-                            ]
+                            ],
+                            "columnWidthMode": "standard",
+                            "rowHeightMode": "standard",
+                            "fillScreen": false
                           }
                         }
                       }
@@ -86530,16 +86501,12 @@
                         "title": "Resource pressure",
                         "collapse": false,
                         "layout": {
-                          "kind": "GridLayout",
+                          "kind": "AutoGridLayout",
                           "spec": {
                             "items": [
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-9"
@@ -86547,12 +86514,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 4,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-10"
@@ -86560,12 +86523,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 8,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-11"
@@ -86573,12 +86532,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 12,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-12"
@@ -86586,12 +86541,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 16,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-13"
@@ -86599,19 +86550,18 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 20,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-14"
                                   }
                                 }
                               }
-                            ]
+                            ],
+                            "columnWidthMode": "standard",
+                            "rowHeightMode": "standard",
+                            "fillScreen": false
                           }
                         }
                       }
@@ -86675,16 +86625,12 @@
                         "title": "Exporter Health",
                         "collapse": false,
                         "layout": {
-                          "kind": "GridLayout",
+                          "kind": "AutoGridLayout",
                           "spec": {
                             "items": [
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 0,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-18"
@@ -86692,12 +86638,8 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 4,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-19"
@@ -86705,19 +86647,18 @@
                                 }
                               },
                               {
-                                "kind": "GridLayoutItem",
+                                "kind": "AutoGridLayoutItem",
                                 "spec": {
-                                  "x": 8,
-                                  "y": 0,
-                                  "width": 4,
-                                  "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-20"
                                   }
                                 }
                               }
-                            ]
+                            ],
+                            "columnWidthMode": "standard",
+                            "rowHeightMode": "standard",
+                            "fillScreen": false
                           }
                         }
                       }
@@ -86880,85 +86821,6 @@
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-29"
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "RowsLayoutRow",
-                                "spec": {
-                                  "title": "Memory & Swap",
-                                  "collapse": false,
-                                  "layout": {
-                                    "kind": "GridLayout",
-                                    "spec": {
-                                      "items": [
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-30"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 12,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-31"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 8,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-32"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 6,
-                                            "width": 12,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-33"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 6,
-                                            "width": 8,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-34"
                                             }
                                           }
                                         }
@@ -87193,6 +87055,349 @@
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
+                                  "title": "Local Auth",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "AutoGridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-106"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-107"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-108"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-109"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-110"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-111"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-112"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-113"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-114"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "AutoGridLayoutItem",
+                                          "spec": {
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-115"
+                                            }
+                                          }
+                                        }
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Memory & Storage",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "Memory & Swap",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 4,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-30"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 4,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-31"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 16,
+                                            "y": 0,
+                                            "width": 8,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-32"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 6,
+                                            "width": 12,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-33"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 6,
+                                            "width": 8,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-34"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "mbuf",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-94"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-95"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 8,
+                                            "width": 12,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-96"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 8,
+                                            "width": 6,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-97"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 18,
+                                            "y": 8,
+                                            "width": 6,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-98"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 15,
+                                            "width": 12,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-99"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 15,
+                                            "width": 12,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-100"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 22,
+                                            "width": 12,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-101"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 22,
+                                            "width": 12,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-102"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 29,
+                                            "width": 12,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-103"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
                                   "title": "Disk",
                                   "collapse": false,
                                   "layout": {
@@ -87229,7 +87434,20 @@
                                     }
                                   }
                                 }
-                              },
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Firmware & Backup",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -87627,7 +87845,54 @@
                                     }
                                   }
                                 }
+                              }
+                            ]
+                          }
+                        },
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_firmware_details",
+                              "label": "has_firmware_details",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_firmware_plugin_installed{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_firmware_details"
+                                }
                               },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Hardware & SMART",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -87976,150 +88241,6 @@
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "title": "mbuf",
-                                  "collapse": false,
-                                  "layout": {
-                                    "kind": "GridLayout",
-                                    "spec": {
-                                      "items": [
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-94"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-95"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 8,
-                                            "width": 12,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-96"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 8,
-                                            "width": 6,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-97"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 18,
-                                            "y": 8,
-                                            "width": 6,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-98"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 15,
-                                            "width": 12,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-99"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 15,
-                                            "width": 12,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-100"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 22,
-                                            "width": 12,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-101"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 22,
-                                            "width": 12,
-                                            "height": 7,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-102"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 29,
-                                            "width": 12,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-103"
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "RowsLayoutRow",
-                                "spec": {
                                   "title": "Hardware Identity",
                                   "collapse": false,
                                   "layout": {
@@ -88198,150 +88319,6 @@
                                             "variable": "has_hardware_psu",
                                             "operator": "matches",
                                             "value": ".+"
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
-                              },
-                              {
-                                "kind": "RowsLayoutRow",
-                                "spec": {
-                                  "title": "Local Auth",
-                                  "collapse": false,
-                                  "layout": {
-                                    "kind": "GridLayout",
-                                    "spec": {
-                                      "items": [
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-106"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-107"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-108"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-109"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-110"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 20,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-111"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 4,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-112"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 4,
-                                            "y": 4,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-113"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 8,
-                                            "y": 4,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-114"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 4,
-                                            "width": 4,
-                                            "height": 4,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-115"
-                                            }
                                           }
                                         }
                                       ]
@@ -88497,38 +88474,6 @@
                                 "spec": {
                                   "query": "label_values(opnsense_hardware_psu_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                                   "refId": "has_hardware_psu"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_firmware_details",
-                              "label": "has_firmware_details",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_firmware_plugin_installed{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_firmware_details"
                                 }
                               },
                               "current": {
@@ -89772,16 +89717,12 @@
                                   "title": "Monit Overview",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-655"
@@ -89789,12 +89730,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-656"
@@ -89802,12 +89739,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-657"
@@ -89815,12 +89748,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-658"
@@ -89828,19 +89757,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-659"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -90379,16 +90307,12 @@
                                   "title": "CARP Global State",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-526"
@@ -90396,12 +90320,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 6,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-527"
@@ -90409,12 +90329,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-528"
@@ -90422,19 +90338,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 18,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-529"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   }
                                 }
@@ -92236,7 +92151,37 @@
                                     }
                                   }
                                 }
-                              },
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_unbound",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "DNS - Unbound Lists",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -93292,7 +93237,191 @@
                                     }
                                   }
                                 }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "or",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_dnsmasq",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
                               },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_kea",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_dhcpv4_isc",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_dhcpv6_isc",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_dnsmasq_details",
+                              "label": "has_dnsmasq_details",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_dnsmasq_details"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_kea4_details",
+                              "label": "has_kea4_details",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_kea4_details"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_kea6_details",
+                              "label": "has_kea6_details",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_kea6_details"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_kea_pd_pools",
+                              "label": "has_kea_pd_pools",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_kea_dhcp6_pd_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_kea_pd_pools"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "DHCP - ISC & Client",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -93795,22 +93924,6 @@
                               {
                                 "kind": "ConditionalRenderingVariable",
                                 "spec": {
-                                  "variable": "has_dnsmasq",
-                                  "operator": "matches",
-                                  "value": ".+"
-                                }
-                              },
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "variable": "has_kea",
-                                  "operator": "matches",
-                                  "value": ".+"
-                                }
-                              },
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
                                   "variable": "has_dhcpv4_isc",
                                   "operator": "matches",
                                   "value": ".+"
@@ -93828,134 +93941,6 @@
                           }
                         },
                         "variables": [
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_dnsmasq_details",
-                              "label": "has_dnsmasq_details",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_dnsmasq_details"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_kea4_details",
-                              "label": "has_kea4_details",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_kea4_details"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_kea6_details",
-                              "label": "has_kea6_details",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_kea6_details"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_kea_pd_pools",
-                              "label": "has_kea_pd_pools",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_kea_dhcp6_pd_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_kea_pd_pools"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
                           {
                             "kind": "QueryVariable",
                             "spec": {
@@ -95218,7 +95203,20 @@
                                     }
                                   }
                                 }
-                              },
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Protocol Stats - IP",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -95903,16 +95901,12 @@
                                   "title": "Service & Sync",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-752"
@@ -95920,12 +95914,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-753"
@@ -95933,12 +95923,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-754"
@@ -95946,19 +95932,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-755"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -96580,16 +96565,12 @@
                                   "title": "NetFlow Status",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-513"
@@ -96597,12 +96578,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 6,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-514"
@@ -96610,12 +96587,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-515"
@@ -96623,19 +96596,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 18,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-516"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   }
                                 }
@@ -97619,6 +97591,158 @@
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
+                                  "title": "BFD",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 24,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-648"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 8,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-649"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 8,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-650"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 16,
+                                            "width": 24,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-651"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 24,
+                                            "width": 24,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-652"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 30,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-653"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 30,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-654"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_frr",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_frr",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "FRR - OSPF",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
                                   "title": "OSPF",
                                   "collapse": false,
                                   "layout": {
@@ -98165,128 +98289,6 @@
                                     }
                                   }
                                 }
-                              },
-                              {
-                                "kind": "RowsLayoutRow",
-                                "spec": {
-                                  "title": "BFD",
-                                  "collapse": false,
-                                  "layout": {
-                                    "kind": "GridLayout",
-                                    "spec": {
-                                      "items": [
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 24,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-648"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 8,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-649"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 8,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-650"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 16,
-                                            "width": 24,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-651"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 24,
-                                            "width": 24,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-652"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 30,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-653"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 30,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-654"
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  "conditionalRendering": {
-                                    "kind": "ConditionalRenderingGroup",
-                                    "spec": {
-                                      "visibility": "show",
-                                      "condition": "and",
-                                      "items": [
-                                        {
-                                          "kind": "ConditionalRenderingVariable",
-                                          "spec": {
-                                            "variable": "has_frr",
-                                            "operator": "matches",
-                                            "value": ".+"
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
                               }
                             ]
                           }
@@ -98358,16 +98360,12 @@
                                   "title": "Captive Portal Overview",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-723"
@@ -98375,12 +98373,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-724"
@@ -98388,19 +98382,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-725"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -99440,7 +99433,20 @@
                                     }
                                   }
                                 }
-                              },
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "Firewall Rules & NAT",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -100472,16 +100478,12 @@
                                   "title": "Suricata Overview",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-690"
@@ -100489,12 +100491,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-691"
@@ -100502,12 +100500,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-692"
@@ -100515,12 +100509,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-693"
@@ -100528,19 +100518,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-694"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -100967,16 +100956,12 @@
                                   "title": "CrowdSec Overview",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-673"
@@ -100984,12 +100969,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-674"
@@ -100997,12 +100978,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-675"
@@ -101010,12 +100987,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-676"
@@ -101023,19 +100996,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-677"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -102763,16 +102735,12 @@
                                   "title": "VPN Services",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-318"
@@ -102780,12 +102748,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-319"
@@ -102793,19 +102757,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-320"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   }
                                 }
@@ -103085,6 +103048,207 @@
                                   }
                                 }
                               },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "Tunnel Lifecycle (log-derived)",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-355"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-356"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_log_events_vpn",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "or",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_wireguard",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_openvpn",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              },
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_ipsec",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_wireguard_ifaces",
+                              "label": "has_wireguard_ifaces",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_wireguard_ifaces"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_wireguard_peers",
+                              "label": "has_wireguard_peers",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_wireguard_peer_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_wireguard_peers"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_log_events_vpn",
+                              "label": "has_log_events_vpn",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_log_events_vpn"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "kind": "TabsLayoutTab",
+                      "spec": {
+                        "title": "VPN - IPsec",
+                        "layout": {
+                          "kind": "RowsLayout",
+                          "spec": {
+                            "rows": [
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
@@ -103499,63 +103663,6 @@
                                     }
                                   }
                                 }
-                              },
-                              {
-                                "kind": "RowsLayoutRow",
-                                "spec": {
-                                  "title": "Tunnel Lifecycle (log-derived)",
-                                  "collapse": false,
-                                  "layout": {
-                                    "kind": "GridLayout",
-                                    "spec": {
-                                      "items": [
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-355"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 12,
-                                            "height": 8,
-                                            "element": {
-                                              "kind": "ElementReference",
-                                              "name": "panel-356"
-                                            }
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  },
-                                  "conditionalRendering": {
-                                    "kind": "ConditionalRenderingGroup",
-                                    "spec": {
-                                      "visibility": "show",
-                                      "condition": "and",
-                                      "items": [
-                                        {
-                                          "kind": "ConditionalRenderingVariable",
-                                          "spec": {
-                                            "variable": "has_log_events_vpn",
-                                            "operator": "matches",
-                                            "value": ".+"
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
                               }
                             ]
                           }
@@ -103564,24 +103671,8 @@
                           "kind": "ConditionalRenderingGroup",
                           "spec": {
                             "visibility": "show",
-                            "condition": "or",
+                            "condition": "and",
                             "items": [
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "variable": "has_wireguard",
-                                  "operator": "matches",
-                                  "value": ".+"
-                                }
-                              },
-                              {
-                                "kind": "ConditionalRenderingVariable",
-                                "spec": {
-                                  "variable": "has_openvpn",
-                                  "operator": "matches",
-                                  "value": ".+"
-                                }
-                              },
                               {
                                 "kind": "ConditionalRenderingVariable",
                                 "spec": {
@@ -103594,70 +103685,6 @@
                           }
                         },
                         "variables": [
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_wireguard_ifaces",
-                              "label": "has_wireguard_ifaces",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_wireguard_ifaces"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_wireguard_peers",
-                              "label": "has_wireguard_peers",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_wireguard_peer_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_wireguard_peers"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
-                          },
                           {
                             "kind": "QueryVariable",
                             "spec": {
@@ -103753,38 +103780,6 @@
                               "skipUrlSync": true,
                               "sort": "disabled"
                             }
-                          },
-                          {
-                            "kind": "QueryVariable",
-                            "spec": {
-                              "name": "has_log_events_vpn",
-                              "label": "has_log_events_vpn",
-                              "hide": "hideVariable",
-                              "query": {
-                                "kind": "DataQuery",
-                                "version": "v0",
-                                "group": "prometheus",
-                                "datasource": {
-                                  "name": "${datasource}"
-                                },
-                                "spec": {
-                                  "query": "label_values(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
-                                  "refId": "has_log_events_vpn"
-                                }
-                              },
-                              "current": {
-                                "text": "",
-                                "value": ""
-                              },
-                              "options": [],
-                              "multi": false,
-                              "includeAll": false,
-                              "allowCustomValue": false,
-                              "refresh": "onDashboardLoad",
-                              "regex": "",
-                              "skipUrlSync": true,
-                              "sort": "disabled"
-                            }
                           }
                         ]
                       }
@@ -103803,16 +103798,12 @@
                                   "title": "Tailscale Node",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-357"
@@ -103820,12 +103811,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-358"
@@ -103833,12 +103820,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-359"
@@ -103846,12 +103829,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-360"
@@ -103859,12 +103838,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-361"
@@ -103872,12 +103847,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 20,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-362"
@@ -103885,12 +103856,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 4,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-363"
@@ -103898,19 +103865,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 4,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-364"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -104393,16 +104359,12 @@
                                   "title": "Tor Overview",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-764"
@@ -104410,12 +104372,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 4,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-765"
@@ -104423,12 +104381,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 8,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-766"
@@ -104436,12 +104390,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-767"
@@ -104449,19 +104399,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 16,
-                                            "y": 0,
-                                            "width": 4,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-768"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {
@@ -105776,16 +105725,12 @@
                                   "title": "Relayd Overview",
                                   "collapse": false,
                                   "layout": {
-                                    "kind": "GridLayout",
+                                    "kind": "AutoGridLayout",
                                     "spec": {
                                       "items": [
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 0,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-567"
@@ -105793,12 +105738,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 6,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-568"
@@ -105806,12 +105747,8 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 12,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-569"
@@ -105819,19 +105756,18 @@
                                           }
                                         },
                                         {
-                                          "kind": "GridLayoutItem",
+                                          "kind": "AutoGridLayoutItem",
                                           "spec": {
-                                            "x": 18,
-                                            "y": 0,
-                                            "width": 6,
-                                            "height": 4,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-570"
                                             }
                                           }
                                         }
-                                      ]
+                                      ],
+                                      "columnWidthMode": "standard",
+                                      "rowHeightMode": "standard",
+                                      "fillScreen": false
                                     }
                                   },
                                   "conditionalRendering": {

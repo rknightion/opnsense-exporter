@@ -290,7 +290,7 @@ def build(b: Builder):
     # Assemble tab (gated on has_netflow)
     # ======================================================================
     b.tab("NetFlow", [
-        b.row("NetFlow Status", [nf_enabled, nf_local, nf_active, nf_collectors]),
+        b.autogrid_row("NetFlow Status", [nf_enabled, nf_local, nf_active, nf_collectors]),
         b.row("NetFlow Cache", [nf_packets_ts, nf_src_ips_ts, nf_dst_ips_ts]),
         b.row("Capture Coverage", [nf_capture, nf_active_to, nf_inactive_to]),
         b.row("Hook Liveness", [nf_ifindex_map, nf_dead_hooks]),

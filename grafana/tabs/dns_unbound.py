@@ -588,9 +588,16 @@ def build(b: Builder):
     # =====================================================================
     # Assemble the tab
     # =====================================================================
+    # Two sibling leaves (#619): 41 panels in one tab, and the split falls on an
+    # existing seam — the first four rows are the resolver's own behaviour, always
+    # present; the last three are opt-in feature rows behind their own gates.
     b.tab(
         "DNS - Unbound",
-        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra,
-         row_qstats, row_query_log],
+        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem],
+        present="has_unbound",
+    )
+    b.tab(
+        "DNS - Unbound Lists",
+        [row_infra, row_qstats, row_query_log],
         present="has_unbound",
     )

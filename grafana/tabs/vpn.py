@@ -532,7 +532,7 @@ def build(b: Builder):
     # Tab assembly
     # ================================================================
     b.tab("VPN", [
-        b.row("VPN Services",
+        b.autogrid_row("VPN Services",
               [wg_svc, ipsec_svc, ovpn_count]),
         b.row("WireGuard Interfaces",
               [wg_iface_state],
@@ -546,6 +546,18 @@ def build(b: Builder):
                ovpn_instances, ovpn_utilization, ovpn_sessions,
                ovpn_instance_traffic, ovpn_session_traffic, ovpn_connected_since],
               present="has_openvpn"),
+        # #523: the transitions behind every state panel above, moved here from the
+        # retired Observability domain. A tunnel that is up but flapping looks healthy
+        # on the state gauges and obvious here, which is the whole reason to co-locate.
+        #
+        # It stays on THIS leaf rather than following the IPsec rows next door (#619):
+        # has_log_events_vpn covers every tunnel type, so filing it under IPsec would
+        # bury WireGuard and OpenVPN lifecycle behind an IPsec tab.
+        log_events.vpn_row(b),
+    ])
+    # Split out of "VPN" (#619): 39 panels in one tab, of which 20 were IPsec. Rows
+    # are regrouped and otherwise untouched.
+    b.tab("VPN - IPsec", [
         b.row("IPsec Phase 1",
               [ipsec_p1_state, ipsec_p1_install, ipsec_p1_bytes, ipsec_p1_pkts],
               present="has_ipsec_tunnels"),
@@ -562,8 +574,4 @@ def build(b: Builder):
         b.row("IPsec Config State",
               [config_flags],
               present="has_ipsec"),
-        # #523: the transitions behind every state panel above, moved here from the
-        # retired Observability domain. A tunnel that is up but flapping looks healthy
-        # on the state gauges and obvious here, which is the whole reason to co-locate.
-        log_events.vpn_row(b),
-    ])
+    ], present="has_ipsec")

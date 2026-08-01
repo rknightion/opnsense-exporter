@@ -176,7 +176,7 @@ def build(b: Builder):
     ])
 
     b.tab("CARP / HA", [
-        b.row("CARP Global State",
+        b.autogrid_row("CARP Global State",
               [demotion, allow, maintenance, vips_total]),
         b.row("VIP Status & Advertisement",
               [vip_status, vip_adv_table],

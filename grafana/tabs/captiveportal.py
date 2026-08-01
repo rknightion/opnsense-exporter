@@ -171,7 +171,7 @@ def build(b: Builder):
     )
 
     b.tab("Captive Portal", [
-        b.row("Captive Portal Overview",
+        b.autogrid_row("Captive Portal Overview",
               [svc, zones_total, sessions_total],
               present="has_captiveportal"),
         b.row("Per-Zone Sessions",

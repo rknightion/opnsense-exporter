@@ -656,6 +656,10 @@ def build(b: Builder):
     # -------------------------------------------------------------------------
     # Assemble the tab
     # -------------------------------------------------------------------------
+    # Split into sibling leaves (#619): 41 panels in one tab is a tab people
+    # scroll past. The existing rows are regrouped and nothing else changes — no row
+    # split, merged, renamed or reordered within its group, no panel moved between
+    # rows — so this reads as a move.
     b.tab("Protocol Stats", [
         b.row("TCP Traffic", [tcp_traffic, tcp_lifecycle]),
         b.row("TCP Retransmit & Queue", [tcp_retransmit, tcp_drops_by_reason, tcp_bytes]),
@@ -666,6 +670,8 @@ def build(b: Builder):
         b.row("TCP Recovery, Host Cache & Path MTU",
               [tcp_sack, tcp_sack_bytes, tcp_hostcache, tcp_tw_pmtud, tcp_signature]),
         b.row("UDP", [udp_traffic, udp_drops]),
+    ])
+    b.tab("Protocol Stats - IP", [
         b.row("IP", [ip_traffic, ip_frags, ip_drops]),
         b.row("IPv6", [ip6_traffic, ip6_frags, ip6_drops]),
         b.row("ARP", [arp_activity, arp_errors]),

@@ -270,7 +270,7 @@ def build(b: Builder):
     )
 
     b.tab("CrowdSec", [
-        b.row("CrowdSec Overview",
+        b.autogrid_row("CrowdSec Overview",
               [svc, alerts, decisions, bouncers, machines],
               present="has_crowdsec"),
         b.row("Bouncer Details",

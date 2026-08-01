@@ -115,7 +115,7 @@ def build(b: Builder):
                              ))
 
     b.tab("Tailscale", [
-        b.row("Tailscale Node", [svc, backend, total, sessions, health, reauth,
+        b.autogrid_row("Tailscale Node", [svc, backend, total, sessions, health, reauth,
                                  key_expiry, info],
               present="has_tailscale"),
         b.row("Tailscale Peers (details flag)",

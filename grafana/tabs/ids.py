@@ -210,7 +210,7 @@ def build(b: Builder):
     )
 
     b.tab("IDS/IPS", [
-        b.row("Suricata Overview", [status, ips, promisc, rules, logfiles], present="has_ids"),
+        b.autogrid_row("Suricata Overview", [status, ips, promisc, rules, logfiles], present="has_ids"),
         b.row("eve Log Files", [log_sizes], present="has_ids"),
         b.row("Rulesets", [ruleset_state, ruleset_table], present="has_ids"),
         b.row("Alert Activity", [recent], present="has_ids_alerts"),

@@ -199,7 +199,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_dhcpv4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > ISC DHCPv4 Lease Details"
+          "opnsense2otel > Network > DHCP - ISC & Client > ISC DHCPv4 Lease Details"
         ]
       },
       {
@@ -210,7 +210,8 @@
         "query": "label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > DHCP",
-          "opnsense2otel > Network > DHCP > ISC DHCPv4"
+          "opnsense2otel > Network > DHCP - ISC & Client",
+          "opnsense2otel > Network > DHCP - ISC & Client > ISC DHCPv4"
         ]
       },
       {
@@ -220,7 +221,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_dhcpv6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > ISC DHCPv6 Lease Details"
+          "opnsense2otel > Network > DHCP - ISC & Client > ISC DHCPv6 Lease Details"
         ]
       },
       {
@@ -231,7 +232,8 @@
         "query": "label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > DHCP",
-          "opnsense2otel > Network > DHCP > ISC DHCPv6"
+          "opnsense2otel > Network > DHCP - ISC & Client",
+          "opnsense2otel > Network > DHCP - ISC & Client > ISC DHCPv6"
         ]
       },
       {
@@ -272,7 +274,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_firewall_nat_rules{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Security > Firewall & PF > NAT Rule Inventory (details flag)"
+          "opnsense2otel > Security > Firewall Rules & NAT > NAT Rule Inventory (details flag)"
         ]
       },
       {
@@ -282,7 +284,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Security > Firewall & PF > Firewall Rules (top 20)"
+          "opnsense2otel > Security > Firewall Rules & NAT > Firewall Rules (top 20)"
         ]
       },
       {
@@ -292,7 +294,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_firmware_plugin_installed{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > System > System & Resources > Firmware Packages"
+          "opnsense2otel > System > Firmware & Backup > Firmware Packages"
         ]
       },
       {
@@ -356,16 +358,17 @@
         "presence": "existence",
         "query": "label_values(opnsense_frr_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
+          "opnsense2otel > Network > FRR - OSPF",
+          "opnsense2otel > Network > FRR - OSPF > OSPF",
+          "opnsense2otel > Network > FRR - OSPF > OSPF Interface Detail",
+          "opnsense2otel > Network > FRR - OSPF > OSPF Neighbor Adjacency Stability",
+          "opnsense2otel > Network > FRR - OSPF > OSPF/OSPFv3 SPF-Run Timing",
+          "opnsense2otel > Network > FRR - OSPF > OSPFv3 (ospf6) Parity",
           "opnsense2otel > Network > FRR Routing",
           "opnsense2otel > Network > FRR Routing > BFD",
           "opnsense2otel > Network > FRR Routing > BGP Peer Session Detail",
           "opnsense2otel > Network > FRR Routing > BGP Peers",
-          "opnsense2otel > Network > FRR Routing > FRR Service & Summary",
-          "opnsense2otel > Network > FRR Routing > OSPF",
-          "opnsense2otel > Network > FRR Routing > OSPF Interface Detail",
-          "opnsense2otel > Network > FRR Routing > OSPF Neighbor Adjacency Stability",
-          "opnsense2otel > Network > FRR Routing > OSPF/OSPFv3 SPF-Run Timing",
-          "opnsense2otel > Network > FRR Routing > OSPFv3 (ospf6) Parity"
+          "opnsense2otel > Network > FRR Routing > FRR Service & Summary"
         ]
       },
       {
@@ -375,7 +378,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_frr_route_count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > FRR Routing > Routing-State Volume (opt-in: --exporter.enable-frr-routes)"
+          "opnsense2otel > Network > FRR - OSPF > Routing-State Volume (opt-in: --exporter.enable-frr-routes)"
         ]
       },
       {
@@ -420,7 +423,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_hardware_dmi_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > System > System & Resources > Hardware Identity"
+          "opnsense2otel > System > Hardware & SMART > Hardware Identity"
         ]
       },
       {
@@ -430,7 +433,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_hardware_psu_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > System > System & Resources > Hardware Power Supply"
+          "opnsense2otel > System > Hardware & SMART > Hardware Power Supply"
         ]
       },
       {
@@ -477,7 +480,8 @@
         "gates": [
           "opnsense2otel > VPN & remote access",
           "opnsense2otel > VPN & remote access > VPN",
-          "opnsense2otel > VPN & remote access > VPN > IPsec Config State"
+          "opnsense2otel > VPN & remote access > VPN - IPsec",
+          "opnsense2otel > VPN & remote access > VPN - IPsec > IPsec Config State"
         ]
       },
       {
@@ -487,7 +491,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > VPN & remote access > VPN > IPsec Mode-CFG Pools"
+          "opnsense2otel > VPN & remote access > VPN - IPsec > IPsec Mode-CFG Pools"
         ]
       },
       {
@@ -497,7 +501,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_sad_entries{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > VPN & remote access > VPN > IPsec Kernel (SAD/SPD)"
+          "opnsense2otel > VPN & remote access > VPN - IPsec > IPsec Kernel (SAD/SPD)"
         ]
       },
       {
@@ -507,8 +511,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_phase1_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > VPN & remote access > VPN > IPsec Phase 1",
-          "opnsense2otel > VPN & remote access > VPN > IPsec Phase 2"
+          "opnsense2otel > VPN & remote access > VPN - IPsec > IPsec Phase 1",
+          "opnsense2otel > VPN & remote access > VPN - IPsec > IPsec Phase 2"
         ]
       },
       {
@@ -633,7 +637,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > Lease Events (log-derived)"
+          "opnsense2otel > Network > DHCP - ISC & Client > Lease Events (log-derived)"
         ]
       },
       {
@@ -643,7 +647,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_dhcp6c_message_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > WAN DHCPv6 Client & Prefix Delegation (log-derived)"
+          "opnsense2otel > Network > DHCP - ISC & Client > WAN DHCPv6 Client & Prefix Delegation (log-derived)"
         ]
       },
       {
@@ -653,7 +657,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_dhcp_client_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > WAN DHCP Client (log-derived)"
+          "opnsense2otel > Network > DHCP - ISC & Client > WAN DHCP Client (log-derived)"
         ]
       },
       {
@@ -663,7 +667,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Security > Firewall & PF > Firewall Events (log-derived)"
+          "opnsense2otel > Security > Firewall Rules & NAT > Firewall Events (log-derived)"
         ]
       },
       {
@@ -725,7 +729,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_upnp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Security > Firewall & PF > UPnP / NAT-PMP Mappings"
+          "opnsense2otel > Security > Firewall Rules & NAT > UPnP / NAT-PMP Mappings"
         ]
       },
       {
@@ -1052,8 +1056,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_smart_device_health{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > System > System & Resources > SMART",
-          "opnsense2otel > System > System & Resources > SMART Attributes & NVMe"
+          "opnsense2otel > System > Hardware & SMART > SMART",
+          "opnsense2otel > System > Hardware & SMART > SMART Attributes & NVMe"
         ]
       },
       {
@@ -1063,7 +1067,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_smart_devices_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > System > System & Resources > SMART Read Errors"
+          "opnsense2otel > System > Hardware & SMART > SMART Read Errors"
         ]
       },
       {
@@ -1119,7 +1123,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > System > System & Resources > Temperature"
+          "opnsense2otel > System > Hardware & SMART > Temperature"
         ]
       },
       {
@@ -1159,7 +1163,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_unbound_dns_uptime_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DNS - Unbound"
+          "opnsense2otel > Network > DNS - Unbound",
+          "opnsense2otel > Network > DNS - Unbound Lists"
         ]
       },
       {
@@ -1169,7 +1174,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DNS - Unbound > Upstream Infra Cache"
+          "opnsense2otel > Network > DNS - Unbound Lists > Upstream Infra Cache"
         ]
       },
       {
@@ -1179,7 +1184,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_unbound_dns_qstats_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DNS - Unbound > DNSBL / Query Stats"
+          "opnsense2otel > Network > DNS - Unbound Lists > DNSBL / Query Stats"
         ]
       },
       {
@@ -1288,7 +1293,7 @@
         "presence": "existence",
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"unbound\"}, opnsense_source)",
         "gates": [
-          "opnsense2otel > Network > DNS - Unbound > Per-Query Log"
+          "opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log"
         ]
       },
       {
