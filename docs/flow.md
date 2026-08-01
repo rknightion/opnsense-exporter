@@ -164,14 +164,23 @@ Its limits, which are counted rather than hidden:
   records are emitted exactly as reported and counted under
   `opnsense_flow_policy_route_refused_total{reason="no_state"}`.
 
-  **That counter is NOT all floor, and an earlier version of this page said it was.**
-  Measured on the reference box 2026-08-01, most refusals are a third case the two above
-  do not cover: the state *was* visible in a snapshot, just not in the snapshot the
-  record was resolved against. A record is repaired the moment it arrives, roughly 15-30 s
-  after its conversation ended, against a table up to a minute old - typically built
-  before the state existed. The next build has it, and nothing ever re-asks. Split the
-  counter by `interface` to see how much of your own refusal rate sits on the
-  default-route WAN; the open work is [#624](https://github.com/rknightion/opnsense2otel/issues/624).
+  **How much of that counter is really floor, measured.** Replaying 15 minutes of a real
+  production export (85,919 records) against real pf snapshots at the real one-minute
+  cadence: of 24,203 pre-NAT outbound candidates, **81.6% resolved against the table at
+  the moment they arrived** and **18.3% had no state in any snapshot at all**. Deferring a
+  refused record by a whole extra poll and re-asking would recover **18 records, 0.1%**.
+  So the miss window really is the floor the two paragraphs above describe, and a faster
+  or later lookup is not the lever.
+
+  Split the counter by `interface` to see where your own refusals sit. Refusals piling up
+  on the default-route WAN are consistent with policy-routed traffic hiding inside them;
+  spread evenly, they are structural.
+
+  One thing does not add up yet and is tracked as
+  [#624](https://github.com/rknightion/opnsense2otel/issues/624): in that replay the repair
+  made 402 corrections, while the live exporter processing the byte-identical export
+  stream over the same window made about 45. The input is confirmed identical, so the
+  difference is somewhere in the running exporter's own state, not in the data.
 
   The one-minute poll is sized for this. It was five minutes on the reasoning that
   the flows this repair recovers are long ones - which measurement disproved: on the
