@@ -1540,6 +1540,20 @@ def coverage(*builders: Builder) -> list:
 
     The complementary direction — a panel querying a metric that cannot exist — is
     `panel_metric_gaps()` below, not this function.
+
+    IT READS `_exprs`, WHICH IS PANEL QUERIES ONLY, AND THAT IS LOAD-BEARING (#619).
+    `sentinel()` appends to `self.variables` and never to `_exprs`, so a presence
+    variable's `label_values()` call does NOT count as coverage. That is the
+    difference between "this metric reaches a panel an operator can look at" and
+    "this metric is mentioned somewhere in the document". The sibling project made
+    exactly that mistake (rknightion/tailscale2otel#527): a signal satisfied its
+    every-signal-reaches-a-panel bar while appearing on no panel at all, because a
+    hidden sentinel probing it counted.
+
+    This is stated rather than left implicit because it is one refactor away from
+    being untrue — anything that starts recording variable queries into `_exprs`,
+    or that switches this to a walk over the whole serialised dashboard, silently
+    converts this gate into one that cannot fail.
     """
     blob = "\n".join(expr for b in builders for expr in b._exprs)
     missing = []

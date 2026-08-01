@@ -244,3 +244,42 @@ class StateTimelinePolarityTest(unittest.TestCase):
         name = b.statetimeline("Census", [(sel("opnsense_up"), "{{state}}")], {})
         defaults = b.elements[name]["spec"]["vizConfig"]["spec"]["fieldConfig"]["defaults"]
         self.assertEqual(defaults["mappings"], [])
+
+
+class CoverageSourceTest(unittest.TestCase):
+    """`coverage()` must see PANEL queries and nothing else (#619).
+
+    The sibling project's every-signal-reaches-a-panel gate counted a hidden
+    sentinel's `label_values()` call as coverage, so a metric could satisfy it while
+    appearing on no panel (rknightion/tailscale2otel#527). This repo does not have
+    that bug — `sentinel()` appends to `variables`, never to `_exprs` — but nothing
+    enforced it, and a comment saying so is not a guard.
+    """
+
+    def test_a_sentinel_does_not_count_as_panel_coverage(self):
+        b = Builder()
+        b.sentinel("has_thing", metric="opnsense_thing_present")
+        self.assertNotIn(
+            "opnsense_thing_present", "\n".join(b._exprs),
+            "a presence sentinel's query reached _exprs, which is what coverage() "
+            "reads — the metric now satisfies the coverage gate without appearing "
+            "on any panel an operator can look at")
+        self.assertTrue(
+            any("opnsense_thing_present" in str(v) for v in b.variables),
+            "the sentinel was not registered at all, so this test proves nothing")
+
+    def test_a_loki_sentinel_does_not_count_as_panel_coverage(self):
+        b = Builder()
+        b.loki_sentinel("has_stream", label="opnsense_subsystem",
+                        matchers='opnsense_subsystem="thing"')
+        self.assertNotIn("opnsense_subsystem", "\n".join(b._exprs))
+        self.assertNotIn("opnsense_subsystem", "\n".join(b._loki_exprs),
+                         "a Loki sentinel reached _loki_exprs; the log-stream "
+                         "coverage gate would then be satisfied by the probe for a "
+                         "stream rather than by a panel selecting it")
+
+    def test_a_panel_query_does_count(self):
+        """The control. Without it the two tests above pass on an empty builder."""
+        b = Builder()
+        b.ts("T", [(sel("opnsense_thing_present"), "x")])
+        self.assertIn("opnsense_thing_present", "\n".join(b._exprs))
