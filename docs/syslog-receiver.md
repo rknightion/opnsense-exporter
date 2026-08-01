@@ -275,6 +275,164 @@ attributes: they stay in the message body.
 Recognised on OPNsense `26.7.1_1` and `27.1.a_40` with `miniupnpd 2.3.9_2,1` /
 `os-upnp 1.9`.
 
+### PPPoE link and negotiation events (`ppp`)
+
+`ppp` is mpd5, the dialler that brings a PPPoE WAN up. Every shape below was taken
+from a real capture of a single link flap; nothing here is inferred from mpd's
+documentation.
+
+```text
+<PRI>1 <timestamp> <host> ppp <pid> - [meta sequenceId="<sequence>"] [<link>] Link: UP event
+<PRI>1 <timestamp> <host> ppp <pid> - [meta sequenceId="<sequence>"] [<bundle>] IPCP: state change Ack-Sent --> Opened
+<PRI>1 <timestamp> <host> ppp <pid> - [meta sequenceId="<sequence>"] ppp-linkup: executing on <interface> for <af>
+```
+
+Thirteen `ppp.event` values are recognised: `link_up`, `link_down`, `iface_up`,
+`iface_down`, `reconnecting`, `bundle_status`, `negotiation_state_change`,
+`terminate_requested`, `session_established`, `session_closed`, `session_failed`,
+`auth_success` and `address_assigned`. Alongside them a matching line carries
+whichever of `ppp.bundle`, `ppp.link`, `ppp.interface`, `ppp.protocol`,
+`ppp.state.previous`, `ppp.state.current`, `ppp.links_up`, `ppp.bandwidth_bps`,
+`ppp.retry_attempt`, `ppp.retry_delay_seconds`, `ppp.address.local`,
+`ppp.address.peer`, `ppp.address_family` and `ppp.error` the line stated.
+
+Two details of the grammar are worth knowing, because both are places a
+plausible-looking parser goes wrong:
+
+LCP is always bracketed under the **link** (`opt7_link0`) while IPCP and IPV6CP are
+bracketed under the **bundle** (`opt7`). That is mpd's own architecture — LCP
+negotiates per physical link, the network-layer protocols per bundle, which may stack
+several links — so the scope is decided by which protocol produced the line, not by
+pattern-matching the bracketed name.
+
+The `[<bundle>]   <x> -> <y>` shape carries **either** an address assignment **or** an
+IPv6 interface-identifier pair (`9ab7:85ff:fe21:aff2 -> 9e89:1eff:fe2e:0000`). The two
+are told apart by whether both sides parse as IP addresses; the identifier form has
+four hex groups and no `::`, so it fails to parse and ships as a generic record with
+no `ppp.address.*` attributes rather than as a fabricated address.
+
+The CHAP authname, the `MESG:` circuit identifier and the link magic number are
+subscriber-identifying and are **never** captured into an attribute. Only the
+`LCP: authorization successful` outcome is parsed. A test walks every attribute value
+looking for the authname and fails if it appears.
+
+No derived counter yet. A link-flap rate is the obvious follow-up, but the three
+layers (Link, LCP, IPCP) each report a state change for one physical event, so a naive
+counter would treble every flap.
+
+### Alias and table maintenance (`firewall`)
+
+The program name is misleading and the mistake it invites is worth stating plainly:
+`firewall` is OPNsense's **alias and table maintenance** logger, not packet filtering.
+Packet filtering logs under `filterlog` and is parsed separately.
+
+```text
+<PRI>1 <timestamp> <host> firewall <pid> - [meta sequenceId="<sequence>"] resolving <n> hostnames (<m> addresses) for <alias> took <seconds> seconds
+<PRI>1 <timestamp> <host> firewall <pid> - [meta sequenceId="<sequence>"] fetch alias url <url> (bytes: <n>)
+<PRI>1 <timestamp> <host> firewall <pid> - [meta sequenceId="<sequence>"] processing alias url <url> took <seconds>s
+```
+
+Five `alias.event` values are recognised: `resolved`, `fetched`, `processed`,
+`geoip_updated` and `archive_detected`. Matching lines carry whichever of
+`alias.name`, `alias.hostnames`, `alias.addresses`, `alias.duration_seconds`,
+`alias.url`, `alias.bytes`, `alias.lines`, `geoip.files` and `geoip.lines` applies.
+
+The `fetch` grammar reports **either** a byte count **or** a line count depending on
+the payload, and only the one present is emitted — a text list reports lines, a JSON
+or archive body reports bytes.
+
+Note that the two duration forms differ: `resolving ... took 0.08 seconds` has a space
+and the full word, while `processing ... took 0.14s` has neither. They come from
+different subsystems and are matched by separate grammars; a test pins them apart,
+because conflating them is the natural bug here. Both are emitted as the bare number
+of seconds exactly as it appeared on the wire, with no unit conversion.
+
+This is where a slow or failing alias URL becomes visible. A URL is an
+operator-configured value and is kept in full as structured metadata; it is never a
+metric label.
+
+### Certificate lifecycle (`acme.sh` and the ACME plugin)
+
+Two programs feed one parser. The OPNsense ACME plugin logs its own lifecycle under
+the catch-all program `opnsense`, and the `acme.sh` client logs its progress under
+`acme.sh`. Records from the two are told apart by `cert.source`, which is `plugin` or
+`acme.sh`.
+
+```text
+<PRI>1 <timestamp> <host> opnsense <pid> - [meta sequenceId="<sequence>"] AcmeClient: successfully issued/renewed certificate: <domain>
+<PRI>1 <timestamp> <host> acme.sh <pid> - [meta sequenceId="<sequence>"] [<client timestamp>] Cert success.
+```
+
+**`opnsense` is a catch-all**: every OPNsense PHP log line on the box arrives under
+it, not just the ACME plugin's. The parser therefore refuses anything outside a
+captured `AcmeClient: ` shape, exactly as the kernel grammars do, so unrelated PHP
+lines still degrade to generic records. Loosening that match would relabel every PHP
+log line on the box as certificate activity.
+
+Recognised `cert.event` values are `renewal_not_required`, `renewal_required`,
+`issue_started`, `issue_succeeded`, `config_wiped`, `removal_failed`,
+`account_registered`, `ca_imported`, `ca_selected`, `challenge_type_selected`,
+`challenge_added`, `challenge_removed`, `validation_pending`, `validation_succeeded`,
+`signing_started`, `cert_downloaded`, `cert_installed`, `domain_skipped` and
+`shell_command`. Alongside them a line may carry `cert.domain`, `cert.ca`,
+`cert.challenge_type`, `cert.challenge_domain`, `cert.result`, `cert.exit_code`,
+`cert.attempt` and `cert.attempt_max`.
+
+There is deliberately **no `issue_failed`**: no failure has been captured from a real
+box, and inventing a grammar for one would pin a shape upstream may never produce. It
+should be added from a real capture when one occurs.
+
+The `acme.sh` lines are prefixed with the client's own bracketed local timestamp. It
+is stripped and never emitted — the syslog envelope already carries the record's time,
+and a second, differently-formatted, differently-zoned time would only be a trap.
+
+These lines carry secrets, and several are handled by refusing to match them at all:
+the ACME account thumbprint, the `Le_OrderFinalize=` and `Le_LinkCert=` order URLs,
+and every filesystem path to a private key produce no attributes whatsoever. On the
+TXT challenge lines the challenge **domain** is captured but the challenge **value**
+is matched non-capturing and discarded. A test asserts that the thumbprint and a TXT
+value never appear in any attribute across the whole captured corpus.
+
+### DNS blocklist and service lifecycle (`unbound`)
+
+Beyond the local-zone query log and SERVFAIL lines documented above, the DNSBL
+subsystem and unbound's own start/stop are parsed.
+
+```text
+<PRI>1 <timestamp> <host> unbound <pid> - [meta sequenceId="<sequence>"] [<pid>:<thread>] info: dnsbl_module: blocklist loaded. length is <n>
+<PRI>1 <timestamp> <host> unbound <pid> - [meta sequenceId="<sequence>"] blocklist parsing done in <seconds> seconds (<n> records)
+```
+
+Seven `dnsbl.event` values are recognised: `blocklist_updating`, `blocklist_loaded`,
+`blocklist_parsed`, `pipe_opening`, `pipe_opened`, `pipe_closed` and
+`backend_missing`. The start/stop pair emits `dns.event` (`service_started` or
+`service_stopped`) with `dns.version`.
+
+`dnsbl.entries` is emitted for **both** the `blocklist loaded. length is <n>` and the
+`blocklist parsing done ... (<n> records)` lines. They report the same quantity by two
+routes, and a consumer should not have to know which line it came from.
+`dnsbl.parse_duration_seconds` comes from the parsing-done line.
+
+Note that the parsing-done line carries **no** `[<pid>:<thread>]` prefix while the
+`dnsbl_module:` lines do. That asymmetry is real and is pinned by a test. Where the
+prefix exists, only the thread number is kept as `unbound.thread`; the pid changes on
+every restart and carries no operational meaning.
+
+The multi-line statistics dump — `server stats for thread <n>`, the recursion
+histogram, the percentile line and the `lower(secs) upper(secs) recursions` header —
+is deliberately **not** parsed. Its shape varies per thread, and half-parsing a
+multi-line report yields records that look complete and are not.
+
+**These metrics answer different questions and are easy to confuse.**
+`opnsense_unbound_dns_dnsbl_blocklist_size` is the number of entries currently loaded
+in unbound's DNSBL module. `opnsense_unbound_dns_blocklist_enabled` reports whether
+any DNSBL **policy** is enabled in OPNsense's own Unbound configuration. A box whose
+blocklist is populated by a third-party plugin — Q-Feeds, for instance — will report a
+large size alongside `blocklist_enabled=0`, because the plugin loads the list into the
+module without going through core's blocklist configuration. That combination is not a
+bug in either metric; it means core Unbound has no blocklist selected and no policy,
+and what is loaded got there another way.
+
 ### FreeRADIUS access outcomes and credential handling
 
 OPNsense `27.1.a_40` with `os-freeradius 1.10.2` emits authentication outcomes
