@@ -1471,3 +1471,74 @@ func TestRepairer_ExportedRepairMatchesTheSeam(t *testing.T) {
 // The IfMap the receiver lane owns must satisfy the seam this package resolves
 // against. If this stops compiling, the contract moved.
 var _ ifTopology = (*IfMap)(nil)
+
+// --- per-interface refusal attribution (#620 follow-up) -----------------------
+
+// The refusal counter grew an `interface` label so the distribution of misses is
+// visible. It names where the bytes are currently ATTRIBUTED — a refused record has
+// no known real egress, which is what made it a refusal — so the value of the label
+// is whether misses concentrate on one WAN or spread across all of them.
+func TestPolicyRouteNoStateIsSplitByReportedInterface(t *testing.T) {
+	counts := map[string]uint64(nil)
+	counts = bumpByInterface(counts, Iface{Name: "AAISP"})
+	counts = bumpByInterface(counts, Iface{Name: "AAISP"})
+	counts = bumpByInterface(counts, Iface{Name: "VIRGIN"})
+
+	if counts["AAISP"] != 2 || counts["VIRGIN"] != 1 {
+		t.Fatalf("per-interface tally = %v, want AAISP=2 VIRGIN=1", counts)
+	}
+}
+
+// A nameless interface must not become an empty label: a blank renders as a gap in
+// a legend and reads as a dashboard bug rather than as a cold-start record.
+func TestRefusalWithNoInterfaceNameIsFiledUnresolved(t *testing.T) {
+	counts := bumpByInterface(nil, Iface{})
+	if counts["unresolved"] != 1 {
+		t.Fatalf("nameless interface filed as %v, want unresolved=1", counts)
+	}
+	if _, blank := counts[""]; blank {
+		t.Fatal("a refusal was filed under the empty-string interface label")
+	}
+}
+
+// A box that never refuses must carry no map at all, so it publishes no series
+// rather than a pile of zero-valued ones.
+func TestNoRefusalsPublishesNoPerInterfaceSeries(t *testing.T) {
+	if got := copyCounts(nil); got != nil {
+		t.Fatalf("copyCounts(nil) = %v, want nil", got)
+	}
+	if got := copyCounts(map[string]uint64{}); got != nil {
+		t.Fatalf("copyCounts(empty) = %v, want nil — an empty map and no map mean the same thing", got)
+	}
+}
+
+// The snapshot must not hand out the live map, or a reader iterating it races the
+// record path and can panic on a concurrent write.
+func TestPerInterfaceCountsAreSnapshotNotAliased(t *testing.T) {
+	live := map[string]uint64{"AAISP": 1}
+	snapshot := copyCounts(live)
+	live["AAISP"] = 99
+	live["VIRGIN"] = 5
+	if snapshot["AAISP"] != 1 {
+		t.Fatalf("snapshot tracked a later write: %v", snapshot)
+	}
+	if _, leaked := snapshot["VIRGIN"]; leaked {
+		t.Fatalf("snapshot aliases the live map: %v", snapshot)
+	}
+}
+
+// The split must total the flat counter, or the two disagree in a dashboard and
+// nobody knows which to trust.
+func TestPerInterfaceSplitTotalsTheFlatCounter(t *testing.T) {
+	var counts map[string]uint64
+	for _, name := range []string{"AAISP", "AAISP", "VIRGIN", "", "CAM"} {
+		counts = bumpByInterface(counts, Iface{Name: name})
+	}
+	var total uint64
+	for _, n := range counts {
+		total += n
+	}
+	if total != 5 {
+		t.Fatalf("per-interface counts total %d, want 5 — the split must not lose or invent records", total)
+	}
+}

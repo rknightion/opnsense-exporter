@@ -3874,9 +3874,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, kind) (opnsense_flow_pf_state_entries{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, interface) (rate(opnsense_flow_policy_route_refused_total{opnsense_instance=~\"$opnsense_instance\",reason=\"no_state\"}[$__rate_interval])))",
                         "refId": "C",
-                        "legendFormat": "pf states: {{kind}}",
+                        "legendFormat": "no_state by attributed iface: {{interface}}",
                         "instant": false,
                         "range": true
                       }
@@ -3900,8 +3900,34 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_pf_state_age_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, kind) (opnsense_flow_pf_state_entries{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "D",
+                        "legendFormat": "pf states: {{kind}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "E",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_pf_state_age_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "E",
                         "legendFormat": "pf state age (s)",
                         "instant": false,
                         "range": true

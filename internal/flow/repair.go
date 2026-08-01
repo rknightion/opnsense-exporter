@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"maps"
 	"net/netip"
 	"strings"
 	"sync"
@@ -132,12 +133,28 @@ type RepairStats struct {
 	// responses — corrections rising is the repair working, misses rising is
 	// attribution that cannot be recovered at all, and NO poll interval fixes it.
 	PolicyRouteNoState uint64
+	// PolicyRouteNoStateByInterface splits PolicyRouteNoState by the interface
+	// ng_netflow REPORTED for the record — i.e. where the bytes are currently being
+	// attributed, not where they actually went (#620 follow-up).
+	//
+	// Which is the only interface a refused record HAS. The whole reason it was
+	// refused is that pf could not tell us the real egress, so this cannot say
+	// "these misses belong to WAN2". What it can say is whether the misses pile up
+	// on ONE interface or spread across every WAN, and that is the question worth
+	// answering: refusals concentrated on the default-route WAN are consistent with
+	// policy-routed traffic hiding inside it, while refusals spread evenly are
+	// structural and mean the mechanism has nothing left to recover.
+	//
+	// Cardinality is one series per WAN, on an exporter using ~4.6k of a 100k budget.
+	PolicyRouteNoStateByInterface map[string]uint64
 	// PolicyRouteUnresolvedDevice counts states whose route-to named a device the
 	// interface map does not know. Kept apart again: the fix is the interface
 	// enumeration, not the poll cadence. The record is left alone rather than
 	// labelled with a raw kernel device, which would split one interface across two
 	// series exactly as #606 describes.
 	PolicyRouteUnresolvedDevice uint64
+	// PolicyRouteUnresolvedDeviceByInterface splits it the same way.
+	PolicyRouteUnresolvedDeviceByInterface map[string]uint64
 
 	// RouteTableEntries, RouteTablePolicyRouted and RouteTableAge describe the pf
 	// state snapshot the repair resolves against. A lookup table nobody can size or
@@ -334,6 +351,41 @@ type Repairer struct {
 	policyRouteCorrected  uint64
 	policyRouteNoState    uint64
 	policyRouteUnresolved uint64
+	// Keyed by the interface ng_netflow reported. Lazily allocated: a single-WAN box
+	// never refuses anything and should carry no map at all.
+	policyRouteNoStateBy    map[string]uint64
+	policyRouteUnresolvedBy map[string]uint64
+}
+
+// bumpByInterface increments the per-interface tally for a record's REPORTED
+// egress, allocating the map on first use so a box that never refuses carries none.
+//
+// An unnamed interface is filed under "unresolved" rather than under the empty
+// string: a blank label renders as a gap in a legend and reads as a bug in the
+// dashboard, and it is the same word the ifIndex lane already uses for the cold-start
+// case, so the two agree.
+func bumpByInterface(counts map[string]uint64, iface Iface) map[string]uint64 {
+	name := iface.Name
+	if name == "" {
+		name = "unresolved"
+	}
+	if counts == nil {
+		counts = make(map[string]uint64, 4)
+	}
+	counts[name]++
+	return counts
+}
+
+// copyCounts snapshots a tally so the caller cannot race the record path by holding
+// the live map. Nil in, nil out — an empty map and no map mean the same thing here
+// and neither should invent a zero-valued series.
+func copyCounts(counts map[string]uint64) map[string]uint64 {
+	if len(counts) == 0 {
+		return nil
+	}
+	out := make(map[string]uint64, len(counts))
+	maps.Copy(out, counts)
+	return out
 }
 
 // SetRouteTable publishes a new pf state snapshot. Safe to call while records are
@@ -511,6 +563,9 @@ func (r *Repairer) StatsAt(now time.Time) RepairStats {
 		PolicyRouteCorrected:        r.policyRouteCorrected,
 		PolicyRouteNoState:          r.policyRouteNoState,
 		PolicyRouteUnresolvedDevice: r.policyRouteUnresolved,
+
+		PolicyRouteNoStateByInterface:          copyCounts(r.policyRouteNoStateBy),
+		PolicyRouteUnresolvedDeviceByInterface: copyCounts(r.policyRouteUnresolvedBy),
 
 		RouteTableEntries:      rt.Entries,
 		RouteTablePolicyRouted: rt.PolicyRouted,
@@ -1018,6 +1073,7 @@ func (r *Repairer) correctPolicyRoute(rec *Record, m ifTopology) {
 	if !ok {
 		r.mu.Lock()
 		r.policyRouteNoState++
+		r.policyRouteNoStateBy = bumpByInterface(r.policyRouteNoStateBy, rec.Out)
 		r.mu.Unlock()
 		return
 	}
@@ -1033,6 +1089,7 @@ func (r *Repairer) correctPolicyRoute(rec *Record, m ifTopology) {
 	if !known {
 		r.mu.Lock()
 		r.policyRouteUnresolved++
+		r.policyRouteUnresolvedBy = bumpByInterface(r.policyRouteUnresolvedBy, rec.Out)
 		r.mu.Unlock()
 		return
 	}

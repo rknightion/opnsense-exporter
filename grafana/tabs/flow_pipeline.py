@@ -220,6 +220,14 @@ def build(b: Builder):
           "policy-route corrections/sec"),
          (f'sum {grp("reason")} (rate({sel("opnsense_flow_policy_route_refused_total")}[{RATE}]))',
           "refused: {{reason}}"),
+         # Split by WHERE THE BYTES ARE CURRENTLY ATTRIBUTED, not where they went - a
+         # refused record has no known real egress. Read it as a distribution: misses
+         # piling up on the default-route WAN say policy-routed traffic is hiding
+         # inside it and more is worth recovering; misses spread evenly across every
+         # WAN say the remainder is structural and the mechanism is done.
+         (f'sum {grp("interface")} (rate('
+          f'{sel("opnsense_flow_policy_route_refused_total", 'reason="no_state"')}[{RATE}]))',
+          "no_state by attributed iface: {{interface}}"),
          (f'sum {grp("kind")} ({sel("opnsense_flow_pf_state_entries")})', "pf states: {{kind}}"),
          (f'{sel("opnsense_flow_pf_state_age_seconds")}', "pf state age (s)")],
         unit="short",

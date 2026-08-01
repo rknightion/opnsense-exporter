@@ -790,8 +790,15 @@ func (c *flowCollector) registerNetflow() {
 			"ng_netflow reported it rather than guessed. reason=\"unresolved_device\" means pf named "+
 			"an egress device the interface enumeration does not know - the fix is the enumeration, "+
 			"and labelling the record with the raw kernel name would split one interface across two "+
-			"series.",
-		[]string{"reason"},
+			"series. "+
+			"THE interface LABEL IS WHERE THE BYTES ARE CURRENTLY ATTRIBUTED, NOT WHERE THEY WENT. A "+
+			"refused record has no known real egress - that is what made it a refusal - so this names "+
+			"the interface ng_netflow reported. Read it as a distribution, not as a per-WAN error "+
+			"count: refusals piling up on the DEFAULT-ROUTE WAN are consistent with policy-routed "+
+			"traffic hiding inside it and mean more of this is worth recovering, while refusals spread "+
+			"evenly across every WAN mean the remainder is structural (records that were never a "+
+			"pre-NAT egress copy) and the mechanism has nothing left to find.",
+		[]string{"reason", "interface"},
 	)
 	c.pfStateEntries = buildPrometheusDesc(c.subsystem, "pf_state_entries",
 		"Pre-NAT pf states the policy-route repair can resolve against, by kind. kind=\"total\" is "+
@@ -1167,8 +1174,12 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 
 	counter(c.egressCorrected, nf.Repair.EgressCorrected)
 	counter(c.policyRouteCorr, nf.Repair.PolicyRouteCorrected)
-	counter(c.policyRouteRefused, nf.Repair.PolicyRouteNoState, "no_state")
-	counter(c.policyRouteRefused, nf.Repair.PolicyRouteUnresolvedDevice, "unresolved_device")
+	for iface, n := range nf.Repair.PolicyRouteNoStateByInterface {
+		counter(c.policyRouteRefused, n, "no_state", iface)
+	}
+	for iface, n := range nf.Repair.PolicyRouteUnresolvedDeviceByInterface {
+		counter(c.policyRouteRefused, n, "unresolved_device", iface)
+	}
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableEntries), "total")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTablePolicyRouted), "policy_routed")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableSkipped), "skipped")
