@@ -98,6 +98,15 @@ type GeoStats struct {
 	// beside it the cost of that trade is assumed rather than measured.
 	CountryAgreements    uint64
 	CountryDisagreements uint64
+	// MergeAddressMismatches counts correlator merges where the Zenarmor record and
+	// the NetFlow record could not be lined up in EITHER orientation, so no geo was
+	// folded across (#647). It should sit at or near zero: the correlator paired the
+	// two records by connection key, so their addresses agreeing is the premise of
+	// the merge, not a hope. A climbing counter means that premise is false and the
+	// merged records are missing Zenarmor's contribution entirely — which is worth
+	// knowing, because the previous behaviour was to merge anyway and attach each
+	// end's geo to the wrong address.
+	MergeAddressMismatches uint64
 }
 
 // GeoEnricher applies MaxMind lookups to a flow Record and resolves the per-field
@@ -112,9 +121,22 @@ type GeoEnricher struct {
 	// unconditional; a label multiplies the flow series roughly 250-fold.
 	metricDims bool
 
-	enriched      atomic.Uint64
-	agreements    atomic.Uint64
-	disagreements atomic.Uint64
+	enriched        atomic.Uint64
+	agreements      atomic.Uint64
+	disagreements   atomic.Uint64
+	mergeMismatches atomic.Uint64
+}
+
+// countMergeMismatch records one unpairable correlator merge (#647). It hangs off
+// the process-wide enricher rather than being threaded through MergeGeo's signature
+// because MergeGeo is deliberately package-level - the correlator builds merged
+// records in a package that never sees main's wiring. Nil-safe: an un-wired build
+// counts nothing rather than panicking, matching every other method here.
+func (e *GeoEnricher) countMergeMismatch() {
+	if e == nil {
+		return
+	}
+	e.mergeMismatches.Add(1)
 }
 
 // NewGeoEnricher returns an enricher over lk. metricDims mirrors
@@ -269,9 +291,71 @@ func (e *GeoEnricher) MetricCountry(r Record) string {
 // It deliberately does NOT count an agreement or disagreement. The Zenarmor record
 // met our database already, in its own lane, and counting the same comparison twice
 // would inflate both sides of the ratio the counter exists to expose.
-func MergeGeo(dst *GeoInfo, zen GeoInfo) {
-	mergeGeoEndpoint(&dst.Src, zen.Src)
-	mergeGeoEndpoint(&dst.Dst, zen.Dst)
+//
+// # Endpoints are paired by ADDRESS, never by position (#647)
+//
+// It takes whole Records rather than bare GeoInfo because the addresses are the only
+// thing that says which end is which. A Zenarmor conn document records a connection
+// from the initiator's side (private -> public); the NetFlow fragment being merged
+// may be the RETURN direction (public -> private). Pairing Src<-Src and Dst<-Dst
+// positionally then attaches each end's geo to the opposite address.
+//
+// Measured live on the prod box 2026-08-04, record
+// a Cloudflare anycast address :443 -> 10.0.50.4:34210, where two values could only
+// have come from
+// the other end:
+//
+//   - the PUBLIC Cloudflare src carried zen_country GB — GB is what Zenarmor
+//     fabricates for the PRIVATE host
+//   - the PRIVATE dst carried zen_country CA and city Toronto — Zenarmor's known
+//     anycast-wrong answer for CLOUDFLARE (#643 recorded exactly this)
+//
+// Both ends were wrong; only the dst was visible, because a public src re-resolves
+// itself through endpoint() and overwrites the bad merge, while a private dst has no
+// lookup of its own and nothing overwrites what the merge put there. That is what
+// made it look like a missing #639 guard when the guard was working correctly.
+//
+// Orientation is resolved ONCE for the record rather than per endpoint: a per-endpoint
+// match would happily accept a half-alignment, and two records that agree about one
+// address but not the other are not describing the same connection — merging half of
+// one into the other is worse than merging none of it.
+func MergeGeo(dst *Record, zen Record) {
+	if dst == nil {
+		return
+	}
+	switch {
+	case sameEndpointAddr(zen.SrcAddr, dst.SrcAddr) && sameEndpointAddr(zen.DstAddr, dst.DstAddr):
+		mergeGeoEndpoint(&dst.Geo.Src, zen.Geo.Src)
+		mergeGeoEndpoint(&dst.Geo.Dst, zen.Geo.Dst)
+	case sameEndpointAddr(zen.SrcAddr, dst.DstAddr) && sameEndpointAddr(zen.DstAddr, dst.SrcAddr):
+		// Reversed: the Zenarmor document describes the same connection from the
+		// other side. Fold each end onto the address it actually describes.
+		mergeGeoEndpoint(&dst.Geo.Src, zen.Geo.Dst)
+		mergeGeoEndpoint(&dst.Geo.Dst, zen.Geo.Src)
+	default:
+		// Neither orientation lines up, so the two records disagree about which
+		// connection this is. Merge NOTHING and count it: silently falling back to a
+		// positional merge here is precisely the bug this function was rewritten for,
+		// and a mismatch that is invisible cannot be diagnosed.
+		GeoEnrichment.countMergeMismatch()
+	}
+}
+
+// sameEndpointAddr reports whether two records name the same host at an endpoint.
+//
+// Unmapped on both sides for the same reason IsGloballyRoutable does it: the two
+// lanes need not agree on representation, and ::ffff:10.0.50.4 and 10.0.50.4 are one
+// address wearing two costumes. Comparing them raw would report a mismatch on every
+// merged record where the receivers happened to differ, which would quietly turn the
+// merge off rather than fix it.
+//
+// An invalid address matches nothing, including another invalid one — "we do not
+// know this end" is not evidence that two records describe the same host.
+func sameEndpointAddr(a, b netip.Addr) bool {
+	if !a.IsValid() || !b.IsValid() {
+		return false
+	}
+	return a.Unmap() == b.Unmap()
 }
 
 // mergeGeoEndpoint folds one Zenarmor-side endpoint's geo into one NetFlow-side
@@ -320,8 +404,9 @@ func (e *GeoEnricher) Stats() GeoStats {
 		return GeoStats{}
 	}
 	return GeoStats{
-		Enriched:             e.enriched.Load(),
-		CountryAgreements:    e.agreements.Load(),
-		CountryDisagreements: e.disagreements.Load(),
+		Enriched:               e.enriched.Load(),
+		CountryAgreements:      e.agreements.Load(),
+		CountryDisagreements:   e.disagreements.Load(),
+		MergeAddressMismatches: e.mergeMismatches.Load(),
 	}
 }

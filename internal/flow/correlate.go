@@ -454,7 +454,10 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 		// Zenarmor's geo is an enrichment input, not the answer: MergeGeo re-applies
 		// #520's per-field precedence so a merged record means the same thing as a
 		// Zenarmor-only one. The NetFlow side already carries OUR lookup.
-		MergeGeo(&out.Geo, e.zen.Geo)
+		// Whole records, not bare GeoInfo: the addresses are what say which end is
+		// which, and a Zenarmor conn document can describe this connection from the
+		// opposite side (#647).
+		MergeGeo(&out, *e.zen)
 		// The BYTE BASIS of the figure the delta ratio is about to compare (#604).
 		// out came from a NetFlow half, so the Zenarmor lane's own record-level flag
 		// does not survive the merge unless it is carried explicitly.

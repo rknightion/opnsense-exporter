@@ -319,12 +319,13 @@ type flowCollector struct {
 	dnsCacheMisses   *prometheus.Desc
 	dnsCacheRejected *prometheus.Desc
 
-	geoLookups      *prometheus.Desc
-	geoReloads      *prometheus.Desc
-	geoDownloads    *prometheus.Desc
-	geoBuildTime    *prometheus.Desc
-	geoEnriched     *prometheus.Desc
-	geoCountryAgree *prometheus.Desc
+	geoLookups       *prometheus.Desc
+	geoReloads       *prometheus.Desc
+	geoDownloads     *prometheus.Desc
+	geoBuildTime     *prometheus.Desc
+	geoEnriched      *prometheus.Desc
+	geoCountryAgree  *prometheus.Desc
+	geoMergeMismatch *prometheus.Desc
 }
 
 func init() {
@@ -569,6 +570,19 @@ func (c *flowCollector) registerGeoIP() {
 			"compare against.",
 		resultLabel,
 	)
+	c.geoMergeMismatch = buildPrometheusDesc(c.subsystem, "geoip_merge_address_mismatches_total",
+		"Correlator merges where the Zenarmor record and the NetFlow record could not be lined up "+
+			"in EITHER orientation, so no geo was folded across (#647). Expected at or near zero: "+
+			"the correlator paired the two records by connection key, so their naming the same two "+
+			"addresses is the premise of the merge rather than a hope. A climbing value means that "+
+			"premise is false and merged records are silently missing Zenarmor's contribution. It is "+
+			"counted because the alternative this replaced was worse and invisible - endpoints were "+
+			"previously paired by POSITION, so a Zenarmor document describing the connection from the "+
+			"initiator's side attached each end's geo to the opposite address, which on a private "+
+			"destination produced a fabricated country carrying a maxmind provenance for an address "+
+			"MaxMind categorically declines to look up.",
+		nil,
+	)
 }
 
 // collectGeoIP emits the GeoIP self-metrics, and emits nothing when no database was
@@ -600,6 +614,7 @@ func (c *flowCollector) collectGeoIP(ch chan<- prometheus.Metric) {
 	counter(c.geoEnriched, int64(st.Flow.Enriched)) //nolint:gosec // a counter, never near 2^63
 	counter(c.geoCountryAgree, int64(st.Flow.CountryAgreements), "agree")
 	counter(c.geoCountryAgree, int64(st.Flow.CountryDisagreements), "disagree")
+	counter(c.geoMergeMismatch, int64(st.Flow.MergeAddressMismatches)) //nolint:gosec // a counter, never near 2^63
 
 	// Omitted entirely for a database that is not loaded: a zero build time reads as
 	// 1970 and would fire every staleness alert written against it, forever.
@@ -1091,6 +1106,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.geoBuildTime
 	ch <- c.geoEnriched
 	ch <- c.geoCountryAgree
+	ch <- c.geoMergeMismatch
 }
 
 // Update emits the accumulator's current totals. It ignores the client: this

@@ -442,12 +442,32 @@ def build(b: Builder):
              "nothing to compare against.",
     )
 
+    geoip_merge_mismatch = b.ts(
+        "GeoIP Merge: Unpairable Records",
+        [(f'sum(rate({sel("opnsense_flow_geoip_merge_address_mismatches_total")}[{RATE}]))',
+          "unpairable/sec")],
+        unit="ops",
+        desc="Correlator merges where the Zenarmor record and the NetFlow record could not be lined "
+             "up in EITHER orientation, so no geo was folded across. Expected FLAT AT ZERO: the "
+             "correlator already paired the two records by connection key, so their naming the same "
+             "two addresses is the premise of the merge rather than a hope. Anything above zero means "
+             "that premise is false and merged records are silently missing Zenarmor's city and its "
+             "zen_country audit value — worth investigating the correlator's keying rather than this "
+             "panel. It exists because what it replaced was worse and invisible (#647): endpoints "
+             "were paired by POSITION, so a Zenarmor conn document describing the connection from the "
+             "initiator's side attached each end's geo to the OPPOSITE address. On a private "
+             "destination that produced a fabricated country whose provenance claimed maxmind — for "
+             "an address MaxMind categorically declines to look up. Absent entirely without Zenarmor, "
+             "since nothing is being merged.",
+    )
+
     b.tab("Flow Pipeline", [
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("NetFlow Receiver", [ingest, ingest_bytes, funnel, decoder],
               present="has_flow_netflow"),
         b.row("NetFlow Repairs & Topology", [repairs, policy_route, nat_pairs, ifindex], present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs]),
-        b.row("GeoIP Enrichment", [geoip_lookups, geoip_freshness, geoip_agreement],
+        b.row("GeoIP Enrichment", [geoip_lookups, geoip_freshness, geoip_agreement,
+                                   geoip_merge_mismatch],
               present="has_flow_geoip"),
     ], present="has_flow")
