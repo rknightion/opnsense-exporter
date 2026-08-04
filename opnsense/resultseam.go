@@ -57,6 +57,13 @@ var seamPublishedKeys = map[fetchshare.Key]string{
 	fetchshare.KeyInterfaces:         "FetchInterfaces",
 	fetchshare.KeyIPsecPhase1:        "FetchIPsecPhase1",
 	fetchshare.KeyOpenVPNInstances:   "FetchOpenVPNInstances",
+	// KeySystemInformation (#640): the second consumer is FetchFirmwareStatus,
+	// not the enrichment refresher — it reads the FreeBSD version so the
+	// firmware collector's os_version label doesn't need its own duplicate
+	// systemInformation request. Published from fetchSystemInfo (the unexported
+	// helper FetchSystemResources fans out to), not from FetchSystemResources
+	// itself.
+	fetchshare.KeySystemInformation: "fetchSystemInfo",
 }
 
 // Endpoints reached by a second consumer that are deliberately NOT published,

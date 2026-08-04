@@ -60,6 +60,23 @@ var reUnboundQuery = regexp.MustCompile(
 var reUnboundServfail = regexp.MustCompile(
 	`^\[\d+:\d+\]\s+error:\s+SERVFAIL\s+<(\S+)\s+(\S+)\s+(\S+)>:\s+.*?,\s+at zone\s+(\S+)\s+from\s+(\S+)\s+(.*?)\s*$`)
 
+// A cached negative answer being replayed rather than a live resolution failure
+// (#641) — operationally different: this SERVFAIL never touched an upstream on
+// this query, unbound is serving a prior failure straight out of the cache. The
+// trailer is SHORTER than reUnboundServfail's, so a loosened live regex would
+// blur the two signals together; this is its own branch instead.
+//
+// Captured verbatim:
+//
+//	[9284:5] error: SERVFAIL <wpad.saga-turtle.ts.net. A IN>: SERVFAIL in cache
+//	[9284:6] error: SERVFAIL <wpad.saga-turtle.ts.net. AAAA IN>: SERVFAIL in cache
+//
+// dns.cached is the discriminator: present (and only present) on this shape, so
+// a consumer can tell a cached SERVFAIL apart from a live one without having to
+// know which regex an absent dns.error_zone/dns.upstream implies.
+var reUnboundServfailCached = regexp.MustCompile(
+	`^\[\d+:\d+\]\s+error:\s+SERVFAIL\s+<(\S+)\s+(\S+)\s+(\S+)>:\s+SERVFAIL in cache\s*$`)
+
 // The DNSBL/blocklist subsystem (#631) — dnsbl_module status chatter plus the
 // service lifecycle pair. This was originally left to fall through to a generic
 // record; that call is reversed as of #631 because it turned out to be the
@@ -139,6 +156,16 @@ func parseUnbound(env Envelope, snap *enrich.Snapshot, _ func(table string)) (lo
 		set("dns.error_zone", m[4])
 		set("dns.upstream", m[5])
 		set("dns.error", m[6])
+		return rec, true
+	}
+
+	if m := reUnboundServfailCached.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dns.query_name", m[1])
+		set("dns.query_type", m[2])
+		set("dns.query_class", m[3])
+		set("dns.rcode", "SERVFAIL")
+		set("dns.cached", "true")
 		return rec, true
 	}
 

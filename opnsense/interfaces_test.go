@@ -346,6 +346,48 @@ func TestFetchInterfaces_LinkStateTriState(t *testing.T) {
 	}
 }
 
+// TestFetchInterfaces_LineRateValid guards #644: line rate is a kernel
+// placeholder (not a real negotiated rate) on carrier-less pseudo-devices,
+// which the kernel reports with LinkStateUnknown ("0" on the wire). Real
+// captured values: pppoe0 reads exactly 64000 (ng_pppoe's static baudrate,
+// not the underlying WAN's actual ~1Gbit/s FTTP rate); tailscale0/zen0 read
+// 0. Both must be suppressed (LineRateValid=false). A genuinely-down
+// Ethernet NIC (LinkStateDown, not Unknown) must NOT be suppressed — its
+// line rate is real data even if link is currently down.
+func TestFetchInterfaces_LineRateValid(t *testing.T) {
+	cases := []struct {
+		name      string
+		linkState string // wire value
+		lineRate  string
+		wantValid bool
+	}{
+		{"pppoe0 live capture: unknown link state, 64000 placeholder", "0", "64000 bit/s", false},
+		{"tailscale0-shaped: unknown link state, 0 placeholder", "0", "0 bit/s", false},
+		{"zen0-shaped: unknown link state, 0 placeholder", "0", "0 bit/s", false},
+		{"ethernet up: real negotiated rate kept", "2", "1000000000 bit/s", true},
+		{"ethernet genuinely down: not unknown, rate kept", "1", "1000000000 bit/s", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet","link state":"` + tc.linkState + `","line rate":"` + tc.lineRate + `","mtu":"1500"}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfaces()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			if got := data.Interfaces[0].LineRateValid; got != tc.wantValid {
+				t.Errorf("LineRateValid = %v, want %v (linkState=%q lineRate=%q)", got, tc.wantValid, tc.linkState, tc.lineRate)
+			}
+		})
+	}
+}
+
 // TestFetchInterfaces_TolerantFieldParsing guards #102: one malformed/missing
 // counter field on a single interface must degrade only that metric to 0, not
 // abort the whole fetch and blank every interface's metrics for the scrape.

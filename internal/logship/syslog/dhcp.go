@@ -47,6 +47,11 @@ var iscActions = map[string]string{
 	"DHCPNAK":      "nak",
 	"DHCPRELEASE":  "release",
 	"DHCPEXPIRE":   "expire",
+	// DHCPDECLINE/DHCPINFORM (#641) already matched dnsmasqLineRE and fell through
+	// only because this allowlist did not name them — verified against the parser
+	// on a live capture, not assumed from the tracking issue.
+	"DHCPDECLINE": "decline",
+	"DHCPINFORM":  "inform",
 }
 
 // keaActions maps the tail of a Kea DHCP{4,6}_LEASE_* message id onto the same
@@ -57,6 +62,11 @@ var keaActions = map[string]string{
 	"REUSE":  "reuse",
 	"RENEW":  "request",
 	"EXPIRE": "expire",
+	// ADVERT (#641) is DHCP6_LEASE_ADVERT — the DHCPv6 server's response to a
+	// SOLICIT, the v6 counterpart of a v4 OFFER, named "advertise" rather than
+	// reusing "offer" so the two backends stay distinguishable. The highest-volume
+	// of the #641 gaps (41-125/day on the live box).
+	"ADVERT": "advertise",
 }
 
 var (
@@ -69,6 +79,14 @@ var (
 	// <name> to the DHCP lease of <ip> because the name exists in …". A real recurring
 	// naming misconfiguration, worth surfacing as a name_conflict event.
 	dnsmasqConflictRE = regexp.MustCompile(`^not giving name (\S+) to the DHCP lease of (\S+)`)
+
+	// dnsmasqAbandonRE matches dnsmasq's standalone "abandoning lease to <mac> of
+	// <ip>" line (#641) — a distinct sentence, not the parenthesized
+	// DHCP<VERB>(iface) shape dnsmasqLineRE handles. Signals an address conflict,
+	// the same operational event a DHCPDECLINE from the client reports; captured on
+	// a live box 2 seconds after the matching DHCPDECLINE, same MAC/IP/pid. This
+	// parser does not attempt to correlate the pair — that is a downstream question.
+	dnsmasqAbandonRE = regexp.MustCompile(`^abandoning lease to (\S+) of (\S+)`)
 
 	macRE = regexp.MustCompile(`^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$`)
 
@@ -115,6 +133,17 @@ var (
 	// keaAllocFailClassesRE reads the client-class list off the CLASSES line. An
 	// attribute: the list is named by whoever wrote the classification rules.
 	keaAllocFailClassesRE = regexp.MustCompile(`with classes: (\S.*)$`)
+
+	// keaReleaseNARE matches Kea's DHCPv6 NA-release message pair (#641): a real
+	// release fires both DHCP6_RELEASE_NA and DHCP6_RELEASE_NA_EXPIRED, back to
+	// back, same tid — the memfile lease record expiring is a direct consequence of
+	// the release, not a second event. (The tracking issue names this
+	// "DHCP6_RELEASE_NA_EXP"; the box actually emits the full "_EXPIRED" suffix.)
+	// The capture group is empty for the bare RELEASE_NA line.
+	keaReleaseNARE = regexp.MustCompile(`^DHCP6_RELEASE_NA(_EXPIRED)?$`)
+	// keaBindingAddrRE reads the address and IAID out of "…: binding for address
+	// <addr> and iaid=<n> …". iaid is a diagnostic attribute, never a label.
+	keaBindingAddrRE = regexp.MustCompile(`binding for address (\S+) and iaid=(\d+)`)
 )
 
 // keaAllocFailLines maps kea's ALLOC_ENGINE_V6_ALLOC_FAIL* suffix onto the closed
@@ -169,6 +198,10 @@ type dhcpFields struct {
 	allocFailSubnet   string
 	allocFailSubnetID string
 	allocFailClasses  string
+
+	// iaid is the DHCPv6 identity association id off a NA-release line (#641). A
+	// diagnostic, never a label.
+	iaid string
 }
 
 // parseDHCP dispatches on the shape of the line, not on the program name: a box
@@ -192,6 +225,8 @@ func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	switch {
 	case dnsmasqConflictRE.MatchString(msg):
 		f, ok = parseDnsmasqConflict(msg)
+	case dnsmasqAbandonRE.MatchString(msg):
+		f, ok = parseDnsmasqAbandon(msg)
 	case dnsmasqLineRE.MatchString(msg):
 		f, ok = parseDnsmasqDHCP(msg)
 	case isISCDHCPLine(msg):
@@ -224,6 +259,7 @@ func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	set("dhcp.alloc_fail_subnet", f.allocFailSubnet)
 	set("dhcp.alloc_fail_subnet_id", f.allocFailSubnetID)
 	set("dhcp.alloc_fail_classes", f.allocFailClasses)
+	set("dhcp.iaid", f.iaid)
 
 	if name, ok := ifaceName(snap, f.iface); ok {
 		set("interface.name", name)
@@ -469,6 +505,35 @@ func parseKeaDHCP(msg string) (dhcpFields, bool) {
 		return f, true
 	}
 
+	// DHCPv6 NA-release pair (#641). See keaReleaseNARE's doc comment for why only
+	// the bare RELEASE_NA line sets f.action: it mirrors the ALLOC_FAIL burst's
+	// counted-once-per-failure pattern above, so a downstream counter gated on
+	// dhcp.action counts the release once, not twice, per real release.
+	if rm := keaReleaseNARE.FindStringSubmatch(id); rm != nil {
+		if d := keaDUIDRE.FindStringSubmatch(rest); d != nil {
+			f.duid = d[1]
+		}
+		if t := keaTIDRE.FindStringSubmatch(rest); t != nil {
+			f.tid = t[1]
+		}
+		if b := keaBindingAddrRE.FindStringSubmatch(rest); b != nil && isIPAddr(b[1]) {
+			f.ip = b[1]
+			f.iaid = b[2]
+		}
+		if rm[1] == "" {
+			// DHCP6_RELEASE_NA: the primary, counted event.
+			f.action = "release"
+		} else {
+			// DHCP6_RELEASE_NA_EXPIRED: same release, memfile-expiry detail only —
+			// deliberately NOT f.action, see above.
+			f.keaEvent = "release_expired"
+		}
+		if f.duid == "" && f.ip == "" {
+			return dhcpFields{}, false
+		}
+		return f, true
+	}
+
 	// Control-plane command. On this box the bulk of these are the exporter's own
 	// lease polling (lease6-get-page, config-get) reflected back; structuring them
 	// labels that volume as control-plane so it is filterable, rather than leaving it
@@ -495,6 +560,27 @@ func parseDnsmasqConflict(msg string) (dhcpFields, bool) {
 	f := dhcpFields{action: "name_conflict", hostname: m[1]}
 	if isIPAddr(m[2]) {
 		f.ip = m[2]
+	}
+	return f, true
+}
+
+// parseDnsmasqAbandon structures dnsmasq's standalone "abandoning lease to <mac>
+// of <ip>" line (#641): dnsmasq refusing to keep handing out a lease because of
+// an address conflict, the server-side counterpart of a client's DHCPDECLINE.
+func parseDnsmasqAbandon(msg string) (dhcpFields, bool) {
+	m := dnsmasqAbandonRE.FindStringSubmatch(msg)
+	if m == nil {
+		return dhcpFields{}, false
+	}
+	f := dhcpFields{action: "abandoned"}
+	if isMAC(m[1]) {
+		f.mac = m[1]
+	}
+	if isIPAddr(m[2]) {
+		f.ip = m[2]
+	}
+	if f.ip == "" && f.mac == "" {
+		return dhcpFields{}, false
 	}
 	return f, true
 }

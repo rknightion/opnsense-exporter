@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
 )
 
 // Internal response DTOs matching OPNsense JSON exactly.
@@ -461,6 +463,29 @@ func (c *Client) fetchSystemInfo(data *SystemResources) *APICallError {
 	if len(resp.Versions) > 2 {
 		data.Info.OpenSSLVersion = strings.TrimPrefix(resp.Versions[2], "OpenSSL ")
 	}
+
+	// #640/#571: publish a snapshot of what THIS fetch decoded under the shared
+	// result seam, so FetchFirmwareStatus can read the FreeBSD version without
+	// making its own duplicate systemInformation request — that second request
+	// is exactly the kind of duplicate the seam exists to remove (see the
+	// package comment on internal/fetchshare and the "second consumer" rule on
+	// seamPublishedKeys in resultseam.go).
+	//
+	// Deliberately a FRESH *SystemInfo built from the locally computed fields,
+	// not data.Info itself: FetchSystemResources runs fetchCPUType concurrently
+	// against the SAME data.Info pointer (it writes the disjoint
+	// CPUModel/CPUCores/CPUThreads fields), so publishing that shared, still-
+	// mutating pointer could hand a reader on another goroutine a value that
+	// changes under it after publish — exactly what the seam's "v must not be
+	// mutated afterwards" contract forbids. This copy only ever carries the
+	// fields this function itself just finished writing, so it is safe to hand
+	// to any reader from the moment it is published.
+	c.publishResult(fetchshare.KeySystemInformation, &SystemInfo{
+		Hostname:        data.Info.Hostname,
+		OPNsenseVersion: data.Info.OPNsenseVersion,
+		FreeBSDVersion:  data.Info.FreeBSDVersion,
+		OpenSSLVersion:  data.Info.OpenSSLVersion,
+	})
 
 	return nil
 }

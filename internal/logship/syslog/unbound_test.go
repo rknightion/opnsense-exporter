@@ -187,6 +187,58 @@ func TestUnboundServfail(t *testing.T) {
 	}
 }
 
+// TestUnboundServfailCached: a cached negative answer being replayed (#641) is a
+// different operational signal from a live resolution failure — the reused
+// trailer is SHORTER than reUnboundServfail's ", at zone <z> from <upstream>
+// <detail>" shape, so it needs its own branch, not a loosened live regex.
+// Distinguished from the live shape via dns.cached, which is absent on a live
+// SERVFAIL.
+//
+// Captured verbatim from a live box for #641, 2026-08-04:
+//
+//	[9284:5] error: SERVFAIL <wpad.saga-turtle.ts.net. A IN>: SERVFAIL in cache
+//	[9284:6] error: SERVFAIL <wpad.saga-turtle.ts.net. AAAA IN>: SERVFAIL in cache
+func TestUnboundServfailCached(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want map[string]string
+	}{
+		{
+			name: "cached SERVFAIL, A",
+			msg:  "[9284:5] error: SERVFAIL <wpad.saga-turtle.ts.net. A IN>: SERVFAIL in cache",
+			want: map[string]string{
+				"dns.query_name":  "wpad.saga-turtle.ts.net.",
+				"dns.query_type":  "A",
+				"dns.query_class": "IN",
+				"dns.rcode":       "SERVFAIL",
+				"dns.cached":      "true",
+			},
+		},
+		{
+			name: "cached SERVFAIL, AAAA",
+			msg:  "[9284:6] error: SERVFAIL <wpad.saga-turtle.ts.net. AAAA IN>: SERVFAIL in cache",
+			want: map[string]string{
+				"dns.query_name":  "wpad.saga-turtle.ts.net.",
+				"dns.query_type":  "AAAA",
+				"dns.query_class": "IN",
+				"dns.rcode":       "SERVFAIL",
+				"dns.cached":      "true",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, ok := parseUnbound(unboundEnv(tc.msg), nil, func(string) {})
+			if !ok {
+				t.Fatalf("parseUnbound returned ok=false for %q", tc.msg)
+			}
+			assertAttrs(t, rec, tc.want)
+			assertNoAttrs(t, rec, "dns.error_zone", "dns.upstream", "dns.error")
+		})
+	}
+}
+
 // TestUnboundNonQueryLinesDegrade: the remaining unbound chatter — the multi-line
 // stats/histogram dump, unrecognized plugin status lines, and a bare startup line
 // missing its [pid:thread] prefix — is deliberately NOT parsed. It returns ok=false

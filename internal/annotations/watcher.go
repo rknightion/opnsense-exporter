@@ -333,6 +333,12 @@ func (w *Watcher) detect() ([]Event, error) {
 			}
 		}
 
+		// coalesceInstants collects the valid instants for a Coalesce watch,
+		// deferred to coalescedEvents below rather than turned into a
+		// candidate Event per metric here — grouping needs to see every
+		// series in the family first.
+		var coalesceInstants []time.Time
+
 		for _, metric := range family.GetMetric() {
 			labels := labelMap(metric)
 			value := metricValue(metric)
@@ -352,6 +358,11 @@ func (w *Watcher) detect() ([]Event, error) {
 				continue
 			}
 
+			if watch.Coalesce {
+				coalesceInstants = append(coalesceInstants, at)
+				continue
+			}
+
 			detail := detailValues(watch, labels)
 			key := dedupeKey(watch.Kind, labels[instanceLabel], detail, at.UnixMilli())
 			if _, ok := w.seen[key]; ok {
@@ -364,6 +375,10 @@ func (w *Watcher) detect() ([]Event, error) {
 				Tags: w.tags(watch, labels[instanceLabel], detail),
 			})
 		}
+
+		if watch.Coalesce {
+			events = append(events, w.coalescedEvents(watch, coalesceInstants)...)
+		}
 	}
 
 	// Oldest first, so a cycle-cap truncation drops the newest events rather than
@@ -375,6 +390,59 @@ func (w *Watcher) detect() ([]Event, error) {
 		return events[i].Kind < events[j].Kind
 	})
 	return events, nil
+}
+
+// coalescedEvents groups a Coalesce watch's valid instants by the instant they
+// share and returns one event per group (#637): a metric whose series
+// legitimately fan out to dozens at the same moment — a Suricata ruleset sync
+// touches every rule file at once — would otherwise propose one candidate per
+// series, saturating MaxPerCycle and self-inflicting a rate limit on every
+// sync. Grouping first collapses that fan-out into the single "a sync
+// happened" event the annotation is actually for, whether the group ends up
+// holding one series or sixty-two.
+//
+// Grouped strictly by instant, not by (instant, instance): two appliances
+// syncing at the exact same second would merge into one annotation. That is
+// an accepted trade of the frozen design (#637) — the shape this watch exists
+// for is many series on ONE appliance moving together, and a coalesced
+// annotation carries no per-entity tag (including instance) regardless.
+func (w *Watcher) coalescedEvents(watch Watch, instants []time.Time) []Event {
+	if len(instants) == 0 {
+		return nil
+	}
+	counts := map[int64]int{}
+	for _, at := range instants {
+		counts[at.UnixMilli()]++
+	}
+
+	var events []Event
+	for millis, count := range counts {
+		// Empty instance and nil detail: a coalesced annotation carries no
+		// per-entity tags, so its dedupe key must match what decodeTags
+		// recovers from the tags it is actually given below — see markSeen.
+		key := dedupeKey(watch.Kind, "", nil, millis)
+		if _, ok := w.seen[key]; ok {
+			continue
+		}
+		events = append(events, Event{
+			Kind: watch.Kind,
+			Text: coalescedText(watch, count),
+			At:   time.UnixMilli(millis),
+			Tags: w.tags(watch, "", nil),
+		})
+	}
+	return events
+}
+
+// coalescedText renders a Coalesce watch's group annotation. watch.Text must
+// contain exactly one %d (the count) followed by one %s (an empty string, or
+// "s", for the plural) — see the Coalesce field's doc comment in catalog.go.
+func coalescedText(watch Watch, count int) string {
+	plural := "s"
+	if count == 1 {
+		plural = ""
+	}
+	return fmt.Sprintf(watch.Text, count, plural)
 }
 
 func (w *Watcher) markSeen(event Event) {

@@ -125,6 +125,25 @@ type Interface struct {
 	LinkState            int   // 0=down, 1=up, 2=unknown — derived enum, cannot overflow; stays int
 	LineRate             int64 // bits per second (10 Gbit > int32)
 
+	// LineRateValid is false when LinkState is LinkStateUnknown — the
+	// FreeBSD kernel reports that link-state value for carrier-less
+	// pseudo-devices (PPPoE, tun/tailscale, and similar overlay interfaces;
+	// see the LinkState constants above and #86), and the "line rate" field
+	// on those devices is not a real negotiated rate. Prod pppoe0 reports
+	// exactly 64000 — ng_pppoe's static kernel baudrate placeholder, not the
+	// underlying WAN's actual ~1 Gbit/s FTTP rate; tailscale0 and zen0
+	// report 0 for the same reason (#644). Publishing either as
+	// line_rate_bits would make any rate(bytes)/line_rate_bits utilisation
+	// panel on those devices wrong by orders of magnitude, and silently so.
+	//
+	// This is keyed on the kernel's own carrier-sense classification (device
+	// CLASS), not a device-name allowlist, so it does not rot when a tunnel
+	// is renamed, and it needs no second endpoint: LinkState is decoded from
+	// the same row as LineRate. A genuinely down-but-carrier-capable
+	// Ethernet NIC reports LinkStateDown, not LinkStateUnknown, so its
+	// (possibly stale) line rate still passes through unaffected.
+	LineRateValid bool
+
 	// UnknownProtocolPackets is the kernel's "packets for unknown protocol"
 	// counter: traffic delivered to this interface that the network stack
 	// could not classify. Parsed with the same tolerant safeAtoi convention as
@@ -297,6 +316,7 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			InputQueueDropsValid:    inputQueueDropsValid,
 			LinkState:               linkState,
 			LineRate:                parseLineRateBits(v.LineRate),
+			LineRateValid:           linkState != LinkStateUnknown,
 			UnknownProtocolPackets:  safeAtoi(v.PacketsForUnknownProtocol),
 			AttachOrStatResetUptime: attachOrResetUptime,
 			AttachOrStatResetValid:  attachOrResetValid,
@@ -336,6 +356,17 @@ type interfaceOverviewRow struct {
 	// AdminUp below, which is the ifconfig "up" flag (runtime OS state):
 	// this is "configured enabled in Interfaces > [name]", independent of
 	// whatever the kernel currently reports (#584).
+	//
+	// CORRECTION (#642, 2026-08-04): this field was previously documented
+	// as "a plain always-populated config bool ... set on every row
+	// unconditionally" with "no legitimate absent state". That was WRONG —
+	// live data contradicts it: the "enabled" key is entirely ABSENT from
+	// interfaces_info for every unassigned row (verified: ixl2, ixl3, igb0,
+	// igb1, enc0, pflog0), present only for rows OPNsense has a config
+	// identifier for. The resulting behaviour is still correct by accident:
+	// Go zero-values a missing bool to false, and "no config to enable" IS
+	// "not enabled" — so nothing here needs presence-gating, only the old
+	// comment was false.
 	Enabled bool `json:"enabled"`
 
 	// Configured addresses. OPNsense serves these as arrays of objects, one per

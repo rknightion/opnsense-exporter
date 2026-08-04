@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
 )
 
 func TestFetchFirmwareStatus_Success(t *testing.T) {
@@ -87,12 +89,16 @@ func TestFetchFirmwareStatus_StatusNone(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// When status is "none", defaults from NewFirmwareStatus() should remain
+	// #640: identity is now resolved unconditionally (top-level-wins-else-
+	// nested), independent of LastCheck, so a top-level product_id present here
+	// populates even though status=none carries no last_check. os_version has
+	// no equivalent unconditional source on this endpoint, so it stays at the
+	// NewFirmwareStatus() default (no seam wired in this test).
 	if firmware.OsVersion != "undefined" {
 		t.Errorf("expected OsVersion 'undefined' for status=none, got %q", firmware.OsVersion)
 	}
-	if firmware.ProductId != "undefined" {
-		t.Errorf("expected ProductId 'undefined' for status=none, got %q", firmware.ProductId)
+	if firmware.ProductId != "opnsense" {
+		t.Errorf("expected ProductId 'opnsense' (#640: identity resolves regardless of check state), got %q", firmware.ProductId)
 	}
 	if firmware.NeedsReboot != false {
 		t.Errorf("expected NeedsReboot false for status=none, got %v", firmware.NeedsReboot)
@@ -916,5 +922,231 @@ func TestFetchFirmwareInfo_PluginPolicyAndSize(t *testing.T) {
 		if got != w {
 			t.Errorf("plugin[%d]: got %+v, want %+v", i, got, w)
 		}
+	}
+}
+
+// TestFetchFirmwareStatus_UncheckedBoxBareEnvelope covers #640: the bare
+// three-key envelope observed live on a 26.7.1_1 box that has never run a
+// firmware update check.
+//
+// This is a REAL CAPTURE, not a synthesized shape (CLAUDE.md's fixture rule):
+// GET core/firmware/status on that box returned exactly product/status/
+// status_msg at the top level -- no last_check, no top-level product_id/
+// product_version/product_abi -- with the identity present unconditionally
+// nested under product.*. product_series/product_arch are real fields on
+// that payload too but are not consumed, matching the "not decoded" pattern
+// used elsewhere in this file (all_packages/all_sets).
+func TestFetchFirmwareStatus_UncheckedBoxBareEnvelope(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"product": {
+				"product_id": "opnsense",
+				"product_version": "26.7.1_1",
+				"product_abi": "26.7",
+				"product_series": "26.7",
+				"product_arch": "amd64"
+			},
+			"status": "none",
+			"status_msg": ""
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if firmware.ProductId != "opnsense" {
+		t.Errorf("expected ProductId 'opnsense', got %q", firmware.ProductId)
+	}
+	if firmware.ProductVersion != "26.7.1_1" {
+		t.Errorf("expected ProductVersion '26.7.1_1', got %q", firmware.ProductVersion)
+	}
+	if firmware.ProductABI != "26.7" {
+		t.Errorf("expected ProductABI '26.7', got %q", firmware.ProductABI)
+	}
+
+	// os_version is not recoverable from this endpoint before a check has run
+	// (#640), and no result seam is wired in this test, so it stays at the
+	// NewFirmwareStatus() default.
+	if firmware.OsVersion != "undefined" {
+		t.Errorf("expected OsVersion 'undefined' (no seam wired), got %q", firmware.OsVersion)
+	}
+
+	// Genuinely check-dependent fields must stay at their zero/false/absent
+	// defaults -- no check has run, so there is genuinely no answer, and
+	// fabricating one would be worse than "undefined".
+	if firmware.CheckPresent {
+		t.Errorf("expected CheckPresent=false, got %v", firmware.CheckPresent)
+	}
+	if firmware.LastCheckTimestamp != 0 {
+		t.Errorf("expected LastCheckTimestamp=0, got %v", firmware.LastCheckTimestamp)
+	}
+	if firmware.NewPackages != 0 || firmware.UpgradePackages != 0 {
+		t.Errorf("expected zero package counts, got new=%d upgrade=%d", firmware.NewPackages, firmware.UpgradePackages)
+	}
+	if firmware.DowngradePackages != 0 || firmware.ReinstallPackages != 0 {
+		t.Errorf("expected zero downgrade/reinstall counts, got %d/%d", firmware.DowngradePackages, firmware.ReinstallPackages)
+	}
+	if firmware.RemovePackages != 0 || firmware.UpgradeSets != 0 {
+		t.Errorf("expected zero remove/upgrade-set counts, got %d/%d", firmware.RemovePackages, firmware.UpgradeSets)
+	}
+}
+
+// TestFetchFirmwareStatus_IdentityTopLevelWinsOverNested is the main
+// regression guard for #640: when BOTH a legacy top-level copy and the
+// nested product.* copy are present with DIFFERENT values, top-level must
+// win -- this is what keeps a checked box's existing behaviour completely
+// unchanged by the fix.
+func TestFetchFirmwareStatus_IdentityTopLevelWinsOverNested(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check": "2026-07-25T10:00:00",
+			"product_id": "top-level-id",
+			"product_version": "top-level-version",
+			"product_abi": "top-level-abi",
+			"product": {
+				"product_id": "nested-id",
+				"product_version": "nested-version",
+				"product_abi": "nested-abi"
+			}
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.ProductId != "top-level-id" {
+		t.Errorf("expected top-level ProductId to win, got %q", firmware.ProductId)
+	}
+	if firmware.ProductVersion != "top-level-version" {
+		t.Errorf("expected top-level ProductVersion to win, got %q", firmware.ProductVersion)
+	}
+	if firmware.ProductABI != "top-level-abi" {
+		t.Errorf("expected top-level ProductABI to win, got %q", firmware.ProductABI)
+	}
+}
+
+// TestFetchFirmwareStatus_IdentityFallsBackToNested is the flip side: with no
+// top-level copy at all, the nested product.* copy is used.
+func TestFetchFirmwareStatus_IdentityFallsBackToNested(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"product": {
+				"product_id": "nested-id",
+				"product_version": "nested-version",
+				"product_abi": "nested-abi"
+			},
+			"status": "none"
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.ProductId != "nested-id" {
+		t.Errorf("expected nested ProductId fallback, got %q", firmware.ProductId)
+	}
+	if firmware.ProductVersion != "nested-version" {
+		t.Errorf("expected nested ProductVersion fallback, got %q", firmware.ProductVersion)
+	}
+	if firmware.ProductABI != "nested-abi" {
+		t.Errorf("expected nested ProductABI fallback, got %q", firmware.ProductABI)
+	}
+}
+
+// TestFetchFirmwareStatus_OsVersionFromSeam covers #640/#571: on an unchecked
+// box (no answer of its own), os_version is filled in from the shared result
+// seam's most recent systemInformation snapshot instead of a duplicate
+// request to the box.
+func TestFetchFirmwareStatus_OsVersionFromSeam(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"product": {"product_id": "opnsense"}, "status": "none"}`))
+	})
+	defer server.Close()
+
+	seam := fetchshare.New()
+	client.SetResultSeam(seam)
+	seam.Publish(fetchshare.KeySystemInformation, &SystemInfo{FreeBSDVersion: "15.1-RELEASE-p1"})
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.OsVersion != "15.1-RELEASE-p1" {
+		t.Errorf("expected OsVersion from the seam, got %q", firmware.OsVersion)
+	}
+}
+
+// TestFetchFirmwareStatus_OsVersionSeamMiss covers the degrade-gracefully
+// half of #640: no seam wired at all, and a seam wired but with nothing
+// published under the key, both fall back to the "undefined" default rather
+// than erroring or fabricating a value.
+func TestFetchFirmwareStatus_OsVersionSeamMiss(t *testing.T) {
+	const body = `{"product": {"product_id": "opnsense"}, "status": "none"}`
+
+	t.Run("no seam wired", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		})
+		defer server.Close()
+
+		firmware, err := client.FetchFirmwareStatus()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if firmware.OsVersion != "undefined" {
+			t.Errorf("expected OsVersion 'undefined', got %q", firmware.OsVersion)
+		}
+	})
+
+	t.Run("seam wired but empty", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		})
+		defer server.Close()
+
+		client.SetResultSeam(fetchshare.New())
+
+		firmware, err := client.FetchFirmwareStatus()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if firmware.OsVersion != "undefined" {
+			t.Errorf("expected OsVersion 'undefined', got %q", firmware.OsVersion)
+		}
+	})
+}
+
+// TestFetchFirmwareStatus_OsVersionSeamDoesNotOverrideCheckedBox is a
+// regression guard: even with a fresh seam value available, a checked box's
+// own (legacy, gated) os_version must win. The seam is a fallback for when
+// this endpoint has no answer of its own, never an override of one it does
+// have.
+func TestFetchFirmwareStatus_OsVersionSeamDoesNotOverrideCheckedBox(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check": "2026-07-25T10:00:00",
+			"os_version": "FreeBSD 14.3-RELEASE-p14",
+			"product_id": "opnsense"
+		}`))
+	})
+	defer server.Close()
+
+	seam := fetchshare.New()
+	client.SetResultSeam(seam)
+	seam.Publish(fetchshare.KeySystemInformation, &SystemInfo{FreeBSDVersion: "15.1-RELEASE-p1"})
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.OsVersion != "FreeBSD 14.3-RELEASE-p14" {
+		t.Errorf("expected the endpoint's own os_version to win over the seam, got %q", firmware.OsVersion)
 	}
 }

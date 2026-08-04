@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
 )
 
 type firmwareStatusResponse struct {
@@ -83,8 +85,20 @@ type firmwareStatusResponse struct {
 	// that path working on any generation that omits the top-level key while
 	// letting the canonical location win.
 	UpgradeNeedsReboot *flexString `json:"upgrade_needs_reboot"`
-	Product            struct {
-		ProductCheck struct {
+	// Product carries the identity fields unconditionally (#640): live on a
+	// 26.7.1_1 box that has never run a firmware check, GET
+	// core/firmware/status returns exactly product/status/status_msg at the top
+	// level — no last_check, no top-level product_id/product_version/
+	// product_abi — with the identity present under product.* regardless.
+	// ProductID/ProductVersion/ProductAbi here are that unconditional copy,
+	// resolved against the legacy top-level fields top-level-wins-else-nested
+	// by productID()/productVersion()/productAbi() below — the same pattern
+	// upgradeNeedsReboot() already uses for product.product_check.
+	Product struct {
+		ProductID      string `json:"product_id"`
+		ProductVersion string `json:"product_version"`
+		ProductAbi     string `json:"product_abi"`
+		ProductCheck   struct {
 			UpgradeNeedsReboot string `json:"upgrade_needs_reboot"`
 		} `json:"product_check"`
 	} `json:"product"`
@@ -160,6 +174,32 @@ func (r *firmwareStatusResponse) upgradeNeedsReboot() bool {
 		return r.UpgradeNeedsReboot.String() == "1"
 	}
 	return r.Product.ProductCheck.UpgradeNeedsReboot == "1"
+}
+
+// productID, productVersion and productAbi resolve the three identity fields
+// top-level-wins-else-nested (#640): a legacy/checked box's top-level copy
+// wins when present, and every box — checked or not — falls back to the copy
+// nested under product.*, which FirmwareController.php populates
+// unconditionally. Mirrors upgradeNeedsReboot() above.
+func (r *firmwareStatusResponse) productID() string {
+	if r.ProductID != "" {
+		return r.ProductID
+	}
+	return r.Product.ProductID
+}
+
+func (r *firmwareStatusResponse) productVersion() string {
+	if r.ProductVersion != "" {
+		return r.ProductVersion
+	}
+	return r.Product.ProductVersion
+}
+
+func (r *firmwareStatusResponse) productAbi() string {
+	if r.ProductAbi != "" {
+		return r.ProductAbi
+	}
+	return r.Product.ProductAbi
 }
 
 // The two CLOSED state vocabularies upstream's firmware check can persist,
@@ -336,15 +376,35 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		return data, err
 	}
 
+	// Identity (#640): product_id/product_version/product_abi are present
+	// unconditionally under product.* — verified live on a 26.7.1_1 box that
+	// has never run a firmware check, which returns nothing but
+	// product/status/status_msg at the top level. Populated OUTSIDE the
+	// LastCheck gate below (unlike the check-dependent fields, which genuinely
+	// have no answer before a check has run), and only when the resolved value
+	// is non-empty, so a box with neither a top-level nor a nested copy keeps
+	// NewFirmwareStatus()'s "undefined" default rather than being overwritten
+	// with "".
+	if id := resp.productID(); id != "" {
+		data.ProductId = id
+	}
+	if v := resp.productVersion(); v != "" {
+		data.ProductVersion = v
+	}
+	if abi := resp.productAbi(); abi != "" {
+		data.ProductABI = abi
+	}
+
 	// OPNsense >= 25.x no longer flips the status field; a populated
 	// last_check is the signal that an update check has run and the rest of
 	// the payload is meaningful (upstream PR #101 / issue #100).
 	if resp.LastCheck != "" {
 		data.CheckPresent = true
+		// os_version (the FreeBSD version) is NOT present under product.* —
+		// unlike the three identity fields above, it genuinely only exists
+		// once a check has run (#640). This branch is therefore unchanged from
+		// before the fix; the fallback below only fires when this never runs.
 		data.OsVersion = resp.OsVersion
-		data.ProductABI = resp.ProductAbi
-		data.ProductId = resp.ProductID
-		data.ProductVersion = resp.ProductVersion
 		data.LastCheck = resp.LastCheck
 		data.NeedsReboot = resp.NeedsReboot == "1"
 		data.UpgradeNeedsReboot = resp.upgradeNeedsReboot()
@@ -381,6 +441,32 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 			})
 		}
 	}
+
+	// os_version fallback (#640): this endpoint never carries the FreeBSD
+	// version before a check has run, so on an unchecked box data.OsVersion is
+	// still NewFirmwareStatus()'s "undefined" sentinel at this point. Rather
+	// than have this COLD-tier (15m) collector make its own duplicate
+	// systemInformation request for data a second consumer already fetches,
+	// read the shared result seam (#571) that fetchSystemInfo publishes to on
+	// every one of its own (medium-tier, 60s default) polls.
+	//
+	// maxAge=20m is chosen to comfortably span this collector's own 15m poll
+	// interval: even if the operator has overridden the system collector down
+	// to something as slow as this collector's own default tier, whatever it
+	// last published is still well within the window. It is not unbounded,
+	// though — if the system collector is disabled entirely the seam simply
+	// never gets an entry and this always misses, which is the correct answer
+	// (no fabricated data), not a bug to work around with a longer window.
+	//
+	// A miss — seam not wired, system collector disabled, or nothing fresh
+	// enough — degrades to leaving OsVersion at "undefined"; it never turns
+	// into an error and never triggers a second request to the box.
+	if data.OsVersion == "undefined" {
+		if info, ok := fetchshare.Fresh[*SystemInfo](c.results, fetchshare.KeySystemInformation, 20*time.Minute); ok && info != nil && info.FreeBSDVersion != "" {
+			data.OsVersion = info.FreeBSDVersion
+		}
+	}
+
 	return data, nil
 }
 

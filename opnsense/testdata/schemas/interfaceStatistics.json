@@ -20,6 +20,10 @@
       "kind": "string"
     },
     {
+      "path": "statistics.*.collisions",
+      "kind": "number"
+    },
+    {
       "path": "statistics.*.dropped-packets",
       "kind": "number"
     },
@@ -36,7 +40,15 @@
       "kind": "number"
     },
     {
+      "path": "statistics.*.received-errors",
+      "kind": "number"
+    },
+    {
       "path": "statistics.*.received-packets",
+      "kind": "number"
+    },
+    {
+      "path": "statistics.*.send-errors",
       "kind": "number"
     },
     {

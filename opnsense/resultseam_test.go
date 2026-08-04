@@ -154,6 +154,7 @@ func seamKeyConstValue(ident string) string {
 		"KeyInterfaces":         fetchshare.KeyInterfaces,
 		"KeyIPsecPhase1":        fetchshare.KeyIPsecPhase1,
 		"KeyOpenVPNInstances":   fetchshare.KeyOpenVPNInstances,
+		"KeySystemInformation":  fetchshare.KeySystemInformation,
 	}[ident]
 	if !ok {
 		return ""

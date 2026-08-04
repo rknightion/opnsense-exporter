@@ -858,3 +858,174 @@ func TestInterfacesCollector_WrappedQueueDropsAreAbsent(t *testing.T) {
 		t.Errorf("ixl1 published a wrapped input_queue_drops of %v; the series must be absent", got)
 	}
 }
+
+// TestInterfacesCollector_LineRateSuppressedForCarrierlessDevice covers #644:
+// a device the kernel reports as LinkStateUnknown ("0" wire link state —
+// PPPoE, tun/tailscale, similar overlays) must emit NO line_rate_bits series,
+// since the kernel value there is a placeholder, not a real negotiated rate
+// (pppoe0 reads exactly 64000 on the reference box). An Ethernet device in
+// the same scrape must be unaffected.
+func TestInterfacesCollector_LineRateSuppressedForCarrierlessDevice(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/traffic/interface", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"interfaces": {
+				"pppoe0": {
+					"device": "pppoe0", "name": "WAN", "type": "PPPoE", "link state": "0",
+					"mtu": "1492", "line rate": "64000 bit/s"
+				},
+				"ixl0": {
+					"device": "ixl0", "name": "LAN", "type": "Ethernet", "link state": "2",
+					"mtu": "1500", "line rate": "1000000000 bit/s"
+				}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &interfacesCollector{subsystem: InterfacesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	rates := map[string]float64{}
+	for _, m := range collectMetrics(t, c, newCollectorTestClient(t, server)) {
+		if !hasFqName(m, "opnsense_interfaces_line_rate_bits") {
+			continue
+		}
+		rates[getMetricLabels(m)["device"]] = getMetricValue(m)
+	}
+
+	if _, ok := rates["pppoe0"]; ok {
+		t.Errorf("pppoe0 published a line_rate_bits series; the placeholder value must be suppressed, got %v", rates["pppoe0"])
+	}
+	if got, ok := rates["ixl0"]; !ok || got != 1000000000 {
+		t.Errorf("ixl0 line_rate_bits = %v (present=%v), want 1000000000", got, ok)
+	}
+}
+
+// TestInterfacesCollector_StatisticsGapFill_NoDoubleSource covers #642's
+// critical requirement: a device the traffic endpoint ALREADY covers must
+// never also get counters from the get_interface_statistics gap-fill branch,
+// or the two independently-drifting sources would make rate() nonsense. ixl0
+// is assigned (covered by the traffic endpoint) and also appears in the
+// statistics response with DIFFERENT figures — if gap-fill fired for it, the
+// mismatched values below would prove the double-source bug. ixl2 is NOT in
+// the traffic endpoint's response at all (mirrors the real unassigned-port
+// case from #642) and must be filled in from statistics alone.
+func TestInterfacesCollector_StatisticsGapFill_NoDoubleSource(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/traffic/interface", func(w http.ResponseWriter, r *http.Request) {
+		// ixl0 is ASSIGNED and gets its counters from here. ixl2 is absent —
+		// exactly like the live #642 case (OPNsense restricts this endpoint
+		// to interfaces with a config identifier).
+		w.Write([]byte(`{
+			"interfaces": {
+				"ixl0": {
+					"device": "ixl0", "name": "LAN", "type": "Ethernet", "link state": "2",
+					"mtu": "1500", "bytes received": "1000000", "bytes transmitted": "2000000",
+					"packets received": "123456", "packets transmitted": "654321",
+					"input errors": "1", "output errors": "2", "collisions": "0"
+				}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[
+			{"device":"ixl2","identifier":"","description":"Unassigned Interface ixl2","is_physical":true}
+		]}`))
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_interface_statistics", func(w http.ResponseWriter, r *http.Request) {
+		// ixl0's statistics-endpoint figures are DELIBERATELY DIFFERENT from
+		// the traffic-endpoint figures above: if the gap-fill branch ever
+		// emitted for a traffic-covered device, these mismatched numbers
+		// would appear as a second series and the test would catch it.
+		// ixl2 carries the real live #642 payload verbatim.
+		w.Write([]byte(`{"statistics":{
+		 "[LAN] (ixl0) / 98:b7:85:21:af:f2":{"name":"ixl0","network":"<Link#1>","address":"98:b7:85:21:af:f2","received-packets":999999999,"received-errors":999,"dropped-packets":0,"received-bytes":999999999,"sent-packets":999999999,"send-errors":999,"sent-bytes":999999999,"collisions":999},
+		 "[ixl2] / 98:b7:85:21:af:f4":{"name":"ixl2","network":"<Link#3>","address":"98:b7:85:21:af:f4","received-packets":281475478389769,"received-errors":0,"dropped-packets":0,"received-bytes":393185547668,"sent-packets":561408322,"send-errors":0,"sent-bytes":537868820722,"collisions":0}
+		}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &interfacesCollector{subsystem: InterfacesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	type series struct {
+		count int
+		last  float64
+	}
+	byNameDevice := map[string]series{}
+	for _, m := range collectMetrics(t, c, newCollectorTestClient(t, server)) {
+		name := ""
+		switch {
+		case hasFqName(m, "opnsense_interfaces_received_bytes_total"):
+			name = "received_bytes"
+		case hasFqName(m, "opnsense_interfaces_transmitted_bytes_total"):
+			name = "transmitted_bytes"
+		case hasFqName(m, "opnsense_interfaces_received_packets_total"):
+			name = "received_packets"
+		case hasFqName(m, "opnsense_interfaces_transmitted_packets_total"):
+			name = "transmitted_packets"
+		case hasFqName(m, "opnsense_interfaces_input_errors_total"):
+			name = "input_errors"
+		case hasFqName(m, "opnsense_interfaces_output_errors_total"):
+			name = "output_errors"
+		case hasFqName(m, "opnsense_interfaces_collisions_total"):
+			name = "collisions"
+		default:
+			continue
+		}
+		key := name + "|" + getMetricLabels(m)["device"]
+		e := byNameDevice[key]
+		e.count++
+		e.last = getMetricValue(m)
+		byNameDevice[key] = e
+	}
+
+	// ixl0: exactly ONE series per metric, and it must be the TRAFFIC-endpoint
+	// value (1000000), never the statistics-endpoint decoy (999999999) and
+	// never both (which would show count==2).
+	if e := byNameDevice["received_bytes|ixl0"]; e.count != 1 || e.last != 1000000 {
+		t.Errorf("ixl0 received_bytes_total: count=%d value=%v, want exactly 1 series at 1000000 (traffic endpoint must win, no double-source)", e.count, e.last)
+	}
+	if e := byNameDevice["input_errors|ixl0"]; e.count != 1 || e.last != 1 {
+		t.Errorf("ixl0 input_errors_total: count=%d value=%v, want exactly 1 series at 1", e.count, e.last)
+	}
+
+	// ixl2: absent from the traffic endpoint entirely, so gap-fill must be
+	// the ONLY source. Bytes and sent-packets are plausible and must be
+	// published; received-packets is the live #642 2^48 case and must be
+	// suppressed (absent), not published as either 0 or the corrupt figure.
+	if e := byNameDevice["received_bytes|ixl2"]; e.count != 1 || e.last != 393185547668 {
+		t.Errorf("ixl2 received_bytes_total: count=%d value=%v, want exactly 1 series at 393185547668 (gap-filled)", e.count, e.last)
+	}
+	if e := byNameDevice["transmitted_bytes|ixl2"]; e.count != 1 || e.last != 537868820722 {
+		t.Errorf("ixl2 transmitted_bytes_total: count=%d value=%v, want exactly 1 series at 537868820722", e.count, e.last)
+	}
+	if e := byNameDevice["transmitted_packets|ixl2"]; e.count != 1 || e.last != 561408322 {
+		t.Errorf("ixl2 transmitted_packets_total: count=%d value=%v, want exactly 1 series at 561408322", e.count, e.last)
+	}
+	if e, ok := byNameDevice["received_packets|ixl2"]; ok {
+		t.Errorf("ixl2 received_packets_total published despite the implausible 2^48 value: count=%d value=%v", e.count, e.last)
+	}
+	if e := byNameDevice["input_errors|ixl2"]; e.count != 1 || e.last != 0 {
+		t.Errorf("ixl2 input_errors_total: count=%d value=%v, want exactly 1 series at 0 (genuine zero, gap-filled)", e.count, e.last)
+	}
+	if e := byNameDevice["collisions|ixl2"]; e.count != 1 || e.last != 0 {
+		t.Errorf("ixl2 collisions_total: count=%d value=%v, want exactly 1 series at 0", e.count, e.last)
+	}
+
+	// ixl2's "interface" label must come from the overview description
+	// (there is no traffic-endpoint name for it), not be left empty.
+	for _, m := range collectMetrics(t, c, newCollectorTestClient(t, server)) {
+		if hasFqName(m, "opnsense_interfaces_received_bytes_total") && getMetricLabels(m)["device"] == "ixl2" {
+			if got := getMetricLabels(m)["interface"]; got != "Unassigned Interface ixl2" {
+				t.Errorf("ixl2 interface label = %q, want the overview description", got)
+			}
+		}
+	}
+}

@@ -80,12 +80,22 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		"The MTU value of the interface",
 		[]string{"interface", "device", "type"},
 	)
+	gapFillCaveat := " Covers every device netstat reports, assigned or not (#642): OPNsense's " +
+		"assigned-interfaces traffic endpoint (api/diagnostics/traffic/interface) is the primary " +
+		"source; a device it omits because it has no config identifier (e.g. a WAN's physical port " +
+		"underneath a logical PPPoE interface) is filled in from get_interface_statistics instead, " +
+		"never both — exactly one source wins per device."
+	gapFillPacketCaveat := gapFillCaveat + " On a gap-filled device the packet count (not the byte " +
+		"count) is additionally suppressed when it is physically impossible given the paired byte " +
+		"count on the same row (fewer than 20 bytes/packet, below the minimum Ethernet frame) — the " +
+		"series is absent rather than a fabricated or corrupt count."
+
 	c.bytesReceived = buildPrometheusDesc(c.subsystem, "received_bytes_total",
-		"Bytes received on this interface by interface name and device",
+		"Bytes received on this interface by interface name and device."+gapFillCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.bytesTransmited = buildPrometheusDesc(c.subsystem, "transmitted_bytes_total",
-		"Bytes transmitted on this interface by interface name and device",
+		"Bytes transmitted on this interface by interface name and device."+gapFillCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.multicastsReceived = buildPrometheusDesc(c.subsystem, "received_multicasts_total",
@@ -97,23 +107,23 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		[]string{"interface", "device", "type"},
 	)
 	c.inputErrors = buildPrometheusDesc(c.subsystem, "input_errors_total",
-		"Input errors on this interface by interface name and device",
+		"Input errors on this interface by interface name and device."+gapFillCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.outputErrors = buildPrometheusDesc(c.subsystem, "output_errors_total",
-		"Output errors on this interface by interface name and device",
+		"Output errors on this interface by interface name and device."+gapFillCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.collisions = buildPrometheusDesc(c.subsystem, "collisions_total",
-		"Collisions on this interface by interface name and device",
+		"Collisions on this interface by interface name and device."+gapFillCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.receivedPackets = buildPrometheusDesc(c.subsystem, "received_packets_total",
-		"Total packets received on this interface by interface name and device",
+		"Total packets received on this interface by interface name and device."+gapFillPacketCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.transmittedPackets = buildPrometheusDesc(c.subsystem, "transmitted_packets_total",
-		"Total packets transmitted on this interface by interface name and device",
+		"Total packets transmitted on this interface by interface name and device."+gapFillPacketCaveat,
 		[]string{"interface", "device", "type"},
 	)
 	c.sendQueueLength = buildPrometheusDesc(c.subsystem, "send_queue_length",
@@ -137,7 +147,7 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		[]string{"interface", "device", "type"},
 	)
 	c.lineRate = buildPrometheusDesc(c.subsystem, "line_rate_bits",
-		"Line rate in bits per second on this interface by interface name and device",
+		"Line rate in bits per second on this interface by interface name and device. Not emitted for a carrier-less pseudo-device (the kernel's link state reads unknown — PPPoE, tun/tailscale, similar overlay interfaces): the kernel reports a placeholder there rather than a real negotiated rate (ng_pppoe reports a static 64000 regardless of the underlying WAN's actual speed), and publishing it would make rate(bytes)/line_rate_bits wrong by orders of magnitude (#644). Ethernet devices are unaffected.",
 		[]string{"interface", "device", "type"},
 	)
 	c.unknownProtocolPackets = buildPrometheusDesc(c.subsystem, "unknown_protocol_packets_total",
@@ -338,7 +348,16 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 			c.update(ch, c.inputQueueDrops, prometheus.CounterValue, float64(iface.InputQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
 		}
 		c.update(ch, c.linkState, prometheus.GaugeValue, float64(iface.LinkState), iface.Name, iface.Device, iface.Type, c.instance)
-		c.update(ch, c.lineRate, prometheus.GaugeValue, float64(iface.LineRate), iface.Name, iface.Device, iface.Type, c.instance)
+		// Presence-gated (#644): a carrier-less pseudo-device (LinkState
+		// Unknown — PPPoE, tun/tailscale, similar overlays) reports a line
+		// rate that is a kernel placeholder, not a real negotiated speed
+		// (pppoe0=64000, tailscale0/zen0=0 on the reference box). A
+		// suppressed series cannot be divided by; a published garbage one
+		// silently corrupts any rate(bytes)/line_rate_bits panel. See
+		// Interface.LineRateValid.
+		if iface.LineRateValid {
+			c.update(ch, c.lineRate, prometheus.GaugeValue, float64(iface.LineRate), iface.Name, iface.Device, iface.Type, c.instance)
+		}
 		c.update(ch, c.unknownProtocolPackets, prometheus.CounterValue, float64(iface.UnknownProtocolPackets), iface.Name, iface.Device, iface.Type, c.instance)
 		if iface.AttachOrStatResetValid {
 			// Presence-gated: the marker is a point-in-time uptime reading, not a
@@ -356,11 +375,21 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 	// per-device loop needs a lookup rather than a field already on hand. A
 	// device present in the overview but absent from the traffic fetch (e.g. an
 	// unassigned VLAN sub-interface) degrades to empty labels, never an error.
+	//
+	// trafficCoveredDevices (#642) is the explicit, testable record of which
+	// devices this scrape already got counters for from the traffic
+	// endpoint's own loop above. It is what the get_interface_statistics
+	// gap-fill branch at the bottom of this function checks before emitting
+	// anything, so that branch can add ONLY devices missing here — never a
+	// second, independently-drifting series for one already covered.
+	// TestInterfacesCollector_StatisticsGapFill_NoDoubleSource pins this.
 	driverByDevice := make(map[string]string, len(data.Interfaces))
 	hwOffloadByDevice := make(map[string]string, len(data.Interfaces))
+	trafficCoveredDevices := make(map[string]bool, len(data.Interfaces))
 	for _, iface := range data.Interfaces {
 		driverByDevice[iface.Device] = iface.Driver
 		hwOffloadByDevice[iface.Device] = iface.HWOffloadCapabilities
+		trafficCoveredDevices[iface.Device] = true
 	}
 
 	overview, oerr := client.FetchInterfacesOverview()
@@ -375,7 +404,16 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		return oerr
 	}
 
+	// descriptionByDevice (#642) supplies the "interface" label for a
+	// gap-filled device below, matching the precedent already established
+	// for admin_up/admin_enabled just below: for an unassigned/pseudo device
+	// the traffic endpoint never had a friendly name for it, so the overview
+	// endpoint's description ("Unassigned Interface" etc.) is what stands in.
+	descriptionByDevice := make(map[string]string, len(overview.Interfaces))
+
 	for _, iface := range overview.Interfaces {
+		descriptionByDevice[iface.Device] = iface.Description
+
 		adminVal := 0.0
 		if iface.AdminUp {
 			adminVal = 1.0
@@ -383,11 +421,12 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.update(ch, c.adminUp, prometheus.GaugeValue, adminVal,
 			iface.Description, iface.Device, c.instance)
 
-		// admin_enabled is unconditional, like admin_up above: Enabled is a
-		// plain always-populated config bool (OverviewController's
-		// parseIfInfo sets it on every row unconditionally), not sparse
-		// hardware-dependent data like the LAGG/bridge/SFP blocks below, so
-		// there is no legitimate "absent" state to presence-gate against
+		// admin_enabled emits unconditionally, like admin_up above. Enabled
+		// zero-values to false when the box's "enabled" key is absent (see
+		// the CORRECTION on interfaceOverviewRow.Enabled's field comment in
+		// opnsense/interfaces.go, #642) — which is semantically right for
+		// an unassigned interface ("no config to enable"), so there is no
+		// case where presence-gating this value would change anything
 		// (#584).
 		enabledVal := 0.0
 		if iface.Enabled {
@@ -490,6 +529,48 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		// indistinguishable from a healthy device.
 		if l.OutputQueueDropsPresent {
 			c.update(ch, c.outputQueueDrops, prometheus.CounterValue, l.OutputQueueDrops, l.Device, c.instance)
+		}
+
+		// Gap-fill (#642): api/diagnostics/traffic/interface only covers
+		// ASSIGNED interfaces — OPNsense's own restriction, not ours — so a
+		// purely physical, unassigned port (e.g. ixl2, the SFP+ NIC
+		// underneath a PPPoE WAN) gets no traffic/error counters there at
+		// all. get_interface_statistics's AF_LINK row covers every device,
+		// so it is the only source for that gap. This branch is the ONLY
+		// place that source is used for these series, and only for a device
+		// trafficCoveredDevices does NOT already have — never both, or two
+		// independently-drifting series would exist for one counter and any
+		// combined rate() would be nonsense.
+		// See TestInterfacesCollector_StatisticsGapFill_NoDoubleSource.
+		if trafficCoveredDevices[l.Device] {
+			continue
+		}
+		name := descriptionByDevice[l.Device]
+		if name == "" {
+			name = l.Device
+		}
+		// "type" is empty for a gap-filled device: get_interface_statistics
+		// carries no equivalent of the traffic endpoint's "type" field, and
+		// interfaces_info's overview data has no directly matching concept
+		// either — degrading to an empty label matches the existing
+		// precedent for driverByDevice/hwOffloadByDevice above rather than
+		// guessing at a value.
+		c.update(ch, c.bytesReceived, prometheus.CounterValue, l.ReceivedBytes, name, l.Device, "", c.instance)
+		c.update(ch, c.bytesTransmited, prometheus.CounterValue, l.SentBytes, name, l.Device, "", c.instance)
+		if l.ReceivedPacketsPresent {
+			c.update(ch, c.receivedPackets, prometheus.CounterValue, l.ReceivedPackets, name, l.Device, "", c.instance)
+		}
+		if l.SentPacketsPresent {
+			c.update(ch, c.transmittedPackets, prometheus.CounterValue, l.SentPackets, name, l.Device, "", c.instance)
+		}
+		if l.InputErrorsPresent {
+			c.update(ch, c.inputErrors, prometheus.CounterValue, l.InputErrors, name, l.Device, "", c.instance)
+		}
+		if l.OutputErrorsPresent {
+			c.update(ch, c.outputErrors, prometheus.CounterValue, l.OutputErrors, name, l.Device, "", c.instance)
+		}
+		if l.CollisionsPresent {
+			c.update(ch, c.collisions, prometheus.CounterValue, l.Collisions, name, l.Device, "", c.instance)
 		}
 	}
 

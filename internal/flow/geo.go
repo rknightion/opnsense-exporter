@@ -33,16 +33,27 @@ const (
 // build (read off a live firewall: database_type "GeoIP2-City", 126 MB against
 // CrowdSec's 63 MB stock GeoLite2), so overwriting its answer with a free GeoLite2
 // lookup can replace a better attribution with a worse one. Keeping both is what lets
-// that cost be measured rather than assumed.
+// that cost be measured rather than assumed. "Never discarded" is about these RAW
+// fields specifically (#639): a private/reserved address still keeps its Zen* values
+// for audit even though the RESOLVED fields below (Country/Continent/City/Region) and
+// their *Source provenance are suppressed for it.
 type GeoEndpoint struct {
 	// Country is the ISO 3166-1 alpha-2 code the dashboards read. Resolved
 	// ours-wins-else-Zenarmor; CountrySource names which answered.
 	Country   string
 	Continent string
-	// City is resolved Zenarmor-wins-else-ours; CitySource names which answered.
+	// City is resolved ours-wins-else-Zenarmor (#643); CitySource names which
+	// answered. This reverses the original zenarmor-wins call: on the deployment that
+	// call was made against, Zenarmor's city data turned out to be anycast-wrong for
+	// remote destinations (Cloudflare/anycast resolving to Montreal from a London
+	// line) and subdivision-level for local ones ("England"), while the deployment
+	// runs GeoLite2-City specifically to get city/region without depending on
+	// Zenarmor at all.
 	City string
 	// Region is the most specific subdivision, resolved with City and from the same
-	// record, so CitySource covers it too. NOTE the format differs by source and the
+	// record, so CitySource covers it too and follows the same #643 precedence.
+	// Neither field is ever resolved for a private/reserved address (#639), whichever
+	// source would have answered. NOTE the format differs by source and the
 	// provenance attribute is how a consumer tells them apart: MaxMind gives the ISO
 	// 3166-2 code ("ENG"), Zenarmor gives a name ("England"). Neither is normalised
 	// into the other, because inventing a mapping would be fabricating data.
@@ -156,30 +167,48 @@ func (e *GeoEnricher) endpoint(g *GeoEndpoint, addr netip.Addr) bool {
 		res, hit = e.lk.Lookup(addr)
 	}
 
+	// #639: an address in private/reserved space (RFC1918, RFC4193 ULA, loopback,
+	// link-local, unspecified - and the v4-mapped form of any of those, since
+	// IsGloballyRoutable unwraps them first) gets no RESOLVED geo from ANY source. Our
+	// own database already enforces this on its own arm - Lookup returns Result{},
+	// false for such an address, so res is always zero here and always was - which is
+	// exactly why the bug was invisible on the MaxMind path and only live on
+	// Zenarmor's: the switches below gate the Zenarmor fallback arms on it explicitly.
+	// Deliberately keyed on the ADDRESS, never on topology scope: the AAISP routed
+	// IPv6 prefix is publicly routable and legitimately geolocated GB even though it
+	// is scoped "local" on this box's topology - keying the guard on scope instead
+	// would wrongly blind that case.
+	//
+	// This does NOT touch the raw Zen* fields: they are retained regardless (see the
+	// GeoEndpoint doc comment), so Zenarmor's answer for a private address stays
+	// visible for audit - it just cannot reach Country/Continent/City/Region.
+	private := !geoip.IsGloballyRoutable(addr)
+
 	// Country and continent: OURS WINS. The dashboards read this field, so its
 	// meaning must not vary by which receiver happened to see the flow. Zenarmor's
 	// value stays in ZenCountry either way.
 	switch {
 	case res.CountryISO != "":
 		g.Country, g.CountrySource = res.CountryISO, GeoSourceMaxMind
-	case g.ZenCountry != "":
+	case g.ZenCountry != "" && !private:
 		g.Country, g.CountrySource = g.ZenCountry, GeoSourceZenarmor
 	}
 	switch {
 	case res.ContinentCode != "":
 		g.Continent = res.ContinentCode
-	case g.ZenContinent != "":
+	case g.ZenContinent != "" && !private:
 		g.Continent = g.ZenContinent
 	}
 
-	// City and region: ZENARMOR WINS when present, ours as the fallback. Theirs is a
-	// commercial GeoIP2-City build; ours is the only source on the vast majority of
-	// boxes, which have no Zenarmor at all.
+	// City and region (#643): OURS WINS when present, Zenarmor as the fallback. This
+	// reverses the original zenarmor-wins call - see the GeoEndpoint.City doc comment
+	// for why - and follows the same private-address guard as country/continent
+	// above.
 	switch {
-	case g.ZenCity != "" || g.ZenRegion != "":
-		g.City, g.Region, g.CitySource = g.ZenCity, g.ZenRegion, GeoSourceZenarmor
 	case res.City != "" || res.RegionISO != "":
 		g.City, g.Region, g.CitySource = res.City, res.RegionISO, GeoSourceMaxMind
+	case (g.ZenCity != "" || g.ZenRegion != "") && !private:
+		g.City, g.Region, g.CitySource = g.ZenCity, g.ZenRegion, GeoSourceZenarmor
 	}
 
 	// ASN: ours only.
@@ -245,20 +274,43 @@ func MergeGeo(dst *GeoInfo, zen GeoInfo) {
 	mergeGeoEndpoint(&dst.Dst, zen.Dst)
 }
 
+// mergeGeoEndpoint folds one Zenarmor-side endpoint's geo into one NetFlow-side
+// endpoint's geo.
+//
+// #639/#643 TRAP, fixed here: this reads zen's RESOLVED fields (zen.Country,
+// zen.City, zen.CountrySource, zen.CitySource, zen.Continent) - NEVER the raw Zen*
+// fields copied below. The Zenarmor-side record already ran through endpoint()
+// against the exact same address dst was itself resolved against (the Zenarmor
+// receiver calls Enrich() on its own record before it ever reaches the correlator),
+// which is where #639's private-address guard and #643's MaxMind-wins-city
+// precedence are enforced. So zen.Country/zen.City already carry both correctly.
+// Re-deriving from the raw Zen* fields here - as an earlier version of this function
+// did - silently bypasses both on every merged record: a private address gets a
+// fabricated country again, and Zenarmor's anycast-wrong city wins over MaxMind's
+// regardless of the switch in endpoint(). That is exactly the shape the #639 prod
+// evidence was measured on: opnsense_source="merged" records, not endpoint()-only
+// ones.
 func mergeGeoEndpoint(dst *GeoEndpoint, zen GeoEndpoint) {
+	// Raw Zenarmor values are retained unconditionally, regardless of address: the
+	// private-address guard suppresses only the resolved fields below, never these.
 	dst.ZenCountry, dst.ZenContinent = zen.ZenCountry, zen.ZenContinent
 	dst.ZenCity, dst.ZenRegion = zen.ZenCity, zen.ZenRegion
 
-	// Country: ours already won if our database answered, which CountrySource records.
-	if dst.CountrySource != GeoSourceMaxMind && dst.ZenCountry != "" {
-		dst.Country, dst.CountrySource = dst.ZenCountry, GeoSourceZenarmor
+	// Country: ours already won if our database answered, which CountrySource
+	// records. zen.Country is empty when Zenarmor had nothing OR when #639's guard
+	// suppressed it on the zen side's own Enrich() pass - either way there is nothing
+	// safe to merge in.
+	if dst.CountrySource != GeoSourceMaxMind && zen.Country != "" {
+		dst.Country, dst.CountrySource = zen.Country, zen.CountrySource
 	}
 	if dst.Continent == "" {
-		dst.Continent = dst.ZenContinent
+		dst.Continent = zen.Continent
 	}
-	// City: Zenarmor wins outright.
-	if dst.ZenCity != "" || dst.ZenRegion != "" {
-		dst.City, dst.Region, dst.CitySource = dst.ZenCity, dst.ZenRegion, GeoSourceZenarmor
+	// City/region (#643): MaxMind wins here too - only fall back to Zenarmor's
+	// already-guarded, already-resolved city when dst has none of its own from
+	// MaxMind.
+	if dst.CitySource != GeoSourceMaxMind && zen.City != "" {
+		dst.City, dst.Region, dst.CitySource = zen.City, zen.Region, zen.CitySource
 	}
 }
 

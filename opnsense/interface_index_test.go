@@ -230,3 +230,121 @@ func TestFetchInterfaceStatistics_ServerError(t *testing.T) {
 		t.Fatal("expected an error on a 500")
 	}
 }
+
+// TestFetchInterfaceStatistics_ReadsErrorAndCollisionCounters covers #642:
+// received-errors/send-errors/collisions are decoded from the AF_LINK row
+// alongside dropped-packets, using the liveInterfaceStatisticsFixture above
+// (real captured shape, already carrying these keys — they were simply
+// discarded before this change).
+func TestFetchInterfaceStatistics_ReadsErrorAndCollisionCounters(t *testing.T) {
+	c := indexClient(t, liveInterfaceStatisticsFixture, http.StatusOK)
+	got, _ := c.FetchInterfaceStatistics()
+
+	links := make(map[string]InterfaceLinkStats, len(got.Links))
+	for _, l := range got.Links {
+		links[l.Device] = l
+	}
+
+	ixl0 := links["ixl0"]
+	if !ixl0.InputErrorsPresent || ixl0.InputErrors != 50 {
+		t.Errorf("ixl0 InputErrors = %+v, want 50 present", ixl0)
+	}
+	if !ixl0.OutputErrorsPresent || ixl0.OutputErrors != 0 {
+		t.Errorf("ixl0 OutputErrors = %+v, want 0 present (genuine zero, not absence)", ixl0)
+	}
+	if !ixl0.CollisionsPresent || ixl0.Collisions != 0 {
+		t.Errorf("ixl0 Collisions = %+v, want 0 present", ixl0)
+	}
+	if ixl0.ReceivedBytes != 383093557281 || ixl0.SentBytes != 316537354094 {
+		t.Errorf("ixl0 bytes = %+v", ixl0)
+	}
+	if !ixl0.ReceivedPacketsPresent || ixl0.ReceivedPackets != 419866764 {
+		t.Errorf("ixl0 ReceivedPackets = %+v, want 419866764 present (plausible)", ixl0)
+	}
+	if !ixl0.SentPacketsPresent || ixl0.SentPackets != 381907348 {
+		t.Errorf("ixl0 SentPackets = %+v, want 381907348 present (plausible)", ixl0)
+	}
+
+	ts := links["tailscale0"]
+	if !ts.InputErrorsPresent || ts.InputErrors != 0 {
+		t.Errorf("tailscale0 InputErrors = %+v, want 0 present", ts)
+	}
+	if !ts.CollisionsPresent || ts.Collisions != 0 {
+		t.Errorf("tailscale0 Collisions = %+v, want 0 present", ts)
+	}
+}
+
+// An address row (and any row lacking the keys) must not report these
+// counters as present — presence must come only from the AF_LINK row
+// actually carrying the key, never a fabricated zero.
+func TestFetchInterfaceStatistics_AbsentErrorCountersAreNotZero(t *testing.T) {
+	c := indexClient(t, `{"statistics":{
+	 "(vtnet0)":{"name":"vtnet0","network":"<Link#1>","address":"52:54:00:11:22:33","received-packets":1,"received-bytes":100,"sent-packets":1,"sent-bytes":100}
+	}}`, http.StatusOK)
+	got, _ := c.FetchInterfaceStatistics()
+	if len(got.Links) != 1 {
+		t.Fatalf("got %d link rows, want 1", len(got.Links))
+	}
+	l := got.Links[0]
+	if l.InputErrorsPresent || l.OutputErrorsPresent || l.CollisionsPresent {
+		t.Errorf("absent error/collision keys reported as present: %+v", l)
+	}
+}
+
+// TestFetchInterfaceStatistics_ImplausiblePacketCountSuppressed pins #642's
+// live ixl2 case verbatim: received-packets = 281,475,478,389,769
+// (0x100001de95031, exactly 2^48 plus a plausible count — bit 48 stuck high)
+// against received-bytes = 393,185,547,668 is ~0.0014 bytes/packet, far below
+// the 20 bytes/packet floor (below the minimum Ethernet frame). The packet
+// series must be suppressed; the byte series (which is NOT implausible) and
+// the healthy sent-packets figure on the SAME row must not be affected.
+func TestFetchInterfaceStatistics_ImplausiblePacketCountSuppressed(t *testing.T) {
+	c := indexClient(t, `{"statistics":{
+	 "[ixl2] / 98:b7:85:21:af:f4":{"name":"ixl2","network":"<Link#3>","address":"98:b7:85:21:af:f4","received-packets":281475478389769,"received-errors":0,"dropped-packets":0,"received-bytes":393185547668,"sent-packets":561408322,"send-errors":0,"sent-bytes":537868820722,"collisions":0}
+	}}`, http.StatusOK)
+	got, _ := c.FetchInterfaceStatistics()
+	if len(got.Links) != 1 {
+		t.Fatalf("got %d link rows, want 1", len(got.Links))
+	}
+	l := got.Links[0]
+	if l.ReceivedPacketsPresent {
+		t.Errorf("implausible received-packets (2^48 case) was not suppressed: %+v", l)
+	}
+	if l.ReceivedBytes != 393185547668 {
+		t.Errorf("received-bytes must still be published: got %v", l.ReceivedBytes)
+	}
+	if !l.SentPacketsPresent || l.SentPackets != 561408322 {
+		t.Errorf("the healthy sent-packets figure on the same row was wrongly affected: %+v", l)
+	}
+	if !l.SentPacketsPresent {
+		t.Fatal("sent-packets wrongly suppressed")
+	}
+}
+
+// TestPacketCountImplausible pins the exact predicate: below 20 bytes/packet
+// is implausible, packets<=0 is never flagged (division-by-zero guard, #642
+// point 4 — an idle device legitimately reports 0/0 and must not be
+// suppressed), and the boundary is inclusive of 20 (only STRICTLY less than
+// 20 is implausible).
+func TestPacketCountImplausible(t *testing.T) {
+	cases := []struct {
+		name           string
+		packets, bytes float64
+		want           bool
+	}{
+		{"ixl2 live capture", 281475478389769, 393185547668, true},
+		{"healthy ratio", 1000, 1400000, false},
+		{"zero packets, zero bytes (idle device)", 0, 0, false},
+		{"zero packets, nonzero bytes (nonsensical but not our call)", 0, 100, false},
+		{"exactly at the 20 bytes/packet floor", 100, 2000, false},
+		{"just under the floor", 100, 1999, true},
+		{"negative packets (should never occur, must not panic/flag oddly)", -1, 100, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := packetCountImplausible(tc.packets, tc.bytes); got != tc.want {
+				t.Errorf("packetCountImplausible(%v, %v) = %v, want %v", tc.packets, tc.bytes, got, tc.want)
+			}
+		})
+	}
+}

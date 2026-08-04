@@ -63,7 +63,48 @@ type interfaceStatisticsRow struct {
 	// netstat on a dev box (tailscale0 oqdrops=8, API reported 8). It is
 	// present ONLY on the AF_LINK row, so a pointer distinguishes "the box did
 	// not report it" from a genuine zero.
+	//
+	// There is no equivalent INPUT-drop counter anywhere in this payload: the
+	// only drop key on the wire is this one, and it lands on the OUTPUT side
+	// per the libxo/PHP quirk above. #642 confirmed this on a live capture
+	// where netstat's own Idrop column (3081 on ixl2) has no counterpart here
+	// at all (dropped-packets reads 0 for the same interface at the same
+	// time). Do not repurpose this field as an input-drop counter for a
+	// gap-filled device — there is nothing to source that from.
 	DroppedPackets *float64 `json:"dropped-packets"`
+
+	// InputErrors/OutputErrors/Collisions are IFCOUNTER_IERRORS
+	// ("received-errors"), IFCOUNTER_OERRORS ("send-errors") and
+	// IFCOUNTER_COLLISIONS ("collisions"). Like DroppedPackets above, they
+	// are present ONLY on the AF_LINK row, so a pointer distinguishes "the
+	// box did not report it" from a genuine zero (#642).
+	InputErrors  *float64 `json:"received-errors"`
+	OutputErrors *float64 `json:"send-errors"`
+	Collisions   *float64 `json:"collisions"`
+}
+
+// packetCountImplausible reports whether a packet count is physically
+// impossible given the byte count reported on the SAME row: fewer than 20
+// bytes per packet is below the minimum Ethernet frame, so no genuine packet
+// count can produce it. It only applies when packets > 0 — an idle device
+// legitimately reports 0 packets against 0 bytes, and dividing by a zero
+// packet count must never suppress that (#642).
+//
+// This widens the implausible-value guard beyond parseQueueDropCounter's
+// int32-wrap check (opnsense/interfaces.go), which does not catch this case.
+// Prod ixl2 reports received-packets = 281,475,478,389,769
+// (0x100001de95031 — exactly 2^48 plus a plausible count: the low bits
+// increment correctly with real traffic, bit 48 is simply stuck high)
+// against received-bytes = 393,185,547,668, ~0.0014 bytes/packet. A
+// magnitude ceiling is deliberately NOT used: 2^48 is theoretically
+// reachable on a fast enough link over a long enough uptime, so a bare
+// threshold would eventually reject a real count. The bytes/packet
+// cross-check does not have that failure mode.
+func packetCountImplausible(packets, bytes float64) bool {
+	if packets <= 0 {
+		return false
+	}
+	return bytes/packets < 20
 }
 
 // InterfaceFamilyTraffic is one device's traffic for one address family,
@@ -77,12 +118,53 @@ type InterfaceFamilyTraffic struct {
 }
 
 // InterfaceLinkStats holds the per-device counters that only the AF_LINK row
-// carries.
+// carries: the original OutputQueueDrops, plus (#642) the full gap-fill
+// counter set used for devices api/diagnostics/traffic/interface
+// (FetchInterfaces) does not cover. That endpoint is OPNsense's own
+// restriction to interfaces with a config identifier, so a purely physical,
+// unassigned port — e.g. ixl2, the SFP+ NIC underneath a PPPoE WAN — has no
+// counters there at all, even though this endpoint's AF_LINK row carries a
+// full set for it same as for any assigned device.
+//
+// This struct carries the raw parsed values for EVERY device the response
+// returns (#642 point 3: uniform rule, no physical-vs-pseudo classification
+// here). It is the CALLER's job — the collector, which alone holds both this
+// fetch and FetchInterfaces's — to decide, per device, whether to use this
+// gap-fill data or the traffic endpoint's own counters, and NEVER both: two
+// independent sources for one counter would drift and make any rate() over
+// the combined series meaningless. See interfacesCollector.Update's
+// trafficCoveredDevices for that join, and
+// TestInterfacesCollector_StatisticsGapFill_NoDoubleSource for the
+// regression guard.
 type InterfaceLinkStats struct {
 	Device string
 
 	OutputQueueDrops        float64
 	OutputQueueDropsPresent bool
+
+	// ReceivedBytes/SentBytes are read unconditionally: nothing on the
+	// reference box has ever shown these implausible, unlike the packet
+	// counters below.
+	ReceivedBytes float64
+	SentBytes     float64
+
+	// ReceivedPackets/SentPackets are independently presence-gated by
+	// packetCountImplausible against their own row's paired byte count: a
+	// device can have a corrupt received-packets figure and a perfectly
+	// good sent-packets figure in the same row (ixl2, live), so each
+	// direction is checked on its own rather than gating the whole row on
+	// one bad field.
+	ReceivedPackets        float64
+	ReceivedPacketsPresent bool
+	SentPackets            float64
+	SentPacketsPresent     bool
+
+	InputErrors         float64
+	InputErrorsPresent  bool
+	OutputErrors        float64
+	OutputErrorsPresent bool
+	Collisions          float64
+	CollisionsPresent   bool
 }
 
 // InterfaceStatistics is the parsed get_interface_statistics payload beyond the
@@ -155,6 +237,28 @@ func (c *Client) FetchInterfaceStatistics() (InterfaceStatistics, *APICallError)
 			if row.DroppedPackets != nil {
 				l.OutputQueueDrops = *row.DroppedPackets
 				l.OutputQueueDropsPresent = true
+			}
+			if row.InputErrors != nil {
+				l.InputErrors = *row.InputErrors
+				l.InputErrorsPresent = true
+			}
+			if row.OutputErrors != nil {
+				l.OutputErrors = *row.OutputErrors
+				l.OutputErrorsPresent = true
+			}
+			if row.Collisions != nil {
+				l.Collisions = *row.Collisions
+				l.CollisionsPresent = true
+			}
+			l.ReceivedBytes = row.ReceivedBytes
+			l.SentBytes = row.SentBytes
+			if !packetCountImplausible(row.ReceivedPackets, row.ReceivedBytes) {
+				l.ReceivedPackets = row.ReceivedPackets
+				l.ReceivedPacketsPresent = true
+			}
+			if !packetCountImplausible(row.SentPackets, row.SentBytes) {
+				l.SentPackets = row.SentPackets
+				l.SentPacketsPresent = true
 			}
 			continue
 		}

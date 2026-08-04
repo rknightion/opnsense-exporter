@@ -72,6 +72,11 @@ const (
 	KeyInterfaces         Key = "interfaces"
 	KeyIPsecPhase1        Key = "ipsecPhase1"
 	KeyOpenVPNInstances   Key = "openVPNInstances"
+	// KeySystemInformation is produced by fetchSystemInfo (part of
+	// FetchSystemResources) and consumed by FetchFirmwareStatus, so the firmware
+	// collector's os_version label doesn't cost a second systemInformation
+	// request (#640).
+	KeySystemInformation Key = "systemInformation"
 )
 
 // Store holds the most recent decoded result per key, with the time it was

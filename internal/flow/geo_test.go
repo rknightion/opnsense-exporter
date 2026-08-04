@@ -119,32 +119,111 @@ func TestGeoCountryFallsBackToZenarmor(t *testing.T) {
 	}
 }
 
-// City: Zenarmor when present (theirs is a commercial GeoIP2-City build), ours as
-// fallback — which is the only source on the vast majority of boxes.
-func TestGeoCityPrefersZenarmorAndFallsBackToOurs(t *testing.T) {
+// City (#643): MaxMind wins when present - Zenarmor's city data on this deployment is
+// anycast-wrong for remote destinations and subdivision-level for local ones, and the
+// deployment runs GeoLite2-City specifically to get city/region without depending on
+// Zenarmor. Zenarmor is the fallback only when MaxMind has none. Region follows City
+// exactly since both come from the same record and the same CitySource.
+func TestGeoCityMaxMindWinsAndFallsBackToZenarmor(t *testing.T) {
 	e := newTestEnricher(t, fakeLookup{
 		"203.0.113.9":  {CountryISO: "GB", City: "Slough", RegionISO: "SLG"},
-		"198.51.100.4": {CountryISO: "GB", City: "Reading", RegionISO: "RDG"},
+		"198.51.100.4": {CountryISO: "GB"}, // no city/region of our own for this one
 	}, false)
 
-	zen := Record{DstAddr: netip.MustParseAddr("203.0.113.9")}
-	zen.Geo.Dst.ZenCity = "London"
-	zen.Geo.Dst.ZenRegion = "England"
-	e.Enrich(&zen)
-	if zen.Geo.Dst.City != "London" || zen.Geo.Dst.Region != "England" {
-		t.Errorf("Zenarmor city/region did not win: %+v", zen.Geo.Dst)
-	}
-	if zen.Geo.Dst.CitySource != GeoSourceZenarmor {
-		t.Errorf("CitySource = %q, want zenarmor", zen.Geo.Dst.CitySource)
-	}
-
-	ours := Record{DstAddr: netip.MustParseAddr("198.51.100.4")}
+	// MaxMind has a city: it must win even though Zenarmor also has one.
+	ours := Record{DstAddr: netip.MustParseAddr("203.0.113.9")}
+	ours.Geo.Dst.ZenCity = "London"
+	ours.Geo.Dst.ZenRegion = "England"
 	e.Enrich(&ours)
-	if ours.Geo.Dst.City != "Reading" || ours.Geo.Dst.Region != "RDG" {
-		t.Errorf("our city/region fallback did not apply: %+v", ours.Geo.Dst)
+	if ours.Geo.Dst.City != "Slough" || ours.Geo.Dst.Region != "SLG" {
+		t.Errorf("MaxMind city/region did not win: %+v", ours.Geo.Dst)
 	}
 	if ours.Geo.Dst.CitySource != GeoSourceMaxMind {
 		t.Errorf("CitySource = %q, want maxmind", ours.Geo.Dst.CitySource)
+	}
+	// Zenarmor's raw values are still retained even though they lost the field.
+	if ours.Geo.Dst.ZenCity != "London" || ours.Geo.Dst.ZenRegion != "England" {
+		t.Errorf("Zenarmor raw city/region were discarded by losing: %+v", ours.Geo.Dst)
+	}
+
+	// MaxMind has nothing: Zenarmor is the fallback.
+	fallback := Record{DstAddr: netip.MustParseAddr("198.51.100.4")}
+	fallback.Geo.Dst.ZenCity = "Reading"
+	fallback.Geo.Dst.ZenRegion = "RDG"
+	e.Enrich(&fallback)
+	if fallback.Geo.Dst.City != "Reading" || fallback.Geo.Dst.Region != "RDG" {
+		t.Errorf("Zenarmor city/region fallback did not apply: %+v", fallback.Geo.Dst)
+	}
+	if fallback.Geo.Dst.CitySource != GeoSourceZenarmor {
+		t.Errorf("CitySource = %q, want zenarmor", fallback.Geo.Dst.CitySource)
+	}
+}
+
+// #639: an address in private/reserved space gets no RESOLVED geo from ANY source,
+// even when Zenarmor supplied one for every field. The raw Zen* values must still be
+// retained for audit (per the GeoEndpoint doc comment). Covers RFC1918 v4, RFC4193 ULA
+// v6, loopback, link-local, and the v4-mapped form of RFC1918 - the exact set #639
+// names.
+func TestGeoPrivateAddressGetsNoResolvedGeoFromZenarmor(t *testing.T) {
+	cases := []struct {
+		name string
+		addr string
+	}{
+		{"RFC1918 v4", "10.0.90.119"}, // the exact address from the #639 prod evidence
+		{"RFC4193 ULA v6", "fd00::1"},
+		{"loopback v4", "127.0.0.1"},
+		{"loopback v6", "::1"},
+		{"link-local v4", "169.254.1.1"},
+		{"link-local v6", "fe80::1"},
+		{"v4-mapped RFC1918", "::ffff:10.0.0.5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newTestEnricher(t, fakeLookup{}, false)
+			r := Record{DstAddr: netip.MustParseAddr(tc.addr)}
+			r.Geo.Dst.ZenCountry = "GB"
+			r.Geo.Dst.ZenContinent = "EU"
+			r.Geo.Dst.ZenCity = "England"
+			r.Geo.Dst.ZenRegion = "England"
+			e.Enrich(&r)
+
+			if r.Geo.Dst.Country != "" || r.Geo.Dst.CountrySource != "" {
+				t.Errorf("%s: Country/CountrySource = %q/%q, want empty (fabricated geo on a private address)",
+					tc.addr, r.Geo.Dst.Country, r.Geo.Dst.CountrySource)
+			}
+			if r.Geo.Dst.Continent != "" {
+				t.Errorf("%s: Continent = %q, want empty", tc.addr, r.Geo.Dst.Continent)
+			}
+			if r.Geo.Dst.City != "" || r.Geo.Dst.Region != "" || r.Geo.Dst.CitySource != "" {
+				t.Errorf("%s: City/Region/CitySource = %q/%q/%q, want empty",
+					tc.addr, r.Geo.Dst.City, r.Geo.Dst.Region, r.Geo.Dst.CitySource)
+			}
+			// The raw Zenarmor values must still be retained for audit.
+			if r.Geo.Dst.ZenCountry != "GB" || r.Geo.Dst.ZenCity != "England" || r.Geo.Dst.ZenRegion != "England" {
+				t.Errorf("%s: raw Zen* fields were discarded: %+v", tc.addr, r.Geo.Dst)
+			}
+		})
+	}
+}
+
+// #639 regression guard: a PUBLIC address that is scoped "local" by the box's own
+// topology (the AAISP routed IPv6 prefix, verified live and NOT a defect) must still
+// get geo. Over-correcting by keying the guard on scope instead of the address itself
+// would wrongly blind exactly this case.
+func TestGeoPublicAddressScopedLocalStillGetsGeo(t *testing.T) {
+	e := newTestEnricher(t, fakeLookup{}, false)
+	r := Record{
+		DstAddr: netip.MustParseAddr("2001:db8:1f05::100e"),
+		Enrich:  Enrichment{DstScope: "local"},
+	}
+	r.Geo.Dst.ZenCountry = "GB"
+	r.Geo.Dst.ZenCity = "England"
+	e.Enrich(&r)
+	if r.Geo.Dst.Country != "GB" || r.Geo.Dst.CountrySource != GeoSourceZenarmor {
+		t.Errorf("a public address scoped local lost its geo: %+v", r.Geo.Dst)
+	}
+	if r.Geo.Dst.City != "England" || r.Geo.Dst.CitySource != GeoSourceZenarmor {
+		t.Errorf("a public address scoped local lost its city: %+v", r.Geo.Dst)
 	}
 }
 
@@ -362,25 +441,42 @@ func TestGeoLogAttributesKeepZenarmorOnlyOnDisagreement(t *testing.T) {
 
 // A merged record must mean the same thing as a Zenarmor-only one, or the precedence
 // table quietly has two readings.
+//
+// The Zenarmor side is built via a real Enrich() pass, not hand-crafted with only raw
+// Zen* fields: mergeGeoEndpoint now reads the zen side's RESOLVED fields (#639/#643),
+// so a zen GeoInfo carrying only raw values would not exercise the real code path -
+// see the mergeGeoEndpoint doc comment for why that distinction matters.
 func TestMergeGeoAppliesThePrecedenceTable(t *testing.T) {
-	// The NetFlow side already carries OUR lookup.
+	e := newTestEnricher(t, fakeLookup{
+		"192.0.2.4": {CountryISO: "GB", ContinentCode: "EU"}, // no city/region of our own
+	}, false)
+	zenRec := Record{DstAddr: netip.MustParseAddr("192.0.2.4")}
+	zenRec.Geo.Dst.ZenCountry = "GB"
+	zenRec.Geo.Dst.ZenContinent = "EU"
+	zenRec.Geo.Dst.ZenCity = "London"
+	zenRec.Geo.Dst.ZenRegion = "England"
+	e.Enrich(&zenRec) // simulates the Zenarmor lane's own Enrich() pass
+
+	// The NetFlow side already carries OUR lookup, including a city of its own.
 	nf := GeoInfo{Dst: GeoEndpoint{
 		Country: "US", Continent: "NA", City: "Ashburn", Region: "VA",
 		ASN: 15169, ASOrg: "Google", CountrySource: GeoSourceMaxMind, CitySource: GeoSourceMaxMind,
 	}}
-	zen := GeoInfo{Dst: GeoEndpoint{
-		ZenCountry: "GB", ZenContinent: "EU", ZenCity: "London", ZenRegion: "England",
-	}}
-	MergeGeo(&nf, zen)
+	MergeGeo(&nf, zenRec.Geo)
 
 	if nf.Dst.Country != "US" || nf.Dst.CountrySource != GeoSourceMaxMind {
 		t.Errorf("country: ours must still win after a merge: %+v", nf.Dst)
 	}
 	if nf.Dst.ZenCountry != "GB" {
-		t.Errorf("Zenarmor's country was discarded by the merge: %+v", nf.Dst)
+		t.Errorf("Zenarmor's raw country was discarded by the merge: %+v", nf.Dst)
 	}
-	if nf.Dst.City != "London" || nf.Dst.Region != "England" || nf.Dst.CitySource != GeoSourceZenarmor {
-		t.Errorf("city: Zenarmor must win after a merge: %+v", nf.Dst)
+	// City (#643): MaxMind already won on the NetFlow side, so the merge must NOT
+	// overwrite it with Zenarmor's, even though Zenarmor has one too.
+	if nf.Dst.City != "Ashburn" || nf.Dst.Region != "VA" || nf.Dst.CitySource != GeoSourceMaxMind {
+		t.Errorf("city: MaxMind must still win after a merge: %+v", nf.Dst)
+	}
+	if nf.Dst.ZenCity != "London" || nf.Dst.ZenRegion != "England" {
+		t.Errorf("Zenarmor's raw city/region were discarded by the merge: %+v", nf.Dst)
 	}
 	// ASN is ours only and the merge must not touch it.
 	if nf.Dst.ASN != 15169 {
@@ -389,11 +485,18 @@ func TestMergeGeoAppliesThePrecedenceTable(t *testing.T) {
 }
 
 // With no database of our own, a merge is how a NetFlow-derived record gets any geo
-// at all.
+// at all - the country/continent/city fallback case of #643's precedence, exercised
+// through MergeGeo rather than endpoint() directly.
 func TestMergeGeoFallsBackToZenarmorEntirely(t *testing.T) {
+	e := newTestEnricher(t, fakeLookup{}, false)
+	zenRec := Record{DstAddr: netip.MustParseAddr("198.51.100.4")}
+	zenRec.Geo.Dst.ZenCountry = "DE"
+	zenRec.Geo.Dst.ZenContinent = "EU"
+	zenRec.Geo.Dst.ZenCity = "Berlin"
+	e.Enrich(&zenRec)
+
 	nf := GeoInfo{}
-	zen := GeoInfo{Dst: GeoEndpoint{ZenCountry: "DE", ZenContinent: "EU", ZenCity: "Berlin"}}
-	MergeGeo(&nf, zen)
+	MergeGeo(&nf, zenRec.Geo)
 	if nf.Dst.Country != "DE" || nf.Dst.CountrySource != GeoSourceZenarmor {
 		t.Errorf("country fallback not applied: %+v", nf.Dst)
 	}
@@ -402,5 +505,66 @@ func TestMergeGeoFallsBackToZenarmorEntirely(t *testing.T) {
 	}
 	if nf.Dst.City != "Berlin" || nf.Dst.CitySource != GeoSourceZenarmor {
 		t.Errorf("city fallback not applied: %+v", nf.Dst)
+	}
+}
+
+// #643 through MergeGeo: MaxMind must win the city field on a merged record too, with
+// Zenarmor as the fallback only when the NetFlow side has no city of its own -
+// otherwise the flip in endpoint() would be visible on a Zenarmor-only record but
+// silently absent on opnsense_source="merged" ones, which is exactly what the #643
+// evidence (72% of remote destinations) was measured on.
+func TestMergeGeoAppliesTheCityPrecedenceTable(t *testing.T) {
+	e := newTestEnricher(t, fakeLookup{
+		"198.51.100.4": {CountryISO: "US"}, // no city of our own for this address
+	}, false)
+	zenRec := Record{DstAddr: netip.MustParseAddr("198.51.100.4")}
+	zenRec.Geo.Dst.ZenCountry = "US"
+	zenRec.Geo.Dst.ZenCity = "Montreal"
+	zenRec.Geo.Dst.ZenRegion = "Quebec"
+	e.Enrich(&zenRec) // simulates the Zenarmor lane's own Enrich() pass
+
+	// The NetFlow side ran its own Enrich() against the same address and also has no
+	// city of its own, but did get the country.
+	fallback := GeoInfo{Dst: GeoEndpoint{Country: "US", CountrySource: GeoSourceMaxMind}}
+	MergeGeo(&fallback, zenRec.Geo)
+	if fallback.Dst.City != "Montreal" || fallback.Dst.Region != "Quebec" || fallback.Dst.CitySource != GeoSourceZenarmor {
+		t.Errorf("Zenarmor city fallback did not merge in: %+v", fallback.Dst)
+	}
+
+	// Now the case where MaxMind DOES have a city on the NetFlow side already: it
+	// must not be overwritten by Zenarmor's anycast-wrong one, even on merge.
+	winner := GeoInfo{Dst: GeoEndpoint{
+		City: "Ashburn", Region: "VA", CitySource: GeoSourceMaxMind,
+		Country: "US", CountrySource: GeoSourceMaxMind,
+	}}
+	MergeGeo(&winner, zenRec.Geo)
+	if winner.Dst.City != "Ashburn" || winner.Dst.CitySource != GeoSourceMaxMind {
+		t.Errorf("MaxMind city was overwritten by Zenarmor's on merge: %+v", winner.Dst)
+	}
+}
+
+// #639 through MergeGeo: the private-address guard must hold for a merged record too,
+// not just endpoint() directly - this is the shape the prod evidence (921k
+// records/day, opnsense_source="merged") was actually measured on.
+func TestMergeGeoAppliesThePrivateAddressGuard(t *testing.T) {
+	e := newTestEnricher(t, fakeLookup{}, false)
+	zenRec := Record{DstAddr: netip.MustParseAddr("10.0.90.119")}
+	zenRec.Geo.Dst.ZenCountry = "GB"
+	zenRec.Geo.Dst.ZenCity = "England"
+	zenRec.Geo.Dst.ZenRegion = "England"
+	e.Enrich(&zenRec) // simulates the Zenarmor lane's own Enrich() pass
+
+	nf := GeoInfo{} // the NetFlow side never got a MaxMind hit for this address either
+	MergeGeo(&nf, zenRec.Geo)
+
+	if nf.Dst.Country != "" || nf.Dst.CountrySource != "" {
+		t.Errorf("merged record fabricated a country on a private address: %+v", nf.Dst)
+	}
+	if nf.Dst.City != "" || nf.Dst.Region != "" || nf.Dst.CitySource != "" {
+		t.Errorf("merged record fabricated a city on a private address: %+v", nf.Dst)
+	}
+	// Raw values still travel through the merge for audit.
+	if nf.Dst.ZenCountry != "GB" || nf.Dst.ZenCity != "England" || nf.Dst.ZenRegion != "England" {
+		t.Errorf("raw Zen* fields lost in the merge: %+v", nf.Dst)
 	}
 }

@@ -94,11 +94,23 @@
       "kind": "object"
     },
     {
+      "path": "product.product_abi",
+      "kind": "string"
+    },
+    {
       "path": "product.product_check",
       "kind": "object"
     },
     {
       "path": "product.product_check.upgrade_needs_reboot",
+      "kind": "string"
+    },
+    {
+      "path": "product.product_id",
+      "kind": "string"
+    },
+    {
+      "path": "product.product_version",
       "kind": "string"
     },
     {

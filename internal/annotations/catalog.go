@@ -52,6 +52,24 @@ type Watch struct {
 	// "uptime at attach or stat reset", so it only becomes an instant once the
 	// boot epoch is added to it.
 	UptimeOffsetOf string
+
+	// Coalesce merges every candidate that shares this watch's (kind, timestamp)
+	// into ONE annotation instead of one per series (#637). It exists for a
+	// metric whose labels legitimately fan out to dozens of series that all move
+	// at the same instant — a Suricata ruleset sync touches every rule file at
+	// once, so without this a single sync proposed one candidate per file,
+	// saturating MaxPerCycle and self-inflicting a 429 storm against Grafana on
+	// every sync.
+	//
+	// A coalesced annotation's Text is filled from the COUNT rather than from
+	// LabelKeys, so it must contain exactly one %d (the count) followed by one
+	// %s (an empty string, or "s", for the plural) — never the per-entity %s
+	// this struct's own doc describes. Naming one series out of a group would
+	// be arbitrary; the full roster is already on the metric's own labels. Its
+	// tags are the base tag and the kind tag only — LabelKeys stays declared
+	// on the entry (it is still what identifies the series to detect() and to
+	// the dedupe set) but stops feeding the text and tags when coalescing.
+	Coalesce bool
 }
 
 // BootMetric is the epoch the box booted, and the anchor for any uptime-relative
@@ -131,10 +149,19 @@ var Watches = []Watch{
 		LabelKeys: []string{"service"},
 	},
 	{
+		// #637: one Suricata ruleset sync updates every series of this
+		// metric at the same instant (62 of them on a live box), so
+		// treating each as its own candidate fanned out to one annotation
+		// per file against a MaxPerCycle far smaller than that,
+		// self-inflicting a rate-limit storm against Grafana on every
+		// sync. Coalesce turns that fan-out back into the single "a sync
+		// happened" event the annotation is actually for; the per-ruleset
+		// breakdown stays available on the metric itself.
 		Metric:    "opnsense_ids_ruleset_last_updated_timestamp_seconds",
 		Kind:      "ids-ruleset-update",
-		Text:      "IDS ruleset %s updated",
+		Text:      "IDS rulesets updated (%d file%s)",
 		LabelKeys: []string{"ruleset"},
+		Coalesce:  true,
 	},
 	{
 		Metric:    "opnsense_qfeeds_feed_last_update_timestamp_seconds",

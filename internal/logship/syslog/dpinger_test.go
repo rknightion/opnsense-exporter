@@ -73,6 +73,63 @@ func TestDPingerCapturedTransitions(t *testing.T) {
 	}
 }
 
+// TestDPingerDelayAlarmTransitions: dpinger's third alarm state (#641) — the
+// latency threshold breached without the gateway going down. Distinguishable
+// from a down alarm via gateway.alarm.current, not folded into it.
+//
+// Sanitized from a live-box capture for #641, 2026-08-04 (the real monitored
+// address, a public DNS resolver, is replaced below with a documentation
+// address; the gateway name and RTT/loss figures are unchanged):
+//
+//	MONITOR: WAN_DHCP (Addr: 203.0.113.53 Alarm: none -> delay RTT: 201.2 ms RTTd: 29.6 ms Loss: 0.0 %)
+//	MONITOR: WAN_DHCP (Addr: 203.0.113.53 Alarm: delay -> none RTT: 199.9 ms RTTd: 63.2 ms Loss: 0.0 %)
+func TestDPingerDelayAlarmTransitions(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want map[string]string
+	}{
+		{
+			name: "delay alarm started",
+			msg:  "MONITOR: WAN_DHCP (Addr: 203.0.113.53 Alarm: none -> delay RTT: 201.2 ms RTTd: 29.6 ms Loss: 0.0 %)",
+			want: map[string]string{
+				"gateway.event":          "alarm_started",
+				"gateway.name":           "WAN_DHCP",
+				"gateway.address":        "203.0.113.53",
+				"gateway.alarm.previous": "none",
+				"gateway.alarm.current":  "delay",
+				"gateway.rtt_ms":         "201.2",
+				"gateway.rttd_ms":        "29.6",
+				"gateway.loss_percent":   "0.0",
+			},
+		},
+		{
+			name: "delay alarm cleared",
+			msg:  "MONITOR: WAN_DHCP (Addr: 203.0.113.53 Alarm: delay -> none RTT: 199.9 ms RTTd: 63.2 ms Loss: 0.0 %)",
+			want: map[string]string{
+				"gateway.event":          "alarm_cleared",
+				"gateway.name":           "WAN_DHCP",
+				"gateway.address":        "203.0.113.53",
+				"gateway.alarm.previous": "delay",
+				"gateway.alarm.current":  "none",
+				"gateway.rtt_ms":         "199.9",
+				"gateway.rttd_ms":        "63.2",
+				"gateway.loss_percent":   "0.0",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, ok := parseDPinger(dpingerEnv(t, tc.msg), nil, func(string) {})
+			if !ok {
+				t.Fatalf("parseDPinger(%q) returned ok=false", tc.msg)
+			}
+			assertAttrs(t, rec, tc.want)
+		})
+	}
+}
+
 func TestDPingerEventVocabularyIsClosed(t *testing.T) {
 	const gateway = "branch-gateway-42"
 	const address = "198.51.100.42"

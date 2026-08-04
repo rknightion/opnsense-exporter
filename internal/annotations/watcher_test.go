@@ -470,6 +470,22 @@ func rulesetBacklog(now time.Time, n int) []series {
 	return all
 }
 
+// rulesetSync builds n ruleset series that all moved at the SAME instant — the
+// shape #637 was filed for: one Suricata sync updates every rule file at once,
+// unlike rulesetBacklog's staggered one-per-minute backlog above.
+func rulesetSync(n int, at time.Time) []series {
+	all := make([]series, 0, n)
+	for i := range n {
+		all = append(all, series{
+			name: "opnsense_ids_ruleset_last_updated_timestamp_seconds",
+			labels: map[string]string{instanceLabel: "fw-a",
+				"ruleset": string(rune('a'+i%26)) + string(rune('0'+i/26))},
+			value: float64(at.Unix()),
+		})
+	}
+	return all
+}
+
 func postAttempts(f *fakeGrafana) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -781,6 +797,14 @@ func TestCatalogueTagsAreClosedVocabularies(t *testing.T) {
 // a literal "%!s(MISSING)" into an operator-visible annotation.
 func TestCatalogueTextPlaceholdersMatchLabelKeys(t *testing.T) {
 	for _, watch := range Watches {
+		if watch.Coalesce {
+			// A coalesced watch's Text is filled by coalescedText (one %d for
+			// the count, one %s for the plural suffix), not by substituting
+			// LabelKeys — the %s-count-equals-LabelKeys-count relationship
+			// this test checks does not apply to it.
+			// TestCoalescedTextIsGrammaticalForOneAndMany covers it instead.
+			continue
+		}
 		if got := strings.Count(watch.Text, "%s"); got != len(watch.LabelKeys) {
 			t.Errorf("%s: text has %d placeholders but %d label keys",
 				watch.Metric, got, len(watch.LabelKeys))
@@ -914,6 +938,129 @@ func TestWatcherKindsListIsExclusive(t *testing.T) {
 
 	if got := len(f.writes()); got != 0 {
 		t.Fatalf("config-change is not in the configured Kinds, want 0 writes, got %d", got)
+	}
+}
+
+// --- Coalesce (#637) --------------------------------------------------------
+
+// TestWatcherCoalescesRulesetsSharingOneInstant is the shape #637 was filed
+// for: one Suricata sync updates every ruleset file at the same instant, and
+// treating each as its own candidate fanned out to 62 annotations against a
+// MaxPerCycle of 20, self-inflicting a rate-limit storm against Grafana on
+// every sync.
+func TestWatcherCoalescesRulesetsSharingOneInstant(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	at := now.Add(-10 * time.Minute).Truncate(time.Second)
+
+	w := newTestWatcher(t, f, now, rulesetSync(62, at)...)
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	// The whole point: 62 series moving together must cost ONE request to
+	// Grafana, not 62 — postAttempts is what the per-cycle cap and the rate
+	// limit actually see.
+	if got := postAttempts(f); got != 1 {
+		t.Fatalf("62 rulesets moving at the same instant made %d POSTs, want 1", got)
+	}
+	writes := f.writes()
+	if len(writes) != 1 {
+		t.Fatalf("62 rulesets moving at the same instant produced %d annotations, want 1", len(writes))
+	}
+	if writes[0].Text != "IDS rulesets updated (62 files)" {
+		t.Errorf("text = %q, want the count of 62 named correctly", writes[0].Text)
+	}
+	if writes[0].Time != at.UnixMilli() {
+		t.Errorf("annotation time = %d, want the shared instant %d", writes[0].Time, at.UnixMilli())
+	}
+	assertTags(t, writes[0].Tags, BaseTag, "ids-ruleset-update")
+	for _, tag := range writes[0].Tags {
+		if strings.HasPrefix(tag, "ruleset:") || strings.HasPrefix(tag, "instance:") {
+			t.Errorf("coalesced annotation carries per-entity tag %q; want base+kind only, got %v",
+				tag, writes[0].Tags)
+		}
+	}
+}
+
+// TestWatcherCoalescedSingleRulesetReadsCorrectly pins the singular case: one
+// ruleset updating alone must not read "(1 files)".
+func TestWatcherCoalescedSingleRulesetReadsCorrectly(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	at := now.Add(-10 * time.Minute).Truncate(time.Second)
+
+	w := newTestWatcher(t, f, now, rulesetSync(1, at)...)
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	writes := f.writes()
+	if len(writes) != 1 {
+		t.Fatalf("expected 1 annotation for a solitary ruleset update, got %d", len(writes))
+	}
+	if strings.Contains(writes[0].Text, "1 files") {
+		t.Errorf("a solitary ruleset update must not say %q, got %q", "1 files", writes[0].Text)
+	}
+	if writes[0].Text != "IDS rulesets updated (1 file)" {
+		t.Errorf("text = %q, want the singular form", writes[0].Text)
+	}
+}
+
+// TestCoalescedTextIsGrammaticalForOneAndMany unit-tests the formatter
+// directly: it must fill the count without ever producing "%!d(MISSING)"-style
+// garbage, and must pick the right noun form at the boundary.
+func TestCoalescedTextIsGrammaticalForOneAndMany(t *testing.T) {
+	watch := Watch{Text: "IDS rulesets updated (%d file%s)"}
+	if got := coalescedText(watch, 1); got != "IDS rulesets updated (1 file)" {
+		t.Errorf("singular: got %q", got)
+	}
+	if got := coalescedText(watch, 2); got != "IDS rulesets updated (2 files)" {
+		t.Errorf("plural: got %q", got)
+	}
+	if got := coalescedText(watch, 62); got != "IDS rulesets updated (62 files)" {
+		t.Errorf("plural: got %q", got)
+	}
+}
+
+// TestWatcherLeavesNonCoalescingLabelKeysWatchesUnchanged is the regression
+// guard #637 needs most: only ids-ruleset-update coalesces. Every other
+// LabelKeys watch — most of the catalogue — must still emit one annotation
+// per series, named and tagged from its own labels, even when two of them
+// happen to share an instant. Without this guard, a bug that coalesced by
+// timestamp alone (ignoring which watch it belongs to) would pass the test
+// above and silently merge unrelated per-entity events like certificate
+// renewals.
+func TestWatcherLeavesNonCoalescingLabelKeysWatchesUnchanged(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	at := now.Add(-10 * time.Minute).Truncate(time.Second)
+
+	w := newTestWatcher(t, f, now,
+		series{name: "opnsense_acme_certificate_last_update_timestamp_seconds",
+			labels: map[string]string{instanceLabel: "fw-a", "name": "wildcard"}, value: float64(at.Unix())},
+		series{name: "opnsense_acme_certificate_last_update_timestamp_seconds",
+			labels: map[string]string{instanceLabel: "fw-a", "name": "internal"}, value: float64(at.Unix())},
+	)
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	writes := f.writes()
+	if len(writes) != 2 {
+		t.Fatalf("expected one annotation per certificate even though both renewed at the "+
+			"same instant, got %d", len(writes))
+	}
+	for _, write := range writes {
+		if !strings.Contains(write.Text, "wildcard") && !strings.Contains(write.Text, "internal") {
+			t.Errorf("annotation text %q does not name its certificate", write.Text)
+		}
+		named := false
+		for _, tag := range write.Tags {
+			if strings.HasPrefix(tag, "name:") {
+				named = true
+			}
+		}
+		if !named {
+			t.Errorf("annotation tags %v missing the per-entity name: tag", write.Tags)
+		}
 	}
 }
 
