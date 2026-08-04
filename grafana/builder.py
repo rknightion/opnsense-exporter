@@ -51,6 +51,28 @@ LOKI_INSTANCE_SEL = f'{LOKI_INSTANCE_LABEL}=~"$opnsense_instance"'
 RATE = "$__rate_interval"
 DS = {"name": "${datasource}"}
 LOKI_DS = {"name": "${loki_datasource}"}
+
+# Sentinel: "let `_panel` derive the min step from the queries" — distinct from an
+# explicit `interval=None`, which means "emit no min step at all".
+_DERIVE_INTERVAL = object()
+
+# The min step for a Loki RANGE panel, and the one place a panel still pins one.
+#
+# Prometheus panels deliberately pin NOTHING (#650): the exporter exports every
+# `--otlp.export-interval` (60s by default) whatever poll tier a collector is on, and
+# the Prometheus datasource already declares that same 60s as its scrape interval, so
+# `$__interval` and `$__rate_interval` derive correctly with no help from us. A panel
+# `interval` does not ask for data more often — it OVERRIDES the datasource's figure,
+# and every panel here overrode 60s down to 30s, which is how 737 panels ended up
+# computing `$__rate_interval` from a scrape interval that was half the real one.
+#
+# Loki gets a floor because there is nothing to inherit: the logs datasource declares
+# no interval, so an unpinned Loki range query takes its step from panel width alone
+# and a narrow time range collapses `[$__auto]` to a couple of seconds. Log arrival is
+# continuous rather than tied to the exporter's export tick, so this is a rendering
+# floor, not a statement about data rate — which is exactly why it does not follow the
+# Prometheus rule.
+LOKI_MIN_STEP = "30s"
 VIZ_VERSION = "v11.5.0"
 TRANSPORT_LABELS = (
     "job", "service_instance_id", "service_name", "service_version",
@@ -295,11 +317,31 @@ class Builder:
             },
         }
 
+    @staticmethod
+    def _min_step(queries) -> str | None:
+        """The panel's `queryOptions.interval`, derived from its own queries (#650).
+
+        Derived rather than passed so the rule cannot be forgotten at a call site and
+        a new helper inherits it: the answer depends only on which datasource the
+        panel reads and whether it reads it as a range, both of which are already in
+        `queries`. See `LOKI_MIN_STEP` for why the two datasources differ.
+
+        Instant queries are excluded on purpose — an instant query has no step, so a
+        min step on one is inert config that reads as intent to the next author.
+        """
+        groups = {q["spec"]["query"].get("group") for q in queries}
+        ranged = any(q["spec"]["query"]["spec"].get("range") for q in queries)
+        if groups == {"loki"} and ranged:
+            return LOKI_MIN_STEP
+        return None
+
     def _panel(self, title, group, viz_spec, queries, desc="",
-               transformations=None, interval="30s", max_dp=None,
+               transformations=None, interval=_DERIVE_INTERVAL, max_dp=None,
                time_from=None) -> str:
         name, pid = self._next()
-        qopts = {"interval": interval}
+        if interval is _DERIVE_INTERVAL:
+            interval = self._min_step(queries)
+        qopts = {} if interval is None else {"interval": interval}
         if max_dp:
             qopts["maxDataPoints"] = max_dp
         if time_from:
@@ -670,8 +712,12 @@ class Builder:
                             "fillOpacity": 80, "mergeValues": True,
                             "legend": {"displayMode": "list", "placement": "bottom"},
                             "tooltip": {"mode": "single", "sort": "none"}}}
-        n = self._panel(title, "state-timeline", spec, queries, desc=desc,
-                        interval="1m", max_dp=300)
+        # `max_dp` stays, the `interval="1m"` pin does not (#650): it was exactly the
+        # Prometheus datasource's own 60s scrape interval, so pinning it changed
+        # nothing except making the panel stop tracking the datasource. The bucket
+        # cap is the real guard here — a state timeline is unreadable long before it
+        # is slow.
+        n = self._panel(title, "state-timeline", spec, queries, desc=desc, max_dp=300)
         self.size[n] = (w, h)
         return n
 
@@ -686,8 +732,7 @@ class Builder:
         spec = {"fieldConfig": {"defaults": defaults, "overrides": []},
                 "options": {"showValue": "never", "colWidth": 0.9, "rowHeight": 0.9,
                             "legend": {"displayMode": "list", "placement": "bottom"}}}
-        n = self._panel(title, "status-history", spec, queries, desc=desc,
-                        interval="1m", max_dp=200)
+        n = self._panel(title, "status-history", spec, queries, desc=desc, max_dp=200)
         self.size[n] = (w, h)
         return n
 
@@ -809,11 +854,18 @@ class Builder:
     def loki_table(self, title, exprs, field_title, desc="", w=24, h=10,
                    sort_by="Total", sort_desc=True, time_from=None,
                    value_unit=None) -> str:
-        """exprs = a one-element list holding the LogQL string, queried as a RANGE
-        query — the standard "topk over range" shape for high-cardinality log
-        fields. `queryOptions.interval="5m"` is a cardinality guard on wide time
-        ranges. `field_title` titles the ranked-label column ("Application",
-        "DNS Query", ...).
+        """exprs = a one-element list holding the LogQL string, evaluated as an
+        INSTANT query over `[$__range]` — the standard "topk over range" shape for
+        high-cardinality log fields. `field_title` titles the ranked-label column
+        ("Application", "DNS Query", ...).
+
+        These panels carried `queryOptions.interval="5m"`, described here as a
+        cardinality guard on wide time ranges. It was inert (#650): #471 converted
+        them from range queries to instant ones, and an instant query has no step for
+        a min interval to raise. The window has been `[$__range]` ever since — which
+        `test_no_loki_table_uses_the_step_derived_auto_interval` is what pins — so the
+        guard the comment described was already doing the work. Removed rather than
+        left as config that reads as a live control.
 
         The transform chain, and why it is not the obvious one (#471):
 
@@ -900,8 +952,7 @@ class Builder:
                     ] if value_unit else []},
                 "options": opts}
         n = self._panel(title, "table", spec, queries, desc=desc,
-                        transformations=transformations, interval="5m",
-                        time_from=time_from)
+                        transformations=transformations, time_from=time_from)
         self.size[n] = (w, h)
         return n
 

@@ -8,6 +8,7 @@ GRAFANA_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(GRAFANA_DIR))
 
 import build_dashboard  # noqa: E402
+import builder as builder_mod  # noqa: E402
 from builder import Builder, sel  # noqa: E402
 
 
@@ -340,3 +341,62 @@ class PercentGaugeBoundTest(unittest.TestCase):
                 if defaults.get("unit") in ("percent", "percentunit") and "max" not in defaults:
                     unbounded.append(el["spec"]["title"])
         self.assertEqual(sorted(unbounded), [])
+
+
+class MinStepTest(unittest.TestCase):
+    """#650: a panel `interval` OVERRIDES the datasource's scrape interval, it does
+    not ask for data more often.
+
+    Every Prometheus panel pinned `30s` while the exporter exports every 60s
+    (`--otlp.export-interval`) and the Prometheus datasource already declares that
+    same 60s — so 737 panels quietly halved the figure `$__interval` and
+    `$__rate_interval` are computed from. Measured against the live stack: a 30s step
+    over 1h returned 121 points for the 61 samples that exist, each one twice, and
+    `$__rate_interval` came out at 120s (two samples, no tolerance for a late export)
+    where the datasource's own 60s yields 240s.
+
+    Nothing was visibly broken — 24h of exports showed zero starved buckets — so this
+    is a configuration-correctness and query-cost fix, not a repair. The rule is
+    pinned here because the failure mode is silent in both directions: a pin looks
+    harmless, and its absence looks like an oversight.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panels = [p for _, b in build_dashboard.build_family()
+                      for p in (e["spec"] for e in b.elements.values()
+                                if e["kind"] == "Panel")]
+
+    @staticmethod
+    def _facts(panel):
+        queries = panel["data"]["spec"]["queries"]
+        groups = {q["spec"]["query"].get("group") for q in queries}
+        ranged = any(q["spec"]["query"]["spec"].get("range") for q in queries)
+        step = panel["data"]["spec"].get("queryOptions", {}).get("interval")
+        return groups, ranged, step
+
+    def test_no_prometheus_panel_pins_a_min_step(self):
+        """The datasource owns this figure. A panel that pins one has silently
+        forked from it and will not follow when it changes."""
+        pinned = sorted({p["title"] for p in self.panels
+                         if "prometheus" in self._facts(p)[0] and self._facts(p)[2]})
+        self.assertEqual(pinned, [])
+
+    def test_loki_range_panels_keep_their_floor(self):
+        """Loki is the deliberate exception: its datasource declares no interval, so
+        an unpinned range query takes its step from panel width alone."""
+        for p in self.panels:
+            groups, ranged, step = self._facts(p)
+            if groups == {"loki"} and ranged:
+                with self.subTest(panel=p["title"]):
+                    self.assertEqual(step, builder_mod.LOKI_MIN_STEP)
+
+    def test_instant_only_panels_pin_nothing(self):
+        """An instant query has no step, so a min step on one is inert config that
+        reads as a live control to the next author — which is what it did on the
+        Loki top-N tables for the length of #471."""
+        for p in self.panels:
+            _groups, ranged, step = self._facts(p)
+            if not ranged:
+                with self.subTest(panel=p["title"]):
+                    self.assertIsNone(step)
