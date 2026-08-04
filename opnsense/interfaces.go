@@ -125,23 +125,39 @@ type Interface struct {
 	LinkState            int   // 0=down, 1=up, 2=unknown — derived enum, cannot overflow; stays int
 	LineRate             int64 // bits per second (10 Gbit > int32)
 
-	// LineRateValid is false when LinkState is LinkStateUnknown — the
-	// FreeBSD kernel reports that link-state value for carrier-less
-	// pseudo-devices (PPPoE, tun/tailscale, and similar overlay interfaces;
-	// see the LinkState constants above and #86), and the "line rate" field
-	// on those devices is not a real negotiated rate. Prod pppoe0 reports
-	// exactly 64000 — ng_pppoe's static kernel baudrate placeholder, not the
-	// underlying WAN's actual ~1 Gbit/s FTTP rate; tailscale0 and zen0
-	// report 0 for the same reason (#644). Publishing either as
-	// line_rate_bits would make any rate(bytes)/line_rate_bits utilisation
-	// panel on those devices wrong by orders of magnitude, and silently so.
+	// LineRateValid is false when the reported line rate cannot be a real
+	// negotiated rate: either LinkState is LinkStateUnknown, or the rate is
+	// not positive. Publishing one of these as line_rate_bits would make any
+	// rate(bytes)/line_rate_bits utilisation panel wrong by orders of
+	// magnitude, and silently so (#644).
 	//
-	// This is keyed on the kernel's own carrier-sense classification (device
-	// CLASS), not a device-name allowlist, so it does not rot when a tunnel
-	// is renamed, and it needs no second endpoint: LinkState is decoded from
-	// the same row as LineRate. A genuinely down-but-carrier-capable
-	// Ethernet NIC reports LinkStateDown, not LinkStateUnknown, so its
-	// (possibly stale) line rate still passes through unaffected.
+	// TWO clauses, because one is not enough — measured on the prod box
+	// 2026-08-04, after shipping the LinkStateUnknown clause alone:
+	//
+	//   pppoe0      link_state=2 (unknown)  line_rate=64000  -> suppressed
+	//   zen0        link_state=2 (unknown)  line_rate=0      -> suppressed
+	//   tailscale0  link_state=1 (UP)       line_rate=0      -> LEAKED
+	//
+	// The FreeBSD kernel reports LinkStateUnknown for carrier-less
+	// pseudo-devices (PPPoE and similar overlays; see the LinkState constants
+	// above and #86), and pppoe0 reports exactly 64000 — ng_pppoe's static
+	// baudrate placeholder, not the WAN's actual ~1 Gbit/s FTTP rate. But
+	// tailscale0 reports link state UP while still carrying no line rate at
+	// all, so the class check alone let a 0 through, and dividing by that
+	// yields +Inf rather than a merely wrong number. A rate of 0 is never a
+	// real negotiated rate on any device, which is what the second clause
+	// says.
+	//
+	// Both clauses key on the kernel's own values — a device CLASS and an
+	// implausible VALUE — never a device-name allowlist, so neither rots when
+	// a tunnel is renamed. Neither needs a second endpoint: LinkState and
+	// LineRate are decoded from the same row.
+	//
+	// A carrier-capable Ethernet port is unaffected as long as it reports a
+	// real rate: it is classified LinkStateDown, not LinkStateUnknown, so the
+	// first clause never touches it. A DOWN port reporting 0 is suppressed by
+	// the second clause, which is also right — an unplugged port has no line
+	// rate, and 0 is the kernel saying so rather than a rate of zero.
 	LineRateValid bool
 
 	// UnknownProtocolPackets is the kernel's "packets for unknown protocol"
@@ -290,6 +306,7 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 		attachOrResetUptime, attachOrResetValid := parseAttachOrStatResetUptime(v.UptimeAtAttachOrStatReset)
 		sendQueueDrops, sendQueueDropsValid := parseQueueDropCounter(v.SendQueueDrops)
 		inputQueueDrops, inputQueueDropsValid := parseQueueDropCounter(v.InputQueueDrops)
+		lineRate := parseLineRateBits(v.LineRate)
 
 		data.Interfaces = append(data.Interfaces, Interface{
 			Name:                    v.Name,
@@ -315,8 +332,8 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			InputQueueDrops:         inputQueueDrops,
 			InputQueueDropsValid:    inputQueueDropsValid,
 			LinkState:               linkState,
-			LineRate:                parseLineRateBits(v.LineRate),
-			LineRateValid:           linkState != LinkStateUnknown,
+			LineRate:                lineRate,
+			LineRateValid:           linkState != LinkStateUnknown && lineRate > 0,
 			UnknownProtocolPackets:  safeAtoi(v.PacketsForUnknownProtocol),
 			AttachOrStatResetUptime: attachOrResetUptime,
 			AttachOrStatResetValid:  attachOrResetValid,

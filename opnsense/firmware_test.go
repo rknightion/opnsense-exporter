@@ -772,7 +772,10 @@ func TestFetchFirmwareStatus_StatusNoneWithLastCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if firmware.OsVersion != "FreeBSD 14.3-RELEASE-p14" {
+	// Trimmed, not "FreeBSD 14.3-RELEASE-p14": the endpoint sends the prefix,
+	// the exporter publishes one representation of it (see
+	// TestFetchFirmwareStatus_OsVersionIsOneRepresentation).
+	if firmware.OsVersion != "14.3-RELEASE-p14" {
 		t.Errorf("expected real OsVersion despite status=none, got %q", firmware.OsVersion)
 	}
 	if firmware.ProductVersion != "26.1.9" {
@@ -1083,6 +1086,60 @@ func TestFetchFirmwareStatus_OsVersionFromSeam(t *testing.T) {
 	}
 }
 
+// TestFetchFirmwareStatus_OsVersionIsOneRepresentation covers the defect found
+// on the prod box after the first #640 fix shipped: os_version meant two
+// different string shapes depending on box state. This endpoint sends the
+// FreeBSD version WITH a "FreeBSD " prefix (captured verbatim from the prod
+// box, OPNsense 26.7.1_1, once it had run an update check), while the seam
+// fallback carries the already-trimmed SystemInfo.FreeBSDVersion — so the label
+// silently changed format the first time a box ran a check. Both paths must now
+// yield the SAME trimmed value, which is also what opnsense_system_info's
+// freebsd_version publishes.
+func TestFetchFirmwareStatus_OsVersionIsOneRepresentation(t *testing.T) {
+	const want = "15.1-RELEASE-p1"
+
+	t.Run("checked box, API sends the FreeBSD prefix", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"last_check": "Mon Aug 4 09:00:00 UTC 2026",
+				"os_version": "FreeBSD 15.1-RELEASE-p1", "product_id": "opnsense",
+				"status": "none"}`))
+		})
+		defer server.Close()
+
+		firmware, err := client.FetchFirmwareStatus()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if firmware.OsVersion != want {
+			t.Errorf("OsVersion = %q, want %q — the \"FreeBSD \" prefix must be trimmed so a "+
+				"checked box and the seam fallback agree", firmware.OsVersion, want)
+		}
+	})
+
+	// An empty os_version inside the gate must not clobber the "undefined"
+	// sentinel the seam fallback keys on, or a checked box that omits the field
+	// would publish an empty label instead of reaching the fallback.
+	t.Run("checked box omitting os_version still reaches the seam", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"last_check": "Mon Aug 4 09:00:00 UTC 2026",
+				"product_id": "opnsense", "status": "none"}`))
+		})
+		defer server.Close()
+
+		seam := fetchshare.New()
+		client.SetResultSeam(seam)
+		seam.Publish(fetchshare.KeySystemInformation, &SystemInfo{FreeBSDVersion: want})
+
+		firmware, err := client.FetchFirmwareStatus()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if firmware.OsVersion != want {
+			t.Errorf("OsVersion = %q, want %q from the seam", firmware.OsVersion, want)
+		}
+	})
+}
+
 // TestFetchFirmwareStatus_OsVersionSeamMiss covers the degrade-gracefully
 // half of #640: no seam wired at all, and a seam wired but with nothing
 // published under the key, both fall back to the "undefined" default rather
@@ -1146,7 +1203,7 @@ func TestFetchFirmwareStatus_OsVersionSeamDoesNotOverrideCheckedBox(t *testing.T
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if firmware.OsVersion != "FreeBSD 14.3-RELEASE-p14" {
-		t.Errorf("expected the endpoint's own os_version to win over the seam, got %q", firmware.OsVersion)
+	if firmware.OsVersion != "14.3-RELEASE-p14" {
+		t.Errorf("expected the endpoint's own os_version (trimmed) to win over the seam, got %q", firmware.OsVersion)
 	}
 }

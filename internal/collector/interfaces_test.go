@@ -155,10 +155,13 @@ func TestInterfacesCollector_Update_MultipleInterfaces(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 17 metrics per interface * 2 interfaces = 34 (see TestInterfacesCollector_Update
-	// for the per-interface breakdown; both fixtures' marker is "" so neither emits
-	// the attach/reset gauge).
-	expectedCount := 34
+	// 17 for ixl0 + 16 for igb1 = 33 (see TestInterfacesCollector_Update for the
+	// per-interface breakdown; both fixtures' marker is "" so neither emits the
+	// attach/reset gauge). igb1 is one short because it is link-state down with a
+	// "line rate" of 0, and #644 suppresses a non-positive rate rather than
+	// publishing it — an unplugged port has no line rate, and a panel dividing by
+	// the 0 would read +Inf.
+	expectedCount := 33
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -874,6 +877,10 @@ func TestInterfacesCollector_LineRateSuppressedForCarrierlessDevice(t *testing.T
 					"device": "pppoe0", "name": "WAN", "type": "PPPoE", "link state": "0",
 					"mtu": "1492", "line rate": "64000 bit/s"
 				},
+				"tailscale0": {
+					"device": "tailscale0", "name": "tailscale", "type": "PPP", "link state": "2",
+					"mtu": "1280", "line rate": "0 bit/s"
+				},
 				"ixl0": {
 					"device": "ixl0", "name": "LAN", "type": "Ethernet", "link state": "2",
 					"mtu": "1500", "line rate": "1000000000 bit/s"
@@ -900,6 +907,15 @@ func TestInterfacesCollector_LineRateSuppressedForCarrierlessDevice(t *testing.T
 
 	if _, ok := rates["pppoe0"]; ok {
 		t.Errorf("pppoe0 published a line_rate_bits series; the placeholder value must be suppressed, got %v", rates["pppoe0"])
+	}
+	// tailscale0 is the case the LinkStateUnknown clause ALONE let through, found
+	// on the prod box after the first #644 fix shipped: it reports link state UP
+	// (so the device-class check passes) while still carrying no line rate at
+	// all. Dividing by the 0 it published yields +Inf. Second clause, second
+	// case — if this one ever regresses, the class check is being trusted alone
+	// again.
+	if _, ok := rates["tailscale0"]; ok {
+		t.Errorf("tailscale0 published a line_rate_bits series; a 0 rate on a link-state-UP device must be suppressed too, got %v", rates["tailscale0"])
 	}
 	if got, ok := rates["ixl0"]; !ok || got != 1000000000 {
 		t.Errorf("ixl0 line_rate_bits = %v (present=%v), want 1000000000", got, ok)

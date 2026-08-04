@@ -402,9 +402,28 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		data.CheckPresent = true
 		// os_version (the FreeBSD version) is NOT present under product.* —
 		// unlike the three identity fields above, it genuinely only exists
-		// once a check has run (#640). This branch is therefore unchanged from
-		// before the fix; the fallback below only fires when this never runs.
-		data.OsVersion = resp.OsVersion
+		// once a check has run (#640). The fallback below fires when this
+		// never runs.
+		//
+		// The prefix trim is what keeps ONE fact in ONE representation. This
+		// endpoint sends the FreeBSD version WITH a "FreeBSD " prefix
+		// ("FreeBSD 15.1-RELEASE-p1", observed on the prod box), while the
+		// seam fallback below carries SystemInfo.FreeBSDVersion, which
+		// system_resources.go has already trimmed. Without this, os_version
+		// would mean two different string shapes depending on whether the box
+		// had run a check — the label would silently change format after the
+		// first update check, which is exactly the state-dependent-meaning
+		// defect #640 was filed about. Trimming here also makes os_version
+		// agree with opnsense_system_info's freebsd_version, its only other
+		// publisher.
+		//
+		// Assigned only when non-empty, so an empty value cannot clobber the
+		// "undefined" sentinel that the seam fallback below keys on — a
+		// checked box that omits os_version still reaches the fallback rather
+		// than publishing an empty label.
+		if os := strings.TrimPrefix(strings.TrimSpace(resp.OsVersion), "FreeBSD "); os != "" {
+			data.OsVersion = os
+		}
 		data.LastCheck = resp.LastCheck
 		data.NeedsReboot = resp.NeedsReboot == "1"
 		data.UpgradeNeedsReboot = resp.upgradeNeedsReboot()
