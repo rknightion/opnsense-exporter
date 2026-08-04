@@ -145,6 +145,19 @@ def build(b: Builder):
     )
 
     # ---- Domain enrichment, talkers & source disagreement (#353) ----------------
+    # Three availability conditions, not one (#649). `DNS Answer Cache` and `Unique
+    # Destinations` ship with the flow lane, so `has_flow_volume` covers them. The other
+    # two do not: `--flow.top-talkers` is opt-in because the host label is unbounded
+    # cardinality, and the delta-ratio histogram exists only where BOTH lanes correlate.
+    # They shared an ungated row with the first pair, so a default flow box rendered two
+    # permanently blank panels — the same defect `has_flow_country` and `has_flow_logs`
+    # were added to avoid, and the reason this row is now split in two. The second row
+    # gates on the OR of the two, which is the available primitive: enabling one of the
+    # pair can still leave the other panel blank, but the row no longer appears at all on
+    # a box that enabled neither, which is the common case this exists to fix.
+    b.sentinel("has_flow_top_talkers", metric="opnsense_flow_top_talker_bytes_total")
+    b.sentinel("has_flow_delta_ratio", metric="opnsense_flow_source_byte_delta_ratio_bucket")
+
     dnscache = b.ts(
         "DNS Answer Cache",
         [(f'{sel("opnsense_flow_dns_cache_entries")}', "entries"),
@@ -344,7 +357,9 @@ def build(b: Builder):
         b.row("Volume", [iface, direction], present="has_flow_volume"),
         b.row("Breakdown", [category, transport, scope], present="has_flow_volume"),
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
-        b.row("Domain, Talkers & Source Delta", [dnscache, uniquedest, toptalkers, delta]),
+        b.row("Domain & Destinations", [dnscache, uniquedest], present="has_flow_volume"),
+        b.row("Talkers & Source Delta", [toptalkers, delta],
+              present=["has_flow_top_talkers", "has_flow_delta_ratio"]),
         b.row("Geography", [country], present="has_flow_country"),
         # Collapsed (#422): four round-trips against a per-connection stream on every
         # cold load, and this row is by definition opened AFTER a volume panel above

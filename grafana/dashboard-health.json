@@ -560,6 +560,7 @@
         "spec": {
           "name": "opnsense_instance",
           "label": "OPNsense instance",
+          "description": "Which firewall to show. Selects Prometheus metrics on the `opnsense_instance` label and Loki logs on the `service_instance_id` resource attribute \u2014 the exporter resolves one instance identity (--exporter.instance-label) and stamps it onto both, so they always agree. Renaming one without the other empties every log panel while the metric panels carry on.",
           "current": {
             "text": "All",
             "value": "$__all"

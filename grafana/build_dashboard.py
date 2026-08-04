@@ -396,8 +396,26 @@ def add_core_variables(b: Builder):
         "hide": "dontHide", "refresh": "onDashboardLoad",
         "regex": "(?!grafanacloud-usage-insights|grafanacloud-alert-state-history).+",
         "skipUrlSync": False}})
+    # This one variable selects across BOTH signals, under two different label names, and
+    # nothing else on the dashboard says so (#649). Its options come from the Prometheus
+    # label `opnsense_instance`, but every Loki panel spends it as
+    # `service_instance_id=~"$opnsense_instance"` — the OTel `service.instance.id` resource
+    # attribute. The two always carry the same value by construction: `resolveInstanceLabel`
+    # in main.go resolves ONE string (from `--exporter.instance-label`, else the configured
+    # address or the box's hostname) and bakes it into the metric label, the OTLP log
+    # resource identity and the Pyroscope tags alike — deliberately resolved once so a
+    # restart cannot split a deployment's series (#75). That is what makes a metric panel
+    # and a log panel agree on which firewall they are showing. Rename either side without
+    # the other and every log panel silently empties while every metric panel keeps working,
+    # so the coupling is stated in the tooltip rather than left to be rediscovered.
     b.variables.append({"kind": "QueryVariable", "spec": {
         "name": "opnsense_instance", "label": "OPNsense instance",
+        "description": (
+            "Which firewall to show. Selects Prometheus metrics on the `opnsense_instance` "
+            "label and Loki logs on the `service_instance_id` resource attribute — the "
+            "exporter resolves one instance identity (--exporter.instance-label) and stamps "
+            "it onto both, so they always agree. Renaming one without the other empties "
+            "every log panel while the metric panels carry on."),
         "current": {"text": "All", "value": "$__all"}, "options": [],
         "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
                   "datasource": {"name": "${datasource}"},

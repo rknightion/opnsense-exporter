@@ -485,7 +485,24 @@ class Builder:
         `legend` exists for the same reason `stat()` has one: a gauge grouped by
         `opnsense_instance` (#468) renders one dial per box, and without a legend
         template the dials are unlabelled.
+
+        `mx` is MANDATORY on a percent/percentunit gauge (#649). Without a max the
+        radial arc auto-scales to whatever the data happens to be, so a drive at 4%
+        spare and one at 96% can paint identical arcs and the threshold markers land
+        at meaningless positions on the dial — the exact opposite of what a gauge is
+        for. This is not the #467 case in reverse: a max on a bounded unit is the
+        unit's own domain, not a fabricated severity boundary, and omitting it is
+        always a defect. Passing something other than 100 is fine and sometimes right
+        (the two SMART wear gauges use 120 so a drive past its rated endurance is
+        legible rather than pinned) — the requirement is only that the call site
+        chooses.
         """
+        if unit in ("percent", "percentunit") and mx is None:
+            raise ValueError(
+                f"gauge({title!r}): unit={unit!r} needs an explicit mx= — a percentage "
+                f"gauge with an auto-scaling arc renders its thresholds meaningless "
+                f"(#649). Pass mx=100 (or mx=1 for percentunit), or a documented "
+                f"higher ceiling where overshoot is expected.")
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "min": mn,
                     "thresholds": self._thresholds(

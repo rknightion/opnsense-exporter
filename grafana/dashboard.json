@@ -561,6 +561,7 @@
         "spec": {
           "name": "opnsense_instance",
           "label": "OPNsense instance",
+          "description": "Which firewall to show. Selects Prometheus metrics on the `opnsense_instance` label and Loki logs on the `service_instance_id` resource attribute \u2014 the exporter resolves one instance identity (--exporter.instance-label) and stamps it onto both, so they always agree. Renaming one without the other empties every log panel while the metric panels carry on.",
           "current": {
             "text": "All",
             "value": "$__all"
@@ -9979,7 +9980,8 @@
                         "value": 50
                       }
                     ]
-                  }
+                  },
+                  "max": 100
                 },
                 "overrides": []
               },
@@ -10394,7 +10396,8 @@
                         "value": 50
                       }
                     ]
-                  }
+                  },
+                  "max": 100
                 },
                 "overrides": []
               },
@@ -22338,7 +22341,8 @@
                         "value": 90
                       }
                     ]
-                  }
+                  },
+                  "max": 100
                 },
                 "overrides": []
               },
@@ -35019,7 +35023,7 @@
         "kind": "Panel",
         "spec": {
           "id": 331,
-          "title": "OpenVPN Sessions",
+          "title": "OpenVPN Session Details",
           "description": "Per-session OpenVPN details (username, virtual address). 'Virtual IPv6 Address' is populated only for dual-stack or IPv6-only tunnels; empty for v4-only sessions. Value: 1 = ok, 0 = not ok. Only populated when the exporter runs with --exporter.enable-openvpn-details.",
           "links": [],
           "data": {
@@ -62568,7 +62572,8 @@
                         "value": 90
                       }
                     ]
-                  }
+                  },
+                  "max": 100
                 },
                 "overrides": []
               },
@@ -97002,7 +97007,7 @@
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
-                                  "title": "Domain, Talkers & Source Delta",
+                                  "title": "Domain & Destinations",
                                   "collapse": false,
                                   "layout": {
                                     "kind": "GridLayout",
@@ -97033,12 +97038,43 @@
                                               "name": "panel-782"
                                             }
                                           }
-                                        },
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_flow_volume",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "Talkers & Source Delta",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
                                         {
                                           "kind": "GridLayoutItem",
                                           "spec": {
                                             "x": 0,
-                                            "y": 8,
+                                            "y": 0,
                                             "width": 24,
                                             "height": 10,
                                             "element": {
@@ -97051,13 +97087,38 @@
                                           "kind": "GridLayoutItem",
                                           "spec": {
                                             "x": 0,
-                                            "y": 18,
+                                            "y": 10,
                                             "width": 12,
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
                                               "name": "panel-784"
                                             }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "or",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_flow_top_talkers",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        },
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_flow_delta_ratio",
+                                            "operator": "matches",
+                                            "value": ".+"
                                           }
                                         }
                                       ]
@@ -97213,6 +97274,70 @@
                           }
                         },
                         "variables": [
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_flow_top_talkers",
+                              "label": "has_flow_top_talkers",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_flow_top_talker_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_flow_top_talkers"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
+                          {
+                            "kind": "QueryVariable",
+                            "spec": {
+                              "name": "has_flow_delta_ratio",
+                              "label": "has_flow_delta_ratio",
+                              "hide": "hideVariable",
+                              "query": {
+                                "kind": "DataQuery",
+                                "version": "v0",
+                                "group": "prometheus",
+                                "datasource": {
+                                  "name": "${datasource}"
+                                },
+                                "spec": {
+                                  "query": "label_values(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "refId": "has_flow_delta_ratio"
+                                }
+                              },
+                              "current": {
+                                "text": "",
+                                "value": ""
+                              },
+                              "options": [],
+                              "multi": false,
+                              "includeAll": false,
+                              "allowCustomValue": false,
+                              "refresh": "onDashboardLoad",
+                              "regex": "",
+                              "skipUrlSync": true,
+                              "sort": "disabled"
+                            }
+                          },
                           {
                             "kind": "QueryVariable",
                             "spec": {

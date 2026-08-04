@@ -7,6 +7,7 @@ from pathlib import Path
 GRAFANA_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(GRAFANA_DIR))
 
+import build_dashboard  # noqa: E402
 from builder import Builder, sel  # noqa: E402
 
 
@@ -283,3 +284,59 @@ class CoverageSourceTest(unittest.TestCase):
         b = Builder()
         b.ts("T", [(sel("opnsense_thing_present"), "x")])
         self.assertIn("opnsense_thing_present", "\n".join(b._exprs))
+
+
+class PercentGaugeBoundTest(unittest.TestCase):
+    """#649: a percent gauge without `mx` auto-scales its arc, so its thresholds land
+    at meaningless positions on the dial.
+
+    Four gauges shipped this way — two raw SMART percentages and two `100 * used /
+    limit` ratios, all four carrying real severity boundaries. A drive at 4% spare
+    and one at 96% painted arcs of the same length, and the 10/50 markers sat wherever
+    the observed range put them. The class fix is a build-time refusal rather than an
+    injected default: `mx` is not always 100 (the two SMART wear gauges use 120 so a
+    drive past its rated endurance stays legible rather than pinning), so the call
+    site has to choose. This is deliberately NOT the #467 case in reverse — a max on
+    a bounded unit is that unit's own domain, while a threshold is a severity claim
+    the caller alone can make.
+    """
+
+    def test_percent_gauge_without_a_max_fails_the_build(self):
+        for unit in ("percent", "percentunit"):
+            with self.subTest(unit=unit):
+                with self.assertRaises(ValueError):
+                    Builder().gauge("Utilization", "m", unit=unit)
+
+    def test_an_explicit_max_is_honoured_including_deliberate_overshoot(self):
+        for unit, mx in (("percent", 100), ("percent", 120), ("percentunit", 1)):
+            with self.subTest(unit=unit, mx=mx):
+                b = Builder()
+                name = b.gauge("Utilization", "m", unit=unit, mx=mx)
+                defaults = b.elements[name]["spec"]["vizConfig"]["spec"]["fieldConfig"]["defaults"]
+                self.assertEqual(defaults["max"], mx)
+
+    def test_unbounded_units_are_untouched(self):
+        """The rule is about units with a domain, not about gauges in general — a
+        gauge on bytes or a rate has no max to state and must not be forced to."""
+        for unit in ("short", "bytes", "reqps", "celsius"):
+            with self.subTest(unit=unit):
+                b = Builder()
+                name = b.gauge("Count", "m", unit=unit)
+                defaults = b.elements[name]["spec"]["vizConfig"]["spec"]["fieldConfig"]["defaults"]
+                self.assertNotIn("max", defaults)
+
+    def test_every_shipped_percent_gauge_is_bounded(self):
+        """The build-time guard covers `gauge()`; this covers the generated result,
+        so a percent gauge arriving through some other helper cannot slip past."""
+        unbounded = []
+        for _, b in build_dashboard.build_family():
+            for el in b.elements.values():
+                if el["kind"] != "Panel":
+                    continue
+                viz = el["spec"]["vizConfig"]
+                if viz["group"] != "gauge":
+                    continue
+                defaults = viz["spec"]["fieldConfig"]["defaults"]
+                if defaults.get("unit") in ("percent", "percentunit") and "max" not in defaults:
+                    unbounded.append(el["spec"]["title"])
+        self.assertEqual(sorted(unbounded), [])

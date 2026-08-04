@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 112,
+    "total": 114,
     "by_scope": {
-      "collector": 105,
+      "collector": 107,
       "self_labeled": 5,
       "target_join": 2,
       "global": 0
@@ -318,6 +318,16 @@
         ]
       },
       {
+        "name": "has_flow_delta_ratio",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel > Network > Flow Volume > Talkers & Source Delta"
+        ]
+      },
+      {
         "name": "has_flow_geoip",
         "datasource": "prometheus",
         "scope": "collector",
@@ -339,6 +349,16 @@
         ]
       },
       {
+        "name": "has_flow_top_talkers",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_flow_top_talker_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel > Network > Flow Volume > Talkers & Source Delta"
+        ]
+      },
+      {
         "name": "has_flow_volume",
         "datasource": "prometheus",
         "scope": "collector",
@@ -347,6 +367,7 @@
         "gates": [
           "opnsense2otel > Network > Flow Volume",
           "opnsense2otel > Network > Flow Volume > Breakdown",
+          "opnsense2otel > Network > Flow Volume > Domain & Destinations",
           "opnsense2otel > Network > Flow Volume > Records & Packets",
           "opnsense2otel > Network > Flow Volume > Volume"
         ]

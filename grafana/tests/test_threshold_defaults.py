@@ -147,8 +147,14 @@ class BuilderThresholdDefaultTest(unittest.TestCase):
     HELPERS = (
         ("bargauge", lambda b, title, unit, th: b.bargauge(
             title, [("m", "{{x}}")], unit=unit, thresholds=th)),
+        # `mx=100` is unconditional here rather than only on the percent cases:
+        # `gauge()` requires it for a percent/percentunit caller (#649) and ignores
+        # it for every other unit, so passing it always keeps this table one line per
+        # helper. It is orthogonal to what these tests assert — a max bounds the
+        # ARC, a threshold colours it, and #649's guard exists precisely because the
+        # two were being confused.
         ("gauge", lambda b, title, unit, th: b.gauge(
-            title, "m", unit=unit, thresholds=th)),
+            title, "m", unit=unit, thresholds=th, mx=100)),
     )
 
     def test_omitted_thresholds_render_neutrally_regardless_of_inputs(self):

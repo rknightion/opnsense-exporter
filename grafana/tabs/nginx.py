@@ -102,7 +102,7 @@ def build(b: Builder):
         "Shared Memory Utilization",
         f'100 * {sel("opnsense_nginx_shared_memory_used_bytes")} '
         f'/ {sel("opnsense_nginx_shared_memory_max_bytes")}',
-        unit="percent", w=4, h=6,
+        unit="percent", w=4, h=6, mx=100,
         thresholds=[
             {"color": "green", "value": None},
             {"color": "orange", "value": 70},

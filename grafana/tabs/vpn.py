@@ -192,8 +192,13 @@ def build(b: Builder):
             "cap actually configured (see OpenVPN Instances table above)."
         ),
     )
+    # NOT "OpenVPN Sessions" (#649): the timeseries above already owns that title on
+    # this same tab, so two panels a screen apart answered to one name. Cross-tab
+    # duplicates are fine — the tab disambiguates them, and alert deep-linking already
+    # demands a tab qualifier for any repeated title — but a same-tab collision has
+    # nothing to disambiguate it. This one counts sessions, that one lists them.
     ovpn_sessions = b.table(
-        "OpenVPN Sessions",
+        "OpenVPN Session Details",
         [sel("opnsense_openvpn_sessions")],
         w=12, h=8,
         excludes=["__name__", "job", "instance"],

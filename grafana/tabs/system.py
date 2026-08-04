@@ -1049,7 +1049,7 @@ def build(b: Builder):
     nvme_spare = b.gauge(
         "NVMe Available Spare",
         sel("opnsense_smart_nvme_available_spare_percent"),
-        unit="percent", w=4, h=6,
+        unit="percent", w=4, h=6, mx=100,
         thresholds=[
             {"color": "red", "value": None},
             {"color": "yellow", "value": 10},
@@ -1106,7 +1106,7 @@ def build(b: Builder):
     smart_spare = b.gauge(
         "SATA SSD Spare Available",
         sel("opnsense_smart_device_spare_available_percent"),
-        unit="percent", w=4, h=6,
+        unit="percent", w=4, h=6, mx=100,
         thresholds=[
             {"color": "red", "value": None},
             {"color": "yellow", "value": 10},

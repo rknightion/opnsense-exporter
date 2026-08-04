@@ -32,7 +32,7 @@ def build(b: Builder):
                    ))
     util = b.gauge("Table Utilization",
                    f'100 * {sel("opnsense_alias_table_entries_used")} / {sel("opnsense_alias_table_entries_limit")}',
-                   unit="percent", w=4, h=6,
+                   unit="percent", w=4, h=6, mx=100,
                    thresholds=[{"color": "green", "value": None},
                                {"color": "orange", "value": 70},
                                {"color": "red", "value": 90}],
