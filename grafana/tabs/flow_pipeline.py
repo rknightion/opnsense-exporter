@@ -313,11 +313,17 @@ def build(b: Builder):
              "mechanism that fell silent while every other number stayed plausible - the translation "
              "index was populated, the identity table was populated, conflicts were in band, and the "
              "two de-dup counters simply read zero, which is exactly what a box with nothing to "
-             "de-duplicate looks like. This one reads HIGH instead of reading nothing: near 1 means "
-             "the WAN's byte totals are roughly double the truth. A small non-zero value is normal, "
-             "because a post-NAT copy that legitimately arrives first is unpaired at that instant "
-             "and is counted again as \"late_pre_nat\" when its twin lands. NO SERIES AT ALL is the "
-             "healthy reading on a box with no captured ethernet WAN.",
+             "de-duplicate looks like. This one reads HIGH instead of reading nothing, so near 1 "
+             "with the suppression counters flat is the #636 signature. "
+             "IT IS A SHARE OF RECORDS, NOT OF BYTES, and the two come apart badly when a WAN's "
+             "NAT'd traffic sits in a few large flows: measured 55% on the reference box while its "
+             "byte ratio against the kernel counter was 0.94, because the unpaired remainder is the "
+             "firewall's own small ICMP and DNS flows and the duplicated GIGABYTES are all paired. "
+             "So read it WITH the interface-counter ratio, never instead of it - this panel says "
+             "whether the mechanism is alive, that ratio says whether the bytes are right. A moderate "
+             "value is also normal because a post-NAT copy that legitimately arrives first is "
+             "unpaired at that instant and counted again as \"late_pre_nat\" when its twin lands. "
+             "NO SERIES AT ALL is the healthy reading on a box with no captured ethernet WAN.",
     )
 
     ifindex = b.ts(

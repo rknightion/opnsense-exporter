@@ -891,9 +891,11 @@ func (c *flowCollector) registerNetflow() {
 			"kind=\"identities\" is the live size of the emitted-record identity table a post-NAT "+
 			"copy is matched against, and kind=\"conversations\" the live size of the second, "+
 			"longer-lived table holding one entry per TRANSLATED conversation whose pre-NAT side has "+
-			"been seen - the evidence behind outcome=\"suppressed_by_conversation\". Conversations is "+
-			"normally the SMALLER of the two despite its longer TTL, because it holds one entry per "+
-			"conversation rather than one per export. kind=\"conflict\" is a post-NAT tuple that was already mapped "+
+			"been seen - the evidence behind outcome=\"suppressed_by_conversation\". It holds one entry "+
+			"per conversation rather than one per export, so it scales with how much the box NATs "+
+			"rather than with its record rate, but its TTL is 7.5x longer and it is usually the "+
+			"LARGER of the two in absolute terms (4,039 against 3,026 measured). Both sit against the "+
+			"same bound, so watch them together. kind=\"conflict\" is a post-NAT tuple that was already mapped "+
 			"to a DIFFERENT conversation; a SMALL non-zero value is normal - measured 6-14 per build "+
 			"against ~7,000 entries on the reference box, about 0.15% - because a translation can "+
 			"genuinely be reused inside the retention window, and it fails safe: the conflicted tuple "+

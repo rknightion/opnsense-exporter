@@ -452,8 +452,11 @@ type Repairer struct {
 	// size. See natAdmit for why the second is needed.
 	//
 	// Keyed on the tuple alone and gated on NATTable.IsTranslatedPre, so it holds one
-	// entry per TRANSLATED conversation rather than one per record: on the reference
-	// box that is ~1.5k entries against natSeen's ~2.9k, despite the far longer TTL.
+	// entry per TRANSLATED conversation rather than one per record. That gate is what
+	// makes it scale with how much the box NATs rather than with its record rate — it
+	// does NOT make the table smaller: measured on the reference box 40 minutes after
+	// a restart, 4,039 conversations against natSeen's 3,026, because the TTL is 7.5x
+	// longer. Both sit against the same maxEntries bound.
 	natConv       map[routeKey]time.Time
 	natConvSwept  time.Time
 	natConvCapped uint64

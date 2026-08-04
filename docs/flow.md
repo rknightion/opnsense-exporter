@@ -301,9 +301,16 @@ sum(rate(opnsense_flow_nat_pair_deduped_total{outcome="unpaired"}[15m]))
 sum(rate(opnsense_flow_nat_pair_deduped_total{outcome=~"unpaired|suppressed|suppressed_by_conversation"}[15m]))
 ```
 
-\- and it goes to 1 when the mechanism breaks, instead of everything reading zero. A small
-non-zero value is normal: a post-NAT copy that legitimately arrives first is unpaired at
-that instant and is counted again as `late_pre_nat` when its twin lands.
+\- and it goes to 1 when the mechanism breaks, instead of everything reading zero. A moderate
+value is normal: a post-NAT copy that legitimately arrives first is unpaired at that instant
+and is counted again as `late_pre_nat` when its twin lands.
+
+**It is a share of records, not of bytes**, and the two come apart badly when a WAN's NAT'd
+traffic sits in a few large flows. Measured on the reference box straight after the fix
+landed: 55% unpaired while the byte ratio against the kernel counter was 0.94 - because the
+unpaired remainder is the firewall's own ICMP and DNS, and the duplicated *gigabytes* are all
+paired. Read it **with** the interface-counter ratio, never instead of it: this number says
+whether the mechanism is alive, that ratio says whether the bytes are right.
 
 Its limits, counted rather than hidden:
 
@@ -312,8 +319,10 @@ Its limits, counted rather than hidden:
   the interface counter - rather than suppressing on a stale memory. A live conversation
   refreshes its own entry on every pre-NAT export.
 - **It is one entry per translated conversation, not per record.** The table is gated on pf
-  calling the tuple translated, which is what keeps it smaller than the exact-identity table
-  despite the far longer TTL (`kind="conversations"` against `kind="identities"`).
+  calling the tuple translated, so it scales with how much the box NATs rather than with its
+  record rate. That does **not** make it the smaller table - its TTL is 7.5x longer, and on
+  the reference box it measured 4,039 (`kind="conversations"`) against 3,026
+  (`kind="identities"`) 40 minutes after a restart. Both sit against the same bound.
 - **The residual is arrival order.** The pre-NAT copy arrives first in 89.2% of pairs. In
   the rest the post-NAT copy is already through the rollup and shipped by the time its twin
   lands, and it cannot be taken back; the pair is emitted and counted as
