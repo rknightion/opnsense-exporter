@@ -143,9 +143,21 @@ func TestNATPairPreNATCopyIsNEVERSuppressed(t *testing.T) {
 	}
 }
 
-func TestNATPairDifferentVolumeIsNotADuplicate(t *testing.T) {
-	// Volume is the evidence: 399 of 399 real pairs matched bytes AND packets
-	// exactly. A record that does not match is a different export and must survive.
+func TestNATPairDifferentVolumeStillPairsOnTheConversation(t *testing.T) {
+	// This is the safety property #636 traded, stated explicitly so the trade is not
+	// made twice by accident.
+	//
+	// Volume equality is what identifies one EXPORT: 399 of 399 real pairs matched
+	// bytes and packets exactly. Before #636 a mismatch meant "different export,
+	// therefore not proven a duplicate, therefore emit". It no longer does. The two
+	// ng_netflow nodes do not always split a conversation into the same records — the
+	// WAN node fragments where the LAN node does not — so a mismatched volume is at
+	// least as likely to be a differently-sliced copy of bytes already counted as it
+	// is to be new traffic. Once the conversation is PROVEN captured pre-NAT, every
+	// post-NAT copy of it is redundant whatever its volume.
+	//
+	// What still protects a record is the conversation never having been seen at all:
+	// see TestNATPairUnprovenConversationIsNeverSuppressed.
 	r := newNATRepairer(t)
 	m := natTopology()
 	t0 := time.Unix(1700000000, 0)
@@ -154,11 +166,44 @@ func TestNATPairDifferentVolumeIsNotADuplicate(t *testing.T) {
 		t.Fatalf("pre-NAT copy verdict = %v, want RepairEmit", v)
 	}
 	post := natRecord(natWANAddr, 42031, natRemote, 8007, 9999, t0.Add(2*time.Second))
-	if v := r.Repair(post, m, nil, t0.Add(20*time.Second)); v != RepairEmit {
-		t.Fatalf("verdict = %v, want RepairEmit: never drop what is not PROVEN a duplicate", v)
+	if v := r.Repair(post, m, nil, t0.Add(20*time.Second)); v != RepairDrop {
+		t.Fatalf("verdict = %v, want RepairDrop: the conversation is proven captured pre-NAT", v)
 	}
-	if got := r.Stats().NATDuplicatesDropped; got != 0 {
-		t.Errorf("NATDuplicatesDropped = %d, want 0", got)
+	st := r.Stats()
+	if st.NATConversationDuplicates != 1 {
+		t.Errorf("NATConversationDuplicates = %d, want 1", st.NATConversationDuplicates)
+	}
+	if st.NATDuplicatesDropped != 0 {
+		t.Errorf("NATDuplicatesDropped = %d, want 0 — the volumes differ, so proof 1 cannot fire", st.NATDuplicatesDropped)
+	}
+}
+
+func TestNATPairUnprovenConversationIsNeverSuppressed(t *testing.T) {
+	// The mechanism can only ever subtract a copy whose twin it has evidence for. A
+	// box that captures its WAN but NOT the LAN behind it has no double count to
+	// remove, and suppressing anything there would be pure data loss.
+	r := newNATRepairer(t)
+	m := natTopology()
+	t0 := time.Unix(1700000000, 0)
+
+	for i := range 3 {
+		at := t0.Add(time.Duration(i) * time.Minute)
+		post := natRecord(natWANAddr, 42031, natRemote, 8007, uint64(3048+i), at)
+		if v := r.Repair(post, m, nil, at); v != RepairEmit {
+			t.Fatalf("post-NAT copy %d verdict = %v, want RepairEmit with no pre-NAT copy ever seen", i, v)
+		}
+	}
+	st := r.Stats()
+	if st.NATDuplicatesDropped != 0 || st.NATConversationDuplicates != 0 {
+		t.Errorf("suppressed exact=%d conversation=%d, want 0 and 0",
+			st.NATDuplicatesDropped, st.NATConversationDuplicates)
+	}
+	if st.NATUnpaired != 3 {
+		t.Errorf("NATUnpaired = %d, want 3 — the guard must see every unproven post-NAT copy", st.NATUnpaired)
+	}
+	if st.NATConversationEntries != 0 {
+		t.Errorf("NATConversationEntries = %d, want 0 — a post-NAT copy is not evidence of pre-NAT capture",
+			st.NATConversationEntries)
 	}
 }
 
@@ -223,10 +268,63 @@ func TestNATPairInternalTrafficIsNotRemembered(t *testing.T) {
 	}
 }
 
-func TestNATPairIdentityExpiresPastTheDedupeTTL(t *testing.T) {
-	// The arrival gap between the two copies is p99 60s and the TTL is two minutes,
-	// which pairs 99.7% of them. Past that the pair is missed — an over-count, which
-	// is visible against the interface counter, rather than a wrong drop.
+// TestNATPairSurvivesTheProductionArrivalGap pins the shape #636 was measured in.
+//
+// #623 sized the pairing window from a capture taken while a 100 Mbit/s backup ran
+// over the policy-routed WAN: arrival gap p50 20s, p90 49s, p99 60s, so two minutes
+// paired 99.7%. That measurement was taken under the one condition that hides the
+// failure — the backup ITSELF is what put enough flows on the WAN node to keep its
+// export datagrams filling promptly.
+//
+// Off that load the WAN node carries a handful of flows, its datagram does not fill,
+// and it holds records until its own flush. Measured at the exporter's socket on the
+// production box 2026-08-04 (tcpdump on udp/2055, v9 decoded, pairs matched on exact
+// bytes AND packets): the LAN node exported one record every 324 s, promptly at each
+// window's close, while the WAN node exported in BATCHES ~609 s apart, two windows at
+// a time. The pre->post arrival gaps were 266.4 s and 590.9 s — 4 of 4 pairs past the
+// 120 s TTL, which is why the mechanism suppressed nothing while VIRGIN read 1.79x
+// the kernel's own byte counter.
+//
+// The gap is set by the WAN node's flow RATE, which nothing here controls and which
+// falls as the box gets quieter, so this test uses the smaller of the two measured
+// gaps: a fix that only just covers 266 s is not a fix.
+func TestNATPairSurvivesTheProductionArrivalGap(t *testing.T) {
+	r := newNATRepairer(t)
+	m := natTopology()
+	t0 := time.Unix(1700000000, 0)
+
+	pre := natRecord(natLANAddr, 36180, natRemote, 8007, 4294901912, t0)
+	if v := r.Repair(pre, m, nil, t0); v != RepairEmit {
+		t.Fatalf("pre-NAT copy verdict = %v, want RepairEmit", v)
+	}
+
+	// Same bytes, same packets, same conversation, 4m26s later.
+	late := t0.Add(266 * time.Second)
+	post := natRecord(natWANAddr, 42031, natRemote, 8007, 4294901912, t0.Add(time.Second))
+	if v := r.Repair(post, m, nil, late); v != RepairDrop {
+		t.Fatalf("post-NAT copy verdict = %v, want RepairDrop: the WAN node's export is "+
+			"minutes behind the LAN node's, and these are the same bytes", v)
+	}
+
+	// The exact-export identity is long gone by 266 s, so it is proof 2 that catches
+	// this — and the two counters are kept apart precisely so an operator can see
+	// which one is carrying the box.
+	st := r.Stats()
+	if st.NATConversationDuplicates != 1 {
+		t.Errorf("NATConversationDuplicates = %d, want 1", st.NATConversationDuplicates)
+	}
+	if st.NATDuplicatesDropped != 0 {
+		t.Errorf("NATDuplicatesDropped = %d, want 0 — the exact identity expired at 120 s", st.NATDuplicatesDropped)
+	}
+	if st.NATUnpaired != 0 {
+		t.Errorf("NATUnpaired = %d, want 0 — the copy was paired, just not exactly", st.NATUnpaired)
+	}
+}
+
+func TestNATPairIdentityExpiresIntoTheConversationProof(t *testing.T) {
+	// Past dedupeTTL the exact identity is gone, so proof 1 can no longer fire — but
+	// the conversation is still answerable and proof 2 takes over. Before #636 this
+	// case was an over-count, and on a quiet WAN it was EVERY case.
 	r := newNATRepairer(t)
 	m := natTopology()
 	t0 := time.Unix(1700000000, 0)
@@ -236,10 +334,92 @@ func TestNATPairIdentityExpiresPastTheDedupeTTL(t *testing.T) {
 	}
 	post := natRecord(natWANAddr, 42031, natRemote, 8007, 3048, t0)
 	late := t0.Add(dedupeTTL + time.Second)
-	if v := r.Repair(post, m, nil, late); v != RepairEmit {
-		t.Fatalf("verdict = %v, want RepairEmit once the identity has expired", v)
+	if v := r.Repair(post, m, nil, late); v != RepairDrop {
+		t.Fatalf("verdict = %v, want RepairDrop once proof 2 covers it", v)
 	}
-	if got := r.Stats().NATDuplicatesDropped; got != 0 {
-		t.Errorf("NATDuplicatesDropped = %d, want 0", got)
+	st := r.Stats()
+	if st.NATConversationDuplicates != 1 || st.NATDuplicatesDropped != 0 {
+		t.Errorf("conversation=%d exact=%d, want 1 and 0",
+			st.NATConversationDuplicates, st.NATDuplicatesDropped)
+	}
+}
+
+func TestNATPairConversationExpiresToo(t *testing.T) {
+	// Proof 2 is not unbounded either: a conversation nothing has refreshed for
+	// natConversationTTL stops being evidence. Past that the stage is back to
+	// over-counting, which is visible against the interface counter, rather than
+	// suppressing a record on the strength of an hour-old memory.
+	r := newNATRepairer(t)
+	m := natTopology()
+	t0 := time.Unix(1700000000, 0)
+
+	if v := r.Repair(natRecord(natLANAddr, 36180, natRemote, 8007, 3048, t0), m, nil, t0); v != RepairEmit {
+		t.Fatalf("pre-NAT verdict = %v, want RepairEmit", v)
+	}
+	post := natRecord(natWANAddr, 42031, natRemote, 8007, 3048, t0)
+	late := t0.Add(natConversationTTL + time.Second)
+	if v := r.Repair(post, m, nil, late); v != RepairEmit {
+		t.Fatalf("verdict = %v, want RepairEmit once the conversation has expired", v)
+	}
+	st := r.Stats()
+	if st.NATDuplicatesDropped != 0 || st.NATConversationDuplicates != 0 {
+		t.Errorf("suppressed exact=%d conversation=%d, want 0 and 0",
+			st.NATDuplicatesDropped, st.NATConversationDuplicates)
+	}
+	if st.NATConversationEntries != 0 {
+		t.Errorf("NATConversationEntries = %d, want 0 after the sweep", st.NATConversationEntries)
+	}
+}
+
+func TestNATPairLongLivedConversationRefreshesItsEntry(t *testing.T) {
+	// The production shape: a conversation whose LAN node exports every 324 s and
+	// whose WAN node exports in batches ~609 s behind, for hours. Each pre-NAT copy
+	// must refresh the conversation so the entry never ages out under it — otherwise
+	// the fix would work for one window and then lapse.
+	r := newNATRepairer(t)
+	m := natTopology()
+	t0 := time.Unix(1700000000, 0)
+
+	const windows = 12 // ~65 minutes, well past natConversationTTL
+	for i := range windows {
+		at := t0.Add(time.Duration(i) * 324 * time.Second)
+		pre := natRecord(natLANAddr, 36180, natRemote, 8007, uint64(4294901912+i), at)
+		if v := r.Repair(pre, m, nil, at); v != RepairEmit {
+			t.Fatalf("pre-NAT copy %d verdict = %v, want RepairEmit", i, v)
+		}
+		// The WAN node's copy of the PREVIOUS window, 591 s behind — the worst gap
+		// measured at the socket on the production box.
+		if i == 0 {
+			continue
+		}
+		post := natRecord(natWANAddr, 42031, natRemote, 8007, uint64(4294901912+i-1), at)
+		postAt := t0.Add(time.Duration(i-1)*324*time.Second + 591*time.Second)
+		if v := r.Repair(post, m, nil, postAt); v != RepairDrop {
+			t.Fatalf("post-NAT copy %d verdict = %v, want RepairDrop at a 591 s gap", i, v)
+		}
+	}
+	st := r.Stats()
+	if got := st.NATDuplicatesDropped + st.NATConversationDuplicates; got != windows-1 {
+		t.Errorf("suppressed %d of %d post-NAT copies", got, windows-1)
+	}
+	if st.NATConversationEntries != 1 {
+		t.Errorf("NATConversationEntries = %d, want 1 — one conversation, refreshed", st.NATConversationEntries)
+	}
+}
+
+func TestNATPairUntranslatedConversationsCostNoEntry(t *testing.T) {
+	// The conversation table is gated on pf calling the tuple translated, which is
+	// what keeps it to one entry per NAT'd conversation instead of one per record.
+	// Traffic the box does not translate is the bulk of a LAN's records.
+	r := newNATRepairer(t)
+	m := natTopology()
+	t0 := time.Unix(1700000000, 0)
+
+	untranslated := natRecord("10.0.0.77", 51000, natRemote, 443, 4096, t0)
+	if v := r.Repair(untranslated, m, nil, t0); v != RepairEmit {
+		t.Fatalf("verdict = %v, want RepairEmit", v)
+	}
+	if got := r.Stats().NATConversationEntries; got != 0 {
+		t.Errorf("NATConversationEntries = %d, want 0 — pf records no translation for this tuple", got)
 	}
 }

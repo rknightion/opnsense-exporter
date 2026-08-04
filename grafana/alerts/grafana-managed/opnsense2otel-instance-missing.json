@@ -26,7 +26,7 @@
       "description": "opnsense_up reported for {{ $labels.opnsense_instance }} at some point in the last 1h and is now absent entirely, while at least one other exporter is still reporting. That is Grafana's MissingSeries case, NOT NoData: the vanished alert instance is evicted as stale rather than passing through noDataState, so OPNsenseExporterDown cannot see it. Causes: the exporter process died, its host went away, or Prometheus stopped scraping that target \u2014 note this fires when the series is GONE, whereas OPNsenseExporterDown fires when the exporter is alive and reporting opnsense_up=0. Check the scrape target's health first, then the exporter process. If the instance was decommissioned deliberately, this self-resolves once it has been absent for 1h; silence it until then.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseexporterinstancemissing",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "53"
+      "__panelId__": "54"
     },
     "expressions": {
       "A": {

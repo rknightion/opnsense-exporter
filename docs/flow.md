@@ -243,8 +243,8 @@ policy-routed WAN:
   independent `ng_netflow` nodes, so `first`/`last` differ by up to a second. The key
   deliberately omits them; including them would miss two pairs in five.
 - **The copies arrive p50 20 s, p90 49 s, p99 60 s apart** (max 7m11s). A hold buffer is
-  therefore the wrong mechanism - the 2-second VLAN window would pair 15.8% - and the
-  existing two-minute de-duplication window is the right one, pairing 99.7%.
+  therefore the wrong mechanism - the 2-second VLAN window would pair 15.8%. **That
+  distribution does not generalise; see the second proof below.**
 - **The pf mapping was available when the post-NAT copy arrived in 98.8% of pairs**, with
   the live one-minute poll and three-minute retention. That is much better than the
   policy-route repair manages, for a structural reason: this repair needs the state when
@@ -253,19 +253,79 @@ policy-routed WAN:
   traffic, never translated. Keying on "has a WAN address" instead of on pf's mapping
   would have destroyed every one of them.
 
+#### The second proof: a captured conversation
+
+Matching one export against its exact twin needs both copies in flight at once, and that
+assumption held only because of how the measurement above was taken. **The backup running
+over the policy-routed WAN is what put enough flows on the WAN-side `ng_netflow` node to
+keep its export datagrams filling.** Off that load the WAN node carries a handful of flows,
+its datagram does not fill, and it holds records until its own flush.
+
+Measured at the exporter's socket on the production box on 2026-08-04 (tcpdump on udp/2055,
+v9 decoded, pairs matched on exact bytes and packets):
+
+| node | export cadence |
+| --- | --- |
+| LAN (`ixl0`) | one record every 324 s, promptly at each window's close |
+| WAN (`ixl1`) | **batches ~609 s apart, two windows at a time** |
+
+The resulting pre-NAT to post-NAT arrival gaps were **266 s and 591 s** - every pair past
+the two-minute window. The WAN read **1.79x** the kernel's own byte counter for three days
+while all five of the repair's numbers looked healthy: the translation index was populated,
+the identity table was populated, conflicts were in band, and the two de-dup counters simply
+read zero, which is indistinguishable from a box with nothing to de-duplicate.
+
+The batching interval is set by the WAN node's **flow rate**, which nothing here controls
+and which rises as the box gets quieter, so no fixed window is safe. A post-NAT copy is
+therefore suppressed on **either** of two proofs:
+
+1. `outcome="suppressed"` - the pre-NAT copy of this **exact export** (same canonical tuple,
+   same bytes, same packets) was already emitted.
+2. `outcome="suppressed_by_conversation"` - a pre-NAT record for this **conversation** was
+   seen within the last 15 minutes, so its LAN side is demonstrably being captured and its
+   bytes reach the rollup by that copy regardless.
+
+The second is weaker on purpose. It infers that this export's twin exists from the fact that
+the conversation's other copies do, and it is wrong only if the pre-NAT copy of this
+particular window never arrives - a lost datagram - in which case that window is
+under-counted rather than double-counted. The split between the two counters is the
+diagnostic: a busy WAN pairs almost everything exactly, a quiet one is carried entirely by
+the second.
+
+**The guard is `outcome="unpaired"`**: a post-NAT copy pf calls a translation that was
+emitted anyway because neither proof was available. Read it as a share -
+
+```promql
+sum(rate(opnsense_flow_nat_pair_deduped_total{outcome="unpaired"}[15m]))
+  /
+sum(rate(opnsense_flow_nat_pair_deduped_total{outcome=~"unpaired|suppressed|suppressed_by_conversation"}[15m]))
+```
+
+\- and it goes to 1 when the mechanism breaks, instead of everything reading zero. A small
+non-zero value is normal: a post-NAT copy that legitimately arrives first is unpaired at
+that instant and is counted again as `late_pre_nat` when its twin lands.
+
 Its limits, counted rather than hidden:
 
+- **The conversation table expires too.** Fifteen minutes without a pre-NAT record and the
+  conversation stops being evidence, so the stage returns to over-counting - visible against
+  the interface counter - rather than suppressing on a stale memory. A live conversation
+  refreshes its own entry on every pre-NAT export.
+- **It is one entry per translated conversation, not per record.** The table is gated on pf
+  calling the tuple translated, which is what keeps it smaller than the exact-identity table
+  despite the far longer TTL (`kind="conversations"` against `kind="identities"`).
 - **The residual is arrival order.** The pre-NAT copy arrives first in 89.2% of pairs. In
   the rest the post-NAT copy is already through the rollup and shipped by the time its twin
   lands, and it cannot be taken back; the pair is emitted and counted as
   `opnsense_flow_nat_pair_deduped_total{outcome="late_pre_nat"}`. Suppressing the pre-NAT
   copy at that point would fix the byte total at the cost of the correlatable record.
-- **A PPPoE WAN has nothing to de-duplicate**, because it exports nothing at all. Both
-  counters flat at zero on such a box is correct, not a fault.
+- **A PPPoE WAN has nothing to de-duplicate**, because it exports nothing at all. Every one
+  of these counters flat at zero on such a box is correct, not a fault.
+- **A box that captures its WAN but not the LAN behind it is untouched.** No pre-NAT record
+  is ever seen, so neither proof can fire and nothing is suppressed.
 - **Conflicts fail safe.** A post-NAT tuple already mapped to a different conversation is
   counted as `kind="conflict"` (6-14 per build against ~7,000 entries, measured) and
-  resolves to the wrong conversation, whose twin then will not match on volume - so the
-  record is emitted rather than suppressed.
+  resolves to the wrong conversation, so the exact proof cannot fire on it.
 
 **Direction is not exported at all.** Field 61 is absent, so direction is inferred
 from the firewall's own topology and the ifIndex evidence, by the same rules the
@@ -860,9 +920,11 @@ sum by (interface) (increase(opnsense_interfaces_transmitted_bytes_total[24h]))
 ```
 
 A ratio near 1.05 is normal overhead. A ratio well under 1 means the WAN's traffic is
-being attributed to a different WAN. A ratio near 1.4 was the NAT double count, and on a
-current build means the de-duplication is not firing — check
-`opnsense_flow_nat_pair_deduped_total`.
+being attributed to a different WAN. A ratio of 1.4 or more was the NAT double count, and on
+a current build means the de-duplication is not firing — check
+`opnsense_flow_nat_pair_deduped_total{outcome="unpaired"}` as a share of the whole family,
+which is the one number that reads high rather than reading zero when the mechanism has
+stopped.
 
 **A PPPoE WAN exports nothing at all**, whatever the GUI says. Selecting a PPPoE interface
 for NetFlow capture is silently a no-op upstream: `ng_netflow` attaches to mpd's framing

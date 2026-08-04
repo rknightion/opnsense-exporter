@@ -299,6 +299,27 @@ def build(b: Builder):
              "than suppressing.",
     )
 
+    nat_unpaired = sel("opnsense_flow_nat_pair_deduped_total", 'outcome="unpaired"')
+    nat_decided = sel("opnsense_flow_nat_pair_deduped_total",
+                      'outcome=~"unpaired|suppressed|suppressed_by_conversation"')
+    nat_unpaired_share = b.ts(
+        "NAT-Pair Unpaired Share",
+        [(f'sum {grp()} (rate({nat_unpaired}[{RATE}])) '
+          f'/ clamp_min(sum {grp()} (rate({nat_decided}[{RATE}])), 0.0001)',
+          "unpaired share")],
+        unit="percentunit",
+        desc="The share of post-NAT copies pf CALLS a translation that the stage emitted anyway "
+             "because it could pair them with neither proof. This panel exists because #636 was a "
+             "mechanism that fell silent while every other number stayed plausible - the translation "
+             "index was populated, the identity table was populated, conflicts were in band, and the "
+             "two de-dup counters simply read zero, which is exactly what a box with nothing to "
+             "de-duplicate looks like. This one reads HIGH instead of reading nothing: near 1 means "
+             "the WAN's byte totals are roughly double the truth. A small non-zero value is normal, "
+             "because a post-NAT copy that legitimately arrives first is unpaired at that instant "
+             "and is counted again as \"late_pre_nat\" when its twin lands. NO SERIES AT ALL is the "
+             "healthy reading on a box with no captured ethernet WAN.",
+    )
+
     ifindex = b.ts(
         "NetFlow ifIndex Map",
         [(f'{sel("opnsense_flow_ifindex_entries")}', "entries"),
@@ -465,7 +486,9 @@ def build(b: Builder):
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("NetFlow Receiver", [ingest, ingest_bytes, funnel, decoder],
               present="has_flow_netflow"),
-        b.row("NetFlow Repairs & Topology", [repairs, policy_route, nat_pairs, ifindex], present="has_flow_netflow"),
+        b.row("NetFlow Repairs & Topology",
+              [repairs, policy_route, nat_pairs, nat_unpaired_share, ifindex],
+              present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs]),
         b.row("GeoIP Enrichment", [geoip_lookups, geoip_freshness, geoip_agreement,
                                    geoip_merge_mismatch],

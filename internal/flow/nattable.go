@@ -118,8 +118,17 @@ type NATTableStats struct {
 // as IfMap and RouteTable.
 type NATTable struct {
 	byPost map[routeKey]natEntry
-	built  time.Time
-	stats  NATTableStats
+	// byPre is the set of PRE-NAT tuples this table knows a translation for — the
+	// image of byPost, indexed for lookup.
+	//
+	// It exists so the record path can ask "could a record with THIS tuple ever have
+	// a post-NAT twin?" before spending an entry remembering it (#636). Without it,
+	// the conversation table would have to remember every record with one private
+	// endpoint, which is nearly all of a box's traffic; with it, the population is
+	// exactly the conversations pf says it translates.
+	byPre map[routeKey]struct{}
+	built time.Time
+	stats NATTableStats
 }
 
 // BuildNATTable indexes every translated direction="out" state by BOTH directional
@@ -135,6 +144,7 @@ type NATTable struct {
 func BuildNATTable(in NATTableInput) *NATTable {
 	t := &NATTable{
 		byPost: make(map[routeKey]natEntry, 2*len(in.Rows)),
+		byPre:  make(map[routeKey]struct{}, 2*len(in.Rows)),
 		built:  in.Built,
 	}
 	for _, row := range in.Rows {
@@ -177,6 +187,7 @@ func BuildNATTable(in NATTableInput) *NATTable {
 				continue
 			}
 			t.byPost[key] = prev
+			t.byPre[prev.canon] = struct{}{}
 			t.stats.Carried++
 		}
 	}
@@ -195,6 +206,25 @@ func (t *NATTable) put(post, pre routeKey, at time.Time) {
 		return
 	}
 	t.byPost[post] = natEntry{canon: pre, lastSeen: at}
+	t.byPre[pre] = struct{}{}
+}
+
+// IsTranslatedPre reports whether pre is the PRE-NAT side of a translation this
+// table knows about — i.e. whether a record carrying this tuple could have a
+// post-NAT twin at all.
+//
+// It is the gate on the conversation table (#636): a "yes" is what makes a record
+// worth remembering as evidence that the LAN side of a translated conversation is
+// being captured. A "no" is the common case and costs nothing.
+//
+// Nil-receiver safe, and a nil table answers no: before the first poll nothing is
+// known to be translated, which makes the mechanism inert rather than wrong.
+func (t *NATTable) IsTranslatedPre(pre routeKey) bool {
+	if t == nil {
+		return false
+	}
+	_, ok := t.byPre[pre]
+	return ok
 }
 
 // Canonical maps a POST-NAT tuple to the pre-NAT tuple of the same conversation.

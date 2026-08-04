@@ -212,11 +212,44 @@ type RepairStats struct {
 	// Measured at 10.8% of pairs (43 of 399). It is a fraction of
 	// NATDuplicatesDropped, not a fault, and the two should move together.
 	NATLatePreNATCopies uint64
+	// NATConversationDuplicates counts POST-NAT copies suppressed on the SECOND
+	// proof (#636): the exact export twin was not in the identity table, but this
+	// conversation's LAN side is demonstrably being captured, so its bytes reach the
+	// rollup by the pre-NAT copy regardless.
+	//
+	// It is the number that carries the fix on a quiet WAN, where the WAN-side
+	// ng_netflow node batches its exports minutes behind the LAN node's and the exact
+	// window can never close. A box whose WAN node is busy pairs almost everything
+	// exactly and leaves this near zero; the split between the two is the diagnostic.
+	NATConversationDuplicates uint64
+	// NATUnpaired counts post-NAT copies EMITTED because neither proof was available.
+	//
+	// This is the guard. #636 was a mechanism that fell silent while every other
+	// number stayed plausible: the translation index was populated, the identity
+	// table was populated, conflicts were in band, and the two de-dup counters simply
+	// read zero — which is indistinguishable from a box that has nothing to
+	// de-duplicate. This one is not: it moves only when a record pf CALLS a
+	// translation is emitted anyway, so
+	//
+	//	NATUnpaired / (NATUnpaired + NATDuplicatesDropped + NATConversationDuplicates)
+	//
+	// is the share of proven-translated post-NAT copies the stage failed to pair, and
+	// it reads ~1 when the mechanism is broken rather than reading nothing at all.
+	// A small non-zero value is normal: a post-NAT copy that legitimately arrives
+	// first is unpaired at that instant and is counted again as NATLatePreNATCopies
+	// when its twin lands.
+	NATUnpaired uint64
 	// NATSeenEntries is the live size of the canonical-identity table, and
 	// NATSeenCapped counts entries forced out early because it was full. A non-zero
 	// cap rate means NAT duplicates are reaching the rollup.
 	NATSeenEntries int
 	NATSeenCapped  uint64
+	// NATConversationEntries is the live size of the conversation table, and
+	// NATConversationCapped counts conversations NOT recorded because it was full.
+	// Both carry the same reading as their NATSeen* counterparts: a non-zero cap rate
+	// means NAT duplicates are reaching the rollup.
+	NATConversationEntries int
+	NATConversationCapped  uint64
 	// NATTableEntries, NATTableCarried, NATTableConflicts and NATTableSkipped
 	// describe the pf translation index itself, on the same terms as the
 	// RouteTable* fields above. Entries counts BOTH directional forms of each
@@ -407,6 +440,24 @@ type Repairer struct {
 	natHead   int
 	natCapped uint64
 
+	// natConv is the SECOND, weaker proof (#636): the set of canonical (pre-NAT)
+	// tuples for which a pre-NAT record has actually been observed, i.e. the
+	// conversations whose LAN side is demonstrably being captured.
+	//
+	// It answers a different question from natSeen and on a different timescale.
+	// natSeen asks "have I already emitted THIS EXACT export?", which needs the
+	// volume and is only answerable while both copies are in flight. natConv asks
+	// "is this conversation captured on both sides?", which is a property of the
+	// conversation rather than of one export, so it survives an arrival gap of any
+	// size. See natAdmit for why the second is needed.
+	//
+	// Keyed on the tuple alone and gated on NATTable.IsTranslatedPre, so it holds one
+	// entry per TRANSLATED conversation rather than one per record: on the reference
+	// box that is ~1.5k entries against natSeen's ~2.9k, despite the far longer TTL.
+	natConv       map[routeKey]time.Time
+	natConvSwept  time.Time
+	natConvCapped uint64
+
 	maxEntries int
 	maxHeld    int
 
@@ -427,8 +478,10 @@ type Repairer struct {
 	policyRouteNoStateBy    map[string]uint64
 	policyRouteUnresolvedBy map[string]uint64
 
-	natDuplicates    uint64
-	natLatePreCopies uint64
+	natDuplicates     uint64
+	natConvDuplicates uint64
+	natUnpaired       uint64
+	natLatePreCopies  uint64
 
 	// Repair 4's SILENT EXITS, made countable (#624). Three of the four ways
 	// correctPolicyRoute can decline to act moved no counter at all, so a box where
@@ -517,6 +570,7 @@ func NewRepairer(maxDedupeEntries, maxHeld int) *Repairer {
 		seen:       make(map[instanceKey]dedupeEntry),
 		held:       make(map[instanceKey]*heldRecord),
 		natSeen:    make(map[natKey]natSeenEntry),
+		natConv:    make(map[routeKey]time.Time),
 		maxEntries: maxDedupeEntries,
 		maxHeld:    maxHeld,
 	}
@@ -676,14 +730,18 @@ func (r *Repairer) StatsAt(now time.Time) RepairStats {
 		RouteTableCarried:      rt.Carried,
 		RouteTableAge:          r.routes.Load().Age(now),
 
-		NATDuplicatesDropped: r.natDuplicates,
-		NATLatePreNATCopies:  r.natLatePreCopies,
-		NATSeenEntries:       len(r.natSeen),
-		NATSeenCapped:        r.natCapped,
-		NATTableEntries:      nt.Entries,
-		NATTableCarried:      nt.Carried,
-		NATTableConflicts:    nt.Conflicts,
-		NATTableSkipped:      nt.Skipped,
+		NATDuplicatesDropped:      r.natDuplicates,
+		NATConversationDuplicates: r.natConvDuplicates,
+		NATUnpaired:               r.natUnpaired,
+		NATLatePreNATCopies:       r.natLatePreCopies,
+		NATSeenEntries:            len(r.natSeen),
+		NATSeenCapped:             r.natCapped,
+		NATConversationEntries:    len(r.natConv),
+		NATConversationCapped:     r.natConvCapped,
+		NATTableEntries:           nt.Entries,
+		NATTableCarried:           nt.Carried,
+		NATTableConflicts:         nt.Conflicts,
+		NATTableSkipped:           nt.Skipped,
 		// dueEarly counts as held: those records have left the buffer but not yet the
 		// stage, and a gauge that dropped them would make the accounting look short for
 		// as long as they sat there.
@@ -1374,6 +1432,40 @@ func ifaceIsWAN(m ifTopology, ifc Iface, selfAddr netip.Addr) bool {
 // would fix the byte total at the cost of the correlatable record, so the pair is
 // emitted and counted as NATLatePreNATCopies instead. This is the same trade, for
 // the same reason, as VLANLateChildCopies above.
+//
+// TWO PROOFS, NOT ONE (#636). A post-NAT copy is suppressed on either of:
+//
+//  1. EXACT EXPORT. The pre-NAT copy of this very export — same canonical tuple,
+//     same bytes, same packets — is in natSeen. The strongest evidence there is, and
+//     the only one #623 shipped.
+//  2. CAPTURED CONVERSATION. A pre-NAT record for this canonical tuple has been seen
+//     within natConversationTTL, so the LAN side of the conversation is
+//     demonstrably being captured and its bytes reach the rollup by that copy.
+//
+// The second exists because the first cannot be sized. It assumes both copies are in
+// flight together, and that held on the capture #623 measured — but that capture was
+// taken with a 100 Mbit/s backup running over the policy-routed WAN, and the backup
+// is what put enough flows on the WAN-side ng_netflow node to keep its export
+// datagrams filling. Off that load the WAN node carries a handful of flows, its
+// datagram does not fill, and it holds records until its own flush: measured at the
+// socket on the production box, the LAN node exported every 324 s while the WAN node
+// exported in batches ~609 s apart, giving pre->post arrival gaps of 266 s and 591 s
+// against a 120 s window. Every pair missed. VIRGIN read 1.79x the kernel's own byte
+// counter for three days while all five of repair 5's numbers looked healthy.
+//
+// The batching interval is set by the WAN node's flow RATE, which nothing here
+// controls and which RISES as the box gets quieter — so no fixed window is safe, and
+// widening the exact one only moves the failure. The second proof is not
+// time-bounded in the same way: it asks a question about the conversation rather
+// than about one export, and a live conversation refreshes its own entry.
+//
+// WHAT THE SECOND PROOF GIVES UP. #623's rule was "never drop what is not PROVEN a
+// duplicate", where proof meant "I have already emitted these exact bytes". Proof 2
+// is weaker: it infers that THIS export's twin exists from the fact that the
+// conversation's other copies do. It is wrong only if the pre-NAT copy of this
+// particular window never arrives — a lost datagram — in which case that window's
+// bytes are under-counted instead of double-counted. That is the better failure of
+// the two, and it is rarer than the one it replaces.
 
 // natKey is the CANONICAL identity of one export: the pre-NAT directional tuple
 // plus the volume, and DELIBERATELY NOT the timestamps.
@@ -1441,19 +1533,29 @@ func (r *Repairer) natAdmit(rec *Record, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.natExpire(now)
+	r.natConvExpire(now)
 
 	if canon, isPost := t.Canonical(own); isPost {
 		k := natKey{canon: canon, bytes: bytes, pkts: packets}
 		if e, seen := r.natSeen[k]; seen && e.role == natRolePre {
-			// The pre-NAT copy of this conversation has already been emitted. These are
+			// The pre-NAT copy of this EXACT export has already been emitted. These are
 			// the same bytes; counting them again is the whole bug.
 			delete(r.natSeen, k)
 			r.natDuplicates++
 			return false
 		}
-		// The twin has not arrived. Emit — never drop what is not PROVEN a duplicate —
-		// and leave a marker so that if it does arrive the residual is visible.
-		r.natRemember(natKey{canon: canon, bytes: bytes, pkts: packets}, natRolePost, now)
+		if _, captured := r.natConv[canon]; captured {
+			// The exact twin is gone — expired, or split differently by the two nodes —
+			// but this conversation's LAN side is demonstrably being captured, so its
+			// bytes reach the rollup by the pre-NAT copy whether or not that copy is
+			// still in natSeen. Emitting this one counts them twice.
+			r.natConvDuplicates++
+			return false
+		}
+		// Not proven a duplicate by either test. Emit — never drop what is not proven —
+		// and leave a marker so that if the twin does arrive the residual is visible.
+		r.natRemember(k, natRolePost, now)
+		r.natUnpaired++
 		return true
 	}
 
@@ -1462,6 +1564,12 @@ func (r *Repairer) natAdmit(rec *Record, now time.Time) bool {
 		// remembering it would only fill the table. Internal traffic is the bulk of
 		// most boxes' records and none of it is ever translated.
 		return true
+	}
+	// Whatever happens below, this record is evidence that the LAN side of its
+	// conversation is being captured — but only worth keeping if pf says the
+	// conversation is translated at all, which is what bounds the table.
+	if t.IsTranslatedPre(own) {
+		r.natConvRemember(own, now)
 	}
 	k := natKey{canon: own, bytes: bytes, pkts: packets}
 	if e, seen := r.natSeen[k]; seen && e.role == natRolePost {
@@ -1474,6 +1582,70 @@ func (r *Repairer) natAdmit(rec *Record, now time.Time) bool {
 	}
 	r.natRemember(k, natRolePre, now)
 	return true
+}
+
+// natConversationTTL bounds how long a conversation stays answerable as "captured
+// on its LAN side".
+//
+// It is NOT dedupeTTL and must not be folded into it. dedupeTTL bounds a window in
+// which two copies of ONE EXPORT are both in flight, and its two minutes were sized
+// against copies separated by datagram scheduling. This bounds a window in which a
+// CONVERSATION is still live, and the thing it has to outlast is the WAN-side
+// ng_netflow node's export batching.
+//
+// Fifteen minutes, from measurement (#636). On the production box the LAN node
+// exported every 324 s, promptly at each window's close, while the WAN node — which
+// carries a handful of flows, so its datagram does not fill — exported in batches
+// ~609 s apart, two windows at a time. Observed pre->post arrival gaps were 266 s
+// and 591 s. Fifteen minutes is 1.5x the worst measured gap, and the gap grows as
+// the WAN gets quieter, which is why the exact-export path alone could never be
+// sized safely: nothing here controls the WAN node's flow rate.
+const natConversationTTL = 15 * time.Minute
+
+// natConvSweepInterval bounds how often the conversation table is swept.
+//
+// It has no order slice to scan, because entries are REFRESHED on every pre-NAT
+// record of the conversation — that refresh is what keeps a long-lived conversation
+// answerable, and it is exactly what would break insertion-order-is-age-order. So
+// expiry is a full walk, and a walk on every record would put an O(entries) scan on
+// the hot path. Once a second against a table of a few thousand is negligible, and
+// the cost of a stale entry lingering up to a second past its TTL is nil.
+const natConvSweepInterval = time.Second
+
+// natConvRemember records that a conversation's pre-NAT side has been seen, or
+// refreshes it. Callers hold mu.
+//
+// At capacity it declines to add rather than evicting: a missing entry costs a
+// missed de-duplication, which shows up as an over-count against the interface
+// counter, while evicting somebody else's live conversation would cost the same
+// thing plus the entry. Refreshing an EXISTING entry is always allowed — it takes no
+// new space, and it is the case that matters most.
+func (r *Repairer) natConvRemember(canon routeKey, now time.Time) {
+	if _, exists := r.natConv[canon]; !exists {
+		if r.maxEntries > 0 && len(r.natConv) >= r.maxEntries {
+			r.natConvCapped++
+			return
+		}
+	}
+	r.natConv[canon] = now
+}
+
+// natConvExpire drops conversations untouched for natConversationTTL. Callers hold
+// mu.
+func (r *Repairer) natConvExpire(now time.Time) {
+	if len(r.natConv) == 0 {
+		return
+	}
+	if !r.natConvSwept.IsZero() && now.Sub(r.natConvSwept) < natConvSweepInterval {
+		return
+	}
+	r.natConvSwept = now
+	cutoff := now.Add(-natConversationTTL)
+	for k, seen := range r.natConv {
+		if !seen.After(cutoff) {
+			delete(r.natConv, k)
+		}
+	}
 }
 
 // couldBeTranslated reports whether a record has the shape of one side of a NAT'd

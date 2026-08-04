@@ -865,7 +865,20 @@ func (c *flowCollector) registerNetflow() {
 			"outcome=\"late_pre_nat\" is the residual: the pre-NAT copy arrived AFTER its twin had "+
 			"already been shipped, so the double count could not be prevented without discarding the "+
 			"correlatable copy. Measured at 10.8% of pairs; it should stay a small fraction of "+
-			"\"suppressed\" and the two move together. BOTH ARE ZERO ON A BOX WITH NO CAPTURED "+
+			"\"suppressed\" and the two move together. outcome=\"suppressed_by_conversation\" is the "+
+			"post-NAT copy discarded on the WEAKER proof: its exact twin was not in the identity "+
+			"table, but a pre-NAT record for the same conversation was seen recently, so the LAN side "+
+			"is demonstrably captured and these bytes reach the rollup anyway. It carries the whole "+
+			"mechanism on a QUIET WAN, where the WAN-side ng_netflow node batches its exports minutes "+
+			"behind the LAN node's and the exact window can never close - measured at 266s and 591s "+
+			"against a 120s window, which is how the reference box came to read 1.79x the kernel's "+
+			"counter for three days. outcome=\"unpaired\" is the GUARD: a post-NAT copy pf calls a "+
+			"translation that was emitted anyway because neither proof was available. Read "+
+			"unpaired / (unpaired + suppressed + suppressed_by_conversation) - it is the share of "+
+			"proven duplicates the stage failed to remove, and it goes to 1 when the mechanism breaks "+
+			"instead of everything simply reading zero. A small non-zero value is normal, because a "+
+			"post-NAT copy that legitimately arrives first is unpaired at that instant and is counted "+
+			"again as \"late_pre_nat\" when its twin lands. ALL ARE ZERO ON A BOX WITH NO CAPTURED "+
 			"ETHERNET WAN - including one whose WAN is PPPoE, which exports nothing at all - and that "+
 			"is correct, not a fault.",
 		[]string{"outcome"},
@@ -876,7 +889,11 @@ func (c *flowCollector) registerNetflow() {
 			"state, so roughly twice the number of translated states; kind=\"carried\" is the subset "+
 			"answered from an EARLIER snapshot, the same rolling union the policy-route repair uses. "+
 			"kind=\"identities\" is the live size of the emitted-record identity table a post-NAT "+
-			"copy is matched against. kind=\"conflict\" is a post-NAT tuple that was already mapped "+
+			"copy is matched against, and kind=\"conversations\" the live size of the second, "+
+			"longer-lived table holding one entry per TRANSLATED conversation whose pre-NAT side has "+
+			"been seen - the evidence behind outcome=\"suppressed_by_conversation\". Conversations is "+
+			"normally the SMALLER of the two despite its longer TTL, because it holds one entry per "+
+			"conversation rather than one per export. kind=\"conflict\" is a post-NAT tuple that was already mapped "+
 			"to a DIFFERENT conversation; a SMALL non-zero value is normal - measured 6-14 per build "+
 			"against ~7,000 entries on the reference box, about 0.15% - because a translation can "+
 			"genuinely be reused inside the retention window, and it fails safe: the conflicted tuple "+
@@ -939,7 +956,10 @@ func (c *flowCollector) registerNetflow() {
 		"Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path - the "+
 			"instance aged out having done its job. reason=\"capacity\" means the table was full and an "+
 			"entry was evicted early, so a duplicate arriving afterwards is NO LONGER SUPPRESSED and "+
-			"reaches the rollup twice; a non-zero rate is the signal to raise the bound.",
+			"reaches the rollup twice; a non-zero rate is the signal to raise the bound. "+
+			"reason=\"nat_capacity\" and reason=\"nat_conversation_capacity\" are the same signal for "+
+			"the NAT-pair stage's two tables, and read the same way - each dropped entry is a NAT'd "+
+			"conversation that will be counted twice on the WAN.",
 		reasonLabel,
 	)
 
@@ -1265,13 +1285,17 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableConflicts), "conflict")
 	gauge(c.pfStateEntries, float64(nf.Repair.RouteTableCarried), "carried")
 	counter(c.natPairDeduped, nf.Repair.NATDuplicatesDropped, "suppressed")
+	counter(c.natPairDeduped, nf.Repair.NATConversationDuplicates, "suppressed_by_conversation")
+	counter(c.natPairDeduped, nf.Repair.NATUnpaired, "unpaired")
 	counter(c.natPairDeduped, nf.Repair.NATLatePreNATCopies, "late_pre_nat")
 	gauge(c.natPairEntries, float64(nf.Repair.NATTableEntries), "translations")
 	gauge(c.natPairEntries, float64(nf.Repair.NATTableCarried), "carried")
 	gauge(c.natPairEntries, float64(nf.Repair.NATTableConflicts), "conflict")
 	gauge(c.natPairEntries, float64(nf.Repair.NATTableSkipped), "skipped")
 	gauge(c.natPairEntries, float64(nf.Repair.NATSeenEntries), "identities")
+	gauge(c.natPairEntries, float64(nf.Repair.NATConversationEntries), "conversations")
 	counter(c.dedupeDropped, nf.Repair.NATSeenCapped, "nat_capacity")
+	counter(c.dedupeDropped, nf.Repair.NATConversationCapped, "nat_conversation_capacity")
 	gauge(c.pfStateAge, nf.Repair.RouteTableAge.Seconds())
 	gauge(c.dedupeEntries, float64(nf.Repair.DedupeEntries))
 	counter(c.dedupeDropped, nf.Repair.DedupeEvicted, "ttl")
