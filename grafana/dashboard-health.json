@@ -5183,7 +5183,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum(rate(opnsense_flow_geoip_merge_address_mismatches_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance) (rate(opnsense_flow_geoip_merge_address_mismatches_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "unpairable/sec",
                         "instant": false,

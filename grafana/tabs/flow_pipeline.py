@@ -444,7 +444,7 @@ def build(b: Builder):
 
     geoip_merge_mismatch = b.ts(
         "GeoIP Merge: Unpairable Records",
-        [(f'sum(rate({sel("opnsense_flow_geoip_merge_address_mismatches_total")}[{RATE}]))',
+        [(f'sum {grp()} (rate({sel("opnsense_flow_geoip_merge_address_mismatches_total")}[{RATE}]))',
           "unpairable/sec")],
         unit="ops",
         desc="Correlator merges where the Zenarmor record and the NetFlow record could not be lined "
