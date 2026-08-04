@@ -935,6 +935,34 @@ a current build means the de-duplication is not firing — check
 which is the one number that reads high rather than reading zero when the mechanism has
 stopped.
 
+#### Three ways this ratio lies, all of them learned the hard way
+
+Every one of these has produced a confident wrong verdict on this repo, twice costing most of
+a day. Check all three **before** believing any number this query returns.
+
+1. **A quiet WAN's ratio is noise.** The query is a ratio of two sums, so it is dominated by
+   whatever the biggest flows in the window were doing — and on an idle WAN there aren't any.
+   A doubled 3 MB of synthetic-monitoring pings still reads 2.0, and a 14-minute window that
+   mostly missed a burst once returned 2.002 on 0.8 MB and looked like a finding. **Locate the
+   traffic first, then measure over it**, and if there is none, do not read this ratio at all —
+   ask whether `outcome="suppressed"` and `outcome="suppressed_by_conversation"` are still
+   moving instead. That is the question a quiet window can answer.
+2. **A short window under-reads by roughly (pipeline lag ÷ window).** Records sit in the
+   correlator for about three minutes before they are emitted, while the kernel counter is
+   instantaneous, so a 30-minute window loses ~10% and reads ~0.9 **when it is correct**. Over
+   21 hours the same lag is 0.2% and invisible. Compare two windows of the *same length* rather
+   than trusting an absolute figure from a short one.
+3. **`increase()` across a container restart is meaningless**, and the counters restart at
+   zero. Confirm uptime with `process_start_time_seconds` and keep the whole window inside one
+   lifetime. On a box where a watchtower-style agent pulls a tag on a timer, that bound moves
+   without warning.
+
+And one that is not about this ratio but reliably gets substituted for it: **never compare a
+correction *count* across two traffic windows.** The counters weight a 4 GB flow and a
+one-packet ping equally, so a count that halves usually means the traffic mix changed, not
+that a repair broke. The byte ratio is the health metric; the counts say whether a mechanism
+is alive.
+
 **A PPPoE WAN exports nothing at all**, whatever the GUI says. Selecting a PPPoE interface
 for NetFlow capture is silently a no-op upstream: `ng_netflow` attaches to mpd's framing
 node rather than the `ng_iface` node, and `ng_pppoe` accepts the hooks without complaint.
