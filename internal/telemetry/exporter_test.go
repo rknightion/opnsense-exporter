@@ -32,12 +32,15 @@ func TestMetricsEndpointURL(t *testing.T) {
 		{"already a signal url with trailing slash",
 			"https://collector.example.com/otlp/v1/metrics/",
 			"https://collector.example.com/otlp/v1/metrics/"},
-		{"no path is left for the SDK default",
+		// Not left to the SDK: since otel v1.45.0 WithEndpointURL writes an
+		// explicit "/" for an empty path, which suppresses its own /v1/metrics
+		// default and POSTs to the server root instead.
+		{"no path gets the signal path explicitly",
 			"https://collector.example.com",
-			"https://collector.example.com"},
-		{"root path is left for the SDK default",
+			"https://collector.example.com/v1/metrics"},
+		{"root path gets the signal path explicitly",
 			"https://collector.example.com/",
-			"https://collector.example.com/"},
+			"https://collector.example.com/v1/metrics"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

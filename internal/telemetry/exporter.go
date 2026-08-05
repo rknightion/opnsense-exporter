@@ -51,25 +51,30 @@ func buildTLSConfig(cfg *options.OTLPConfig) (*tls.Config, error) {
 }
 
 // metricsEndpointURL ensures an OTLP HTTP endpoint targets the metrics signal
-// path. The OTel SDK's WithEndpointURL uses the URL's path verbatim, only
-// defaulting to /v1/metrics when the path is empty — unlike the
+// path. The OTel SDK's WithEndpointURL uses the URL's path verbatim — unlike the
 // OTEL_EXPORTER_OTLP_ENDPOINT env var, which does path.Join(path, "/v1/metrics").
 // Grafana Cloud (and our own docs) hand out a base URL of the form
 // https://otlp-gateway-<zone>.grafana.net/otlp, so without this the exporter
 // would POST to /otlp — which the gateway doesn't serve — and silently deliver
 // zero metrics (#80). We mirror the env-var semantics by appending the signal
-// path when the endpoint has a non-empty path that doesn't already target it,
-// rewriting the URL string (rather than switching to WithEndpoint) so the
-// scheme-derived TLS/insecure behaviour of WithEndpointURL is preserved.
+// path unless the endpoint already targets it, rewriting the URL string (rather
+// than switching to WithEndpoint) so the scheme-derived TLS/insecure behaviour
+// of WithEndpointURL is preserved.
+//
+// A PATHLESS endpoint is written out in full here rather than left to the SDK.
+// It used to be safe to leave: WithEndpointURL copied the empty path through and
+// cleanPath substituted the /v1/metrics default. otel v1.45.0 changed that to set
+// an explicit "/" for an empty path, which suppresses the default — so relying on
+// it silently started POSTing every metric to the server root. Setting the signal
+// path ourselves makes this independent of which side owns the default.
 func metricsEndpointURL(endpoint string) (string, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return "", fmt.Errorf("parse otlp endpoint %q: %w", endpoint, err)
 	}
 	trimmed := strings.TrimRight(u.Path, "/")
-	// Empty/root path: leave it so the SDK applies its default /v1/metrics.
 	// Already targeting the metrics signal path: leave it so we don't double it.
-	if trimmed == "" || strings.HasSuffix(trimmed, "/v1/metrics") {
+	if strings.HasSuffix(trimmed, "/v1/metrics") {
 		return endpoint, nil
 	}
 	u.Path = path.Join(u.Path, "v1", "metrics")

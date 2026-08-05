@@ -72,7 +72,10 @@ func TestBuildSink_Stdout(t *testing.T) {
 func TestLogsEndpointURL(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"https://otlp-gateway-x.grafana.net/otlp", "https://otlp-gateway-x.grafana.net/otlp/v1/logs"},
-		{"https://collector:4318", "https://collector:4318"}, // empty path -> SDK default
+		// Since otel v1.45.0 an empty path is written out as an explicit "/",
+		// suppressing the SDK's /v1/logs default — so we set it ourselves.
+		{"https://collector:4318", "https://collector:4318/v1/logs"},
+		{"https://collector:4318/", "https://collector:4318/v1/logs"},
 		{"https://collector:4318/v1/logs", "https://collector:4318/v1/logs"},
 		{"https://collector:4318/otlp/", "https://collector:4318/otlp/v1/logs"},
 	}

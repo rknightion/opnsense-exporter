@@ -403,7 +403,7 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 			// which would replace every Zenarmor flow's close time with our receive time.
 			// The lever for it is tenant-side, not here.
 			r.SetObservedTimestamp(observed)
-			r.SetBody(otellog.StringValue(e.Record.Body))
+			r.SetBody(attribute.StringValue(e.Record.Body))
 			// Severity costs ~33 B/line as Loki's severity_number + severity_text, and it
 			// measured single-valued on the sampled Zenarmor streams — but that is the
 			// sample, not the field: SeverityWarn is what a blocked Zenarmor record and
@@ -423,7 +423,7 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 					k == AttrDeviceCategory || k == AttrInterface {
 					continue
 				}
-				r.AddAttributes(otellog.String(k, v))
+				r.AddAttributes(attribute.String(k, v))
 			}
 			p.rl.logger.Emit(ctx, r)
 		}
@@ -1244,15 +1244,19 @@ func logExportTimeout() time.Duration {
 // mirroring the metrics sink's /v1/metrics fix (#80): the SDK's WithEndpointURL
 // uses the path verbatim, so a Grafana-Cloud-style base URL of the form
 // https://otlp-gateway-<zone>.grafana.net/otlp would POST to /otlp and silently
-// deliver zero logs. Append /v1/logs when a non-empty path doesn't already
-// target it.
+// deliver zero logs. Append /v1/logs unless the path already targets it.
+//
+// A PATHLESS endpoint is written out in full here rather than left to the SDK,
+// for the reason spelled out on telemetry.metricsEndpointURL: otel v1.45.0 made
+// WithEndpointURL set an explicit "/" for an empty path, which suppresses the
+// SDK's own /v1/logs default and would silently POST every log to the root.
 func logsEndpointURL(endpoint string) (string, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return "", fmt.Errorf("parse otlp endpoint %q: %w", endpoint, err)
 	}
 	trimmed := strings.TrimRight(u.Path, "/")
-	if trimmed == "" || strings.HasSuffix(trimmed, "/v1/logs") {
+	if strings.HasSuffix(trimmed, "/v1/logs") {
 		return endpoint, nil
 	}
 	u.Path = path.Join(u.Path, "v1", "logs")
