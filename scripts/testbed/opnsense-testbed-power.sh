@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # OPNsense testbed power scheduler for `oli` (#625).
 #
-# The six testbed guests are only needed for the 06:47 UTC live-canary run and
+# The six testbed guests are only needed for the daily live-canary run and
 # for ad-hoc work, but they run 24/7 costing ~0.38 of a core and 24 GB of
 # allocated RAM. This brings them up before the canary and takes them down
 # after, so they are off ~90% of a quiet day.
@@ -10,7 +10,10 @@
 # `live-canary.yml` would need a Proxmox API token and a `tag:ci -> oli:8006`
 # ACL grant reachable from a PUBLIC repo, and a cancelled CI run would leave
 # guests in an indeterminate power state. Neither is true of a host-side timer,
-# and the lab gets a real 47-minute warm-up instead of ~10 minutes.
+# and the lab gets a real warm-up instead of the ~10 minutes a CI-driven power
+# cycle would give. Since the cron came off live-canary.yml the run is started BY
+# this host (opnsense-testbed-canary-dispatch.sh) once `up` returns, so the warm-up
+# is bounded by readiness rather than by a clock.
 #
 # ORDERING IS LOAD-BEARING. Every guest except the two firewalls depends on a
 # firewall for DHCP, routing and DNS, so the firewalls start first and stop
@@ -37,7 +40,7 @@ READY_URLS=(https://10.0.90.111/ https://10.0.90.119/)
 
 HOLD_FILE=/var/lib/opnsense-testbed/hold
 DEFAULT_HOLD_SECONDS=28800      # 8h — one working day, then it lapses by itself
-READY_TIMEOUT=600               # 10 min; up runs 47 min before the canary
+READY_TIMEOUT=600               # 10 min; the canary dispatch waits on this unit
 SHUTDOWN_TIMEOUT=180            # per guest, before falling back to a hard stop
 ADDRESS_TIMEOUT=90              # per container interface, before remediating
 

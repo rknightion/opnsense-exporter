@@ -14,9 +14,24 @@ name: OPNsense Live-Box Canary
 # Reports and logs carry key paths + JSON type names only — never payload
 # values (the box's data must not leak into a public repo).
 
+# DISPATCH ONLY — the daily trigger lives on `oli`, not here.
+#
+# This used to carry `cron: '47 6 * * *'`, sized against the 06:00-08:30 UTC
+# testbed power window #625 introduced. GitHub does not run scheduled workflows
+# at the requested time: every scheduled run from 2026-08-02 to 2026-08-05 started
+# between 08:55 and 10:26 UTC — 2h08 to 3h39 late — so the runner dialled boxes
+# that were already shut down and the canary failed four days running with
+# `pre-flight probe failed - box unreachable`. Scheduled runs are documented as
+# best-effort with no upper bound on the delay, so there is no cron time that fixes
+# it and no window width short of most of the day, which is the cost #625 exists to
+# avoid.
+#
+# `oli` raises the lab and knows the exact moment both firewalls serve :443, so it
+# now POSTs the dispatch itself (scripts/testbed/opnsense-testbed-canary-dispatch.sh
+# + opnsense-testbed-canary.timer) and holds the lab up until the run finishes. Do
+# NOT add a `schedule:` back as a second trigger — a delayed copy would fire against
+# a lab that is already down, or race the real run, and report either as drift.
 on:
-  schedule:
-    - cron: '47 6 * * *'   # daily, offset from api-contract.yml's 06:17
   workflow_dispatch: {}
 
 permissions:

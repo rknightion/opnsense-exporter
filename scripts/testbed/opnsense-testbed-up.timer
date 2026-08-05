@@ -2,16 +2,19 @@
 Description=Start the OPNsense testbed ahead of the daily live canary
 
 [Timer]
-# 06:00 UTC — 47 minutes before live-canary.yml's 06:47 run, so the boxes have
-# a real warm-up rather than the ~10 minutes a CI-driven power cycle would give.
-# Deliberately NOT randomised: the whole point is a predictable lead time, and a
-# RandomizedDelaySec here would eat into it.
+# 06:00 UTC, 5 minutes ahead of opnsense-testbed-canary.timer. The lead time no
+# longer has to absorb anything: this unit BLOCKS until both firewalls serve :443
+# and the canary unit orders itself After= it, so the run starts when the lab is
+# genuinely ready rather than at a time we hoped would be late enough. (It used to
+# be 47 minutes ahead of live-canary.yml's own cron — that cron is gone; see the
+# workflow's header for why.) Deliberately NOT randomised: a RandomizedDelaySec
+# would just delay the whole chain.
 OnCalendar=*-*-* 06:00:00 UTC
 # FALSE deliberately. Since the guests are onboot:0 this timer is now the ONLY
 # thing that brings the lab up, so the temptation is to set Persistent=true —
 # don't. It would fire a missed `up` whenever oli boots at any hour and leave the
 # lab running until the next 08:30, which is the cost this whole change exists to
-# avoid. An oli outage spanning 06:00-06:47 costs that day's canary run instead,
+# avoid. An oli outage spanning 06:00-06:05 costs that day's canary run instead,
 # and the canary failing is itself the signal.
 Persistent=false
 

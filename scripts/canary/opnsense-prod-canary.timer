@@ -2,7 +2,7 @@
 Description=Daily OPNsense release-channel schema canary
 
 [Timer]
-# 07:20 UTC, deliberately after the CI canary's 06:47 run against the nightly
+# 07:20 UTC, deliberately after the CI canary's 06:05 run against the nightly
 # box, so a day's two reports land on the issue nightly-first and read in
 # generation order.
 OnCalendar=*-*-* 07:20:00 UTC

@@ -1,0 +1,22 @@
+[Unit]
+Description=Daily live-canary dispatch, after the testbed warm-up
+
+[Timer]
+# 06:05 UTC. The lab is raised at 06:00 and opnsense-testbed-up.service blocks
+# until both firewalls serve :443 (~2m30s measured), so by 06:05 the Requires=
+# ordering has already been satisfied and this starts immediately. The 5 minutes
+# are slack for a slow boot, not a warm-up period — the boxes then get the rest
+# of the window, since the run itself takes ~10 minutes and down is at 08:30.
+#
+# This REPLACES live-canary.yml's `cron: '47 6 * * *'`, which was removed rather
+# than kept as a belt-and-braces second trigger: GitHub delayed that cron by
+# 2-3.5 hours every day, so a surviving copy would fire against a lab that is
+# either already down or busy with the real run, and report the difference as
+# drift. One trigger, and it is the one that knows the boxes are up.
+OnCalendar=*-*-* 06:05:00 UTC
+# FALSE, for the same reason as opnsense-testbed-up.timer: a missed run replayed
+# at oli's boot time would dispatch against a lab nobody raised.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

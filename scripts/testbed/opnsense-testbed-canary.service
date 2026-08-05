@@ -1,0 +1,14 @@
+[Unit]
+Description=Dispatch live-canary.yml once the OPNsense testbed is warm
+# Requires, not Wants: dispatching against a lab that failed to come up burns a
+# CI run to tell us the boxes are unreachable, which the up unit's own failure
+# already says more directly.
+Requires=opnsense-testbed-up.service
+After=opnsense-testbed-up.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/opnsense-testbed-canary-dispatch.sh
+# Outer backstop only. The script bounds its own wait at 2400s and releases the
+# power hold from an EXIT trap, so this fires solely if curl itself wedges.
+TimeoutStartSec=2700

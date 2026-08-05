@@ -2,7 +2,8 @@
 Description=Stop the OPNsense testbed after the daily canary window
 
 [Timer]
-# 08:30 UTC — after live-canary.yml (06:47) and camden's prod canary (07:20),
+# 08:30 UTC — after the dispatched live-canary run (06:05) and camden's prod
+# canary (07:20),
 # with slack for a slow or retried run. The down is skipped entirely while a
 # hold is active, so ad-hoc work is never fighting this.
 OnCalendar=*-*-* 08:30:00 UTC
