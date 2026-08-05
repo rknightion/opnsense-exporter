@@ -21,7 +21,6 @@ import (
 
 	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	"go.opentelemetry.io/otel/attribute"
-	otellog "go.opentelemetry.io/otel/log"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	collogpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	"google.golang.org/grpc"
@@ -141,8 +140,8 @@ func resourceAttrs(r sdklog.Record) map[string]string {
 // recordAttrs reads a record's log attributes back as a map.
 func recordAttrs(r sdklog.Record) map[string]string {
 	out := map[string]string{}
-	r.WalkAttributes(func(kv otellog.KeyValue) bool {
-		out[kv.Key] = kv.Value.String()
+	r.WalkAttributes(func(kv attribute.KeyValue) bool {
+		out[string(kv.Key)] = kv.Value.String()
 		return true
 	})
 	return out
