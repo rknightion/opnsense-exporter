@@ -512,22 +512,24 @@ RULES = [
     dict(name="opnsense-gateway-alarm-flapping", title="OPNsenseGatewayAlarmFlapping",
          A='sum by (opnsense_instance, gateway) '
            '(increase(opnsense_log_events_gateway_total{event="alarm_started"}[15m]))',
-         op="gt", params=[2, 0], for_min=0, severity="warning",
+         op="gt", params=[2, 0], for_min=15, severity="warning",
          summary="OPNsense gateway {{ $labels.gateway }} alarm is flapping ({{ $labels.opnsense_instance }})",
-         description="dpinger emitted three or more alarm_started transitions for gateway {{ $labels.gateway }} in 15m. "
+         description="dpinger emitted three or more alarm_started transitions for gateway {{ $labels.gateway }} in 15m, sustained for 15m. "
                      "This is transition evidence from syslog, not an assertion that the gateway is currently down; check OPNsenseGatewayDown and the Gateway Status panel for current state.",
          runbook=dict(
              measures='Count of dpinger alarm_started transitions for one gateway in a 15m window, from shipped syslog events - a TRANSITION signal, not a current-state assertion.',
-             threshold='gt 2 (three or more starts) in the fixed 15m observation window, for_min=0 so it fires the instant the count is exceeded.',
+             threshold='gt 2 (three or more starts) in the fixed 15m observation window, sustained for a 15m pending period. #658: this ran at for_min=0 until a WAN gateway whose mean RTT sat exactly on its 200ms latencylow flipped none/delay every ~45s for 17h. OPNsense evaluates latencylow itself once a second on a bare > with no hysteresis, so a link parked on the boundary emits transitions indefinitely - and at for_min=0 every 15m window paged. The pending period means a single wobble no longer alerts and only sustained instability does.',
              absent='Default noDataState (Ok) - no alarm_started events in the window is the normal, quiet state.',
              checks=[
                 "Check OPNsenseGatewayDown/OPNsenseGatewayDownFailover and the Gateway Status panel for this gateway's CURRENT state - this alert only proves instability happened, not that the gateway is down now",
                 "Look at the gateway's RTT/loss panels over the same 15m window for a pattern (intermittent vs. one-off)",
+                "Compare the gateway's mean RTT against its configured latencylow in OPNsense. A link sitting within a few ms of that threshold flaps on rounding alone, and the fix is to retune the threshold, not to chase the link",
             ],
              causes=[
                 'An unstable upstream link (flapping DSL/cable/PPPoE session)',
                 "dpinger's monitor target itself is intermittently unreachable",
                 'Congestion or a misconfigured latency/loss threshold making dpinger over-sensitive',
+                "The link's steady-state RTT has landed on the gateway's latencylow threshold, so the status flips on sub-millisecond variation with no hysteresis to damp it. Note it is latencylow, not latencyhigh, that produces the delay status",
             ],
              verify=[
                 'No further alarm_started events for the gateway in the next 15m window',
@@ -575,6 +577,38 @@ RULES = [
             ],
              verify=[
                 'The ratio drops back to 1 or below and stays there for 10m',
+            ],
+         )),
+    # #658: OPNsenseGatewayHighRTT defers to the operator's configured latencyhigh, which is
+    # correct but leaves every degradation UNDER that ceiling invisible. A WAN link went from a
+    # ~10ms baseline to a sustained ~205ms with 0% loss and nothing fired: loss was clean, status
+    # stayed up, and 205ms is nowhere near a 1000ms latencyhigh. This watches a link against its
+    # OWN history instead, so a step change is caught without the operator having to predict the
+    # right absolute number in advance.
+    dict(name="opnsense-gateway-rtt-baseline-deviation", title="OPNsenseGatewayRTTBaselineDeviation",
+         A="avg_over_time(opnsense_gateways_rtt_milliseconds[30m]) "
+           "/ (avg_over_time(opnsense_gateways_rtt_milliseconds[7d] offset 30m) > 10)",
+         op="gt", params=[4, 0], for_min=30, severity="warning",
+         summary="OPNsense gateway {{ $labels.name }} RTT far above its own baseline ({{ $labels.opnsense_instance }})",
+         description="Gateway {{ $labels.name }} mean RTT over the last 30m is more than 4x its trailing 7-day baseline, sustained for 30m. "
+                     "The link is still up and may be under its configured latencyhigh, so no other gateway rule will fire on this.",
+         runbook=dict(
+             measures="The gateway's 30m mean RTT divided by its own trailing 7-day mean (offset 30m so the current window is excluded from its own baseline) - a relative regression against the link's history, NOT against any configured or global threshold.",
+             threshold='gt 4 (four times baseline) sustained for 30m. The denominator carries a `> 10` guard so gateways whose baseline is under 10ms produce no series at all: on a 2ms link a 4x ratio is 8ms, which is noise, and without the guard every LAN-adjacent gateway would page on jitter. STEP-CHANGE DETECTOR, by design and not a defect: once the degraded level has persisted long enough to dominate the trailing 7-day baseline the ratio falls back under 4 and the alert RESOLVES WHILE THE LINK IS STILL SLOW. Do not "fix" that by widening the baseline window indefinitely - a new sustained normal is the operator threshold\'s job, so retune latencyhigh and let OPNsenseGatewayHighRTT own it from there.',
+             absent='Default noDataState (Ok). A series is legitimately absent when the gateway has under 7 days of history, when monitoring is disabled, or when the baseline is below the 10ms guard - none of those mean the link is healthy, they mean this rule has nothing to say about it. The metric also carries an `address` label, so a WAN address change starts a fresh baseline and the two windows stop matching until the new address has 30m of history; the stale pre-change baseline series is dropped by the join rather than producing a bogus ratio. Verified on prod, where a DHCP lease change left two baseline series for the same gateway and the expression still returned exactly one result.',
+             checks=[
+                "Compare against OPNsenseGatewayHighLoss and the gateway status gauge - clean loss with a latency step points at the upstream path, loss alongside it points at the link or local congestion",
+                "Ping the ISP's own first hop and its resolver from the firewall, sourced from that WAN address. Latency that appears one hop past the modem and is identical to the ISP's own infrastructure is inside their access network, not on the path to the monitor target",
+                "Check the gateway's configured latencylow: a link that has stepped up may now be sitting on that threshold, which produces OPNsenseGatewayAlarmFlapping as a secondary symptom",
+            ],
+             causes=[
+                'Upstream ISP access-network degradation - congestion, a ranging or scheduling fault on a DOCSIS segment, or a re-route onto a worse path',
+                'The monitor target itself has moved or is being deprioritised, so the measurement changed while the link did not',
+                'Local saturation adding queueing delay to the probes',
+            ],
+             verify=[
+                'The 30m mean returns to within 4x of the trailing baseline and stays there for 30m',
+                "Independent confirmation the link recovered - the ISP's first hop back at its normal RTT, not just the ratio falling because the baseline has absorbed the new level",
             ],
          )),
     dict(name="opnsense-kernel-zone-alloc-failure", title="OPNsenseKernelZoneAllocationFailure",
@@ -2338,6 +2372,7 @@ PANEL_LINKS = {
     "OPNsenseGatewayAlarmFlapping": "Gateway Alarm Events",
     "OPNsenseGatewayHighLoss": "Packet Loss %",
     "OPNsenseGatewayHighRTT": ("Gateway RTT", "Gateways & WAN"),
+    "OPNsenseGatewayRTTBaselineDeviation": ("Gateway RTT", "Gateways & WAN"),
     # --- system resources ------------------------------------------------------
     "OPNsenseKernelZoneAllocationFailure": "Allocation Failures — zones that matter (rate)",
     "OPNsenseKernelZoneNearLimit": "Zone Saturation (used / limit)",

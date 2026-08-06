@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **63 alert rules** and **14 recording rules**.
+Total: **64 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -346,7 +346,7 @@ opnsense_gateways_status{default_gateway="false"}
 ## OPNsenseGatewayAlarmFlapping
 
 **Severity:** warning  
-**Pending window:** 0s  
+**Pending window:** 15m0s  
 **Rule name:** `opnsense-gateway-alarm-flapping`
 
 **Expression:**
@@ -356,18 +356,20 @@ sum by (opnsense_instance, gateway) (increase(opnsense_log_events_gateway_total{
 
 **What it measures:** Count of dpinger alarm_started transitions for one gateway in a 15m window, from shipped syslog events - a TRANSITION signal, not a current-state assertion.
 
-**Threshold & window:** gt 2 (three or more starts) in the fixed 15m observation window, for_min=0 so it fires the instant the count is exceeded.
+**Threshold & window:** gt 2 (three or more starts) in the fixed 15m observation window, sustained for a 15m pending period. #658: this ran at for_min=0 until a WAN gateway whose mean RTT sat exactly on its 200ms latencylow flipped none/delay every ~45s for 17h. OPNsense evaluates latencylow itself once a second on a bare > with no hysteresis, so a link parked on the boundary emits transitions indefinitely - and at for_min=0 every 15m window paged. The pending period means a single wobble no longer alerts and only sustained instability does.
 
 **Absent / no-data semantics:** Default noDataState (Ok) - no alarm_started events in the window is the normal, quiet state.
 
 **First checks:**
 - Check OPNsenseGatewayDown/OPNsenseGatewayDownFailover and the Gateway Status panel for this gateway's CURRENT state - this alert only proves instability happened, not that the gateway is down now
 - Look at the gateway's RTT/loss panels over the same 15m window for a pattern (intermittent vs. one-off)
+- Compare the gateway's mean RTT against its configured latencylow in OPNsense. A link sitting within a few ms of that threshold flaps on rounding alone, and the fix is to retune the threshold, not to chase the link
 
 **Likely causes:**
 - An unstable upstream link (flapping DSL/cable/PPPoE session)
 - dpinger's monitor target itself is intermittently unreachable
 - Congestion or a misconfigured latency/loss threshold making dpinger over-sensitive
+- The link's steady-state RTT has landed on the gateway's latencylow threshold, so the status flips on sub-millisecond variation with no hysteresis to damp it. Note it is latencylow, not latencyhigh, that produces the delay status
 
 **Verify recovery:**
 - No further alarm_started events for the gateway in the next 15m window
@@ -430,6 +432,37 @@ opnsense_gateways_rtt_milliseconds / (opnsense_gateways_rtt_high_milliseconds > 
 
 **Verify recovery:**
 - The ratio drops back to 1 or below and stays there for 10m
+
+## OPNsenseGatewayRTTBaselineDeviation
+
+**Severity:** warning  
+**Pending window:** 30m0s  
+**Rule name:** `opnsense-gateway-rtt-baseline-deviation`
+
+**Expression:**
+```promql
+avg_over_time(opnsense_gateways_rtt_milliseconds[30m]) / (avg_over_time(opnsense_gateways_rtt_milliseconds[7d] offset 30m) > 10)
+```
+
+**What it measures:** The gateway's 30m mean RTT divided by its own trailing 7-day mean (offset 30m so the current window is excluded from its own baseline) - a relative regression against the link's history, NOT against any configured or global threshold.
+
+**Threshold & window:** gt 4 (four times baseline) sustained for 30m. The denominator carries a `> 10` guard so gateways whose baseline is under 10ms produce no series at all: on a 2ms link a 4x ratio is 8ms, which is noise, and without the guard every LAN-adjacent gateway would page on jitter. STEP-CHANGE DETECTOR, by design and not a defect: once the degraded level has persisted long enough to dominate the trailing 7-day baseline the ratio falls back under 4 and the alert RESOLVES WHILE THE LINK IS STILL SLOW. Do not "fix" that by widening the baseline window indefinitely - a new sustained normal is the operator threshold's job, so retune latencyhigh and let OPNsenseGatewayHighRTT own it from there.
+
+**Absent / no-data semantics:** Default noDataState (Ok). A series is legitimately absent when the gateway has under 7 days of history, when monitoring is disabled, or when the baseline is below the 10ms guard - none of those mean the link is healthy, they mean this rule has nothing to say about it. The metric also carries an `address` label, so a WAN address change starts a fresh baseline and the two windows stop matching until the new address has 30m of history; the stale pre-change baseline series is dropped by the join rather than producing a bogus ratio. Verified on prod, where a DHCP lease change left two baseline series for the same gateway and the expression still returned exactly one result.
+
+**First checks:**
+- Compare against OPNsenseGatewayHighLoss and the gateway status gauge - clean loss with a latency step points at the upstream path, loss alongside it points at the link or local congestion
+- Ping the ISP's own first hop and its resolver from the firewall, sourced from that WAN address. Latency that appears one hop past the modem and is identical to the ISP's own infrastructure is inside their access network, not on the path to the monitor target
+- Check the gateway's configured latencylow: a link that has stepped up may now be sitting on that threshold, which produces OPNsenseGatewayAlarmFlapping as a secondary symptom
+
+**Likely causes:**
+- Upstream ISP access-network degradation - congestion, a ranging or scheduling fault on a DOCSIS segment, or a re-route onto a worse path
+- The monitor target itself has moved or is being deprioritised, so the measurement changed while the link did not
+- Local saturation adding queueing delay to the probes
+
+**Verify recovery:**
+- The 30m mean returns to within 4x of the trailing baseline and stays there for 30m
+- Independent confirmation the link recovered - the ISP's first hop back at its normal RTT, not just the ratio falling because the baseline has absorbed the new level
 
 ## OPNsenseKernelZoneAllocationFailure
 

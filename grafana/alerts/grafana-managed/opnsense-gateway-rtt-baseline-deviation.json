@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-gateway-alarm-flapping",
+    "name": "opnsense-gateway-rtt-baseline-deviation",
     "annotations": {
       "grafana.app/folder": "opnsense2otel-alerts"
     },
@@ -11,10 +11,10 @@
     }
   },
   "spec": {
-    "title": "OPNsenseGatewayAlarmFlapping",
+    "title": "OPNsenseGatewayRTTBaselineDeviation",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "15m0s",
+    "for": "30m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -22,11 +22,11 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense gateway {{ $labels.gateway }} alarm is flapping ({{ $labels.opnsense_instance }})",
-      "description": "dpinger emitted three or more alarm_started transitions for gateway {{ $labels.gateway }} in 15m, sustained for 15m. This is transition evidence from syslog, not an assertion that the gateway is currently down; check OPNsenseGatewayDown and the Gateway Status panel for current state.",
-      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensegatewayalarmflapping",
+      "summary": "OPNsense gateway {{ $labels.name }} RTT far above its own baseline ({{ $labels.opnsense_instance }})",
+      "description": "Gateway {{ $labels.name }} mean RTT over the last 30m is more than 4x its trailing 7-day baseline, sustained for 30m. The link is still up and may be under its configured latencyhigh, so no other gateway rule will fire on this.",
+      "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensegatewayrttbaselinedeviation",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "217"
+      "__panelId__": "218"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (opnsense_instance, gateway) (increase(opnsense_log_events_gateway_total{event=\"alarm_started\"}[15m]))",
+          "expr": "avg_over_time(opnsense_gateways_rtt_milliseconds[30m]) / (avg_over_time(opnsense_gateways_rtt_milliseconds[7d] offset 30m) > 10)",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -65,7 +65,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  2,
+                  4,
                   0
                 ]
               },

@@ -102,7 +102,7 @@ class RunbookDocumentParityTest(unittest.TestCase):
         cls.markdown = build_rules.generate_runbooks_md()
         cls.headings = _headings(cls.markdown)
 
-    def test_exact_alert_count_is_63(self):
+    def test_exact_alert_count_is_64(self):
         # Re-measured against current main (#430 audit found the tracked issue's
         # figures - 31/19 rows - stale; the epic's 2026-07-27 revalidation corrected
         # it to 42/14, confirmed again here structurally). 43 since #520 added
@@ -130,8 +130,12 @@ class RunbookDocumentParityTest(unittest.TestCase):
         # uninspected" - the bytes that matter sit in a handful of large flows at
         # ~=1.0 while p90 is set by thousands of tiny ones. Byte-weighted, the two
         # sources agree (1.22-1.36). The histogram and its panel stay; only the
-        # alert was wrong.
-        self.assertEqual(len(build_rules.RULES), 63)
+        # alert was wrong. 64 again since #658 added
+        # OPNsenseGatewayRTTBaselineDeviation: OPNsenseGatewayHighRTT defers to the
+        # operator's configured latencyhigh by design, which left every degradation
+        # UNDER that ceiling unalertable - a WAN link stepped from a ~10ms baseline to
+        # a sustained ~205ms at 0% loss and no rule in the set could fire on it.
+        self.assertEqual(len(build_rules.RULES), 64)
 
     def test_exact_recording_count_is_14(self):
         self.assertEqual(len(build_rules.RECORDING), 14)

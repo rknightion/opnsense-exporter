@@ -251,7 +251,13 @@ class GatewayAlarmFlapAlertTest(unittest.TestCase):
         # the description too, rather than hiding it in the condition encoding.
         self.assertEqual(rule["op"], "gt")
         self.assertEqual(rule["params"], [2, 0])
-        self.assertEqual(rule["for_min"], 0)
+        # #658: was for_min=0. A WAN gateway whose mean RTT settled exactly on its
+        # 200ms latencylow flipped none/delay every ~45s for 17h - OPNsense evaluates
+        # that threshold itself once a second on a bare > with no hysteresis, so a link
+        # parked on the boundary emits transitions indefinitely and every 15m window
+        # cleared >2. The pending period is what stops a boundary-sitter (and a single
+        # brief wobble on a healthy link) paging.
+        self.assertEqual(rule["for_min"], 15)
         self.assertEqual(rule["severity"], "warning")
         self.assertIn("three or more", rule["description"])
         self.assertIn("15m", rule["description"])
