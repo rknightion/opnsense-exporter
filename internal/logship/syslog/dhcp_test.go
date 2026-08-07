@@ -427,7 +427,7 @@ func TestParseDHCP_NilSnapshot(t *testing.T) {
 // TestParseDHCP_Registered: every DHCP backend program dispatches to this lane,
 // and BuildRecord tags the record with the coarse dhcp subsystem.
 func TestParseDHCP_Registered(t *testing.T) {
-	for _, prog := range []string{"dhcpd", "dnsmasq", "kea-dhcp4", "kea-dhcp6", "dhcrelay"} {
+	for _, prog := range []string{"dhcpd", "dnsmasq", "kea-dhcp4", "kea-dhcp6", "dhcrelay", "DhcpLFC"} {
 		if _, ok := parserFor(prog); !ok {
 			t.Errorf("no parser registered for program %q", prog)
 		}

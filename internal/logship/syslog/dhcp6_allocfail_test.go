@@ -161,21 +161,28 @@ func TestKeaDHCP6AllocFailIdentifiersAreNeverLabels(t *testing.T) {
 	}
 }
 
-// The Lease File Cleanup lines stay EXCLUDED, matching the pre-#546 behaviour. They
-// are memfile housekeeping on a timer, not a lease event and not a failure, so they
-// keep shipping as generic records and count nothing.
-func TestKeaDHCP6LFCLinesStayUnmodelled(t *testing.T) {
+// The Lease File Cleanup lines are neither a lease event nor an allocation
+// failure, so they still count nothing on the DHCPv6 alloc-fail counter. #664
+// changed WHETHER they parse at all: the Kea-wide envelope fallback now claims
+// them (kea.msg_id/kea.component), superseding the pre-#664 "stays fully
+// unmodelled" contract this test used to pin — see dhcplfc.go and
+// TestParseDHCP_KeaLFC in dhcplfc_test.go for the envelope fallback itself.
+func TestKeaDHCP6LFCLinesDoNotCountAsAllocFail(t *testing.T) {
 	for _, msg := range []string{
 		"INFO  [kea-dhcp6.dhcpsrv.0x4b6ab5a79810] DHCPSRV_MEMFILE_LFC_START starting Lease File Cleanup",
 		"INFO  [kea-dhcp6.dhcpsrv.0x4b6ab5a79810] DHCPSRV_MEMFILE_LFC_EXECUTE executing Lease File Cleanup using: /usr/local/sbin/kea-lfc -6 -x /var/db/kea/kea-leases6.csv.2 -i /var/db/kea/kea-leases6.csv.1",
 	} {
 		t.Run(msg, func(t *testing.T) {
 			env := keaDHCP6Env(t, msg)
-			if _, ok := parseDHCP(env, nil, nil); ok {
-				t.Errorf("parseDHCP() CLAIMED an LFC line: %q", msg)
+			rec, ok := parseDHCP(env, nil, nil)
+			if !ok {
+				t.Errorf("parseDHCP() did not claim an LFC line: %q (want the #664 envelope fallback to)", msg)
+			}
+			if rec.Attributes["dhcp.alloc_fail_reason"] != "" {
+				t.Errorf("an LFC line set dhcp.alloc_fail_reason = %q", rec.Attributes["dhcp.alloc_fail_reason"])
 			}
 			sink := &fakeSink{}
-			if observeDerived(sink, "kea-dhcp6", genericRecord(env).Attributes) {
+			if observeDerived(sink, "kea-dhcp6", rec.Attributes) {
 				t.Errorf("observeDerived() counted an LFC line: %q", msg)
 			}
 		})

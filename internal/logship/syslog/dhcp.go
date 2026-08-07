@@ -32,7 +32,10 @@ func init() {
 	// dnsmasq-dhcp is dnsmasq's DHCP-server program name (distinct from the DNS-side
 	// "dnsmasq"); its DHCPREQUEST/DHCPACK lines are the same wire shape dnsmasqLineRE
 	// already handles, so registering the name is the whole change.
-	RegisterParser(parseDHCP, "dhcpd", "dnsmasq", "dnsmasq-dhcp", "kea-dhcp4", "kea-dhcp6", "dhcrelay")
+	// DhcpLFC is Kea's Lease File Cleanup helper (#664): a separate process, its
+	// own syslog program name, but the same Kea-envelope message shape as
+	// kea-dhcp6 — see dhcplfc.go for the envelope fallback both programs share.
+	RegisterParser(parseDHCP, "dhcpd", "dnsmasq", "dnsmasq-dhcp", "kea-dhcp4", "kea-dhcp6", "dhcrelay", "DhcpLFC")
 }
 
 // iscActions is the allowlist of DHCP message types we normalise from the
@@ -202,6 +205,18 @@ type dhcpFields struct {
 	// iaid is the DHCPv6 identity association id off a NA-release line (#641). A
 	// diagnostic, never a label.
 	iaid string
+
+	// The Kea-wide envelope fallback group (#664): set ONLY when none of the
+	// message-id-specific branches above matched, so a future/unmodelled Kea
+	// message id still carries its identity instead of shipping fully generic.
+	// keaLFCLeases/Attempts/Errors/Phase are set additionally on LFC_READ_STATS
+	// and LFC_WRITE_STATS. See dhcplfc.go.
+	keaMsgID       string
+	keaComponent   string
+	keaLFCLeases   string
+	keaLFCAttempts string
+	keaLFCErrors   string
+	keaLFCPhase    string
 }
 
 // parseDHCP dispatches on the shape of the line, not on the program name: a box
@@ -260,6 +275,14 @@ func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	set("dhcp.alloc_fail_subnet_id", f.allocFailSubnetID)
 	set("dhcp.alloc_fail_classes", f.allocFailClasses)
 	set("dhcp.iaid", f.iaid)
+	// The Kea-wide envelope fallback group (#664). Empty for every message-id-
+	// specific branch above, so set drops them there.
+	set("kea.msg_id", f.keaMsgID)
+	set("kea.component", f.keaComponent)
+	set("kea.lfc_leases", f.keaLFCLeases)
+	set("kea.lfc_attempts", f.keaLFCAttempts)
+	set("kea.lfc_errors", f.keaLFCErrors)
+	set("kea.lfc_phase", f.keaLFCPhase)
 
 	if name, ok := ifaceName(snap, f.iface); ok {
 		set("interface.name", name)
@@ -544,6 +567,16 @@ func parseKeaDHCP(msg string) (dhcpFields, bool) {
 			f.keaCommand = c[1]
 			return f, true
 		}
+	}
+
+	// Kea-wide envelope fallback (#664): none of the message-id-specific branches
+	// above matched, so fall back to the shape every Kea/DhcpLFC line shares —
+	// "<SEV>  [<hierarchy>.<0xaddr>] <MSG_ID> <text>" — and capture at least the
+	// message id and logger component instead of shipping fully generic. Matches
+	// against the raw msg, not `s`: the logger-hierarchy bracket this needs was
+	// already stripped out of `s` by keaLoggerRE above.
+	if ef, ok := parseKeaEnvelope(msg); ok {
+		return ef, true
 	}
 
 	return f, false
