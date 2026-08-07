@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
@@ -357,7 +359,7 @@ func TestUnboundRecord_SetsAttrAction(t *testing.T) {
 		if err := json.Unmarshal([]byte(body), &row); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		rec := unboundRecord(row)
+		rec := unboundRecord(row, nil)
 		if got := rec.Attributes[AttrAction]; got != tc.want {
 			t.Errorf("action %q -> opnsense.action %q, want %q", tc.action, got, tc.want)
 		}
@@ -372,7 +374,102 @@ func TestUnboundRecord_UnknownActionLeavesAttrActionUnset(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"time":1,"action":"Reshuffled"}`), &row); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if v, present := unboundRecord(row).Attributes[AttrAction]; present {
+	if v, present := unboundRecord(row, nil).Attributes[AttrAction]; present {
 		t.Errorf("opnsense.action = %q for an unknown verb; must be absent", v)
 	}
+}
+
+// unboundRowRecord builds a Record from one raw client value, the only field these
+// tests vary.
+func unboundRowRecord(t *testing.T, client string, snap *enrich.Snapshot) Record {
+	t.Helper()
+	var row opnsense.UnboundSearchQueryRow
+	body, err := json.Marshal(map[string]any{
+		"time": 1, "client": client, "domain": "x.test.", "type": "A",
+		"action": "Pass", "source": "Cache", "rcode": "NOERROR",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := json.Unmarshal(body, &row); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return unboundRecord(row, snap)
+}
+
+// The contract from #660: whatever the resolver's own client table put in the
+// `client` column is carried by dns.client_label, which never claims to be an
+// address; src.ip is set ONLY when that value already parses as an IP, so a
+// consumer filtering on src.ip can never match a hostname. Values are the real
+// ones observed in a live 1000-row page.
+func TestUnboundRecord_ClientLabelAndSrcIP(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		client    string
+		wantLabel string // "" means the attribute must be absent
+		wantIP    string // "" means src.ip must be absent
+	}{
+		{"fqdn with a PTR", "camden.rob-knight.net", "camden.rob-knight.net", ""},
+		{"bare ipv4, no PTR", "10.0.0.5", "10.0.0.5", "10.0.0.5"},
+		{"bare ipv6 literal", "2001:8b0:1f05::105b", "2001:8b0:1f05::105b", "2001:8b0:1f05::105b"},
+		{"non-fqdn name", "poly-office", "poly-office", ""},
+		{"localhost", "localhost", "localhost", ""},
+		{"empty", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attrs := unboundRowRecord(t, tc.client, nil).Attributes
+
+			got, present := attrs[unboundClientLabelAttr]
+			switch {
+			case tc.wantLabel == "" && present:
+				t.Errorf("%s = %q; an empty client must set no label attribute at all", unboundClientLabelAttr, got)
+			case tc.wantLabel != "" && got != tc.wantLabel:
+				t.Errorf("%s = %q, want %q", unboundClientLabelAttr, got, tc.wantLabel)
+			}
+
+			gotIP, hasIP := attrs["src.ip"]
+			switch {
+			case tc.wantIP == "" && hasIP:
+				t.Errorf("src.ip = %q for client %q; src.ip must be a real address or absent, never a hostname", gotIP, tc.client)
+			case tc.wantIP != "" && gotIP != tc.wantIP:
+				t.Errorf("src.ip = %q, want %q", gotIP, tc.wantIP)
+			}
+
+			if _, stale := attrs["client"]; stale {
+				t.Error(`the mixed-type "client" attribute must be gone, not shipped alongside its replacement`)
+			}
+		})
+	}
+}
+
+// Enrichment is keyed on the parsed address, exactly like every other lane — and
+// is therefore a no-op on the majority of rows, whose client value is a name.
+func TestUnboundRecord_EnrichesOnlyAParsedIP(t *testing.T) {
+	snap := &enrich.Snapshot{
+		Hostnames: map[string]string{"10.0.0.5": "camden", "camden.rob-knight.net": "SHOULD-NOT-RESOLVE"},
+		MACs:      map[string]string{"10.0.0.5": "aa:bb:cc:dd:ee:ff"},
+		LocalNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+		SelfIPs:   map[netip.Addr]bool{netip.MustParseAddr("10.0.0.254"): true},
+	}
+
+	t.Run("client without a PTR is enriched from our own tables", func(t *testing.T) {
+		attrs := unboundRowRecord(t, "10.0.0.5", snap).Attributes
+		for k, want := range map[string]string{
+			"src.ip": "10.0.0.5", "src.hostname": "camden",
+			"src.mac": "aa:bb:cc:dd:ee:ff", "src.scope": "local",
+		} {
+			if attrs[k] != want {
+				t.Errorf("%s = %q, want %q", k, attrs[k], want)
+			}
+		}
+	})
+
+	t.Run("client with a PTR gets no src.* at all", func(t *testing.T) {
+		attrs := unboundRowRecord(t, "camden.rob-knight.net", snap).Attributes
+		for _, k := range []string{"src.ip", "src.hostname", "src.mac", "src.scope"} {
+			if v, ok := attrs[k]; ok {
+				t.Errorf("%s = %q; a hostname-shaped client value must never be enriched as an address", k, v)
+			}
+		}
+	})
 }

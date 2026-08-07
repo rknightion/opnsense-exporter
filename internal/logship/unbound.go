@@ -4,18 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // unboundSourceName is the Name()/`source` attribute value for this lane.
 const unboundSourceName = "unbound"
+
+// unboundClientLabelAttr carries the `client` column exactly as the resolver's own
+// client table produced it — a hostname when OPNsense had a PTR/lease name for the
+// querier, a bare IP when it did not, `localhost`, or nothing at all (#660).
+//
+// It is deliberately NOT called src.ip or any other address key. The firewall
+// destroys the raw client address before serialisation — `stats.py handle_details()`
+// collapses hostname over client with np.where and then drops the `hostname` and
+// `ipaddr` columns, on BOTH SQL branches — so this value is not one type and never
+// can be from this endpoint. Naming it a *label* is the honest description: it is
+// whatever identity string the resolver applied, and it is the only field on this
+// lane stable enough to group a panel on.
+//
+// Consequence, and it is not fixable here: this lane cannot be joined to NetFlow or
+// Zenarmor flow records by IP on most rows. The syslog per-query route (#659) logs
+// the raw client address and never substitutes; use it when IP correlation matters.
+const unboundClientLabelAttr = "dns.client_label"
 
 func init() {
 	RegisterSource(newUnboundSource)
@@ -27,7 +46,7 @@ func newUnboundSource(deps Deps) (Source, error) {
 	if !options.LogsUnboundEnabled() {
 		return nil, nil
 	}
-	return &unboundSource{client: deps.Client, log: deps.Logger}, nil
+	return &unboundSource{client: deps.Client, log: deps.Logger, cache: deps.Cache}, nil
 }
 
 // unboundSource ships Unbound's per-query DNS log
@@ -49,6 +68,10 @@ func newUnboundSource(deps Deps) (Source, error) {
 type unboundSource struct {
 	client *opnsense.Client
 	log    *slog.Logger
+	// cache is the shared enrichment snapshot, used only on the minority of rows
+	// whose client value is already an address (see unboundClientLabelAttr). May be
+	// nil in tests; a nil cache simply enriches nothing.
+	cache *enrich.Cache
 
 	mu sync.Mutex
 	// lastTime is the newest row `time` value processed by the previous Poll
@@ -116,9 +139,10 @@ func (s *unboundSource) Poll(ctx context.Context) ([]Record, error) {
 		}
 		// kept preserves the page's time-DESC order; reverse it so records are
 		// emitted oldest first.
+		snap := s.snapshot()
 		records = make([]Record, 0, len(kept))
 		for i := len(kept) - 1; i >= 0; i-- {
-			records = append(records, unboundRecord(kept[i]))
+			records = append(records, unboundRecord(kept[i], snap))
 		}
 	}
 
@@ -134,6 +158,15 @@ func (s *unboundSource) Poll(ctx context.Context) ([]Record, error) {
 	s.updateCursor(newest, nextSeen)
 
 	return records, nil
+}
+
+// snapshot returns the current enrichment snapshot, or nil when no cache was wired
+// (tests, and any future caller that builds the source directly).
+func (s *unboundSource) snapshot() *enrich.Snapshot {
+	if s.cache == nil {
+		return nil
+	}
+	return s.cache.Load()
 }
 
 func (s *unboundSource) snapshotCursor() (int64, map[string]struct{}) {
@@ -237,7 +270,10 @@ type unboundLogLine struct {
 // strips any Record.Attributes entry under that key before shipping (see
 // record.go's sanitizeAttributes). Using "source" here would silently lose
 // Unbound's resolution-source data on every record.
-func unboundRecord(row opnsense.UnboundSearchQueryRow) Record {
+// Client note (#660): the upstream `client` column is mixed-type by construction,
+// so it ships as unboundClientLabelAttr rather than a bare `client`, and src.ip is
+// set only when that value already parses as an address — see the const's comment.
+func unboundRecord(row opnsense.UnboundSearchQueryRow, snap *enrich.Snapshot) Record {
 	line := unboundLogLine{
 		Time:          int64(row.Time.Int()),
 		Client:        row.Client.String(),
@@ -259,7 +295,6 @@ func unboundRecord(row opnsense.UnboundSearchQueryRow) Record {
 	}
 
 	attrs := map[string]string{
-		"client":        row.Client.String(),
 		"domain":        row.Domain.String(),
 		"qtype":         row.Type.String(),
 		"action":        row.Action.String(),
@@ -274,12 +309,56 @@ func unboundRecord(row opnsense.UnboundSearchQueryRow) Record {
 	if a := MapUnboundAction(row.Action.String()); a != "" {
 		attrs[AttrAction] = a
 	}
+	setUnboundClient(attrs, snap, row.Client.String())
 
 	return Record{
 		Timestamp:  time.Unix(int64(row.Time.Int()), 0).UTC(),
 		Body:       string(body),
 		Attributes: attrs,
 		Severity:   unboundSeverity(row.Action.String()),
+	}
+}
+
+// setUnboundClient writes the client attributes for one row.
+//
+// Three cases, and the middle one is the whole point of #660:
+//
+//   - empty (22 rows in a live 1000-row page) — nothing is set at all, rather than
+//     an empty label a consumer would have to filter out by hand.
+//   - a name (`camden.rob-knight.net`, `poly-office`, `localhost` — ~97% of rows) —
+//     the label only. No reverse-mapping back to an address: measured against our own
+//     ARP/lease tables it covered 35% of traffic, missed the single biggest client
+//     entirely, and was 4-way ambiguous on the second biggest, so it would produce an
+//     authoritative-looking field that is silently wrong (#660 decision comment).
+//   - an address — the label AND src.ip, plus hostname/MAC/scope from our own
+//     enrichment, exactly like every other lane.
+//
+// The guarantee: src.ip is a real address or absent. It is never a hostname.
+func setUnboundClient(attrs map[string]string, snap *enrich.Snapshot, client string) {
+	client = strings.TrimSpace(client)
+	if client == "" {
+		return
+	}
+	attrs[unboundClientLabelAttr] = client
+
+	if net.ParseIP(client) == nil {
+		return
+	}
+	attrs["src.ip"] = client
+	if snap == nil {
+		return
+	}
+	// A miss is the normal case here (a device that has never held a lease), so it
+	// is silent and never signals a stale snapshot — same contract as the syslog
+	// lanes' client enrichment.
+	if host, ok := snap.Hostname(client); ok {
+		attrs["src.hostname"] = host
+	}
+	if mac, ok := snap.MAC(client); ok {
+		attrs["src.mac"] = mac
+	}
+	if scope := snap.Scope(client); scope != "" {
+		attrs["src.scope"] = scope
 	}
 }
 
