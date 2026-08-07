@@ -22,6 +22,31 @@ import "sync"
 // Both constants are round, conservative numbers: the point is that a byte budget
 // tracks reality within a small constant factor, not that it is exact. Under-counting
 // would let the budget be exceeded, so they err high.
+//
+// MEASURED AGAINST A REAL PAYLOAD, 2026-08-07 (#663). Two record shapes exported through
+// the real OTLP sink over a real socket, weighed as uncompressed protobuf —
+// TestRecordBytesTracksTheRealWirePayload is the harness and prints the live numbers:
+//
+//	                          body   attrs   recordBytes   measured wire   ratio
+//	zenarmor conn (captured)  1747B    32       4034B          2539B       1.6x
+//	syslog unbound query        98B    17       1356B           524B       2.6x
+//
+// So the estimate NEVER under-counts the wire, which is the direction that matters —
+// --logs.max-export-bytes sizes a batch by summing this, and an under-count would put
+// more bytes on the wire than the operator's budget allows. It over-counts by up to
+// ~2.6x on attribute-heavy small records, because recordAttrOverheadBytes charges Go map
+// and string-header cost that protobuf does not pay (17 attributes are 816 B of that
+// syslog estimate). That is right for this function's PRIMARY job — retained heap for
+// the queue's memory budget — and merely conservative for the wire, so it is left alone
+// rather than tuned to split the difference and become wrong for both.
+//
+// The same measurement settles #663's other question. The live rejection reported 2705
+// bytes/record, which looked like a ~20x multiplier over 100-150 byte syslog DNS lines.
+// It is not a multiplier at all: a Zenarmor record's Body is the raw NDJSON document
+// verbatim, and one real captured conn document bills at ~2549 B on its own. The batch's
+// bytes were Zenarmor documents, not syslog lines. There is no runaway per-record
+// metadata set and no per-partition resource duplication — resource attributes travel
+// once per ResourceLogs on the wire, not once per record.
 const (
 	recordEntryOverheadBytes = 128
 	recordAttrOverheadBytes  = 48

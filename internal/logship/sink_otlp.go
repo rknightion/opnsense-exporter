@@ -78,14 +78,57 @@ const otlpMaxRequestBytes = 64 << 20
 // a proxy for the marshalled protobuf size, not a measurement of it. Protobuf adds field
 // tags and length prefixes we do not model. A 2x margin absorbs that difference instead
 // of betting that the estimate is conservative in every payload shape.
+//
+// IT IS NOT THE ONLY BATCH BOUND, and since #663 it is not the one that normally binds.
+// This constant answers "what will the OTLP exporter agree to SEND"; a Loki tenant's
+// ingestion limit is a bytes-per-SECOND budget, which is a different constraint entirely
+// — a 7.5 MB push is worth many seconds of that budget and is refused atomically however
+// long we wait, while being comfortably under 32 MiB. --logs.max-export-bytes carries the
+// ingest-rate bound (default 1 MiB) and pipeline.exportByteBound takes the min of the two,
+// so this stays the hard transport backstop and never has to double as a rate bound.
 const maxExportBytes = 32 << 20
+
+// otlpRetryPolicy PINS the exporter's own retry loop instead of inheriting it (#663).
+// Both branches of newLogExporter install it.
+//
+// THERE ARE TWO NESTED RETRY LAYERS AND ONLY ONE OF THEM WAS EVER VISIBLE. The SDK
+// default is InitialInterval 5s / MaxInterval 30s / MaxElapsedTime 1 MINUTE
+// (vendor/…/otlploghttp/internal/retry/retry.go), applied INSIDE one Export call — so a
+// single Emit could burn a minute plus a 10s request timeout before returning, and the
+// pipeline then counted that as ONE attempt and did it nine more times. Worst case on an
+// undeliverable batch was --logs.ship-max-attempts × (SDK max-elapsed + timeout) ≈ 700s,
+// which is the ~8 minutes observed on the live box. The pipeline's own 5s-capped backoff
+// was irrelevant noise beside it, and nothing in the code related the two.
+//
+// The SDK layer is KEPT, not removed: riding out a single transient 503 inside one Export
+// is genuinely cheaper than handing the batch back for a whole logical delivery round,
+// and TestOTLPSink_HTTPTransientThenRecoveryAcknowledgesOnce is the contract that says so.
+// What changes is that it is now pinned SMALL — one to two quick in-Export retries, not a
+// minute — so that the composition of the two layers is a number that can be written down.
+// The bound is derived in full on pipeline.shipBatch.
+//
+// It also must not swallow the rate-limit signal for long: on a 429 the SDK honours
+// Retry-After itself, and with the default minute-long budget an advertised 30s delay
+// would be slept INSIDE Export where the pipeline cannot see it, split the batch, or do
+// anything else useful.
+var otlpRetryPolicy = struct {
+	InitialInterval time.Duration
+	MaxInterval     time.Duration
+	MaxElapsedTime  time.Duration
+}{
+	InitialInterval: 500 * time.Millisecond,
+	MaxInterval:     2 * time.Second,
+	MaxElapsedTime:  5 * time.Second,
+}
 
 // otlpSink ships records over OTLP logs. It reuses the exporter's --otlp.*
 // transport family. Each provider's syncBatchProcessor (#290) exports synchronously and
 // returns the real export error, so the pipeline's own bounded queue is the single
 // COUNTED backpressure valve and delivery is observable — there is no second, silent SDK
-// batch queue in front of the wire. The exporter itself still applies OTLP's transient
-// retry/backoff; a returned error means it gave up, and the pipeline retries the batch.
+// batch queue in front of the wire. The exporter still applies its own transient
+// retry/backoff, but PINNED small (otlpRetryPolicy, #663) so it composes with
+// --logs.ship-max-attempts into a bounded worst case instead of multiplying against it;
+// a returned error means it gave up, and the pipeline retries the batch.
 //
 // LABELS VS STRUCTURED METADATA (#263). Loki promotes only RESOURCE attributes to
 // index labels; scope and log attributes can only ever become structured metadata,
@@ -546,6 +589,12 @@ func classifyPartition(entries []Entry, obs *deliveryObservation, err error, res
 		// budget (10 wire requests by default) before reaching the same conclusion.
 		res.Rejected = append(res.Rejected, entries...)
 		res.Err = errors.Join(res.Err, err)
+	case outcomeRateLimited:
+		// Retryable, but NOT by resending this request unchanged — it was refused for
+		// its size against a bytes/sec budget. The entries go back for another attempt
+		// and the rateLimitError tells the pipeline to split and pace them (#663).
+		res.Retry = append(res.Retry, entries...)
+		res.Err = errors.Join(res.Err, &rateLimitError{retryAfter: obs.throttle(), err: err})
 	case outcomeAccepted:
 		res.Acked = append(res.Acked, entries...)
 	default:
@@ -821,25 +870,78 @@ const (
 	// status outside the retryable set (400 and friends), or a non-retryable gRPC code
 	// such as InvalidArgument or Unauthenticated.
 	outcomePermanent
-	// outcomeRetryable is a genuinely transient failure: HTTP 429/502/503/504, the
+	// outcomeRetryable is a genuinely transient failure: HTTP 502/503/504, the
 	// retryable gRPC codes, or a transport-level error (refused connection, TLS
-	// failure, timeout).
+	// failure, timeout). A byte-identical resend is the right response.
 	outcomeRetryable
+	// outcomeRateLimited is a RATE-limit refusal: HTTP 429, or gRPC RESOURCE_EXHAUSTED
+	// (#663). Split out of outcomeRetryable because the correct response is materially
+	// different. The other retryable outcomes mean "the endpoint could not take this
+	// right now"; this one means "this request is too much AT ONCE for a bytes/sec
+	// budget", so resending it unchanged is guaranteed to fail again however long we
+	// wait. It is still retryable — the records are not refused on their merits — but
+	// the pipeline must SPLIT and PACE rather than resend. See rateLimitError.
+	outcomeRateLimited
 )
+
+// rateLimitError is how the sink tells the pipeline "this was a rate limit, not a
+// generic transient failure", and how long the destination asked us to wait.
+//
+// It travels on SinkResult.Err rather than as a new SinkResult field on purpose: the
+// three entry lists already say WHICH entries to retry, and the only extra information
+// here is HOW to retry them. errors.As reaches it through the errors.Join chain Emit
+// builds, so a batch whose partitions failed for mixed reasons still surfaces the rate
+// limit — which is the conservative direction, because pacing a batch that did not need
+// it costs one delay, while missing one costs the whole --logs.ship-max-attempts budget.
+type rateLimitError struct {
+	// retryAfter is the delay the destination advertised (HTTP Retry-After), or zero
+	// when it advertised none. Zero is common and is NOT a signal to retry immediately:
+	// the pipeline falls back to its own pacing floor.
+	retryAfter time.Duration
+	err        error
+}
+
+func (e *rateLimitError) Error() string {
+	msg := "destination rate limit"
+	if e.retryAfter > 0 {
+		msg += " (retry-after " + e.retryAfter.String() + ")"
+	}
+	if e.err != nil {
+		return msg + ": " + e.err.Error()
+	}
+	return msg
+}
+
+func (e *rateLimitError) Unwrap() error { return e.err }
+
+// rateLimitDelay reports whether err carries a rate-limit refusal, and the delay the
+// destination advertised with it (zero when it advertised none).
+func rateLimitDelay(err error) (time.Duration, bool) {
+	if err == nil {
+		return 0, false
+	}
+	var rl *rateLimitError
+	if errors.As(err, &rl) {
+		return rl.retryAfter, true
+	}
+	return 0, false
+}
 
 // deliveryObservation is the side channel between the transport hook and
 // classifyPartition. It is created per ForceFlush and reachable only through that
 // flush's context, so observations from concurrent flushes cannot collide.
 //
 // The SDK may make SEVERAL round trips inside one Export (it applies its own bounded
-// retry to 429/502/503/504). Each is recorded, and the LAST one wins — that is the
-// outcome the SDK ultimately acted on, and the one whose verdict the pipeline must
-// inherit. A flush that retried 503 three times and gave up therefore reads retryable,
-// while one that retried twice and then got a 200 with partial success reads partial.
+// retry to 429/502/503/504, pinned by otlpRetryPolicy). Each is recorded, and the LAST
+// one wins — that is the outcome the SDK ultimately acted on, and the one whose verdict
+// the pipeline must inherit. A flush that retried 503 twice and gave up therefore reads
+// retryable, while one that retried once and then got a 200 with partial success reads
+// partial.
 type deliveryObservation struct {
-	mu       sync.Mutex
-	outcome  deliveryOutcome
-	rejected int64
+	mu         sync.Mutex
+	outcome    deliveryOutcome
+	rejected   int64
+	retryAfter time.Duration
 }
 
 func (o *deliveryObservation) record(outcome deliveryOutcome, rejected int64) {
@@ -850,6 +952,32 @@ func (o *deliveryObservation) record(outcome deliveryOutcome, rejected int64) {
 	defer o.mu.Unlock()
 	o.outcome = outcome
 	o.rejected = rejected
+	o.retryAfter = 0
+}
+
+// recordRateLimited records a rate-limit refusal together with any delay the destination
+// advertised. Separate from record rather than a third parameter on it: every other call
+// site has no delay to report, and a signature that made them all pass a zero would make
+// "no advertised delay" and "advertised zero" indistinguishable at the call site.
+func (o *deliveryObservation) recordRateLimited(retryAfter time.Duration) {
+	if o == nil {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.outcome = outcomeRateLimited
+	o.rejected = 0
+	o.retryAfter = retryAfter
+}
+
+// throttle reads back the advertised delay. Zero means none was advertised.
+func (o *deliveryObservation) throttle() time.Duration {
+	if o == nil {
+		return 0
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.retryAfter
 }
 
 // result reads the observation back. A nil receiver reports outcomeUnknown so callers
@@ -930,12 +1058,22 @@ func (t *observingTransport) RoundTrip(req *http.Request) (*http.Response, error
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode <= 299:
 		obs.record(observeHTTPSuccessBody(resp))
-	case resp.StatusCode == http.StatusTooManyRequests,
-		resp.StatusCode == http.StatusBadGateway,
+	case resp.StatusCode == http.StatusTooManyRequests:
+		// 429 is a RATE limit, and it is the one retryable status where resending the
+		// same bytes cannot work (#663). Classified separately, with the advertised
+		// Retry-After, so the pipeline splits and paces instead of resending.
+		obs.recordRateLimited(retryAfterDelay(resp.Header.Get("Retry-After"), time.Now()))
+	case resp.StatusCode == http.StatusBadGateway,
 		resp.StatusCode == http.StatusServiceUnavailable,
 		resp.StatusCode == http.StatusGatewayTimeout:
-		// The exact retryable set named by the OTLP spec, and the same set the pinned
-		// exporter retries internally.
+		// The rest of the retryable set named by the OTLP spec. These mean the endpoint
+		// could not take the request right now, not that the request was too big for a
+		// rate budget, so an identical resend is the right response.
+		//
+		// A 503 may also carry Retry-After, but it is deliberately NOT honoured here:
+		// the pipeline's own backoff already spaces these, and treating a 503 as a rate
+		// limit would make an unrelated outage shrink the batch size for the rest of the
+		// batch's life.
 		obs.record(outcomeRetryable, 0)
 	default:
 		// Everything else — 400, 401, 403, 404, 413, 501 … — is permanent. Repeating a
@@ -983,6 +1121,47 @@ func observeHTTPSuccessBody(resp *http.Response) (deliveryOutcome, int64) {
 	return outcomePartial, ps.GetRejectedLogRecords()
 }
 
+// maxRetryAfter clamps a Retry-After the destination advertised. The header is
+// endpoint-controlled and a misconfigured or hostile one can name hours; honouring that
+// literally would park the single emitter goroutine for the rest of the day while the
+// queue behind it oldest-drops everything. Past the clamp we wait this long, then try
+// again with a smaller batch — the split is doing the real work anyway.
+const maxRetryAfter = 30 * time.Second
+
+// retryAfterDelay parses an HTTP Retry-After value, which RFC 9110 allows in BOTH of two
+// forms: delay-seconds, or an HTTP-date. Loki sends the former, Cloudflare and several
+// gateways in front of it send the latter, so parsing only the integer form would
+// silently read a real advertised delay as "none advertised".
+//
+// now is passed in rather than read here so the date form is testable without a clock.
+// An unparseable, negative or absent value returns zero, meaning "nothing advertised" —
+// the caller falls back to its own pacing floor rather than retrying immediately.
+func retryAfterDelay(v string, now time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return clampRetryAfter(time.Duration(secs) * time.Second)
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := t.Sub(now); d > 0 {
+			return clampRetryAfter(d)
+		}
+	}
+	return 0
+}
+
+func clampRetryAfter(d time.Duration) time.Duration {
+	if d > maxRetryAfter {
+		return maxRetryAfter
+	}
+	return d
+}
+
 // replayBody re-serves already-buffered bytes ahead of the untouched remainder of a
 // response body while keeping the original Closer.
 type replayBody struct {
@@ -1017,18 +1196,27 @@ func observingUnaryInterceptor(
 	switch status.Code(err) {
 	case codes.OK:
 		obs.record(outcomeAccepted, 0)
+	case codes.ResourceExhausted:
+		// gRPC's rate/quota code — the transport-level twin of HTTP 429 (#663). Still
+		// retryable, never permanent (treating a quota signal as permanent would discard
+		// records the endpoint would have taken a moment later), but split out so the
+		// pipeline shrinks and paces rather than resending identical bytes.
+		//
+		// NO ADVERTISED DELAY IS EXTRACTED on this path, and that is a known gap rather
+		// than an oversight: the gRPC equivalent of Retry-After is a google.rpc.RetryInfo
+		// message in the status details, and reading it needs a direct import of
+		// google.golang.org/genproto/googleapis/rpc/errdetails, which is presently an
+		// INDIRECT module requirement. Promoting it would change go.mod/vendor for an
+		// optional hint. Zero here means "nothing advertised", and the pipeline's own
+		// pacing floor covers it — the split is what actually clears the limit.
+		obs.recordRateLimited(0)
 	case codes.Canceled,
 		codes.DeadlineExceeded,
 		codes.Aborted,
 		codes.OutOfRange,
 		codes.Unavailable,
-		codes.DataLoss,
-		codes.ResourceExhausted:
-		// The OTLP spec's retryable gRPC set. ResourceExhausted is included here even
-		// though the SDK only retries it when the server attaches RetryInfo: our retry
-		// is bounded by --logs.ship-max-attempts with backoff, so treating a quota
-		// signal as transient costs a few attempts, whereas treating it as permanent
-		// would discard records the endpoint would have taken a moment later.
+		codes.DataLoss:
+		// The rest of the OTLP spec's retryable gRPC set.
 		obs.record(outcomeRetryable, 0)
 	default:
 		// InvalidArgument, Unauthenticated, PermissionDenied, Unimplemented …: the
@@ -1116,6 +1304,14 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, tlsCfg *tls.Co
 	case "grpc":
 		opts := []otlploggrpc.Option{
 			otlploggrpc.WithDialOption(grpc.WithChainUnaryInterceptor(observingUnaryInterceptor)),
+			// Pin the in-Export retry small so it composes with --logs.ship-max-attempts
+			// into a stateable worst case. See otlpRetryPolicy.
+			otlploggrpc.WithRetry(otlploggrpc.RetryConfig{
+				Enabled:         true,
+				InitialInterval: otlpRetryPolicy.InitialInterval,
+				MaxInterval:     otlpRetryPolicy.MaxInterval,
+				MaxElapsedTime:  otlpRetryPolicy.MaxElapsedTime,
+			}),
 		}
 		if gzipByDefault() {
 			opts = append(opts, otlploggrpc.WithCompressor("gzip"))
@@ -1151,6 +1347,14 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, tlsCfg *tls.Co
 		opts := []otlploghttp.Option{
 			otlploghttp.WithHTTPClient(client),
 			otlploghttp.WithMaxRequestSize(otlpMaxRequestBytes),
+			// Pin the in-Export retry small so it composes with --logs.ship-max-attempts
+			// into a stateable worst case. See otlpRetryPolicy.
+			otlploghttp.WithRetry(otlploghttp.RetryConfig{
+				Enabled:         true,
+				InitialInterval: otlpRetryPolicy.InitialInterval,
+				MaxInterval:     otlpRetryPolicy.MaxInterval,
+				MaxElapsedTime:  otlpRetryPolicy.MaxElapsedTime,
+			}),
 		}
 		if gzipByDefault() {
 			opts = append(opts, otlploghttp.WithCompression(otlploghttp.GzipCompression))

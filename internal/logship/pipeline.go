@@ -54,6 +54,19 @@ type pipeline struct {
 	lastPersisted []byte
 
 	limiter *LogLimiter
+
+	// shipChunk is the STICKY, adaptive per-attempt record cap learned from rate-limit
+	// refusals (#663). 0 means "no cap, send the whole batch", which is the state a
+	// healthy pipeline stays in forever. Only the single emitter goroutine touches it
+	// (shipBatch is the sole writer, and runEmitter is the sole caller in production),
+	// so it needs no lock.
+	//
+	// It is deliberately pipeline-scoped rather than batch-scoped. A sustained burst
+	// above the tenant's budget produces a NEW oversized batch every drain, so a split
+	// that reset each time would re-learn the limit — and pay one refused wire attempt
+	// for it — on every single batch. Carrying it forward is what turns "burst above the
+	// limit" into steady paced delivery rather than a refusal per batch.
+	shipChunk int
 }
 
 // Start builds every registered source, the configured sink and the pipeline,
@@ -324,14 +337,39 @@ func (p *pipeline) pollOnce(s Source, name string) {
 const (
 	shipRetryBase = 200 * time.Millisecond
 	shipRetryMax  = 5 * time.Second
+	// shipRateLimitPause is the pacing floor applied after a rate-limit refusal that
+	// advertised no Retry-After. It is a real pause rather than the ordinary backoff
+	// because a rate limit is a statement about bytes per SECOND: coming straight back
+	// with 200ms of backoff is what turns one refusal into ten.
+	shipRateLimitPause = 2 * time.Second
+	// shipRateLimitMinChunk floors the split. Halving all the way to a single record
+	// would trade one rejected request for hundreds of round trips, each paying the
+	// fixed per-partition cost, which is a worse failure than the one being fixed. At
+	// the measured ~2.7 kB/record on the live box (see the recordBytes block comment in
+	// queue.go) 32 records is ~85 kB — small enough that any tenant with a working
+	// budget accepts it, large enough that the trip is worth taking.
+	shipRateLimitMinChunk = 32
 )
+
+// exportByteBound is the byte budget for ONE delivery attempt: the smaller of the
+// operator's ingest-rate bound (--logs.max-export-bytes) and the transport backstop
+// (maxExportBytes). The two answer different questions and both must hold — see the
+// block comment above maxExportBytes. Zero or an out-of-range value falls back to the
+// transport backstop, which is the pre-#663 behaviour.
+func (p *pipeline) exportByteBound() int {
+	n := p.cfg.MaxExportBytes
+	if n <= 0 || n > maxExportBytes {
+		return maxExportBytes
+	}
+	return n
+}
 
 // runEmitter drains the queue into batches and ships each with bounded in-memory retry.
 // It exits when the queue is closed and fully drained.
 func (p *pipeline) runEmitter() {
 	defer p.emitterWG.Done()
 	for {
-		batch, ok := p.queue.drainUpTo(p.cfg.BatchMax, maxExportBytes)
+		batch, ok := p.queue.drainUpTo(p.cfg.BatchMax, p.exportByteBound())
 		if !ok {
 			return
 		}
@@ -363,27 +401,107 @@ func (p *pipeline) runEmitter() {
 // dropped{reason="rejected"} and likewise removed. That is what stops an acknowledged
 // resource partition being resent — and therefore duplicated downstream — because a
 // SIBLING partition failed.
+// A RATE LIMIT IS NOT A GENERIC TRANSIENT FAILURE, and the difference is the whole of
+// #663. When the destination answers HTTP 429 / gRPC RESOURCE_EXHAUSTED the request was
+// refused for its SIZE against a bytes-per-second budget, so a byte-identical resend is
+// guaranteed to fail again — the observed shape was the same 2777-record, 7.5 MB batch
+// refused seven times in a row over eight minutes while every unrelated record behind it
+// oldest-dropped out of the queue. So a rate limit does two things nothing else does:
+// it HALVES the chunk size (down to shipRateLimitMinChunk) and it sets a PACE that is
+// honoured before every subsequent chunk, decaying back to full speed as chunks land.
+// The batch is delivered in pieces the tenant can actually accept instead of being
+// dropped whole.
+//
+// WORST-CASE TIME ON ONE UNDELIVERABLE BATCH, which #663 also asks to be bounded and
+// stated. BOTH retry layers are in the arithmetic, which is the part that was missing
+// before: the OTLP SDK runs its own retry loop INSIDE a single Emit, and the pipeline
+// counted that whole thing as one attempt. Writing E for the SDK's pinned max-elapsed
+// (otlpRetryPolicy, 5s), T for the OTLP export timeout
+// (OTEL_EXPORTER_OTLP_LOGS_TIMEOUT, default 10s), N for --logs.ship-max-attempts and W
+// for the longest wait the pipeline can insert between attempts —
+// max(shipRetryMax 5s, maxRetryAfter 30s) = 30s:
+//
+//	t_worst  =  N × (E + T)  +  (N-1) × W
+//	         =  10 × 15s + 9 × 30s  =  420s (7 min) at the defaults, and only when the
+//	            destination advertises the maximum Retry-After on every single attempt.
+//	            With no Retry-After advertised the pacing floor is 2s and the ordinary
+//	            backoff caps at 5s, giving 10 × 15s + 9 × 5s = 195s (~3¼ min).
+//
+// Before #663 E was the SDK's own 60s default and nothing in the code knew it existed:
+// 10 × 70s = 700s, which is what produced the ~8-minute observation on the live box.
+//
+// Attempts are counted GLOBALLY across the whole shipBatch call, not per chunk, so
+// splitting can never multiply that bound: N caps wire attempts whatever shape they
+// take. A chunk that lands cleanly costs no attempt, which is what lets a split batch
+// finish delivering inside the same budget.
+//
+// DROP ACCOUNTING IS UNCHANGED, and must stay that way: the batch that could not be
+// delivered is counted reason="ship_failed_permanent" (or reason="ship_failed" when
+// shutdown abandons it), while records evicted from the queue because the emitter was
+// busy are counted reason="overflow" by noteOverflow. Those answer different operator
+// questions — "this payload/destination is broken" versus "we were too slow" — and
+// collapsing them would hide exactly the collateral damage this change exists to reduce.
 func (p *pipeline) shipBatch(batch []Entry) {
 	maxAttempts := p.cfg.ShipMaxAttempts
 	pending := batch
-	for attempt := 1; ; attempt++ {
-		res := p.sink.Emit(context.Background(), pending)
+	// chunk starts at the learned cap, or at the whole batch when nothing has been
+	// learned — so absent any rate limit the behaviour is exactly the pre-#663 one, one
+	// Emit per attempt carrying everything still outstanding.
+	chunk := p.shipChunk
+	if chunk <= 0 || chunk > len(pending) {
+		chunk = len(pending)
+	}
+	var pace time.Duration
+	attempt := 0
+	limited := false
+
+	for len(pending) > 0 {
+		if pace > 0 && !p.waitOrAbandon(pace, pending) {
+			return
+		}
+		n := chunk
+		if n < 1 {
+			n = 1
+		}
+		if n > len(pending) {
+			n = len(pending)
+		}
+		head, rest := pending[:n], pending[n:]
+
+		res := p.sink.Emit(context.Background(), head)
 		p.noteAcked(res.Acked)
 		p.noteRejected(res.Rejected)
-		pending = res.Retry
 
-		if len(res.Retry) > 0 || len(res.Rejected) > 0 {
-			// One increment per attempt that did not deliver everything, whatever the
-			// reason. It stays an ATTEMPT counter, not a record counter: the records are
-			// accounted for by shipped/dropped, and conflating the two would make the
-			// three families impossible to reconcile.
-			p.metrics.shipErrors.Inc()
+		if len(res.Retry) == 0 && len(res.Rejected) == 0 {
+			// This chunk landed cleanly. Relax the pace geometrically rather than
+			// dropping it outright: a tenant that just rate-limited us is still near its
+			// budget, and going straight back to full speed is what produces the
+			// refuse/retry oscillation instead of a steady drain.
+			pace /= 2
+			if pace < 100*time.Millisecond {
+				pace = 0
+			}
+			pending = rest
+			continue
 		}
+
+		// One increment per attempt that did not deliver everything, whatever the
+		// reason. It stays an ATTEMPT counter, not a record counter: the records are
+		// accounted for by shipped/dropped, and conflating the two would make the
+		// three families impossible to reconcile.
+		attempt++
+		p.metrics.shipErrors.Inc()
+
 		if len(res.Rejected) > 0 && p.limiter.Allow("ship_rejected") {
 			p.log.Error("log endpoint terminally rejected records; they are lost and will NOT be retried "+
 				"(a permanent protocol response, or an OTLP partial-success rejection)",
 				"count", len(res.Rejected), "err", res.Err)
 		}
+
+		// Whatever this chunk did not deliver goes back to the FRONT of the outstanding
+		// set, ahead of the chunks not yet attempted, so ordering within the batch is
+		// preserved across a split.
+		pending = joinPending(res.Retry, rest)
 		if len(pending) == 0 {
 			return
 		}
@@ -400,20 +518,114 @@ func (p *pipeline) shipBatch(batch []Entry) {
 			}
 			return
 		}
+
+		if delay, isLimited := rateLimitDelay(res.Err); isLimited {
+			limited = true
+			chunk = splitChunk(n)
+			p.shipChunk = chunk
+			pace = pacingFor(delay)
+			if p.limiter.Allow("ship_rate_limited") {
+				p.log.Warn("log destination rate-limited the export; splitting the batch and pacing "+
+					"rather than resending it unchanged",
+					"attempt", attempt, "refused_records", n, "next_chunk", chunk,
+					"pace", pace.String(), "outstanding", len(pending), "err", res.Err)
+			}
+			// The pace is applied at the top of the loop, so no extra wait here — one
+			// delay per attempt, never two stacked.
+			continue
+		}
+
 		if p.limiter.Allow("ship") {
 			p.log.Warn("log sink export failed; retrying", "attempt", attempt, "count", len(pending), "err", res.Err)
 		}
-		select {
-		case <-p.ctx.Done():
-			for _, e := range pending {
-				p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailed).Inc()
-			}
-			consoleDropped.Add(uint64(len(pending)))
-			p.log.Error("log batch abandoned during shutdown; records lost", "count", len(pending))
+		if !p.waitOrAbandon(shipBackoff(attempt), pending) {
 			return
-		case <-time.After(shipBackoff(attempt)):
 		}
 	}
+
+	// The whole batch was accounted for. If nothing rate-limited us this time, walk the
+	// learned cap back UP — geometrically, and only one step per batch, so recovery is
+	// slower than the halving that got us here. An adaptive limit that only ever shrinks
+	// would leave the pipeline permanently paying per-chunk round-trips for a burst that
+	// ended hours ago.
+	if !limited {
+		p.relaxShipChunk()
+	}
+}
+
+// relaxShipChunk doubles the learned per-attempt cap, clearing it entirely once it
+// reaches the configured batch size — at which point the cap is doing nothing and
+// carrying it would just be state to get wrong.
+func (p *pipeline) relaxShipChunk() {
+	if p.shipChunk <= 0 {
+		return
+	}
+	next := p.shipChunk * 2
+	if p.cfg == nil || p.cfg.BatchMax <= 0 || next >= p.cfg.BatchMax {
+		p.shipChunk = 0
+		return
+	}
+	p.shipChunk = next
+}
+
+// waitOrAbandon sleeps for d unless the pipeline is shutting down, in which case it
+// counts every outstanding record logs_dropped_total{reason="ship_failed"} and reports
+// false so the caller returns. Keeping the abandon path in one place is what stops a
+// second wait site (the pacing one) inventing a third loss mode.
+func (p *pipeline) waitOrAbandon(d time.Duration, pending []Entry) bool {
+	select {
+	case <-p.ctx.Done():
+		for _, e := range pending {
+			p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailed).Inc()
+		}
+		consoleDropped.Add(uint64(len(pending)))
+		p.log.Error("log batch abandoned during shutdown; records lost", "count", len(pending))
+		return false
+	case <-time.After(d):
+		return true
+	}
+}
+
+// joinPending concatenates the un-delivered head with the not-yet-attempted tail into a
+// fresh slice. It allocates rather than appending in place on purpose: res.Retry is the
+// sink's own slice and tail aliases the caller's batch, so appending could write through
+// either backing array depending on capacity.
+func joinPending(retry, tail []Entry) []Entry {
+	if len(retry) == 0 {
+		return tail
+	}
+	if len(tail) == 0 {
+		return retry
+	}
+	out := make([]Entry, 0, len(retry)+len(tail))
+	out = append(out, retry...)
+	out = append(out, tail...)
+	return out
+}
+
+// splitChunk halves a refused chunk, floored at shipRateLimitMinChunk — or at 1 when the
+// chunk was already at or below that floor, so a rate limit on a single record still
+// makes progress rather than looping on an unchanged size.
+func splitChunk(n int) int {
+	half := n / 2
+	if half < shipRateLimitMinChunk {
+		if n <= shipRateLimitMinChunk {
+			return 1
+		}
+		return shipRateLimitMinChunk
+	}
+	return half
+}
+
+// pacingFor turns an advertised Retry-After into the delay applied before the next
+// chunk. Zero (nothing advertised, the common case) falls back to shipRateLimitPause
+// rather than to the ordinary backoff: a bytes/sec budget needs a pause measured in
+// seconds, not the 200ms a first-attempt backoff would give.
+func pacingFor(advertised time.Duration) time.Duration {
+	if advertised < shipRateLimitPause {
+		return shipRateLimitPause
+	}
+	return advertised
 }
 
 // noteAcked counts a confirmed delivery and advances export freshness.

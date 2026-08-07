@@ -55,12 +55,26 @@ var (
 			"queued, so one oversized record cannot occupy the whole queue budget or become a batch the "+
 			"sink permanently refuses. 0 disables the per-record cap.",
 	).Envar("OPN2OTEL_LOGS_MAX_RECORD_BYTES").Default("1048576").Int()
+	logsMaxExportBytes = kingpin.Flag(
+		"logs.max-export-bytes",
+		"Maximum estimated payload bytes the emitter puts into ONE delivery attempt. This is an "+
+			"INGEST-RATE bound, not a transport bound: the OTLP wire ceiling is 64MiB and the exporter "+
+			"will happily send a 7MB request, but a Loki tenant's ingestion limit is a bytes/SECOND "+
+			"budget, so one such request is worth many seconds of it and is rejected atomically however "+
+			"long the exporter waits. Set this to roughly one second of the destination's per-tenant "+
+			"bytes/sec budget (default 1MiB). It is measured with the same estimator as "+
+			"--logs.buffer-max-bytes and --logs.max-record-bytes, so all three read against one number. "+
+			"0 falls back to the transport-derived bound (half the OTLP request ceiling), which is the "+
+			"pre-#663 behaviour and effectively no ingest-rate bound at all.",
+	).Envar("OPN2OTEL_LOGS_MAX_EXPORT_BYTES").Default("1048576").Int()
 	logsShipMaxAttempts = kingpin.Flag(
 		"logs.ship-max-attempts",
 		"Maximum delivery attempts for one batch before it is dropped and counted "+
 			"(logs_dropped_total{reason=\"ship_failed_permanent\"}). Retries are exponentially backed off. "+
 			"Without this bound a batch the sink permanently refuses is retried forever by the single emitter "+
-			"goroutine, wedging all subsequent delivery. 0 restores unlimited retries.",
+			"goroutine, wedging all subsequent delivery. The OTLP exporter's own in-request retry loop is "+
+			"pinned small so the two layers compose to a stated worst case (N x 15s plus backoff, ~7min at "+
+			"the defaults) rather than multiplying. 0 restores unlimited retries.",
 	).Envar("OPN2OTEL_LOGS_SHIP_MAX_ATTEMPTS").Default("10").Int()
 	logsMaxMetricKeys = kingpin.Flag(
 		"logs.max-metric-keys",
@@ -98,6 +112,11 @@ type LogsConfig struct {
 	// disables either bound.
 	BufferMaxBytes int
 	MaxRecordBytes int
+	// MaxExportBytes bounds ONE delivery attempt, derived from the destination's
+	// bytes/sec ingest budget rather than from the OTLP wire ceiling. Zero falls back
+	// to the transport-derived bound. See the flag help for why the two are different
+	// constraints (#663).
+	MaxExportBytes int
 	// ShipMaxAttempts bounds retries for one batch. Zero means unlimited, which is
 	// the pre-#325 behaviour and lets a permanently-refused batch wedge the emitter.
 	ShipMaxAttempts int
@@ -148,6 +167,15 @@ func (c *LogsConfig) Validate() error {
 			"logs max-record-bytes (%d) must not exceed logs buffer-max-bytes (%d); no record could ever be queued",
 			c.MaxRecordBytes, c.BufferMaxBytes)
 	}
+	if c.MaxExportBytes < 0 {
+		return fmt.Errorf("logs max-export-bytes must not be negative, got %d", c.MaxExportBytes)
+	}
+	// NO cross-check against MaxRecordBytes, deliberately. A single record larger than
+	// the per-attempt budget is not a misconfiguration to refuse: the drain always
+	// returns at least one entry however big it is (see boundedQueue.drainUpTo), so such
+	// a record still ships, alone, in an attempt that overshoots the budget by exactly
+	// one record. Erroring here would instead break every operator who had already
+	// raised --logs.max-record-bytes above the new default.
 	if c.ShipMaxAttempts < 0 {
 		return fmt.Errorf("logs ship-max-attempts must not be negative, got %d", c.ShipMaxAttempts)
 	}
@@ -178,6 +206,7 @@ func Logs() (*LogsConfig, bool, error) {
 
 		BufferMaxBytes:  *logsBufferMaxBytes,
 		MaxRecordBytes:  *logsMaxRecordBytes,
+		MaxExportBytes:  *logsMaxExportBytes,
 		ShipMaxAttempts: *logsShipMaxAttempts,
 		MaxMetricKeys:   *logsMaxMetricKeys,
 		ShipConcurrency: *logsShipConcurrency,
