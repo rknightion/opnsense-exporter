@@ -230,3 +230,124 @@ func TestParseAudit_WebGUIUnrecognisedDegrades(t *testing.T) {
 		}
 	}
 }
+
+// The OPNsense config-apply chain (#667). Table-driven over the verbatim
+// `config` lines from the issue, plus the negative cases that pin the
+// double-count guard: configctl, configd.py template lines and opnsense
+// rc/pluginctl lines must NEVER produce a structured config.event record.
+
+// configEnv builds an envelope for program=config. PRI/facility/severity are
+// not asserted on by any test below; any plausible value is fine here.
+func configEnv(msg string) Envelope {
+	return auditEnv("config", 5, 6, msg)
+}
+
+// TestParseAudit_ConfigEvent: real lines captured on camden 2026-08-07 (issue
+// #667 body). All three share the one shape config-event emits.
+func TestParseAudit_ConfigEvent(t *testing.T) {
+	cases := []struct {
+		name       string
+		msg        string
+		backupPath string
+		version    string
+	}{
+		{
+			name:       "log-queries change",
+			msg:        "config-event: new_config /conf/backup/config-1786116252.609.xml",
+			backupPath: "/conf/backup/config-1786116252.609.xml",
+			version:    "1786116252",
+		},
+		{
+			name:       "second capture",
+			msg:        "config-event: new_config /conf/backup/config-1785940860.1638.xml",
+			backupPath: "/conf/backup/config-1785940860.1638.xml",
+			version:    "1785940860",
+		},
+		{
+			name:       "third capture",
+			msg:        "config-event: new_config /conf/backup/config-1786119641.2558.xml",
+			backupPath: "/conf/backup/config-1786119641.2558.xml",
+			version:    "1786119641",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, ok := parseAudit(configEnv(tc.msg), nil, func(string) {})
+			if !ok {
+				t.Fatalf("parseAudit returned ok=false for %q", tc.msg)
+			}
+			assertAttrs(t, rec, map[string]string{
+				"config.event":       "new_config",
+				"config.backup_path": tc.backupPath,
+				"config.version":     tc.version,
+			})
+		})
+	}
+}
+
+// TestConfigctlNotRegistered: configctl must have NO parser registered at all —
+// see the package doc comment's config-apply chain section for why. This is
+// the load-bearing anti-double-count guard: parserFor is the actual dispatch
+// path a real line travels, so this proves the pipeline degrades configctl to
+// a generic record rather than relying on a regex happening not to match.
+func TestConfigctlNotRegistered(t *testing.T) {
+	if _, ok := parserFor("configctl"); ok {
+		t.Fatal("configctl has a registered parser — this would double-count every config change (#667)")
+	}
+}
+
+// TestConfigctlDuplicateLineDoesNotMatchConfigEvent: belt-and-braces on top of
+// TestConfigctlNotRegistered. Even if configctl were ever mistakenly wired to
+// parseAudit, its re-emitted line — a full nested BSD-syslog line, with a
+// "event @ <ts> msg: " prefix and a trailing space — must not accidentally
+// satisfy configEventNewConfig, because that would silently reintroduce the
+// double-count the registration guard above prevents. Verbatim capture from
+// the issue body.
+func TestConfigctlDuplicateLineDoesNotMatchConfigEvent(t *testing.T) {
+	const msg = "event @ 1786116252.62 msg: Aug  7 16:24:12 opnsense.rob-knight.net config[39231]: config-event: new_config /conf/backup/config-1786116252.609.xml "
+	if _, ok := parseAudit(configEnv(msg), nil, func(string) {}); ok {
+		t.Fatal("parseAudit matched the configctl-shaped duplicate line — double-count hazard (#667)")
+	}
+}
+
+// TestConfigdTemplateLinesDoNotMatchConfigEvent: configd.py's template
+// regeneration lines are a DIFFERENT program (configd.py, not config) and a
+// different shape; they must keep degrading to generic exactly as they did
+// before this issue, not be picked up by configEventNewConfig or any other
+// branch. Verbatim captures from the issue body.
+func TestConfigdTemplateLinesDoNotMatchConfigEvent(t *testing.T) {
+	lines := []string{
+		"generate template container OPNsense/Unbound/core",
+		"generate template container OPNsense/Syslog",
+		" OPNsense/Unbound/* generated //var/unbound/advanced.conf",
+		" OPNsense/Unbound/* generated //usr/local/etc/unbound.opnsense.d/domainoverrides.conf",
+		" OPNsense/Syslog generated //usr/local/etc/syslog-ng.conf.d/syslog-ng-destinations.conf",
+	}
+	for _, line := range lines {
+		if _, ok := parseAudit(configdEnv(line), nil, func(string) {}); ok {
+			t.Errorf("parseAudit(%q) = ok, want ok=false (configd.py template lines stay generic, #667)", line)
+		}
+	}
+}
+
+// TestOpnsenseRoutingLinesDoNotMatchConfigEvent: the `opnsense` catch-all
+// program's rc/pluginctl reconfiguration lines are open-vocabulary (see the
+// package doc comment) and must never produce a config.event record. This
+// package does not register a parser for "opnsense" (acme.go does, anchored on
+// "AcmeClient: "), so these calls exercise parseAudit directly to prove it
+// would decline them even if it were ever asked to. Verbatim captures from the
+// issue body.
+func TestOpnsenseRoutingLinesDoNotMatchConfigEvent(t *testing.T) {
+	lines := []string{
+		"/usr/local/sbin/pluginctl: plugins_configure unbound_start (1)",
+		"/usr/local/sbin/pluginctl: plugins_configure unbound_start (execute task : unbound_configure_do(1))",
+		"/usr/local/etc/rc.routing_configure: ROUTING: entering configure using defaults",
+		"/usr/local/etc/rc.routing_configure: ROUTING: configuring inet default gateway on opt7",
+		"/usr/local/etc/rc.routing_configure: plugins_configure monitor (1,null)",
+	}
+	for _, line := range lines {
+		if _, ok := parseAudit(auditEnv("opnsense", 23, 6, line), nil, func(string) {}); ok {
+			t.Errorf("parseAudit(%q) = ok, want ok=false (opnsense stays open-vocabulary generic, #667)", line)
+		}
+	}
+}

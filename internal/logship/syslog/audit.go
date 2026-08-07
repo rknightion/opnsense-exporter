@@ -88,6 +88,63 @@ import (
 // OPNsense's WebGUI session appears to just time out silently. There is
 // deliberately NO logout branch: modeling one from documentation, with no capture
 // to verify it against, is exactly the mistake #284 already made twice.
+//
+// The OPNsense config-apply chain (#667), triaged from four days of live capture
+// on camden. Four programs, one coherent group, three different verdicts:
+//
+//   - `config` — program=config, ONE shape, closed vocabulary, structured below:
+//     "config-event: new_config /conf/backup/config-1786116252.609.xml"
+//     This is the firewall's own timestamped record of every configuration
+//     change, with a backup file that names the version. Worth structuring: it
+//     is the one signal that answers "did a config change cause this?" and it
+//     is currently landing as an unattributed generic record.
+//
+//   - `configctl` — a VERBATIM RE-EMISSION of the `config` line above, wrapped
+//     in a second syslog envelope with its own timestamp prefix:
+//     "event @ 1786116252.62 msg: Aug  7 16:24:12 opnsense.rob-knight.net config[39231]: config-event: new_config /conf/backup/config-1786116252.609.xml "
+//     DELIBERATELY LEFT GENERIC — NOT REGISTERED WITH RegisterParser AT ALL, and
+//     must never be. Structuring it would emit a SECOND config.event="new_config"
+//     record for every real config change, silently doubling any panel or count
+//     that selects on config.event — the same double-count hazard #659 flagged
+//     for the two DNS lanes. `config` already carries every fact this line
+//     carries (same timestamp, same backup path); parsing both is strictly
+//     worse than parsing one. TestConfigctlNotRegistered and
+//     TestConfigctlDuplicateLineDoesNotMatchConfigEvent are the guards: the
+//     first proves no parser claims the program, the second proves the nested
+//     line's different shape (leading "event @ ... msg: " prefix, trailing
+//     space) would not accidentally satisfy configEventNewConfig even if it
+//     were. If a future change ever registers configctl, it MUST NOT also parse
+//     `config`, and vice versa.
+//
+//   - `configd.py` template-generation lines — DELIBERATELY LEFT GENERIC.
+//     "generate template container OPNsense/Unbound/core"
+//     " OPNsense/Unbound/* generated //var/unbound/advanced.conf"
+//     (leading space and doubled slash are upstream's, not a capture artifact).
+//     These are a per-file trace of template rendering — up to 15 lines for one
+//     Unbound reconfigure, with no status, error or outcome — and configd.py
+//     already has a parser registered (this file, for its authorization/RPC/
+//     result shapes above); these lines simply match none of those regexes and
+//     fall through to ok=false, exactly as intended. The fact "a config apply
+//     happened" is already carried better by the single `config` line above.
+//     Structuring these would multiply record count by ~15 per config change
+//     for strictly less signal. No deliberate regex is added for them, and none
+//     should be: the error branch of configd.py template rendering would be
+//     worth structuring, but no failure occurred in the capture window this
+//     verdict was based on, so there is no real line to derive a fixture from.
+//
+//   - `opnsense` rc/pluginctl reconfiguration lines — DELIBERATELY LEFT GENERIC,
+//     for the same reason registry.go's subsystems map already gives that
+//     program no fixed subsystem: it is a shared tag for every rc script and
+//     plugin on the box ("/usr/local/sbin/pluginctl: plugins_configure
+//     unbound_start (1)", "/usr/local/etc/rc.routing_configure: ROUTING:
+//     configuring inet default gateway on opt7"), keyed by the script path
+//     before the first colon rather than by any closed vocabulary. A regex
+//     tuned to today's wording would silently stop matching the moment upstream
+//     rewords an operator-facing string, which it does freely. The durable
+//     source for state like the default route is the gateway/routing collector
+//     polling the API, not scraped English. `opnsense` already has a parser
+//     registered (parseACME, acme.go) anchored on the unrelated `AcmeClient: `
+//     prefix; these lines simply do not match it and fall through to ok=false.
 var (
 	// auditConfigChange is lifted verbatim from the deleted diaglog lane
 	// (diagLogAuditConfigChange), which matched OPNsense's Config::auditLogChange()
@@ -137,10 +194,26 @@ var (
 	// expired) session. See the package doc comment for why this is its own event
 	// rather than a login outcome.
 	reWebGUISessionExpired = regexp.MustCompile(`^\s*no active session, user not found \(called "([^"]+)" @ (\S+)\)\s*$`)
+
+	// configEventNewConfig matches program=config's own config-write event — the
+	// single shape this program emits, per the package doc comment's config-apply
+	// chain section (#667). Anchored on the literal "new_config" wording: it is the
+	// only value observed, and an unrecognised config-event kind degrades to
+	// generic rather than being force-fitted onto this attribute.
+	configEventNewConfig = regexp.MustCompile(`^\s*config-event: new_config (\S+)\s*$`)
+
+	// configEventVersion pulls the unix timestamp of the change out of the backup
+	// filename config-event names, e.g. "config-1786116252.609.xml" -> "1786116252".
+	// The trailing ".609" is a sub-second/sequence disambiguator, not part of the
+	// version, and is deliberately not captured.
+	configEventVersion = regexp.MustCompile(`config-(\d+)\.\d+\.xml$`)
 )
 
 func init() {
-	RegisterParser(parseAudit, "audit", "configd.py")
+	// "configctl" is deliberately NOT in this list — see the package doc
+	// comment's config-apply chain section (#667) for why registering it would
+	// double-count every config change.
+	RegisterParser(parseAudit, "audit", "configd.py", "config")
 }
 
 // parseAudit parses OPNsense's config-change audit trail, configd's
@@ -245,6 +318,17 @@ func parseAudit(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logs
 		set("audit.action", m[1])
 		set("audit.user", m[2])
 		set("user.name", m[2]) // semconv: dual-emit the standard identity key
+		return rec, true
+	}
+
+	if m := configEventNewConfig.FindStringSubmatch(msg); m != nil {
+		path := m[1]
+		rec, set := newRecord(env)
+		set("config.event", "new_config")
+		set("config.backup_path", path)
+		if v := configEventVersion.FindStringSubmatch(path); v != nil {
+			set("config.version", v[1])
+		}
 		return rec, true
 	}
 
