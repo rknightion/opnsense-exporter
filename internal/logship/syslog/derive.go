@@ -510,6 +510,44 @@ var nonDerivedPrograms = map[string]bool{
 	"acme.sh":  true,
 	"opnsense": true,
 
+	// The capture-triage wave (#664–#669). All parse into structured attributes and
+	// derive no counter, each for its own reason — again a decision, not an omission:
+	//
+	//   DhcpLFC         — Kea's lease-file cleanup housekeeping (#664). It reports how
+	//                     many leases a compaction pass read and wrote, which is a
+	//                     GAUGE-shaped fact about one periodic job, not an event rate.
+	//                     Its errors count is already carried per-record as
+	//                     kea.lfc_errors; a counter would double-report it.
+	//   syslog-ng       — the box's own log daemon (#665). Its dropped/truncated totals
+	//                     are ALREADY CUMULATIVE COUNTERS on the wire, so bucketing a
+	//                     line-occurrence counter beside them would produce a second,
+	//                     disagreeing series for the same quantity. If this is ever
+	//                     wanted as a metric it must read the values, not count lines.
+	//   config          — the config-apply event (#667). Deliberately narrow: only the
+	//                     `config` program is parsed, because `configctl` re-emits the
+	//                     SAME line inside a second envelope. A derived counter here is
+	//                     precisely where that double-count would resurface, so the
+	//                     decision is recorded rather than left to a future author.
+	//   rule-updater.py — Suricata ruleset freshness (#666). What matters is WHEN the
+	//                     ruleset last updated and whether it failed, i.e. a timestamp
+	//                     and a state, neither of which a counter expresses. The
+	//                     ruleset URL is also operator-supplied and unbounded, so it
+	//                     could never be a label on one.
+	//   sudo            — privilege escalation (#669). Security-relevant, and the one
+	//                     here most likely to WANT a counter one day — but not by
+	//                     joining an existing family: familySSHD is SSH-specific and
+	//                     counts SSH auth outcomes, so bucketing sudo into it would
+	//                     report privilege escalations as SSH logins. A real sudo
+	//                     counter needs its own family plus a catalogue entry and
+	//                     dashboard panels, which is separate scope. Note its useful
+	//                     dimensions (user, command) are unbounded and operator-driven,
+	//                     so they could never be labels on one either way.
+	"DhcpLFC":         true,
+	"syslog-ng":       true,
+	"config":          true,
+	"rule-updater.py": true,
+	"sudo":            true,
+
 	// wireguard, tailscaled (#596) and netbird (#601) are the awkward group here, and the
 	// decision is deliberate rather than an oversight: all three DO write the vpn.event
 	// attribute, so they feed the dashboard's Tunnel lifecycle annotation layer (a Loki

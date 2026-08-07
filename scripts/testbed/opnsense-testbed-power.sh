@@ -259,9 +259,12 @@ settle_containers() {
 # "Network is unreachable" before the address arrived. systemd's Restart= does
 # converge it, so this is not repairing a broken unit — it is removing the race,
 # so the flow is established when `up` returns rather than up to a restart
-# window later. On a 47-minute lead that margin is ample either way; making it
-# deterministic means a genuinely broken keepalive shows up here as a failure
-# instead of hiding behind a lucky retry.
+# window later. That margin was ample either way back when the canary ran on a
+# 47-minute lead behind a GitHub cron; since #654 there is no lead at all — the
+# dispatch fires the moment `up` returns — so "established when `up` returns" is
+# now load-bearing rather than a nicety. Making it deterministic also means a
+# genuinely broken keepalive shows up here as a failure instead of hiding behind
+# a lucky retry.
 restart_address_dependent_services() {
   local id=$1 unit
   assert_allowed "$id"

@@ -419,8 +419,14 @@ func TestCARPUnrelatedKernelLinesAreNotClaimed(t *testing.T) {
 		// no longer be asserted generic here.
 		"<6>[8] ZFS filesystem version: 5",
 		"<6>[9] ugen0.3: <Generic Flash Disk> at usbus0",
-		"<6>[70] pflog0: promiscuous mode enabled",
-		"<6>[102] igb0: promiscuous mode enabled",
+		// NOTE: the two `<iface>: promiscuous mode enabled` lines USED to sit in this
+		// list. They moved out in #669, which models promiscuous-mode toggles as a real
+		// kernel grammar — see TestKernelPromiscuousCapturedLines. Exactly the same
+		// situation as the `arp: ... moved from ...` note above, and for the same
+		// reason: they are still not CARP lines and parseCARP must still decline them,
+		// but buildRecord now legitimately reports a structured parse, so they can no
+		// longer be asserted generic here. The parseCARP half of the contract is kept
+		// in TestCARPDeclinesPromiscuousModeLines below rather than being dropped.
 		"<4>[103] Limiting closed port RST response from 300 to 200 packets/sec",
 		"<3>[71] pid 12345 (php), jid 0, uid 0: exited on signal 11",
 		"<6>[105] Waiting (max 60 seconds) for system process 'vnlru' to stop... done",
@@ -459,6 +465,40 @@ func TestCARPUnrelatedKernelLinesAreNotClaimed(t *testing.T) {
 			for k := range rec.Attributes {
 				if strings.HasPrefix(k, "carp.") {
 					t.Errorf("unrelated kernel line carries CARP attribute %q", k)
+				}
+			}
+		})
+	}
+}
+
+// The promiscuous-mode lines left TestCARPUnrelatedKernelLinesAreNotClaimed when #669
+// gave them a real kernel grammar, so they can no longer be asserted generic. What
+// must NOT be lost with them is the CARP half of that contract: parseCARP still has
+// to decline them. Without this, nothing would catch a future loosening of the CARP
+// regexes that started claiming ordinary interface chatter — which is the entire point
+// of the list they came from.
+func TestCARPDeclinesPromiscuousModeLines(t *testing.T) {
+	// Verbatim captures, production OPNsense 26.7.1_1 (#669).
+	for _, msg := range []string{
+		"<6>[70] pflog0: promiscuous mode enabled",
+		"<6>[102] igb0: promiscuous mode enabled",
+	} {
+		t.Run(strings.ReplaceAll(msg, " ", "_"), func(t *testing.T) {
+			env := carpEnv(t, msg)
+			if _, ok := parseCARP(env, nil, func(string) {}); ok {
+				t.Fatalf("parseCARP(%q) CLAIMED a line that is not a CARP shape", msg)
+			}
+			// It IS claimed end to end now — by the kernel grammar, not this one — and
+			// it must carry no carp.* attribute.
+			rec, parsed := buildRecord(env, nil, func(string) {})
+			if !parsed {
+				t.Fatalf("buildRecord(%q) did not report a structured parse; #669's "+
+					"kernel promiscuous grammar should claim it", msg)
+			}
+			for k := range rec.Attributes {
+				if strings.HasPrefix(k, "carp.") {
+					t.Fatalf("buildRecord(%q) emitted %q; a promiscuous-mode line must "+
+						"never carry a carp.* attribute", msg, k)
 				}
 			}
 		})

@@ -171,12 +171,26 @@ func longestPrefixMatch[T any](table map[string]T, s string) (string, T, bool) {
 // This is deliberately coarse and low-cardinality. It is a routing aid, not a
 // taxonomy.
 var subsystems = map[string]string{
-	"filterlog":      "firewall",
-	"firewall":       "firewall",
-	"pf":             "firewall",
-	"audit":          "audit",
-	"configd.py":     "audit",
-	"configd":        "audit",
+	"filterlog":  "firewall",
+	"firewall":   "firewall",
+	"pf":         "firewall",
+	"audit":      "audit",
+	"configd.py": "audit",
+	"configd":    "audit",
+	// The rest of the config-apply chain (#667). `config` is OPNsense's own
+	// config-event logger and `configctl` is the CLI front-end to configd, so both
+	// belong with configd/configd.py rather than being left unattributed — before
+	// these entries their lines shipped with a BLANK subsystem and could not be
+	// selected on at all.
+	//
+	// `opnsense`, `php` and `root` are the same shape as each other and are
+	// DELIBERATELY still absent, for the reason already recorded against `opnsense`
+	// below: all three are catch-all logger tags carrying unrelated traffic from
+	// every part of the system, so any fixed subsystem here would mislabel the
+	// majority of their lines. Leaving them blank is the honest answer, not an
+	// oversight — do not "fix" it.
+	"config":         "audit",
+	"configctl":      "audit",
 	"sshd":           "auth",
 	"sshd-session":   "auth",
 	"su":             "auth",
@@ -192,6 +206,11 @@ var subsystems = map[string]string{
 	"dhcpd":          "dhcp",
 	"dhcrelay":       "dhcp",
 	"dhcp6c":         "dhcp",
+	// Kea's Lease File Cleanup helper (#664). Note the CamelCase: the `kea-` prefix
+	// fallback in subsystemFor does NOT catch it, which is why it needs its own
+	// entry despite being part of the Kea family. It was the single largest source
+	// of unattributed syslog volume on the live box.
+	"DhcpLFC": "dhcp",
 	// dhclient is the WAN DHCP CLIENT, not a server. It shares the coarse `dhcp`
 	// subsystem because this map is a Loki routing aid rather than a taxonomy —
 	// "everything DHCP" should reach it — and its records are told apart from the
@@ -237,9 +256,12 @@ var subsystems = map[string]string{
 	// telemetry."). Only the first had an entry, so the rc lines shipped with an
 	// empty subsystem. Attribution only — neither line is a tunnel transition, so
 	// there is deliberately no parser for this program.
-	"tailscale":       "vpn",
-	"suricata":        "ids",
-	"crowdsec":        "ids",
+	"tailscale": "vpn",
+	"suricata":  "ids",
+	"crowdsec":  "ids",
+	// The Suricata ruleset updater (#666) — same subsystem as the engine it feeds,
+	// so "everything IDS" reaches ruleset-freshness lines too. Blank before this.
+	"rule-updater.py": "ids",
 	"haproxy":         "proxy",
 	"nginx":           "proxy",
 	"relayd":          "proxy",
