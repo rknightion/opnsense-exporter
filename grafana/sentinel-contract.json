@@ -1263,7 +1263,7 @@
     ]
   },
   "loki": {
-    "total": 6,
+    "total": 7,
     "sentinels": [
       {
         "name": "has_crowdsec_logs",
@@ -1315,6 +1315,16 @@
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"unbound\"}, opnsense_source)",
         "gates": [
           "opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log"
+        ]
+      },
+      {
+        "name": "has_unbound_syslog_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\", opnsense_subsystem=\"dns\"}, opnsense_subsystem)",
+        "gates": [
+          "opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log (syslog route)"
         ]
       },
       {

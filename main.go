@@ -329,6 +329,13 @@ func resolveOptions() (*startupConfig, []error) {
 	}
 	cfg.OPNsense = opns
 
+	// The two per-query DNS routes ship the same queries by different transports, so
+	// enabling both doubles per-query Loki volume and every panel reading it (#659).
+	// Refused here rather than at the flag layer so --config.check reports it too.
+	if err := options.ValidateUnboundPerQueryRoutes(); err != nil {
+		errs = append(errs, err)
+	}
+
 	// The metrics path is validated against the fixed routes the server package
 	// owns. They are passed in rather than imported by internal/options, which
 	// keeps that package free of an import edge into internal/server.

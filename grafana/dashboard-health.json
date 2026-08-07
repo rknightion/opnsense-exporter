@@ -5288,7 +5288,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -5379,7 +5379,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -5784,7 +5784,7 @@
                         "legendFormat": "{{name}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -6048,7 +6048,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -6222,7 +6222,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -6306,7 +6306,7 @@
                         "legendFormat": "{{backend}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -7380,7 +7380,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -8127,7 +8127,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -8319,7 +8319,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -8975,7 +8975,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -9180,7 +9180,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -9286,7 +9286,7 @@
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -10030,7 +10030,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -10115,7 +10115,7 @@
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -10553,7 +10553,7 @@
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -10647,7 +10647,7 @@
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -10745,7 +10745,7 @@
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -10839,7 +10839,7 @@
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -11127,7 +11127,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -11237,7 +11237,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -11330,7 +11330,7 @@
                         "refId": "A",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }
@@ -11428,7 +11428,7 @@
                         "legendFormat": "{{transport}} {{opnsense_instance}}",
                         "instant": true,
                         "range": false,
-                        "format": "table"
+                        "format": "time_series"
                       }
                     }
                   }

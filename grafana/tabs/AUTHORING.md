@@ -428,7 +428,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_wireguard_peers` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > VPN > WireGuard Peers | `label_values(opnsense_wireguard_peer_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_zenarmor_metrics` | `collector` | existence (series presence) | opnsense2otel > Security > Zenarmor; opnsense2otel > Security > Zenarmor > Overview | `label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 
-### Loki sentinels — 6 total (scope: `stream_selector`)
+### Loki sentinels — 7 total (scope: `stream_selector`)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -437,6 +437,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_ids_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > IDS/IPS > Alert Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="ids"}, opnsense_source)` |
 | `has_syslog_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Services; opnsense2otel > Services > Syslog; opnsense2otel > Services > Syslog > Shipped Syslog Logs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog"}, opnsense_source)` |
 | `has_unbound_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="unbound"}, opnsense_source)` |
+| `has_unbound_syslog_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log (syslog route) | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog", opnsense_subsystem="dns"}, opnsense_subsystem)` |
 | `has_zenarmor_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > Zenarmor; opnsense2otel > Security > Zenarmor > Applications & Destinations; opnsense2otel > Security > Zenarmor > DNS Detail; opnsense2otel > Security > Zenarmor > Live Records & Rates; opnsense2otel > Security > Zenarmor > Security Detail; opnsense2otel > Security > Zenarmor > Web / HTTP Detail | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="zenarmor"}, opnsense_source)` |
 <!-- sentinelgen:end -->
 

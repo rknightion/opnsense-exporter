@@ -9,14 +9,34 @@ Covers all opnsense_unbound_dns_* metrics across seven rows:
   5. Cache & Memory     — cache_count, memory_bytes, tcp_usage_ratio
   6. Upstream Infra Cache (opt-in) — infra_rtt/rto
   7. DNSBL / Query Stats (opt-in)  — qstats totals, blocklist size, local zones/data/insecure domains
-  8. Per-Query Log (opt-in, Loki)  — the `unbound` log lane's per-query records
+  8. Per-Query Log (opt-in, Loki)  — the `unbound` POLL lane's per-query records
+  9. Per-Query Log - syslog route (opt-in, Loki) — the same queries via Unbound's own
+     log-queries/log-replies output (#659)
 
 Row 8 reads a LOG STREAM, not metrics (#591 item 5). The `unbound` source
 (`--logs.unbound.enabled`, internal/logship/unbound.go) ships one record per DNS
-query carrying client / domain / qtype / action / query_source / rcode / blocklist /
-dnssec_status — and until #591 nothing on the dashboard read any of it, so "which
-client is being blocked by which list" was unanswerable from the estate even though
-the data was already in Loki.
+query carrying dns_client_label / domain / qtype / action / query_source / rcode /
+blocklist / dnssec_status — and until #591 nothing on the dashboard read any of it, so
+"which client is being blocked by which list" was unanswerable from the estate even
+though the data was already in Loki.
+
+Row 9 reads the OTHER per-query route (#659): Unbound's own log-queries/log-replies
+output, which arrives over syslog rather than by polling. The two rows are separate on
+purpose and only one should ever be populated — the routes are mutually exclusive at
+startup, because both log the same queries and running both bills Loki twice.
+
+They cannot share panels. The poll lane's structured metadata uses bare keys
+(`domain`, `qtype`, `rcode`) while the syslog lane uses the dotted vocabulary the other
+syslog parsers use (`dns.query_name` -> `dns_query_name`, and so on), so a single
+selector reading both would match the stream and render blank columns — which looks
+like data loss rather than a disabled lane. Each route gets its own row behind its own
+sentinel instead.
+
+Note the syslog route lands under `opnsense_source="syslog"`, NOT `"unbound"`:
+`opnsense_source` names the RECEIVER, and `opnsense_subsystem="dns"` is a coarse
+routing aid shared with dnsmasq (registry.py's map is "a routing aid, not a
+taxonomy"). `program` is wire-derived and deliberately unpromotable, so it cannot be a
+stream label — hence the `| program="unbound"` filter after the selector.
 
 **Select on `opnsense_source`, never on `opnsense_subsystem`.** The lane builds its
 attributes without `logship.AttrSubsystem` (verified in internal/logship/unbound.go),
@@ -41,6 +61,16 @@ UNBOUND_STREAM = loki_sel('opnsense_source="unbound"')
 # verb survives as the structured-metadata `action` key, where Drop and Block stay
 # distinguishable.
 UNBOUND_BLOCKED = loki_sel('opnsense_source="unbound", opnsense_action="block"')
+
+# The syslog per-query route (#659). `program` is wire-derived and deliberately
+# unpromotable (sink_otlp_test.go: "must stay unpromotable"), so it can never be a
+# stream label — the selector is source+subsystem and unbound is picked out with a
+# structured-metadata filter after the pipe. `dns_event` tells query: lines from
+# reply: lines; reply lines carry strictly more fields, which is why every panel
+# below that needs an rcode, a resolve time or a cache flag filters to them.
+UNBOUND_SYSLOG_STREAM = loki_sel('opnsense_source="syslog", opnsense_subsystem="dns"')
+UNBOUND_SYSLOG_Q = f'{UNBOUND_SYSLOG_STREAM} | program="unbound" | dns_event=~"query|reply"'
+UNBOUND_SYSLOG_REPLIES = f'{UNBOUND_SYSLOG_STREAM} | program="unbound" | dns_event="reply"'
 
 # Domain names are unbounded, so the table ranking them pins its own window rather
 # than following the dashboard picker (#479): Loki's max_query_series is enforced on
@@ -516,10 +546,11 @@ def build(b: Builder):
         "Raw Unbound Query Log",
         UNBOUND_STREAM,
         desc="The `unbound` log stream (--logs.unbound.enabled): one record per DNS query, body "
-             "carrying the full row and structured metadata carrying client, domain, qtype, "
-             "action, query_source (Recursion/Cache/Local — where the ANSWER came from, not the "
-             "log source), rcode, blocklist and dnssec_status. Open the log details on any line "
-             "to filter on those. Accepted-loss lane: OPNsense exposes only the newest 1000 rows "
+             "carrying the full row and structured metadata carrying dns_client_label, domain, "
+             "qtype, action, query_source (Recursion/Cache/Local — where the ANSWER came from, "
+             "not the log source), rcode, blocklist and dnssec_status. Open the log details on "
+             "any line to filter on those. Accepted-loss lane: OPNsense exposes only the newest "
+             "1000 rows "
              "resolver-wide, so a busy resolver can push rows out before a poll fetches them — "
              "Possible Sampling Gaps on the Log Shipping tab counts when that happened.",
         w=24,
@@ -538,15 +569,20 @@ def build(b: Builder):
     )
     unbound_blocked_clients = b.loki_table(
         "Top Blocked Clients",
-        [f'topk {loki_grp()} (200, sum {loki_grp("client")} (count_over_time({UNBOUND_BLOCKED} '
-         '| client!="" [$__range])))'],
+        [f'topk {loki_grp()} (200, sum {loki_grp("dns_client_label")} '
+         f'(count_over_time({UNBOUND_BLOCKED} | dns_client_label!="" [$__range])))'],
         field_title="Client",
         desc="Which LAN clients had the most DNS queries blocked by policy, over the selected "
-             "range. `client` is structured metadata on the per-query record, so it exists "
-             "nowhere in metrics at any setting — this table is the only place the estate can "
-             "attribute a block to a device. A single client dominating is usually one app "
+             "range. `dns_client_label` is structured metadata on the per-query record, so it "
+             "exists nowhere in metrics at any setting — this table is the only place the estate "
+             "can attribute a block to a device. A single client dominating is usually one app "
              "retrying a blocked endpoint rather than a policy problem; pair it with Top "
-             "Blocklists beside it to see which list is doing the blocking.",
+             "Blocklists beside it to see which list is doing the blocking. NOTE the label is "
+             "whatever identity OPNsense's own client table applied — usually a hostname, "
+             "sometimes a bare address (#660). It is NOT `src_ip`, which this lane can only "
+             "populate on the small minority of rows that already arrive as an address; a device "
+             "gaining or losing a PTR still changes identity here, and only the syslog per-query "
+             "route (#659) carries a stable client IP.",
     )
     unbound_blocklists = b.loki_table(
         "Top Blocklists",
@@ -586,6 +622,82 @@ def build(b: Builder):
     )
 
     # =====================================================================
+    # Row 9: Per-Query Log, syslog route (opt-in, Loki — #659)
+    # =====================================================================
+    # Its own sentinel, so the row is absent rather than empty when this route is
+    # off — and so an operator running the POLL lane never sees a second, blank
+    # copy of the same row.
+    b.loki_sentinel("has_unbound_syslog_logs",
+                    matchers='opnsense_source="syslog", opnsense_subsystem="dns"',
+                    label="opnsense_subsystem")
+
+    unbound_syslog_raw = b.logs(
+        "Raw Unbound Per-Query Log (syslog route)",
+        UNBOUND_SYSLOG_Q,
+        desc="Unbound's own log-queries/log-replies output "
+             "(--logs.syslog.unbound-per-query.enabled, plus log-replies and "
+             "log-tag-queryreply on the firewall). Structured metadata: dns_query_name, "
+             "dns_query_type, dns_query_class, src_ip (a RAW client address — this route never "
+             "substitutes a hostname, unlike the poll lane, which is the whole reason it exists) "
+             "and its enrichment, plus dns_rcode, dns_resolve_time_seconds, dns_cached and "
+             "dns_response_size_bytes on reply lines. Complete coverage: every query, not the "
+             "newest 1000 rows. Costs roughly 2 log lines per DNS query.",
+        w=24,
+    )
+    unbound_syslog_rate = b.loki_ts(
+        "Per-Query Lines/s by Event (syslog route)",
+        [(f'sum {loki_grp("dns_event")} (rate({UNBOUND_SYSLOG_Q} [$__auto]))',
+          "{{dns_event}}")],
+        unit="ops",
+        desc="query: versus reply: lines per second. With both firewall settings on this runs at "
+             "about 2 lines per query, which is the ingest cost of this route. Enabling "
+             "log-replies ALONE halves it for strictly more data — a reply line carries every "
+             "field a query line does plus rcode, resolve time, cache flag and response size — "
+             "so a roughly 1:1 split here means log-queries is on and is close to redundant.",
+    )
+    unbound_syslog_cached = b.loki_ts(
+        "Cache Hit vs Miss/s (syslog route)",
+        [(f'sum {loki_grp("dns_cached")} (rate({UNBOUND_SYSLOG_REPLIES} [$__auto]))',
+          "{{dns_cached}}")],
+        unit="ops",
+        desc="Replies served from cache (true) versus resolved (false), from the reply lines' "
+             "own from-cache flag. This is the per-query twin of the resolver's cache hit ratio "
+             "metric, and unlike that metric it can be sliced by client or query name. Read the "
+             "FLAG, not the resolve time: a cache hit is always 0.000000 seconds, but a fast "
+             "uncached reply is not, so timing alone does not identify a hit.",
+    )
+    unbound_syslog_rcode = b.loki_ts(
+        "Replies/s by RCode (syslog route)",
+        [(f'sum {loki_grp("dns_rcode")} (rate({UNBOUND_SYSLOG_REPLIES} [$__auto]))',
+          "{{dns_rcode}}")],
+        unit="ops",
+        desc="Response codes per second from the reply lines. NXDOMAIN is normal background on "
+             "any network; a rising SERVFAIL share is the signal worth alerting on, and pairs "
+             "with the SERVFAIL records the same parser structures from unbound's error lines.",
+    )
+    unbound_syslog_clients = b.loki_table(
+        "Top Clients by Query Volume (syslog route)",
+        [f'topk {loki_grp()} (200, sum {loki_grp("src_ip")} '
+         f'(count_over_time({UNBOUND_SYSLOG_Q} | src_ip!="" [$__range])))'],
+        field_title="Client IP",
+        desc="Busiest clients by raw IP. This is the panel the poll lane cannot produce: OPNsense "
+             "collapses the client address into a hostname before serialising its query log "
+             "(#660), so only this route can rank clients by an address that joins to NetFlow, "
+             "Zenarmor and firewall records.",
+    )
+
+    row_syslog_query_log = b.row(
+        "Per-Query Log (syslog route)",
+        [unbound_syslog_raw, unbound_syslog_rate, unbound_syslog_cached,
+         unbound_syslog_rcode, unbound_syslog_clients],
+        present="has_unbound_syslog_logs",
+        # Collapsed for the same reason row 8 is: this is one log record per DNS
+        # query (two, with log-queries on), and a collapsed row issues nothing
+        # until opened.
+        collapse=True,
+    )
+
+    # =====================================================================
     # Assemble the tab
     # =====================================================================
     # Two sibling leaves (#619): 41 panels in one tab, and the split falls on an
@@ -598,6 +710,6 @@ def build(b: Builder):
     )
     b.tab(
         "DNS - Unbound Lists",
-        [row_infra, row_qstats, row_query_log],
+        [row_infra, row_qstats, row_query_log, row_syslog_query_log],
         present="has_unbound",
     )

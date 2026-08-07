@@ -26,7 +26,7 @@
       "description": "WireGuard peer {{ $labels.peer_name }} on {{ $labels.device_name }} has reported status 0 (down) for 10m. Status values are 1=up, 0=down, 2=unknown, 3=stale \u2014 this alert deliberately fires on 0 only, not on unknown/stale.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensewireguardpeerdown",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "322"
+      "__panelId__": "327"
     },
     "expressions": {
       "A": {

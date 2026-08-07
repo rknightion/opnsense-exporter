@@ -45,8 +45,10 @@ func TestCheckRemovedFlags_FlagPath(t *testing.T) {
 }
 
 // The unbound lane SURVIVES the syslog receiver: it ships Unbound's per-query DNS
-// log from OPNsense's reporting DB, which has no syslog equivalent. Guard against a
-// future edit sweeping it into the removed list.
+// log from OPNsense's reporting DB. #659 added a syslog per-query route alongside it,
+// but that route carries different fields (raw client IP, resolve time, cache flag)
+// and lacks the DNSBL action/blocklist attribution only this lane has — so it does
+// not supersede it. Guard against a future edit sweeping it into the removed list.
 func TestCheckRemovedFlags_UnboundIsNotRemoved(t *testing.T) {
 	if err := CheckRemovedFlags(
 		[]string{"--logs.unbound.enabled"},

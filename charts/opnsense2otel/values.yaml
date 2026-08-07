@@ -790,6 +790,20 @@ settings:
   #
   # PEM private key for the TLS syslog listener.
   # logs.syslog.tls-key-file: ""
+  #
+  # Enable the opt-in second per-query DNS log route: structure Unbound's own
+  # log-queries/log-replies syslog output (raw client IP, resolve time, cache-hit flag,
+  # rcode) and ship it to Loki. Off by default; requires --logs.enabled and the syslog
+  # receiver. FIREWALL PREREQUISITES: Unbound needs log-replies (and optionally log-queries)
+  # AND log-tag-queryreply enabled - without log-tag-queryreply the lines are tagged 'info:'
+  # instead of 'query:'/'reply:' and this parser will not match them; upstream defaults it
+  # OFF. COST: roughly 2 log lines per DNS query, forever - prefer log-replies ALONE, which
+  # carries every field log-queries does plus four more, halving ingest for strictly more
+  # data. Upstream warns log-queries 'makes the server (significantly) slower'; measured on
+  # a homelab resolver up to ~60x its baseline rate there was no detectable effect, but that
+  # does not clear a busy resolver. MUTUALLY EXCLUSIVE with --logs.unbound.enabled: both
+  # routes log the same queries, so running both ships two Loki records per query.
+  # logs.syslog.unbound-per-query.enabled: false
 
   # ---- Log shipping: Zenarmor receiver ----
   # The exporter poses as an Elasticsearch node so Zenarmor streams its reporting data here.
@@ -944,6 +958,17 @@ settings:
   # Loki via OTLP). Off by default. Independent of --otlp.enabled (which gates metrics).
   # logs.enabled: false
   #
+  # Maximum estimated payload bytes the emitter puts into ONE delivery attempt. This is an
+  # INGEST-RATE bound, not a transport bound: the OTLP wire ceiling is 64MiB and the
+  # exporter will happily send a 7MB request, but a Loki tenant's ingestion limit is a
+  # bytes/SECOND budget, so one such request is worth many seconds of it and is rejected
+  # atomically however long the exporter waits. Set this to roughly one second of the
+  # destination's per-tenant bytes/sec budget (default 1MiB). It is measured with the same
+  # estimator as --logs.buffer-max-bytes and --logs.max-record-bytes, so all three read
+  # against one number. 0 falls back to the transport-derived bound (half the OTLP request
+  # ceiling), which is the pre-#663 behaviour and effectively no ingest-rate bound at all.
+  # logs.max-export-bytes: "1048576"
+  #
   # Maximum distinct label tuples retained per derived log_events metric family. Receivers
   # are push-based and syslog over UDP has a spoofable source, so tuple values are
   # sender-controlled: without this bound a sender can grow process-lifetime metric state
@@ -971,7 +996,10 @@ settings:
   # Maximum delivery attempts for one batch before it is dropped and counted
   # (logs_dropped_total{reason="ship_failed_permanent"}). Retries are exponentially backed
   # off. Without this bound a batch the sink permanently refuses is retried forever by the
-  # single emitter goroutine, wedging all subsequent delivery. 0 restores unlimited retries.
+  # single emitter goroutine, wedging all subsequent delivery. The OTLP exporter's own
+  # in-request retry loop is pinned small so the two layers compose to a stated worst case
+  # (N x 15s plus backoff, ~7min at the defaults) rather than multiplying. 0 restores
+  # unlimited retries.
   # logs.ship-max-attempts: "10"
   #
   # Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout (one JSON

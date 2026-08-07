@@ -216,18 +216,104 @@ loss is never silent: it is counted via
 volumes (a handful to ~100 qps) are fine; a busy enterprise resolver should not
 enable this source.
 
-Loki structured metadata for this source: `client`, `domain`, `qtype`,
-`action`, `query_source`, `rcode`, `blocklist`, `dnssec_status`. (Unbound's own
-`source` field - where the answer came from - is deliberately mapped to the
-`query_source` attribute rather than a bare `source`, to keep it clear of this
-pipeline's own `opnsense.source` stamp; see [Loki label model](#loki-label-model).) The
-log body is a compact JSON encoding of the full row, including fields not
-promoted to structured metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
+Loki structured metadata for this source: `dns.client_label`, `domain`, `qtype`,
+`action`, `query_source`, `rcode`, `blocklist`, `dnssec_status`, plus `src.ip` and
+its enrichment (`src.hostname`, `src.mac`, `src.scope`) on the minority of records
+where the client value is an address - see below. (Unbound's own `source` field -
+where the answer came from - is deliberately mapped to the `query_source` attribute
+rather than a bare `source`, to keep it clear of this pipeline's own
+`opnsense.source` stamp; see [Loki label model](#loki-label-model).) The log body is
+a compact JSON encoding of the full row, including fields not promoted to structured
+metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
+
+**This lane cannot be joined to flow records by IP.** OPNsense collapses the client
+address and its resolved hostname into one column before serialising the query log -
+`stats.py handle_details()` picks the hostname when its client table has one, then
+drops the address entirely, on every code path - so the raw client IP is not present
+anywhere in the API response. What arrives is therefore sometimes a hostname
+(`camden.rob-knight.net`), sometimes a bare IPv4 or IPv6 literal, sometimes a
+non-FQDN name (`poly-office`) or `localhost`, and sometimes empty.
+
+The exporter does not guess. That value ships as `dns.client_label` - always set when
+non-empty, and the field to group a per-client panel on. `src.ip` is set **only** when
+the value already parses as an address (roughly 3% of rows on a box with reverse
+lookups working), and only then is it enriched to `src.hostname` / `src.mac` /
+`src.scope` from the exporter's own ARP/DHCP-lease tables. So `src.ip` on this source
+is either a real address or absent, never a hostname - but on most rows it is absent,
+and a query joining DNS to NetFlow, Zenarmor or firewall records by `src.ip` will
+match only that minority.
+
+Reverse-mapping the hostname back to an address was measured against a live 1000-row
+page and rejected: it covered 35% of queries, missed the busiest client entirely (a
+static-IP host with no lease and no ARP hostname), and was four-way ambiguous on the
+second busiest. If you need IP-keyed DNS correlation, use the syslog per-query route
+below - Unbound's own daemon log carries the raw client address and never substitutes
+it.
 
 Separately, the syslog receiver's `unbound` parser structures a plainer slice of
 this same data - query name/type/class and the matched local-zone - straight off
 Unbound's daemon log, with no blocklist, policy or DNSSEC detail. See
 [Structured parsers](syslog-receiver.md#what-you-get) for what it captures.
+
+### Unbound per-query DNS via syslog (`--logs.syslog.unbound-per-query.enabled`)
+
+The **second** per-query DNS route. Unbound can log every query and every reply to
+its own daemon log; this parses that output instead of polling OPNsense's reporting
+database. The two routes are complementary and **mutually exclusive** - the exporter
+refuses to start with both enabled, because both log the same queries and running
+both ships two Loki records per query, silently doubling every per-query panel.
+
+Which one to pick:
+
+| | poll (`--logs.unbound.enabled`) | syslog (`--logs.syslog.unbound-per-query.enabled`) |
+|---|---|---|
+| completeness | newest 1000 rows resolver-wide per poll; loss counted via `logs_possible_gap_total{source="unbound"}` | complete, every query |
+| client identity | hostname substituted when a PTR exists (see above) | **raw client IP**, never substituted |
+| resolve time / cache-hit flag | no | **yes**, from `log-replies` |
+| action / blocklist / policy | **yes** - the DNSBL disposition | no |
+| `dnssec_status`, `ttl` | yes | no |
+| rcode | yes | yes (`log-replies` only) |
+| cost model | firewall API + DuckDB lock contention | ~2 extra syslog lines per query, forever |
+| transport | poll | push |
+
+**Firewall prerequisites.** In Unbound's advanced settings, enable `log-replies`
+(and optionally `log-queries`) **and `log-tag-queryreply`**. The last one is not
+optional: without it Unbound tags these lines `info:` rather than `query:`/`reply:`,
+and the parser will not match them. Upstream defaults it **off**.
+
+**Prefer `log-replies` alone.** A reply line carries every field a query line does
+plus four more (rcode, resolve time, from-cache flag, response size), so enabling
+only `log-replies` halves the ingest for strictly more data. `log-queries` is worth
+adding only if you specifically need evidence that a query arrived and was never
+answered.
+
+**Performance.** Upstream's `man unbound.conf` warns that `log-queries` "Prints one
+line per query to the log ... Note that it takes time to print these lines which
+makes the server (significantly) slower", and says the same of `log-replies`. This is
+a synchronous write in the resolution hot path, per query, per worker thread. Measured
+on a homelab resolver at up to roughly 60x its ~6 qps baseline, enabling both settings
+had **no detectable effect** on loss, latency or throughput, and every saturation
+counter stayed at zero. That test cannot clear a genuinely busy resolver - the cost is
+per query, so it is invisible at these rates and would be orders of magnitude larger
+where it matters. Do not cite it to justify enabling this on a high-volume resolver.
+
+The measurable cost is log volume: about **2.05 lines per DNS query**, which on the
+test box was 1.14M lines/day and took DNS from 5.6% to 41% of all syslog.
+
+Loki structured metadata: `dns.query_name`, `dns.query_type`, `dns.query_class`,
+`src.ip` (plus enrichment), `unbound.thread` and `dns.event` (`query` or `reply`) on
+every record; `dns.rcode`, `dns.resolve_time_seconds`, `dns.cached` and
+`dns.response_size_bytes` on reply records; `dst.ip`, `dst.port` and `net.transport`
+when `log-destaddr` is also on. Records land under `opnsense_source="syslog"` and
+`opnsense_subsystem="dns"`, alongside the other syslog parsers - select them with
+`{opnsense_source="syslog", opnsense_subsystem="dns"} | program="unbound"`.
+
+Read the flag, not the timing, to identify a cache hit: a hit is always `0.000000`
+seconds, but a fast uncached reply is not.
+
+When this route is **off**, these lines are not dropped - they ship as generic
+records exactly as they did before the parser existed. The firewall sends them either
+way; the flag decides whether the exporter structures them.
 
 ### Flow log records (`netflow`, `merged`)
 
@@ -471,8 +557,8 @@ The pipeline flags are listed in the [Configuration reference](configuration.md)
 The complete top-level pipeline set is `--logs.enabled`, `--logs.sink`,
 `--logs.poll-interval` (floor 5s), `--logs.buffer-size`,
 `--logs.buffer-max-bytes`, `--logs.batch-max`, `--logs.max-record-bytes`,
-`--logs.ship-max-attempts`, `--logs.ship-concurrency`, `--logs.max-metric-keys`,
-and `--logs.state-file`.
+`--logs.max-export-bytes`, `--logs.ship-max-attempts`, `--logs.ship-concurrency`,
+`--logs.max-metric-keys`, and `--logs.state-file`.
 Per-source `--logs.<source>.enabled` flags are documented alongside each source
 above as they land.
 
@@ -500,16 +586,61 @@ Raise `--logs.buffer-size` if bursts still outrun the sink; it absorbs a burst b
 does nothing for sustained rate. If the queue is *chronically* deep rather than
 spiky, the sink rate is the problem, not the buffer.
 
-A batch is bounded by bytes as well as by `--logs.batch-max`, at half the OTLP
-exporter's serialized-request ceiling. That bound is not configurable and is not
-about memory — the queue's own `--logs.buffer-max-bytes` covers memory. It exists
-because an oversized request is refused by the exporter *before* it reaches the
-wire, which yields no delivery outcome to classify, so the batch would be retried
-to exhaustion against bytes that can never be accepted. Note that gzip does not
-raise that ceiling: it is checked against the uncompressed protobuf. A single
-record larger than the bound is still shipped on its own rather than stalling the
-queue behind it; `--logs.max-record-bytes` is the bound that rejects those, at
-ingest.
+A batch is bounded by bytes as well as by `--logs.batch-max`, by **two** bounds that
+answer different questions. Neither is about memory — the queue's own
+`--logs.buffer-max-bytes` covers memory.
+
+The **transport** bound is half the OTLP exporter's serialized-request ceiling. It is
+not configurable. It exists because an oversized request is refused by the exporter
+*before* it reaches the wire, which yields no delivery outcome to classify, so the
+batch would be retried to exhaustion against bytes that can never be accepted. Note
+that gzip does not raise that ceiling: it is checked against the uncompressed
+protobuf.
+
+The **ingest-rate** bound is `--logs.max-export-bytes` (default 1MiB), and it is the
+one that normally binds. A Loki tenant's ingestion limit is a bytes-per-*second*
+budget, which the transport ceiling knows nothing about: a 7.5MB push is worth many
+seconds of that budget and is rejected atomically however long the exporter waits,
+while being comfortably under the 32MiB transport bound. Set it to roughly one second
+of the destination's per-tenant bytes/sec budget. `0` falls back to the transport
+bound alone.
+
+A single record larger than either bound is still shipped on its own rather than
+stalling the queue behind it; `--logs.max-record-bytes` is the bound that rejects
+those, at ingest.
+
+### Rate limits, splitting and pacing
+
+An `HTTP 429` or a gRPC `RESOURCE_EXHAUSTED` is classified separately from an ordinary
+transient failure, because the correct response is different. A generic 503 means the
+endpoint could not take the request *right now*, so resending the same bytes is right.
+A rate limit means the request was too much *at once* for a bytes/sec budget, so a
+byte-identical resend is guaranteed to fail again.
+
+On a rate limit the emitter therefore **halves** the number of records it puts into
+one delivery attempt (floored at 32) and **paces** subsequent attempts by the
+advertised `Retry-After` — both the delay-seconds and the HTTP-date form are parsed,
+clamped to 30s so a misconfigured header cannot park the emitter — or by a 2s floor
+when nothing is advertised. The reduced size is carried forward across batches and
+walks back up geometrically once deliveries are clean again, so a sustained burst
+above the tenant's limit degrades into steady paced delivery rather than into whole
+batches dropped plus collateral queue overflow.
+
+The gRPC path detects the rate limit but does not read an advertised delay
+(`google.rpc.RetryInfo` would need a new direct module dependency); the 2s pacing
+floor applies there instead.
+
+Worst-case time spent on one undeliverable batch is bounded and accounts for **both**
+retry layers — the pipeline's `--logs.ship-max-attempts` and the OTLP exporter's own
+in-request retry, which is pinned to a 5s max-elapsed rather than the SDK's default of
+one minute so the two compose instead of multiplying:
+
+    t_worst  =  attempts x (sdk_max_elapsed + export_timeout)  +  (attempts - 1) x max_wait
+             =  10 x (5s + 10s) + 9 x 30s  =  420s
+
+420s is the pathological case where the destination advertises the maximum
+`Retry-After` on every attempt; with none advertised it is 195s. Attempts are counted
+across the whole batch rather than per chunk, so splitting never multiplies the bound.
 
 Over HTTP the client's idle-connection pool is sized to the concurrency
 automatically. Note that an endpoint which does not negotiate HTTP/2 needs one TCP

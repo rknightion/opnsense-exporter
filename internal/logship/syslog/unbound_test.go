@@ -392,6 +392,280 @@ func TestUnboundServiceLifecycle(t *testing.T) {
 	}
 }
 
+// enablePerQueryRoute turns on the opt-in syslog per-query DNS route (#659) for one
+// test and restores the previous state afterwards. The route is off by default, so
+// without this every parse below correctly returns ok=false.
+func enablePerQueryRoute(t *testing.T) {
+	t.Helper()
+	prev := perQueryRouteEnabled
+	perQueryRouteEnabled = func() bool { return true }
+	t.Cleanup(func() { perQueryRouteEnabled = prev })
+}
+
+// TestUnboundQueryReplyLog covers the log-queries/log-replies/log-tag-queryreply
+// shapes frozen on #659. Each case comment states its provenance: "verbatim" ==
+// captured verbatim in capture-010.ndjson (camden, 2026-08-07); "source-derived"
+// == not captured, traced to a named upstream branch per the frozen spec.
+func TestUnboundQueryReplyLog(t *testing.T) {
+	enablePerQueryRoute(t)
+	tests := []struct {
+		name string
+		msg  string
+		want map[string]string
+	}{
+		// --- verbatim query: lines ---
+		{
+			name: "query, ipv4 loopback client (verbatim)",
+			msg:  "[96463:4] query: 127.0.0.1 www.tleechreload.org. A IN",
+			want: map[string]string{
+				"dns.event":       "query",
+				"dns.query_name":  "www.tleechreload.org.",
+				"dns.query_type":  "A",
+				"dns.query_class": "IN",
+				"src.ip":          "127.0.0.1",
+				"unbound.thread":  "4",
+			},
+		},
+		{
+			name: "query, ipv4 LAN client, AAAA (verbatim)",
+			msg:  "[96463:9] query: 10.0.0.5 profiles-prod-023.grafana.net. AAAA IN",
+			want: map[string]string{
+				"dns.event":      "query",
+				"dns.query_name": "profiles-prod-023.grafana.net.",
+				"dns.query_type": "AAAA",
+				"src.ip":         "10.0.0.5",
+				"unbound.thread": "9",
+			},
+		},
+		{
+			name: "query, bare ipv6 client -- no brackets, no port (verbatim)",
+			msg:  "[96463:0] query: fd6b:d9cd:7613:4c33:301f:7ada:8457:a679 www.msftconnecttest.com. A IN",
+			want: map[string]string{
+				"dns.event":      "query",
+				"dns.query_name": "www.msftconnecttest.com.",
+				"dns.query_type": "A",
+				"src.ip":         "fd6b:d9cd:7613:4c33:301f:7ada:8457:a679",
+				"unbound.thread": "0",
+			},
+		},
+
+		// --- verbatim reply: lines ---
+		{
+			name: "reply, ipv4 loopback, from-cache=0, NOERROR (verbatim)",
+			msg:  "[96463:8] reply: 127.0.0.1 tvchaosuk.com. AAAA IN NOERROR 0.012482 0 90",
+			want: map[string]string{
+				"dns.event":                "reply",
+				"dns.query_name":           "tvchaosuk.com.",
+				"dns.query_type":           "AAAA",
+				"dns.query_class":          "IN",
+				"dns.rcode":                "NOERROR",
+				"dns.resolve_time_seconds": "0.012482",
+				"dns.cached":               "false",
+				"dns.response_size_bytes":  "90",
+				"src.ip":                   "127.0.0.1",
+				"unbound.thread":           "8",
+			},
+		},
+		{
+			name: "reply, bare ipv6 client (verbatim)",
+			msg:  "[96463:0] reply: fd6b:d9cd:7613:4c33:301f:7ada:8457:a679 www.msftconnecttest.com. A IN NOERROR 0.010623 0 151",
+			want: map[string]string{
+				"dns.event":                "reply",
+				"dns.query_name":           "www.msftconnecttest.com.",
+				"dns.rcode":                "NOERROR",
+				"dns.resolve_time_seconds": "0.010623",
+				"dns.cached":               "false",
+				"dns.response_size_bytes":  "151",
+				"src.ip":                   "fd6b:d9cd:7613:4c33:301f:7ada:8457:a679",
+			},
+		},
+		{
+			name: "reply, from-cache=1, HTTPS qtype, resolve_time 0.000000 (verbatim)",
+			msg:  "[96463:10] reply: 10.0.0.183 safebrowsing-proxy.g.aaplimg.com. HTTPS IN NOERROR 0.000000 1 110",
+			want: map[string]string{
+				"dns.event":                "reply",
+				"dns.query_type":           "HTTPS",
+				"dns.rcode":                "NOERROR",
+				"dns.resolve_time_seconds": "0.000000",
+				"dns.cached":               "true",
+				"dns.response_size_bytes":  "110",
+			},
+		},
+		{
+			name: "reply, NXDOMAIN, SRV qtype (verbatim)",
+			msg:  "[96463:5] reply: 10.0.0.199 _ldap._tcp.dc._msdcs.mgmt.rob-knight.net. SRV IN NXDOMAIN 0.000981 0 58",
+			want: map[string]string{
+				"dns.event":      "reply",
+				"dns.query_type": "SRV",
+				"dns.rcode":      "NXDOMAIN",
+				"dns.cached":     "false",
+			},
+		},
+
+		// --- source-derived qname edge cases (dname_str, util/data/dname.c) ---
+		{
+			name: "query, root/empty dname (source-derived: dname_str root branch, dname.c:643)",
+			msg:  "[96463:4] query: 127.0.0.1 . A IN",
+			want: map[string]string{
+				"dns.event":      "query",
+				"dns.query_name": ".",
+				"dns.query_type": "A",
+			},
+		},
+		{
+			name: "query, '?'-escaped byte + TYPE%d/CLASS%d fallback (source-derived: dname.c:665 '?' branch; net_help.c:601 TYPE%d; net_help.c:608 CLASS%d)",
+			msg:  "[96463:4] query: 127.0.0.1 ex?mple.com. TYPE65534 CLASS42",
+			want: map[string]string{
+				"dns.event":       "query",
+				"dns.query_name":  "ex?mple.com.",
+				"dns.query_type":  "TYPE65534",
+				"dns.query_class": "CLASS42",
+			},
+		},
+		{
+			name: "query, MAX_DOMAINLEN truncation, '&', no trailing dot (source-derived: dname.c:653)",
+			msg:  "[96463:4] query: 127.0.0.1 & A IN",
+			want: map[string]string{
+				"dns.event":      "query",
+				"dns.query_name": "&",
+				"dns.query_type": "A",
+			},
+		},
+		{
+			name: "query, label>63 bytes, '#', no trailing dot (source-derived: dname.c:659)",
+			msg:  "[96463:4] query: 127.0.0.1 # A IN",
+			want: map[string]string{
+				"dns.event":      "query",
+				"dns.query_name": "#",
+				"dns.query_type": "A",
+			},
+		},
+
+		// --- source-derived reply edge cases ---
+		{
+			name: "reply, FORMERR, all-dash placeholders mapped to absent (source-derived: msgreply.c:1046)",
+			msg:  "[96463:8] reply: 10.0.0.5 - - - FORMERR - - -",
+			want: map[string]string{
+				"dns.event": "reply",
+				"dns.rcode": "FORMERR",
+				"src.ip":    "10.0.0.5",
+			},
+		},
+		{
+			name: "reply, null qname literal (source-derived: msgreply.c:1058)",
+			msg:  "[96463:8] reply: 10.0.0.5 null A IN SERVFAIL 0.000000 0 0",
+			want: map[string]string{
+				"dns.event":                "reply",
+				"dns.query_name":           "null",
+				"dns.rcode":                "SERVFAIL",
+				"dns.resolve_time_seconds": "0.000000",
+				"dns.cached":               "false",
+			},
+		},
+		{
+			name: "reply, RCODE%d fallback (source-derived: sldns_wire2str_rcode_buf fallback)",
+			msg:  "[96463:8] reply: 10.0.0.5 x. A IN RCODE23 0.000123 0 55",
+			want: map[string]string{
+				"dns.event": "reply",
+				"dns.rcode": "RCODE23",
+			},
+		},
+		{
+			name: "reply, optional log-destaddr dest clause (source-derived: msgreply.c:1040)",
+			msg:  "[96463:8] reply: 10.0.0.5 x. A IN NOERROR 0.012482 0 90 on udp 10.0.0.254 53",
+			want: map[string]string{
+				"dns.event":     "reply",
+				"net.transport": "udp",
+				"dst.ip":        "10.0.0.254",
+				"dst.port":      "53",
+			},
+		},
+		{
+			name: "reply, tv_sec >= 1, NS qtype (source-derived: resolve time not always sub-second)",
+			msg:  "[96463:8] reply: 10.0.0.5 x. NS IN NOERROR 1.234567 0 512",
+			want: map[string]string{
+				"dns.event":                "reply",
+				"dns.query_type":           "NS",
+				"dns.resolve_time_seconds": "1.234567",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &missRecorder{}
+			rec, ok := parseUnbound(unboundEnv(tc.msg), unboundSnapshot(), m.miss)
+			if !ok {
+				t.Fatalf("parseUnbound returned ok=false for %q", tc.msg)
+			}
+			assertAttrs(t, rec, tc.want)
+		})
+	}
+}
+
+// TestUnboundReplyFormerrOmitsDashPlaceholders: a FORMERR reply's qname/qtype/
+// qclass/resolve_time/response_size_bytes are all literal "-" on the wire and
+// must never surface as the literal string "-" (set() only skips truly empty
+// values, so "-" needs an explicit map-to-absent).
+func TestUnboundReplyFormerrOmitsDashPlaceholders(t *testing.T) {
+	enablePerQueryRoute(t)
+	rec, ok := parseUnbound(
+		unboundEnv("[96463:8] reply: 10.0.0.5 - - - FORMERR - - -"),
+		nil, func(string) {})
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	assertNoAttrs(t, rec,
+		"dns.query_name", "dns.query_type", "dns.query_class",
+		"dns.resolve_time_seconds", "dns.response_size_bytes")
+}
+
+// TestUnboundQueryReplyClientEnrichment: the query/reply lanes enrich src.ip
+// exactly like the local-actions parser does.
+func TestUnboundQueryReplyClientEnrichment(t *testing.T) {
+	enablePerQueryRoute(t)
+	rec, ok := parseUnbound(
+		unboundEnv("[96463:4] query: 10.0.0.141 x.example.com. A IN"),
+		unboundSnapshot(), func(string) {})
+	if !ok {
+		t.Fatal("ok=false")
+	}
+	assertAttrs(t, rec, map[string]string{
+		"src.hostname": "workstation",
+		"src.mac":      "de:ad:be:ef:00:01",
+		"src.scope":    "local",
+	})
+}
+
+// TestUnboundQueryReplyNegativeCases: lines that must NOT match the new
+// query:/reply: patterns -- the existing local-actions and SERVFAIL parsers
+// still own their shapes, and the deliberate fall-through set is unaffected.
+// All real lines, from the archive or the existing suite above.
+func TestUnboundQueryReplyNegativeCases(t *testing.T) {
+	lines := []string{
+		// local-actions info: line -- must route to reUnboundQuery, not the new
+		// query: pattern (real, from TestUnboundVerbatimLines above).
+		"[46775:2] info: example.com. transparent 10.0.0.141@51967 _ldap._tcp.dc._msdcs.example.com. SRV IN",
+		// cached SERVFAIL -- must route to reUnboundServfailCached (real, #641).
+		"[9284:5] error: SERVFAIL <wpad.saga-turtle.ts.net. A IN>: SERVFAIL in cache",
+		// dnsbl chatter -- must route to the dnsbl_module parsers (real, #631).
+		"[48126:7] info: dnsbl_module: blocklist loaded. length is 509328",
+		// deliberate fall-through: multi-line stats dump (real, capture-010.ndjson).
+		"[96463:0] info: server stats for thread 0: 6552 queries, 6310 answers from cache, 242 recursions, 18 prefetch, 0 rejected by ip ratelimiting",
+	}
+	for _, l := range lines {
+		if m := reUnboundQueryLog.FindStringSubmatch(l); m != nil {
+			t.Errorf("reUnboundQueryLog unexpectedly matched %q", l)
+		}
+		if m := reUnboundReplyLog.FindStringSubmatch(l); m != nil {
+			t.Errorf("reUnboundReplyLog unexpectedly matched %q", l)
+		}
+		rec, ok := parseUnbound(unboundEnv(l), nil, func(string) {})
+		if ok && (rec.Attributes["dns.event"] == "query" || rec.Attributes["dns.event"] == "reply") {
+			t.Errorf("parseUnbound(%q) routed to the new query/reply shape, want its existing parser", l)
+		}
+	}
+}
+
 // TestUnboundThroughBuildRecord: exercised end-to-end via the dispatcher, the line
 // is parsed (not generic) and carries subsystem=dns.
 func TestUnboundThroughBuildRecord(t *testing.T) {
@@ -405,4 +679,54 @@ func TestUnboundThroughBuildRecord(t *testing.T) {
 		logship.AttrSubsystem: "dns",
 		"src.ip":              "10.0.0.141",
 	})
+}
+
+// The route is opt-in, and OFF must mean "falls through to a generic record", never
+// "dropped": an unparsed syslog line still ships (source.go), and the ~2 lines per
+// query arrive from the firewall whether or not we structure them. A future edit that
+// turned the gate into a drop would silently discard data the operator is paying to
+// ingest, so this pins the distinction.
+func TestUnboundPerQueryRouteDisabledFallsThroughRatherThanDropping(t *testing.T) {
+	prev := perQueryRouteEnabled
+	perQueryRouteEnabled = func() bool { return false }
+	t.Cleanup(func() { perQueryRouteEnabled = prev })
+
+	for _, msg := range []string{
+		// verbatim, capture-010.ndjson (camden, 2026-08-07)
+		"[96463:9] query: 10.0.0.5 profiles-prod-023.grafana.net. AAAA IN",
+		"[96463:8] reply: 127.0.0.1 tvchaosuk.com. AAAA IN NOERROR 0.012482 0 90",
+	} {
+		if _, ok := parseUnbound(Envelope{Program: "unbound", Message: msg}, nil, nil); ok {
+			t.Errorf("route disabled but parseUnbound claimed the line for %q; it must fall "+
+				"through to a generic record", msg)
+		}
+	}
+}
+
+// The tag discriminator must key on `query:`/`reply:` and nothing else. Without
+// log-tag-queryreply on the firewall unbound tags these lines `info:`, which is the
+// local-actions parser's shape — blurring the two would both break that parser and
+// make the opt-in gate swallow local-zone traffic.
+func TestUnboundPerQueryTagDiscriminator(t *testing.T) {
+	perQuery := []string{
+		"[96463:9] query: 10.0.0.5 profiles-prod-023.grafana.net. AAAA IN",
+		"[96463:8] reply: 127.0.0.1 tvchaosuk.com. AAAA IN NOERROR 0.012482 0 90",
+	}
+	notPerQuery := []string{
+		// verbatim local-actions line: `info:` tag, @port client
+		"[46775:2] info: example.com. transparent 10.0.0.141@51967 _ldap._tcp.dc._msdcs.example.com. SRV IN",
+		// deliberate fall-through chatter (unbound.go:118-125), must stay untouched
+		"[10176:0] info: start of service (unbound 1.25.1).",
+		"blocklist parsing done in 2.26 seconds (509328 records)",
+	}
+	for _, msg := range perQuery {
+		if !isUnboundPerQueryLine(msg) {
+			t.Errorf("expected a per-query line: %q", msg)
+		}
+	}
+	for _, msg := range notPerQuery {
+		if isUnboundPerQueryLine(msg) {
+			t.Errorf("must NOT be treated as a per-query line: %q", msg)
+		}
+	}
 }

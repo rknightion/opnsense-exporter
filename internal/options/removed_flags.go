@@ -20,7 +20,12 @@ type removedSetting struct {
 // re-read log files OPNsense will push over syslog; the receiver supersedes both.
 //
 // --logs.unbound.enabled is deliberately NOT here: it ships Unbound's per-query DNS
-// log from OPNsense's reporting database, which has no syslog equivalent.
+// log from OPNsense's reporting database. #659 added a syslog route for per-query DNS
+// (--logs.syslog.unbound-per-query.enabled), but it does NOT supersede this lane and
+// must never sweep it into this list: the two carry different fields and neither is a
+// superset. Only the poll lane has the DNSBL action/blocklist attribution; only the
+// syslog lane has the raw client IP, complete coverage and resolve latency. They are
+// mutually exclusive at startup, not one-replaces-the-other.
 var removedSettings = []removedSetting{
 	{
 		Flag: "logs.firewall.enabled",
