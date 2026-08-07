@@ -7,9 +7,10 @@ import (
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 )
 
-// kernel.go owns the `kernel` program registration and chains the three kernel
+// kernel.go owns the `kernel` program registration and chains the four kernel
 // grammars this package models: CARP transitions (carp.go, #405), netmap
-// host-ring-full reports and ARP address moves (both #536).
+// host-ring-full reports and ARP address moves (both #536), and promiscuous-mode
+// toggles (#669).
 //
 // ONE registration, not three: RegisterParser panics on a duplicate program, and
 // `kernel` is a single fixed app-name. carp.go therefore no longer registers itself
@@ -77,6 +78,40 @@ var (
 	// character set.
 	reARPMoved = regexp.MustCompile(kernelPrefix +
 		`arp: (\S+) moved from (\S+) to (\S+) on ([0-9A-Za-z._-]+)$`)
+
+	// `<PRI>[uptime] <device>: promiscuous mode enabled|disabled` (#669).
+	//
+	// Captured verbatim on production (OPNsense 26.7.1_1), an enable/disable pair
+	// ~45s apart and a second pair ~20s later, consistent with a short deliberate
+	// packet capture rather than anything persistent:
+	//
+	//	<6>[331947] ixl1: promiscuous mode enabled
+	//	<6>[331992] ixl1: promiscuous mode disabled
+	//
+	// Worth structuring for two reasons, not one: it is security-relevant (something
+	// put an interface into promiscuous mode), and it is directly relevant to this
+	// exporter, since promiscuous mode is what a packet capture or a flow exporter
+	// turns on. Closed vocabulary (enabled/disabled only), negligible volume, bounded
+	// cardinality (interface names).
+	rePromiscuous = regexp.MustCompile(kernelPrefix +
+		`([0-9A-Za-z._-]+): promiscuous mode (enabled|disabled)$`)
+)
+
+// The `kernel` promiscuous-mode attribute keys and their CLOSED, code-defined event
+// vocabulary (#669). This is NOT one of the families derive.go's observeDerived
+// reads — no derived counter was requested for it, so unlike attrNetmapEvent/
+// attrARPEvent these live beside the grammar that writes them rather than in
+// derive.go.
+//
+// interface.device is the kernel's own device name (ixl1), not opnsense.interface
+// (shape_attrs.go): that key is the resolved DESCRIPTION space (LAN/IOT/MGMT) a
+// human names in the OPNsense UI, and the two are disjoint (#98) — setting the raw
+// device name there would produce a label that silently matches nothing.
+const (
+	attrKernelEvent       = "kernel.event"
+	attrKernelDevice      = "interface.device"
+	kernelPromiscEnabled  = "promiscuous_enabled"
+	kernelPromiscDisabled = "promiscuous_disabled"
 )
 
 func init() {
@@ -105,6 +140,9 @@ func parseKernel(env Envelope, snap *enrich.Snapshot, miss func(table string)) (
 		return rec, true
 	}
 	if rec, ok := parseARPMove(env); ok {
+		return rec, true
+	}
+	if rec, ok := parsePromiscuous(env); ok {
 		return rec, true
 	}
 	return logship.Record{}, false
@@ -154,5 +192,21 @@ func parseARPMove(env Envelope) (logship.Record, bool) {
 	set(attrARPMACPrevious, m[2])
 	set(attrARPMACCurrent, m[3])
 	set(attrARPInterface, m[4])
+	return rec, true
+}
+
+// parsePromiscuous structures one kernel promiscuous-mode toggle (#669).
+func parsePromiscuous(env Envelope) (logship.Record, bool) {
+	m := rePromiscuous.FindStringSubmatch(env.Message)
+	if m == nil {
+		return logship.Record{}, false
+	}
+	rec, set := newRecord(env)
+	if m[2] == "enabled" {
+		set(attrKernelEvent, kernelPromiscEnabled)
+	} else {
+		set(attrKernelEvent, kernelPromiscDisabled)
+	}
+	set(attrKernelDevice, m[1])
 	return rec, true
 }

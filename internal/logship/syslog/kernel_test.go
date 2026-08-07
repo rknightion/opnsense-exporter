@@ -301,13 +301,12 @@ func TestKernelConsoleOutputIsNotClaimed(t *testing.T) {
 		"[2026-07-24T18:20:54,123][INFO ][o.e.n.Node               ] [opnsense] initialized",
 		"*** opnsense.rob-knight.net: OPNsense 26.7.1 ***",
 
-		// Real kernel lines that are not one of our three grammars. These sit next to
+		// Real kernel lines that are not one of our four grammars. These sit next to
 		// the netmap grammar in the same capture and share its prefix shape, which is
 		// exactly why a loose netmap pattern would eat them.
 		"[102019] 108.204884 [ 902] freebsd_generic_rx_handler Warning: RX packet intercepted, but no emulated adapter",
 		"[102020] 108.204900 [1234] generic_netmap_dtor       Native netmap adapter for ixl0 restored",
 		"[102021] 108.204910 [1235] generic_netmap_attach     Emulated adapter for ixl0 created (prev was ixl0)",
-		"<6>[211555] tailscale0: promiscuous mode enabled",
 		"<6>[211556] ixl0: link state changed to DOWN",
 		"<6>[211557] ixl0: Link is up, 10 Gbps Full Duplex, Requested FEC: None, Negotiated FEC: None, Autoneg: False, Flow Control: None",
 		"<6>[211558] nd6_dad_timer: called with non-tentative address fe80:f::4ab1:2ff:fe03:aff1(pppoe0)",
@@ -317,6 +316,12 @@ func TestKernelConsoleOutputIsNotClaimed(t *testing.T) {
 		"[205991] 654.637689 [4335] netmap_transmit_something ixl0 full hwcur 973 hwtail 973 qlen 1023",
 		"<6>[1147742] arp: 10.0.90.130 is on ixl0_vlan90",
 		"<6>[1147742] arping: 10.0.90.130 moved from a to b on ixl0",
+
+		// Near misses on the promiscuous-mode grammar (#669): wrong verb form and a
+		// missing device prefix.
+		"<6>[211555] tailscale0: promiscuous mode is enabled",
+		"<6>[211555] tailscale0: promiscuous mode enable",
+		"promiscuous mode enabled",
 	}
 
 	for _, line := range lines {
@@ -334,6 +339,65 @@ func TestKernelConsoleOutputIsNotClaimed(t *testing.T) {
 			}
 			if len(sink.calls) != 0 {
 				t.Errorf("sink calls = %+v, want none", sink.calls)
+			}
+		})
+	}
+}
+
+// The promiscuous-mode grammar (#669), captured verbatim on production
+// (OPNsense 26.7.1_1): two enable/disable pairs on ixl1, ~45s and ~20s apart.
+func TestKernelPromiscuousCapturedLines(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		device  string
+		event   string
+	}{
+		{
+			name:    "enabled, captured",
+			message: "<6>[331947] ixl1: promiscuous mode enabled",
+			device:  "ixl1", event: kernelPromiscEnabled,
+		},
+		{
+			name:    "disabled, captured",
+			message: "<6>[331992] ixl1: promiscuous mode disabled",
+			device:  "ixl1", event: kernelPromiscDisabled,
+		},
+		{
+			name:    "second captured pair, enabled",
+			message: "<6>[340117] ixl1: promiscuous mode enabled",
+			device:  "ixl1", event: kernelPromiscEnabled,
+		},
+		{
+			name:    "second captured pair, disabled",
+			message: "<6>[340137] ixl1: promiscuous mode disabled",
+			device:  "ixl1", event: kernelPromiscDisabled,
+		},
+		{
+			// Same shape, a different device: the near-miss list above pins the
+			// verb-form/prefix cases this line was moved out of (#669).
+			name:    "different device, no counter prefix",
+			message: "tailscale0: promiscuous mode enabled",
+			device:  "tailscale0", event: kernelPromiscEnabled,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, ok := parseKernel(kernelEnv(t, tt.message), nil, nil)
+			if !ok {
+				t.Fatal("parseKernel() ok = false, want true")
+			}
+			for key, want := range map[string]string{
+				attrKernelEvent:  tt.event,
+				attrKernelDevice: tt.device,
+			} {
+				if got := rec.Attributes[key]; got != want {
+					t.Errorf("attribute %s = %q, want %q", key, got, want)
+				}
+			}
+			if rec.Body != tt.message {
+				t.Errorf("Body = %q, want the message verbatim", rec.Body)
 			}
 		})
 	}
