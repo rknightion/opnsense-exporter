@@ -245,7 +245,7 @@
       "kind": "object"
     },
     {
-      "path": "data.num.query.class.IN",
+      "path": "data.num.query.class.*",
       "kind": "string"
     },
     {

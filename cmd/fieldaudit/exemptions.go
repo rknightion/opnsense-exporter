@@ -1306,11 +1306,13 @@ var Exemptions = map[string]string{
 		"validates the whole extended-statistics payload. The unbound collector exports a " +
 		"chosen subset of these counters; this one is not in it, and nothing already exported " +
 		"summarises over it.",
-	// opnsense/unbound_dns.go:102  json:"IN"
-	"opnsense.unboundDNSStatusResponse.Data.Num.Query.Class.In": "unbound statistics field modelled for schema fidelity so the live-box canary " +
-		"validates the whole extended-statistics payload. The unbound collector exports a " +
-		"chosen subset of these counters; this one is not in it, and nothing already exported " +
-		"summarises over it.",
+	// Data.Num.Query.Class.In was exempted here as "modelled for schema fidelity, not
+	// exported". #656 deleted the field: the canary flagged data.num.query.class.ANY as
+	// unmodelled, because unbound emits num.query.class.<CLASS> only for classes it has
+	// actually seen, so a fixed struct holding only `IN` silently dropped every other
+	// class — the #138 miss, one field over. Class is now a map[string]string like its
+	// `type` sibling, which models the whole class space and needs no exemption: a map
+	// has no per-key field for the audit to call unread.
 	// opnsense/unbound_dns.go:135  json:"dnscrypt"
 	"opnsense.unboundDNSStatusResponse.Data.Num.Query.Dnscrypt": "unbound statistics field modelled for schema fidelity so the live-box canary " +
 		"validates the whole extended-statistics payload. The unbound collector exports a " +

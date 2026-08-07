@@ -228,10 +228,25 @@ type unboundDNSStatusResponse struct {
 				// schema. Decode as a map so every observed type is captured — a fixed
 				// struct silently dropped any type outside its named fields (#138).
 				// Cardinality is naturally bounded by the DNS RR-type space.
-				Type  map[string]string `json:"type"`
-				Class struct {
-					In string `json:"IN"`
-				} `json:"class"`
+				Type map[string]string `json:"type"`
+				// data.num.query.class is dynamic for exactly the same reason `type`
+				// above is, and was modelled as a fixed struct holding only `IN` until
+				// the 26.7.1_1 canary run flagged `data.num.query.class.ANY` as an
+				// unmodelled key (#656). unbound-control emits num.query.class.<CLASS>
+				// only for classes actually queried, so a box that has never seen a
+				// class-ANY query legitimately omits it and one that has adds a key the
+				// fixed struct silently dropped — the #138 miss, one field over.
+				//
+				// Exempting the key instead would have preserved the wrong shape: the
+				// canary is right, and CH/HS/NONE would each have come back as a fresh
+				// finding later. Cardinality is safe for the same reason as `type`: the
+				// DNS CLASS space is tiny and IANA-bounded.
+				//
+				// Decoded but deliberately NOT exported — no metric consumes query class
+				// today, and adding one is a separate scope (it would need its own
+				// catalogue entry and dashboard panels). This fixes the DECODE so the
+				// data is not silently lost; wiring a metric to it is a roadmap item.
+				Class  map[string]string `json:"class"`
 				Opcode struct {
 					Query string `json:"QUERY"`
 				} `json:"opcode"`
