@@ -142,6 +142,88 @@ class QuerySemanticsTest(unittest.TestCase):
         self.assertTrue(model["range"])
 
 
+class InstantQueryFormatTest(unittest.TestCase):
+    """#661: `format: "table"` collapses every series of an instant query into ONE
+    dataframe with a single `Value` column, one row per series. `table()`'s
+    transformations depend on exactly that shape, but bargauge/piechart (and any
+    stat/gauge fed by an instant query) reduce PER SERIES — with a table format
+    there is exactly one numeric field to reduce, so a multi-series panel silently
+    shows one arbitrary member instead of its distribution (the "Queries by Type"
+    bug: a donut showing `Value 0 req/s` instead of the per-qtype split).
+
+    `format: "time_series"` returns one frame per series instead, which is what
+    every non-table instant-consuming helper needs. This locks each helper's format
+    choice so a future call site cannot silently regress back to `"table"`.
+    """
+
+    def _formats(self, name, builder):
+        panel = builder.elements[name]
+        formats = []
+        for q in panel["spec"]["data"]["spec"]["queries"]:
+            model = q["spec"]["query"]["spec"]
+            if model.get("instant"):
+                formats.append(model.get("format"))
+        return formats
+
+    def test_bargauge_never_emits_table_format(self):
+        b = Builder()
+        name = b.bargauge("Bar gauge", [("opnsense_thing", "a"), ("opnsense_other", "b")])
+        formats = self._formats(name, b)
+        self.assertTrue(formats, "expected at least one instant query")
+        self.assertNotIn("table", formats)
+        self.assertTrue(all(f == "time_series" for f in formats))
+
+    def test_piechart_never_emits_table_format(self):
+        b = Builder()
+        name = b.piechart("Pie", [("opnsense_thing", "a"), ("opnsense_other", "b")])
+        formats = self._formats(name, b)
+        self.assertTrue(formats, "expected at least one instant query")
+        self.assertNotIn("table", formats)
+        self.assertTrue(all(f == "time_series" for f in formats))
+
+    def test_instant_stat_and_gauge_emit_time_series_not_table(self):
+        """The 8 single-series stat/gauge panels are latent, not broken today — but
+        they reduce per series exactly like bargauge/piechart, so a second series
+        added later would hit the same bug. Converted for consistency (#661)."""
+        b = Builder()
+        stat_name = b.stat("Current status", "opnsense_up", graph="none")
+        gauge_name = b.gauge("Pressure", "opnsense_pressure")
+        for name in (stat_name, gauge_name):
+            with self.subTest(panel=name):
+                formats = self._formats(name, b)
+                self.assertTrue(formats, "expected at least one instant query")
+                self.assertNotIn("table", formats)
+                self.assertTrue(all(f == "time_series" for f in formats))
+
+    def test_table_panels_still_emit_table_format(self):
+        """The fix must not flip table()'s default — its excludes/renames
+        transformations operate on the single-dataframe table shape."""
+        b = Builder()
+        name = b.table("A table", [sel("opnsense_up"), sel("opnsense_other")])
+        formats = self._formats(name, b)
+        self.assertTrue(formats, "expected at least one instant query")
+        self.assertTrue(all(f == "table" for f in formats))
+
+    def test_no_multi_series_viz_type_emits_table_format_across_the_generated_dashboard(self):
+        """The generalized regression guard: sweep every real panel the dashboard
+        builders produce, not just a hand-built one, so a new bargauge/piechart call
+        site (or a helper regressing its fmt=) cannot slip past."""
+        multi_series_groups = {"bargauge", "piechart"}
+        violations = []
+        for _, b in build_dashboard.build_family():
+            for el in b.elements.values():
+                if el["kind"] != "Panel":
+                    continue
+                viz_group = el["spec"]["vizConfig"]["group"]
+                if viz_group not in multi_series_groups:
+                    continue
+                for q in el["spec"]["data"]["spec"]["queries"]:
+                    model = q["spec"]["query"]["spec"]
+                    if model.get("instant") and model.get("format") == "table":
+                        violations.append(f'{viz_group} {el["spec"]["title"]!r}')
+        self.assertEqual(violations, [])
+
+
 class NestedLayoutTest(unittest.TestCase):
     def test_tab_group_nests_leaf_tabs_without_losing_conditions(self):
         builder = Builder()

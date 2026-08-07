@@ -268,14 +268,35 @@ class Builder:
         return f"panel-{self._id}", self._id
 
     def _query(self, expr: str, ref: str = "A", instant: bool = False,
-               legend: str | None = None, dedupe: bool = True) -> dict:
+               legend: str | None = None, dedupe: bool = True,
+               fmt: str = "table") -> dict:
+        """`fmt` only matters when `instant=True` — it is inert on a range query.
+
+        Chosen by the CALLING VIZ, not derived from `instant` (#661). A Prometheus
+        instant query with `format: "table"` collapses every series into ONE
+        dataframe with a single `Value` column, one row per series — right for
+        `table()`, whose transformations (`excludes`/`renames`) operate on that
+        table shape. It is wrong for anything that reduces per SERIES (bargauge,
+        piechart, and any multi-series stat/gauge): those helpers reduce each
+        numeric field to one displayed item, and a table format has exactly one
+        such field, so a multi-series panel silently displays one arbitrary
+        member instead of its distribution. `format: "time_series"` returns one
+        frame per series instead, so `legendFormat` names each one and the
+        reducer runs per frame — which is what every non-table viz needs, single-
+        series or not, and is why `stat()`/`gauge()` also default it that way now.
+
+        Defaults to `"table"` only because that is `table()`'s own requirement;
+        every other instant-consuming helper passes `fmt="time_series"` explicitly
+        rather than relying on this default, so nothing here can "flip" and break
+        `table()`'s transformations.
+        """
         self._exprs.append(expr)
         panel_expr = stable(expr) if dedupe else expr
         spec: dict = {"expr": panel_expr, "refId": ref}
         if legend is not None:
             spec["legendFormat"] = legend
         if instant:
-            spec.update({"instant": True, "range": False, "format": "table"})
+            spec.update({"instant": True, "range": False, "format": fmt})
         else:
             spec.update({"instant": False, "range": True})
         return {
@@ -506,7 +527,8 @@ class Builder:
         if unit == "dateTimeAsIso" and "* 1000" not in expr:
             self._ts_violations.append(f"stat {title!r}")
         query_instant = graph == "none" if instant is None else instant
-        q = [self._query(expr, instant=query_instant, legend=legend, dedupe=dedupe)]
+        q = [self._query(expr, instant=query_instant, legend=legend, dedupe=dedupe,
+                          fmt="time_series")]
         n = self._panel(title, "stat", spec, q, desc=desc)
         self.size[n] = (w, h)
         return n
@@ -559,7 +581,7 @@ class Builder:
                             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
         n = self._panel(title, "gauge", spec,
                         [self._query(expr, instant=instant, legend=legend,
-                                     dedupe=dedupe)], desc=desc)
+                                     dedupe=dedupe, fmt="time_series")], desc=desc)
         self.size[n] = (w, h)
         return n
 
@@ -577,7 +599,7 @@ class Builder:
         utilization gauge with `mx=100`), and document why at the call site.
         """
         queries = [self._query(e, ref=chr(65 + i), instant=instant, legend=lg,
-                               dedupe=dedupe)
+                               dedupe=dedupe, fmt="time_series")
                    for i, (e, lg) in enumerate(series)]
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "thresholds": self._thresholds(
@@ -739,7 +761,7 @@ class Builder:
     def piechart(self, title, series, unit="short", desc="", w=8, h=8,
                  pie="donut", dedupe=True) -> str:
         queries = [self._query(e, ref=chr(65 + i), instant=True, legend=lg,
-                               dedupe=dedupe)
+                               dedupe=dedupe, fmt="time_series")
                    for i, (e, lg) in enumerate(series)]
         spec = {"fieldConfig": {"defaults": {"unit": unit}, "overrides": []},
                 "options": {"legend": {"displayMode": "table", "placement": "right",
