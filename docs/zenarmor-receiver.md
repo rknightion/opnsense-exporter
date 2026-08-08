@@ -282,7 +282,7 @@ verbatim as well, so existing `| device_category=…` and `| interface_name=…`
 keep working whether or not you promote.
 
 Promoting any of them needs the same tenant `otlp_config` change - see
-[Promoting the opnsense.* attributes](log-shipping.md#promoting-the-opnsense-attributes).
+[Promoting the opnsense.* attributes](log-shipping.md#promoting-the-opnsense-attributes-optional).
 
 ### `interface` on this lane is a LAN segment, never a WAN
 
