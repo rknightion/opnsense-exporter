@@ -102,7 +102,7 @@ func statRules(s docStats) []statRule {
 	recordingRulesRepl := fmt.Sprintf("%d recording rules", s.Recording)
 
 	return []statRule{
-		{File: "zensical.toml", Pattern: across, Replace: acrossRepl, MinHits: 1},
+		{File: "docs.toml", Pattern: across, Replace: acrossRepl, MinHits: 1},
 		{File: "docs/.meta.yml", Pattern: across, Replace: acrossRepl, MinHits: 1},
 		{File: "docs/collectors/.meta.yml", Pattern: regexp.MustCompile(`all \d+ opnsense2otel collectors`),
 			Replace: fmt.Sprintf("all %d opnsense2otel collectors", s.Collectors), MinHits: 1},
