@@ -88,6 +88,9 @@ Compatibility = "compatibility.md"
 Architecture = "architecture.md"
 
 [[site.nav]]
+"Why This Exporter" = "comparison.md"
+
+[[site.nav]]
 Changelog = "changelog.md"
 
 [[site.nav]]
