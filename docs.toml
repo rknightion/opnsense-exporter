@@ -131,7 +131,3 @@ Troubleshooting = "troubleshooting"
 FreeBSD = "freebsd"
 OPNsense = "opnsense"
 
-[overrides.plugins.social]
-
-[overrides.plugins.sitemap]
-priority = 0.8
