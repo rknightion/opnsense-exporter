@@ -79,6 +79,9 @@ Collectors = [
 Troubleshooting = "troubleshooting.md"
 
 [[site.nav]]
+FAQ = "faq.md"
+
+[[site.nav]]
 Upgrading = "upgrading.md"
 
 [[site.nav]]
