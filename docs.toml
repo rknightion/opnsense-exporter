@@ -106,8 +106,6 @@ Development = [
 ]
 
 [assets]
-favicon = "assets/favicon.png"
-logo_icon = "material/shield-lock-outline"
 social_image = "assets/social-card.png"
 social_image_alt = "opnsense2otel social preview card"
 extra_css = [
