@@ -76,3 +76,12 @@ docs/superpowers/
 # Claude Code local session state (settings.local.json, agent scratch). Nothing here
 # is shared configuration — the repo's committed guidance lives in CLAUDE.md.
 /.claude/
+
+# Injected by the m7kni.io hub at build time — never commit these.
+# The hub copies its own SEO template, brand stylesheet and fonts into a clone
+# and generates zensical.toml from docs.toml. A tracked copy here is drift, and
+# is exactly what the manifest model exists to prevent.
+/zensical.toml
+docs/overrides/
+docs/stylesheets/brand.css
+docs/fonts/
