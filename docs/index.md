@@ -21,6 +21,22 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 1006 metrics acr
 </div>
 </div>
 
+## Quickstart
+
+Create an OPNsense API user first ([permissions](getting-started.md)), then:
+
+```bash
+docker run -p 8080:8080 \
+      -e OPN2OTEL_OPS_API_KEY=your-api-key \
+      -e OPN2OTEL_OPS_API_SECRET=your-api-secret \
+      ghcr.io/rknightion/opnsense2otel:latest \
+      --opnsense.protocol=https \
+      --opnsense.address=ops.example.com
+```
+
+Metrics are then at `http://localhost:8080/metrics`, and the operator console at
+`http://localhost:8080/`.
+
 ## Quick navigation
 
 <div class="grid cards" markdown>
