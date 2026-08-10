@@ -10,8 +10,25 @@ keywords:
   - otlp
   - prometheus
   - exporter
-home: https://github.com/rknightion/opnsense2otel
+home: https://m7kni.io/opnsense2otel/
+icon: https://m7kni.io/opnsense2otel/assets/project-icon-solid.svg
 sources:
   - https://github.com/rknightion/opnsense2otel
 maintainers:
   - name: rknightion
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://m7kni.io/opnsense2otel/
+    - name: Getting started
+      url: https://m7kni.io/opnsense2otel/getting-started/
+    - name: Configuration reference
+      url: https://m7kni.io/opnsense2otel/configuration/
+    - name: source
+      url: https://github.com/rknightion/opnsense2otel
+  artifacthub.io/maintainers: |
+    - name: rknightion
+      email: rob@rob-knight.com
