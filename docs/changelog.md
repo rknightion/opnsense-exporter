@@ -7,6 +7,4 @@ tags:
 
 # Changelog
 
-{%
-  include-markdown "../CHANGELOG.md"
-%}
+--8<-- "CHANGELOG.md"
