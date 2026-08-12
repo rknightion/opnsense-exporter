@@ -691,19 +691,28 @@ RULES = [
                 'The metric returns to 1 and the Default Route Detail table shows a plausible gateway',
             ],
          )),
+    # Same shape as opnsense-endpoint-errors, and for the same reason (#675). This was a 15m window
+    # under for:30m, which meant TWO occurrences 15m apart satisfied gt 0 for the whole pending period
+    # - an isolated burst during a traffic spike, i.e. precisely what the runbook calls normal. The 5m
+    # window makes for:30m mean what it says: an occurrence in every rolling 5m window for a solid 30m.
+    # Sensitivity to the real condition is unchanged, because the kernel rate-limits the underlying log
+    # line to 2/s and a saturated ring therefore keeps every window non-empty by construction. 5m rather
+    # than endpoint-errors' 2m: this series is fed by the push-based syslog receiver and read at the
+    # scrape interval, so a 2m window can hold as few as two samples.
     dict(name="opnsense-netmap-ring-full", title="OPNsenseNetmapRingFull",
-         A="sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[15m]))",
+         A="sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[5m]))",
          op="gt", params=[0, 0], for_min=30, severity="warning",
          summary="OPNsense netmap host ring full on {{ $labels.device }} ({{ $labels.opnsense_instance }})",
-         description="The kernel has been reporting the netmap host TX ring full on "
-                     "{{ $labels.device }} for 30m - Zenarmor's packet-capture datapath is "
-                     "dropping traffic. This counts OCCURRENCES, not packets: the kernel "
-                     "rate-limits the underlying log line to 2 per second, so the metric "
-                     "saturates under sustained load and the true drop volume is unbounded above "
-                     "whatever this shows.",
+         description="The kernel has reported the netmap host TX ring full on {{ $labels.device }} "
+                     "continuously for 30m - at least one occurrence in every rolling 5m window for "
+                     "the full 30m - so Zenarmor's packet-capture datapath is persistently dropping "
+                     "traffic. An isolated burst during a traffic spike does not fire this. This "
+                     "counts OCCURRENCES, not packets: the kernel rate-limits the underlying log line "
+                     "to 2 per second, so the metric saturates under sustained load and the true drop "
+                     "volume is unbounded above whatever this shows.",
          runbook=dict(
-             measures='rate(opnsense_log_events_netmap_ring_full_events_total[15m]) - how often the kernel reported a full netmap host ring, derived from syslog rather than polled.',
-             threshold='gt 0 sustained for 30m. The long window is deliberate: an isolated burst during a traffic spike is normal, a persistent condition is not.',
+             measures='rate(opnsense_log_events_netmap_ring_full_events_total[5m]) - how often the kernel reported a full netmap host ring, derived from syslog rather than polled.',
+             threshold='gt 0 for 30m, where the 5m window is deliberately SHORTER than the pending period so that "for 30m" means persistence rather than one burst: at least one occurrence in every rolling 5m window for the full 30m. Two occurrences 15m apart during a traffic spike are normal and do not fire (#675). A genuinely saturated ring does fire, because the kernel rate-limits the log line to 2/s and so keeps every window non-empty.',
              absent='Default noDataState (Ok). Absence means no report, NOT no drops - a box with the syslog receiver disabled, or with Zenarmor not running, produces no series at all.',
              checks=[
                 'Confirm Zenarmor is actually running and check its own engine health - it owns this datapath',

@@ -565,12 +565,12 @@ opnsense_network_diag_default_route_present
 
 **Expression:**
 ```promql
-sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[15m]))
+sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[5m]))
 ```
 
-**What it measures:** rate(opnsense_log_events_netmap_ring_full_events_total[15m]) - how often the kernel reported a full netmap host ring, derived from syslog rather than polled.
+**What it measures:** rate(opnsense_log_events_netmap_ring_full_events_total[5m]) - how often the kernel reported a full netmap host ring, derived from syslog rather than polled.
 
-**Threshold & window:** gt 0 sustained for 30m. The long window is deliberate: an isolated burst during a traffic spike is normal, a persistent condition is not.
+**Threshold & window:** gt 0 for 30m, where the 5m window is deliberately SHORTER than the pending period so that "for 30m" means persistence rather than one burst: at least one occurrence in every rolling 5m window for the full 30m. Two occurrences 15m apart during a traffic spike are normal and do not fire (#675). A genuinely saturated ring does fire, because the kernel rate-limits the log line to 2/s and so keeps every window non-empty.
 
 **Absent / no-data semantics:** Default noDataState (Ok). Absence means no report, NOT no drops - a box with the syslog receiver disabled, or with Zenarmor not running, produces no series at all.
 

@@ -88,7 +88,7 @@ SUSTAINED = {
     "OPNsenseNetisrQueueDrops":
         "runbook: gt 0 (any sustained drop rate) for 10m",
     "OPNsenseNetmapRingFull":
-        "runbook: an isolated burst during a traffic spike is normal, a persistent one is not",
+        "#675 - two occurrences 15m apart during a traffic spike are a burst, not a full ring",
 }
 
 
@@ -254,6 +254,81 @@ class DHCP6AllocationFailuresTest(unittest.TestCase):
         storm = rule.params[0] + 60
         ticks = rule.for_seconds // rule.interval_seconds + 2
         states = ruleeval.evaluate(rule, [{"fw1": storm} for _ in range(ticks)])
+        self.assertEqual(states[-1].states.get("fw1"), ALERTING)
+
+
+class NetmapRingFullTest(unittest.TestCase):
+    """The prod pattern from #675, and the case the sweep above structurally misses.
+
+    `SustainedRulesTest` models ONE isolated event. That is not the only thing a
+    "sustained" rule must survive: several isolated events, spaced further apart than
+    the window, are still bursts, and a rule whose pending period only just exceeds its
+    window can chain them into a page. The shipped rule was `rate(...[15m])` under
+    `for:30m`, so TWO occurrences 15m apart held `gt 0` for the entire pending period -
+    while passing `test_the_pending_period_exceeds_the_window`, because 30m > 15m.
+
+    Measured on `opnsense.rob-knight.net` on 2026-08-12, `device=ixl0`: four increments
+    of `opnsense_log_events_netmap_ring_full_events_total` at 13:50 (+8), 14:00 (+4),
+    15:25 (+2) and 15:40 (+4) BST, each on a short LAN throughput burst of 100-530 Mbps.
+    The datapath was healthy throughout - native netmap, `eastpect` running, the kernel's
+    own lines showing the 1024-slot host ring draining immediately - and two later
+    minutes at ~500 Mbps produced no occurrences at all.
+    """
+
+    TITLE = "OPNsenseNetmapRingFull"
+
+    # Minutes past the first occurrence, from the measurement above.
+    OBSERVED_OFFSETS_MIN = (0, 10, 95, 110)
+
+    def test_the_observed_burst_cadence_does_not_fire(self):
+        rule, window = WINDOWED[self.TITLE]
+        positive_ticks = max(1, window // rule.interval_seconds)
+        per_min = 60 // rule.interval_seconds
+        self.assertLess(
+            window, 10 * 60,
+            "the window is 10m or wider, so the observed 10m gap no longer empties it "
+            "and this model is not testing what it claims")
+
+        timeline = []
+        for start in self.OBSERVED_OFFSETS_MIN:
+            at = start * per_min
+            timeline += [{"fw1": 0} for _ in range(at - len(timeline))]
+            timeline += [{"fw1": 1} for _ in range(positive_ticks)]
+        timeline += [{"fw1": 0} for _ in range(5)]
+
+        states = ruleeval.evaluate(rule, timeline)
+        self.assertNotIn(
+            ALERTING, [s.states.get("fw1") for s in states],
+            "the observed prod pattern - a handful of occurrences on short traffic "
+            "bursts, the nearest pair 10m apart - still pages someone")
+
+    def test_two_occurrences_one_window_apart_do_not_chain(self):
+        """The exact defect: back-to-back bursts spaced by the window itself.
+
+        This is the worst case a burst can produce, because the second event lands on the
+        evaluation the first window slides off, so the condition never goes false between
+        them. It must still fall short of the pending period.
+        """
+        rule, window = WINDOWED[self.TITLE]
+        positive_ticks = max(1, window // rule.interval_seconds)
+        pending_ticks = rule.for_seconds // rule.interval_seconds
+        timeline = ([{"fw1": 1} for _ in range(positive_ticks * 2)]
+                    + [{"fw1": 0} for _ in range(5)])
+        self.assertLess(
+            positive_ticks * 2, pending_ticks,
+            f"{self.TITLE}: two occurrences one window apart span {positive_ticks * 2} "
+            f"evaluations, which reaches its {pending_ticks}-evaluation pending period. "
+            "The window must be well under half the pending period, not merely under it")
+
+        states = ruleeval.evaluate(rule, timeline)
+        self.assertNotIn(ALERTING, [s.states.get("fw1") for s in states])
+
+    def test_a_persistently_full_ring_still_fires(self):
+        """The other half. The kernel rate-limits the log line to 2/s, so a ring that is
+        genuinely full keeps every rolling window non-empty."""
+        rule, _ = WINDOWED[self.TITLE]
+        ticks = rule.for_seconds // rule.interval_seconds + 2
+        states = ruleeval.evaluate(rule, [{"fw1": 1} for _ in range(ticks)])
         self.assertEqual(states[-1].states.get("fw1"), ALERTING)
 
 

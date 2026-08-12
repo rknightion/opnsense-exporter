@@ -23,7 +23,7 @@
     },
     "annotations": {
       "summary": "OPNsense netmap host ring full on {{ $labels.device }} ({{ $labels.opnsense_instance }})",
-      "description": "The kernel has been reporting the netmap host TX ring full on {{ $labels.device }} for 30m - Zenarmor's packet-capture datapath is dropping traffic. This counts OCCURRENCES, not packets: the kernel rate-limits the underlying log line to 2 per second, so the metric saturates under sustained load and the true drop volume is unbounded above whatever this shows.",
+      "description": "The kernel has reported the netmap host TX ring full on {{ $labels.device }} continuously for 30m - at least one occurrence in every rolling 5m window for the full 30m - so Zenarmor's packet-capture datapath is persistently dropping traffic. An isolated burst during a traffic spike does not fire this. This counts OCCURRENCES, not packets: the kernel rate-limits the underlying log line to 2 per second, so the metric saturates under sustained load and the true drop volume is unbounded above whatever this shows.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensenetmapringfull",
       "__dashboardUid__": "opnsense-exporter",
       "__panelId__": "163"
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[15m]))",
+          "expr": "sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[5m]))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
