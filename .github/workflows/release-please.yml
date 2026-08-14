@@ -59,7 +59,7 @@ jobs:
       release-tag: ${{ needs.release-please.outputs.tag_name }}
       go-version: "1.26"
       install-cosign: true # keyless-sign the checksums (see .goreleaser.yml signs:)
-      pre-cmd: "go install github.com/anchore/syft/cmd/syft@v1.50.0" # archive SBOMs
+      pre-cmd: "go install github.com/anchore/syft/cmd/syft@v1.51.0" # archive SBOMs
 
   # Build, sign, attest, and publish the container image; attach third-party notices + SBOMs.
   # Delegates image work to the shared reusable; the notices job runs make notices sbom locally.
