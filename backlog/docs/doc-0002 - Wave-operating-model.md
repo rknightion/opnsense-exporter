@@ -3,7 +3,7 @@ id: doc-0002
 title: Wave operating model
 type: guide
 created_date: '2026-08-14 14:04'
-updated_date: '2026-08-14 14:11'
+updated_date: '2026-08-14 14:17'
 ---
 This document carries **only what is specific to opnsense2otel**. The campaign model itself — run
 modes, the routing contract, authority and the thread pool, child lane briefs, external-contract
@@ -198,7 +198,9 @@ they are not the thing to hunt for. Tokens, IPs and account identifiers are.
 - **Never two lanes on one task.** The v1.50.x fix covers the `task edit` funnel but not reorder,
   draft saves, the TUI path, `doc update` or decision updates.
 - **`--append-notes` and `--append-plan` only.** Bare `--notes` / `--plan` silently replace the whole
-  section and destroy another session's writes with exit code 0.
+  section and destroy another session's writes with exit code 0. A `PreToolUse` hook on Rob's
+  machines denies the bare form, so being blocked there is the guard working. It does not fire in
+  CI or on a machine without that config, which is why the rule is written down as well.
 - **Finalize in one call** so an interrupted lane cannot leave finished work looking unfinished:
   `backlog task edit OPN-0007 --check-ac 1 --check-ac 2 -s Done`.
 - **Commits come from the campaign root only.** Lanes do not commit. `auto_commit` is off.

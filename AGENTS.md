@@ -23,7 +23,9 @@ cited below actually mean.
 
 - **Never `--notes` or `--plan` bare.** They *silently replace* the whole section, exit 0, and
   destroy another session's writes. Use `--append-notes` and `--append-plan`. This is an open
-  upstream bug, not a misunderstanding.
+  upstream bug, not a misunderstanding. On Rob's machines a `PreToolUse` hook denies the bare form
+  outright, so a block there is the guard working, not a broken harness — `task create` is exempt
+  because a task being created has no section to overwrite.
 - **Never hand-edit task, draft, doc, decision or milestone markdown.** Section boundaries are HTML
   comment markers; break one and the section is silently dropped with the data still in the file but
   invisible until the next write destroys it. There is no repair command — `backlog doctor` only
