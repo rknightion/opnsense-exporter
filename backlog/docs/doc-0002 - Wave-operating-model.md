@@ -3,12 +3,12 @@ id: doc-0002
 title: Wave operating model
 type: guide
 created_date: '2026-08-14 14:04'
-updated_date: '2026-08-14 14:17'
+updated_date: '2026-08-14 14:51'
 ---
 This document carries **only what is specific to opnsense2otel**. The campaign model itself — run
 modes, the routing contract, authority and the thread pool, child lane briefs, external-contract
 freezing, the unattended blocker contract, the goal-file template, the pre-flight checklist — lives
-in the *Codex fan-out protocol (canonical)* doc and is not repeated here. If something below could be
+in the *Agent fan-out protocol (canonical)* doc and is not repeated here. If something below could be
 pasted into another repo unchanged, it is in the wrong document.
 
 ## Run-end against this tracker

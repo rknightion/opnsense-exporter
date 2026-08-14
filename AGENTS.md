@@ -14,8 +14,11 @@ backlog task list --plain        # the queue
 backlog doc list --plain         # the durable docs
 ```
 
-Read the **Codex fan-out protocol (canonical)** doc before designing a wave, and the **Wave operating
-model** doc for this project's own rules, exclusive resources and recurring defects. Any `#NNNN`
+Read the **Agent fan-out protocol (canonical)** doc before designing a wave, and the **Wave operating
+model** doc for this project's own rules, exclusive resources and recurring defects. The protocol is
+harness-neutral — it routes lanes by **role**, and its Appendix A (Codex) or Appendix B (Claude Code)
+resolves a role into a concrete model and reasoning depth. Name the harness in the run contract and
+resolve every lane from that profile; the two differ in kind, not just in model names. Any `#NNNN`
 below 656 is a GitHub issue, not a task — the **Pre-backlog issue numbers** doc says what the ones
 cited below actually mean.
 
