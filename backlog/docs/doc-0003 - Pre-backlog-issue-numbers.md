@@ -3,31 +3,43 @@ id: doc-0003
 title: Pre-backlog issue numbers
 type: other
 created_date: '2026-08-14 14:05'
-updated_date: '2026-08-14 14:06'
+updated_date: '2026-08-14 16:09'
 ---
 **Any `#NNNN` reference below 656 in this repo is a GitHub issue, not a backlog task.** Tracking moved
 in-repo on 2026-08-14 at issue #655; `OPN-0001` onwards are backlog tasks and the two numbering
 schemes do not overlap. Commit messages, `CHANGELOG.md`, code comments, `AGENTS.md` and the
 `grafana/` and `scripts/` sources are full of the old numbers and were deliberately left alone —
-rewriting 524 closed issues' worth of references would have been churn with no reader.
+rewriting 524 issues' worth of references would have been churn with no reader.
 
-Read any of them with:
+**Those issues were deleted from GitHub on 2026-08-14, so `gh issue view <n>` 404s.** They are
+archived instead, in full, at `archive/github-issues-2026-08-14.json` — that file is the record and
+this doc is the index into it:
 
 ```bash
-gh issue view <n>          # add --comments; several carry more in comments than in the body
+jq '.[] | select(.number == 336)' archive/github-issues-2026-08-14.json      # one issue
+jq -r '.[] | select(.number == 336) | .comments[].body' archive/…            # its replies
 ```
 
-GitHub Issues stays enabled on this repo. Closed issues remain the historical archive, external bug
-reports are still welcome there, and Renovate's Dependency Dashboard (#22) still lives there.
+The load-bearing detail — closing decisions, corrections, acceptance evidence — is usually in the
+comments rather than the body, so read the archive, not just the table below. **The archive is
+redacted**: host names, LAN and tailnet addresses, the WAN address, MACs and token fingerprints were
+replaced with stable placeholders before it was committed, one real value to one token.
+`archive/README.md` carries the mapping and the two verification traps worth knowing.
 
-## Why there was no bulk import
+**GitHub Issues stays enabled on this repo, deliberately.** External contributors can still file —
+`#40` is one such report and was kept, as was Renovate's Dependency Dashboard (`#22`, and `#7`).
+Anything arriving that way becomes an `OPN-NNNN` task; the board, not the issue, is where it is
+worked.
 
-524 closed issues, 504 of them Rob's own project tracking. The value in a closed issue is the
-reasoning in its body and comments, not its title, so a title-only import would have been noise and a
-full-fidelity import would have been a large committed blob nothing queries. It would also not have
-made anything more durable — the issues stay readable, and their distilled lessons are already in
-`AGENTS.md`. And 504 `Done` tasks would have pushed live work to `OPN-0505`, in a tool where
-archiving releases an ID for reuse.
+## Why there was no bulk import as tasks
+
+524 issues were deleted, 506 of them Rob's own project tracking and 18 filed by CI. Importing them as
+`Done` tasks fails twice over: it creates a **second ID space over the same history** — backlog IDs
+follow creation order, so no `OPN-NNNN` could ever line up with the `#NNN` already cited in
+`AGENTS.md`, `CHANGELOG.md`, commit messages and code comments — and hundreds of `Done` rows would
+compete with the board's only real signal, *what is left*. Archiving the bodies to one JSON file and
+indexing the load-bearing numbers here keeps the history readable from the checkout alone, keeps the
+original ID space as the only one, and costs two files.
 
 ## The numbers `AGENTS.md` cites, and what they mean
 
@@ -58,5 +70,5 @@ resolving without a `gh` call.
 
 | # | Disposition |
 |---|---|
-| #654 | live-canary never ran inside the testbed power window. **Closed as complete** — its last criterion, one unattended green run, was satisfied by seven consecutive green 06:05 UTC dispatch runs, 2026-08-08 to 2026-08-14. Not migrated. |
-| #655 | Rare data race in the syslog `Listener` shutdown path. **Migrated to `OPN-0001`** with its ~290 negative reproduction runs intact, then closed on GitHub. |
+| #654 | live-canary never ran inside the testbed power window. **Closed as complete** — its last criterion, one unattended green run, was satisfied by seven consecutive green 06:05 UTC dispatch runs, 2026-08-08 to 2026-08-14. Not migrated; archived and deleted with the rest. |
+| #655 | Rare data race in the syslog `Listener` shutdown path. **Migrated to `OPN-0001`** with its ~290 negative reproduction runs intact. Archived and deleted; `OPN-0001` carries the full reproduction record, so nothing depends on the issue. |

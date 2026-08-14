@@ -3,17 +3,18 @@ id: doc-0001
 title: Agent fan-out protocol (canonical)
 type: specification
 created_date: '2026-08-14 14:02'
-updated_date: '2026-08-14 15:56'
+updated_date: '2026-08-14 15:21'
 ---
-> **Imported verbatim from `/Users/rob/repos/agent-fanout-generic.md` on 2026-08-14.**
-> This in-repo copy is authoritative for opnsense2otel. The source is an untracked file on one
-> machine; this copy is what a checkout, a CI job or another machine actually has. Nothing below
-> this line has been summarised, compressed or adapted. When the source changes, re-import
-> deliberately and say so in the commit.
+> **Imported verbatim from `~/repos/agent-fanout-generic.md` on 2026-08-14.** This copy is
+> authoritative for opnsense2otel. It is deliberately not summarised, compressed or adapted — a
+> compression drifts from its source while looking authoritative. An edit to the source is not
+> finished until this copy is re-imported in the same change.
 >
-> The protocol is harness-neutral and routes lanes by **role**. Appendix A resolves a role for
-> Codex, Appendix B for Claude Code. Name the harness in the run contract and resolve every lane
-> from that profile — the two differ in kind, not just in model names.
+> Its body is harness-neutral and names no model: lanes are described by ROLE, and **Appendix A
+> (Codex) or Appendix B (Claude Code) resolves a role into a concrete route.** Read the profile for
+> the harness this run is on before writing lanes — the two differ in kind, not just in model names.
+
+---
 
 # Prompting a coding agent for long-running fan-out workflows
 

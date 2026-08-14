@@ -41,18 +41,18 @@ MAC addresses and a WAN address — exactly what this repository's own rules (`m
 `#565`) keep out of tracked files. Committing the raw dump would have moved those identifiers from
 somewhere deletable into permanent public git history at the very moment they were being deleted.
 
-**1011 substitutions over 160 distinct values.**
+**1044 substitutions over 190 distinct values.**
 
 | Placeholder | Was | Distinct |
 | --- | --- | ---: |
 | `<host-N>` | machine names and lab FQDNs | 37 |
 | `<lan-ip-N>` | RFC1918 addresses | 68 |
-| `<pub-ip-N>` | globally routable addresses, including the WAN address and third-party endpoints | 24 |
+| `<pub-ip-N>` | globally routable addresses, including the WAN address and third-party endpoints | 47 |
 | `<tailnet-ip-N>` | tailnet CGNAT addresses | 3 |
 | `<tailnet-N>` | tailnet `*.ts.net` names | 4 |
 | `<mac-N>` | MAC addresses | 11 |
 | `<duid-N>` | DHCPv6 DUIDs (which embed a MAC) | 2 |
-| `<ula-ip-N>` | a ULA v6 address | 1 |
+| `<ula-ip-N>` | ULA v6 addresses | 8 |
 | `<hash-N>` | md5-shaped fingerprints (token fingerprints from the canary-credential thread) | 9 |
 | `<email-N>` | an email-shaped identifier | 1 |
 | `<lab-domain>` | the private domain, where it appeared bare | 1 |
@@ -71,10 +71,20 @@ is left intact — it is the repository owner's public handle and appears in eve
 `\n` leaves a literal `n` immediately before the following word, which breaks a `\b` word boundary
 and silently undercounts. This file is swept per decoded field — 3172 of them.
 
-**Use the same regex to find and to replace.** The first redaction pass built a literal alternation
-with lookarounds and reported success; the residue check then found **257 surviving occurrences**,
-because a trailing `.` at the end of a sentence, or the `:` of an abbreviated v6 address, defeated
-the trailing lookahead. Rewriting it so the detector *is* the substituter took residue to zero. A
-redaction that is verified by a different expression than the one that performed it is not verified.
+**Use the same regex to find and to replace — then check it with something you did not write.**
+The first pass built a literal alternation with lookarounds and reported success; a residue check
+found **257 survivors**, because a trailing `.` at the end of a sentence, or the `:` of an
+abbreviated v6 address, defeated the trailing lookahead. Rewriting it so the detector *is* the
+substituter took that to zero.
 
-The residue check greps for every class above and currently reports **none**.
+Zero was still wrong. The residue check shared the redactor's hand-rolled IPv6 pattern, and that
+pattern was broken twice over — a trailing `\b` fails after `::`, and a terminal-only `::` cannot
+express `2001:db8::1`. Both halves agreed with each other and both were wrong; **`make
+check-public-ips`, which knows nothing about this file's redaction, is what caught it**, first with
+3 survivors and then with 18. The pattern is now the canonical IPv6 alternation, validated through
+`ipaddress()` so a false match passes through untouched, and it found **26 further addresses** the
+hand-rolled one had missed.
+
+The lesson is the reason this section exists: a redaction verified only by the expression that
+performed it is not verified. Both checks now pass — the residue sweep reports **none**, and the
+repository's own IP gate passes over this file.

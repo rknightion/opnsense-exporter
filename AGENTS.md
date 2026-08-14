@@ -5,14 +5,22 @@ Guidance for agents working in this repository. Claude Code and Codex both read 
 
 ## Issue tracking
 
-Tasks live **in this repo**, in `backlog/`, managed by the `backlog` CLI. GitHub Issues is still
-enabled for external bug reports and for Renovate's dependency dashboard, but project work is not
-tracked there any more.
+Tasks live **in this repo**, in `backlog/`, managed by the `backlog` CLI.
 
 ```bash
 backlog task list --plain        # the queue
 backlog doc list --plain         # the durable docs
 ```
+
+GitHub Issues was retired for project work on **2026-08-14**, and the 524 issues we and CI had filed
+were archived and then **deleted from GitHub** — so `gh issue view <N>` 404s. Historical work is
+still cited as `#NNN`: the *Pre-backlog issue numbers* doc explains the load-bearing ones, and
+`archive/github-issues-2026-08-14.json` holds every body and reply (redacted; `archive/README.md`
+has the placeholder mapping). New work is `OPN-NNNN`. Two ID spaces, no overlap.
+
+**The GitHub tracker is still enabled, deliberately** — external contributors can file issues, and
+Renovate's dependency dashboard still lives there. Anything arriving that way becomes an `OPN-NNNN`
+task; the board, not the issue, is where it is worked.
 
 Read the **Agent fan-out protocol (canonical)** doc before designing a wave, and the **Wave operating
 model** doc for this project's own rules, exclusive resources and recurring defects. The protocol is
