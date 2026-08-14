@@ -3,10 +3,10 @@ id: OPN-0002
 title: >-
   main is red: WAN address reintroduced into public fixtures, check-public-ips
   failing since 2026-08-08
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-14 14:09'
-updated_date: '2026-08-14 14:10'
+updated_date: '2026-08-14 14:22'
 labels:
   - bug
   - security
@@ -93,7 +93,7 @@ upstream cannot produce, and a comment claiming provenance it no longer has is t
 - [ ] #2 Comments claiming the fixtures are unsanitised live captures are corrected to say they were sanitised
 - [ ] #3 ci-success is green on main, or the remaining failure is identified as a separate cause and tracked
 - [ ] #4 The WAN bind address and the v6 literal are replaced with RFC 5737 / RFC 3849 documentation addresses, not allowlisted
-- [ ] #5 The public-resolver address carries a justified scripts/public-ip-allowlist.json entry
+- [ ] #5 The public-resolver address is replaced too rather than allowlisted, so the fixture needs no allowlist entry at all
 <!-- AC:END -->
 
 ## Definition of Done
@@ -104,3 +104,37 @@ upstream cannot produce, and a comment claiming provenance it no longer has is t
 - [ ] #4 make docs-check
 - [ ] #5 make grafana-check
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Deviation from the original AC, and why
+
+The task was filed saying the public-resolver address (the `dest_addr` in the dpinger startup line)
+should get a justified allowlist entry, and only the WAN bind address and the v6 literal should be
+replaced. That AC was replaced with the stronger one.
+
+Reason: `dpinger_test.go` already uses RFC 5737 addresses in every other case in the file
+(`198.51.100.42`, `192.0.2.100`), and `network_diag_test.go` already pairs the same `AAISP` interface
+name with `203.0.113.187`. So the repo's own convention is documentation addresses everywhere, and
+the lifecycle fixtures were the outlier rather than a case needing an exemption. Replacing all three
+means the allowlist does not grow at all — it is still 91 entries — and there is no exemption to
+audit later.
+
+What the fixture actually pins is the field layout: two-space separators, the quoted identifier with
+its trailing space inside the quotes, the unit suffixes. None of that depends on which addresses
+appear, so substitution costs the fixture nothing.
+
+## Deliberately not touched
+
+- **`AAISP_PPPOE` / `AAISP`** as an interface and gateway name. It appears across
+  `network_diag_test.go`, `netflow_test.go` and `enrich/refresh_test.go` as an established fixture
+  identifier, already paired with documentation addresses. Renaming it is a repo-wide sweep and its
+  own decision, not this task's.
+- **`rob-knight.net`** in hostname fixtures (`unbound_test.go`, `acme_test.go`, `audit.go`,
+  `syslog/unbound.go` and others). Same shape: widespread, out of the gate's scope, and a separate
+  call about whether a domain that is already public via the repo owner's own account counts.
+
+Both are the same defect class as the IP literals and neither is covered by `make check-public-ips`.
+Worth a decision, not worth folding into this fix.
+<!-- SECTION:NOTES:END -->

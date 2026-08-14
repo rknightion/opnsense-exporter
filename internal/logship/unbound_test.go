@@ -401,7 +401,10 @@ func unboundRowRecord(t *testing.T, client string, snap *enrich.Snapshot) Record
 // `client` column is carried by dns.client_label, which never claims to be an
 // address; src.ip is set ONLY when that value already parses as an IP, so a
 // consumer filtering on src.ip can never match a hostname. Values are the real
-// ones observed in a live 1000-row page.
+// ones observed in a live 1000-row page, except the v6 literal: that row's
+// captured address was globally routable and is replaced with an RFC 3849
+// documentation address (#565). Only its textual form matters here — the
+// contract under test is "does this value parse as an IP", not which IP.
 func TestUnboundRecord_ClientLabelAndSrcIP(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -411,7 +414,7 @@ func TestUnboundRecord_ClientLabelAndSrcIP(t *testing.T) {
 	}{
 		{"fqdn with a PTR", "camden.rob-knight.net", "camden.rob-knight.net", ""},
 		{"bare ipv4, no PTR", "10.0.0.5", "10.0.0.5", "10.0.0.5"},
-		{"bare ipv6 literal", "2001:8b0:1f05::105b", "2001:8b0:1f05::105b", "2001:8b0:1f05::105b"},
+		{"bare ipv6 literal", "2001:db8::105b", "2001:db8::105b", "2001:db8::105b"},
 		{"non-fqdn name", "poly-office", "poly-office", ""},
 		{"localhost", "localhost", "localhost", ""},
 		{"empty", "", "", ""},

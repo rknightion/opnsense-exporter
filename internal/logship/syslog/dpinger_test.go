@@ -131,13 +131,21 @@ func TestDPingerDelayAlarmTransitions(t *testing.T) {
 }
 
 // TestDPingerLifecycleLines: the three lifecycle shapes bracketing a dpinger
-// restart or SIGHUP reconfigure (#668). All three captured verbatim on the
-// camden testbed and cross-checked live against
+// restart or SIGHUP reconfigure (#668). All three captured on the camden
+// testbed and cross-checked live against
 // /opt/opnsense2otel/capture/syslog/*.ndjson on 2026-08-07 (program dpinger,
-// subsystem gateways) — not sanitized, since none of these lines carry a WAN
-// address; "8.8.4.4" / "81.187.237.31" are the box's own configured
-// dest_addr/bind_addr for its AAISP_PPPOE gateway monitor, and the identifier
-// is a gateway name, not a secret.
+// subsystem gateways).
+//
+// SANITIZED: dest_addr and bind_addr are RFC 5737 documentation addresses
+// substituted for the captured values. An earlier revision kept the real ones
+// on the reasoning that "none of these lines carry a WAN address" — that was
+// wrong, bind_addr IS the WAN address, and it is the third time a live address
+// reached these fixtures since #565 gated them. The gate's concern was never
+// secrecy: a globally routable literal in a public repo is durable metadata
+// about whoever's box produced it. Substituting addresses costs the fixture
+// nothing, because what the parser is pinned against is the field layout — the
+// two-space separators, the quoted identifier, the unit suffixes — not which
+// addresses appear.
 func TestDPingerLifecycleLines(t *testing.T) {
 	tests := []struct {
 		name string
@@ -164,12 +172,12 @@ func TestDPingerLifecycleLines(t *testing.T) {
 			// trailing space inside the quotes (`"AAISP_PPPOE "`) are both
 			// load-bearing here: upstream's padding, not a capture artifact.
 			name: "startup config line",
-			msg:  `send_interval 1000ms  loss_interval 4000ms  time_period 60000ms  report_interval 0ms  data_len 1  alert_interval 1000ms  latency_alarm 0ms  loss_alarm 0%  alarm_hold 10000ms  dest_addr 8.8.4.4  bind_addr 81.187.237.31  identifier "AAISP_PPPOE "`,
+			msg:  `send_interval 1000ms  loss_interval 4000ms  time_period 60000ms  report_interval 0ms  data_len 1  alert_interval 1000ms  latency_alarm 0ms  loss_alarm 0%  alarm_hold 10000ms  dest_addr 192.0.2.1  bind_addr 198.51.100.31  identifier "AAISP_PPPOE "`,
 			want: map[string]string{
 				"gateway.event":              "watcher_started",
 				"gateway.name":               "AAISP_PPPOE",
-				"gateway.address":            "8.8.4.4",
-				"gateway.bind_address":       "81.187.237.31",
+				"gateway.address":            "192.0.2.1",
+				"gateway.bind_address":       "198.51.100.31",
 				"gateway.latency_alarm_ms":   "0",
 				"gateway.loss_alarm_percent": "0",
 				"gateway.alarm_hold_ms":      "10000",
@@ -219,7 +227,7 @@ func TestDPingerUnknownOrMalformedTransitionsDegradeToGeneric(t *testing.T) {
 		"Reloaded gateway watcher configuration",
 		// single-space separator instead of the real two-space one, and an
 		// unquoted identifier: both must fail to match, not partially match.
-		`send_interval 1000ms loss_interval 4000ms time_period 60000ms report_interval 0ms data_len 1 alert_interval 1000ms latency_alarm 0ms loss_alarm 0% alarm_hold 10000ms dest_addr 8.8.4.4 bind_addr 81.187.237.31 identifier AAISP_PPPOE`,
+		`send_interval 1000ms loss_interval 4000ms time_period 60000ms report_interval 0ms data_len 1 alert_interval 1000ms latency_alarm 0ms loss_alarm 0% alarm_hold 10000ms dest_addr 192.0.2.1 bind_addr 198.51.100.31 identifier AAISP_PPPOE`,
 	}
 
 	for _, msg := range tests {

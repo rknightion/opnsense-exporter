@@ -46,13 +46,16 @@ import (
 // # Lifecycle lines (#668)
 //
 // The transitions above cover dpinger while it is running. Three more lines,
-// captured verbatim on the camden testbed (2026-08-04 08:46 -> 2026-08-07
-// 16:33 UTC, cross-checked live against /opt/opnsense2otel/capture/syslog on
-// 2026-08-07), bracket a dpinger restart or an in-place SIGHUP reconfigure:
+// captured on the camden testbed (2026-08-04 08:46 -> 2026-08-07 16:33 UTC,
+// cross-checked live against /opt/opnsense2otel/capture/syslog on 2026-08-07),
+// bracket a dpinger restart or an in-place SIGHUP reconfigure. The addresses
+// below are RFC 5737 documentation addresses substituted for the captured
+// ones; every other character is verbatim, and the structure is what the
+// parser is written against:
 //
 //	exiting on signal 15
 //	Reloaded gateway watcher configuration on SIGHUP
-//	send_interval 1000ms  loss_interval 4000ms  time_period 60000ms  report_interval 0ms  data_len 1  alert_interval 1000ms  latency_alarm 0ms  loss_alarm 0%  alarm_hold 10000ms  dest_addr 8.8.4.4  bind_addr 81.187.237.31  identifier "AAISP_PPPOE "
+//	send_interval 1000ms  loss_interval 4000ms  time_period 60000ms  report_interval 0ms  data_len 1  alert_interval 1000ms  latency_alarm 0ms  loss_alarm 0%  alarm_hold 10000ms  dest_addr 192.0.2.1  bind_addr 198.51.100.31  identifier "AAISP_PPPOE "
 //
 // Why this matters: the alarm-transition parser above can only structure a
 // transition that fires. A dpinger restart (`exiting on signal 15` followed,
