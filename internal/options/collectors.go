@@ -70,7 +70,7 @@ var (
 	// NAT rule inventory counts are opt-in (default-off, #221): each scheduled poll does
 	// four extra GETs (one per MVC-managed NAT rule type: source_nat, d_nat,
 	// one_to_one, npt) on top of the always-on pf/GeoIP calls, matching the
-	// CLAUDE.md convention that reserves enable-* for collectors with extra
+	// AGENTS.md convention that reserves enable-* for collectors with extra
 	// per-poll API cost.
 	firewallNATCountsEnabled = kingpin.Flag(
 		"exporter.enable-firewall-nat-counts",
@@ -186,7 +186,7 @@ var (
 	// SMART is opt-in (default-off): each scheduled poll does a per-disk POST fanout that makes
 	// OPNsense shell out `smartctl -a` per disk, with no standby guard — so a default-on
 	// collector would spin up power-saving disks every poll interval. This matches the
-	// CLAUDE.md convention that reserves enable-* for collectors with extra per-poll API
+	// AGENTS.md convention that reserves enable-* for collectors with extra per-poll API
 	// cost (#139).
 	smartEnabled = kingpin.Flag(
 		"exporter.enable-smart",
@@ -195,7 +195,7 @@ var (
 	// Tor is opt-in (default-off, #206): each scheduled poll costs two extra configd execs
 	// (a Ruby script dialing the Tor control port for circuit-status and
 	// stream-status) on top of the plugin/control-port setup dependency, matching
-	// the CLAUDE.md convention that reserves enable-* for collectors with extra
+	// the AGENTS.md convention that reserves enable-* for collectors with extra
 	// per-poll API cost.
 	torEnabled = kingpin.Flag(
 		"exporter.enable-tor",
@@ -327,7 +327,7 @@ var (
 	// Vnstat is opt-in (default-off): each scheduled poll does one interface_list call plus one
 	// get_json_data call PER interface vnstat tracks (a configd `vnstat --json` exec each
 	// time), so it adds N extra API calls per scheduled poll rather than one. This matches the
-	// CLAUDE.md convention that reserves enable-* for collectors with extra per-poll
+	// AGENTS.md convention that reserves enable-* for collectors with extra per-poll
 	// API cost (#215).
 	vnstatEnabled = kingpin.Flag(
 		"exporter.enable-vnstat",

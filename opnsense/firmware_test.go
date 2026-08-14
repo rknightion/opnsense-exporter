@@ -932,7 +932,7 @@ func TestFetchFirmwareInfo_PluginPolicyAndSize(t *testing.T) {
 // three-key envelope observed live on a 26.7.1_1 box that has never run a
 // firmware update check.
 //
-// This is a REAL CAPTURE, not a synthesized shape (CLAUDE.md's fixture rule):
+// This is a REAL CAPTURE, not a synthesized shape (AGENTS.md's fixture rule):
 // GET core/firmware/status on that box returned exactly product/status/
 // status_msg at the top level -- no last_check, no top-level product_id/
 // product_version/product_abi -- with the identity present unconditionally

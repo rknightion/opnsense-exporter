@@ -64,7 +64,7 @@ func TestEveryCollectorHasDisableSwitch(t *testing.T) {
 	}
 	for _, c := range collector.AllCollectors() {
 		if !flaggedSubsystems[c.Name()] {
-			t.Errorf("collector %q has no enable/disable CollectorFlags entry (add one per the CLAUDE.md recipe)", c.Name())
+			t.Errorf("collector %q has no enable/disable CollectorFlags entry (add one per the AGENTS.md recipe)", c.Name())
 		}
 	}
 }

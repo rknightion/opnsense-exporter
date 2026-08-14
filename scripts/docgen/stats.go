@@ -119,10 +119,11 @@ func statRules(s docStats) []statRule {
 			Replace: fmt.Sprintf("all %d opnsense2otel collectors", s.Collectors), MinHits: 1},
 		{File: "docs/collectors/index.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
 		{File: "docs/architecture.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
-		// CLAUDE.md + these three docs pages sat outside the pin allowlist and drifted to a stale
-		// "30 collectors" while the real count grew to 47 (#117). Pin them so make docs-check fails
-		// on future drift.
-		{File: "CLAUDE.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
+		// The agent instructions + these three docs pages sat outside the pin allowlist and drifted
+		// to a stale "30 collectors" while the real count grew to 47 (#117). Pin them so make
+		// docs-check fails on future drift. The agent instructions moved CLAUDE.md -> AGENTS.md on
+		// 2026-08-14 (CLAUDE.md is now a one-line import), so the pin follows the content.
+		{File: "AGENTS.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
 		{File: "docs/404.md", Pattern: allCollectors, Replace: allCollectorsRepl, MinHits: 1},
 		// The metric count on 404.md drifted to a stale "300+" because the phrase read
 		// "all 300+ available Prometheus metrics" and the stray "available" kept it from

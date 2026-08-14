@@ -2290,7 +2290,7 @@ def main():
             f.write(authoring_doc)
         print(f"wrote {AUTHORING_PATH}", file=sys.stderr)
 
-    # Coverage gate fails the build in BOTH modes: CLAUDE.md promises `make dashboard`
+    # Coverage gate fails the build in BOTH modes: AGENTS.md promises `make dashboard`
     # fails if any catalogue metric is left off the dashboard, and CI enforces the same
     # via `build_dashboard.py --check`. In write mode the (partial) dashboard.json is
     # still written first so a contributor can iterate, then the non-zero exit blocks

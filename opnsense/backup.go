@@ -8,7 +8,7 @@ package opnsense
 //   - time     is an epoch-seconds value with a fractional component; observed
 //     on the wire as a quoted decimal string ("1783886416.55"). flexString
 //     tolerates either that or a bare JSON number, so a future release that
-//     switches representation (per the CLAUDE.md "absorb" triage) does not
+//     switches representation (per the AGENTS.md "absorb" triage) does not
 //     need a struct change.
 //   - filesize is a JSON int on the wire; flexString is still used so a
 //     string-typed filesize on some release doesn't break decoding.

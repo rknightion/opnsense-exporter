@@ -188,7 +188,7 @@ func TestFetchHostDiscovery_Empty(t *testing.T) {
 // release older than the exporter's support window, which predates the
 // hostdiscovery module) is treated as "feature absent" -- empty data, nil
 // error -- mirroring FetchACMECertificates, and deliberately NOT plugin-gated
-// (this is a core endpoint; see CLAUDE.md's PluginGatedEndpoints rule).
+// (this is a core endpoint; see AGENTS.md's PluginGatedEndpoints rule).
 func TestFetchHostDiscovery_NotFoundIsFeatureAbsent(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

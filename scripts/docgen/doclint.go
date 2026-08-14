@@ -104,7 +104,7 @@ func loadAllowlist(repoRoot string) map[string]bool {
 
 // lintTargets returns every prose/config file that may mention flags/env vars.
 func lintTargets(repoRoot string) []string {
-	targets := []string{"README.md", "CONTRIBUTING.md", "CLAUDE.md", "Makefile", "grafana/README.md"}
+	targets := []string{"README.md", "CONTRIBUTING.md", "AGENTS.md", "Makefile", "grafana/README.md"}
 	// grafana/tabs/*.py panel descriptions reference flags (e.g. --exporter.enable-*-details)
 	// that must stay valid as flags are renamed (#151).
 	_ = filepath.WalkDir(filepath.Join(repoRoot, "grafana", "tabs"), func(path string, d os.DirEntry, err error) error {

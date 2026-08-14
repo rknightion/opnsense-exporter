@@ -95,7 +95,7 @@ func organizationLabel(name *string) string {
 // interface+source host counts.
 //
 // This is a CORE OPNsense endpoint (Interfaces > Host discovery, added to
-// OPNsense in 2025), not a plugin -- so, per CLAUDE.md's PluginGatedEndpoints
+// OPNsense in 2025), not a plugin -- so, per AGENTS.md's PluginGatedEndpoints
 // rule, it is deliberately NOT added there. A 404 here is still treated as
 // "feature absent" (empty data, nil error) the same way FetchACMECertificates
 // treats a missing plugin, as defensive handling for firewalls older than the

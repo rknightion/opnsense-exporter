@@ -49,7 +49,7 @@ var clientAuthTypesRequiringCert = map[string]bool{
 // defer), so the direct effect is a failed connection plus a logged stack
 // trace rather than a process crash --- but it is still an unauthenticated
 // remote panic trigger, and vendor/ is sync-only (never hand-edited in this
-// repo, see CLAUDE.md), so the callback itself cannot be patched locally.
+// repo, see AGENTS.md), so the callback itself cannot be patched locally.
 // Refuse the unsafe combination at startup instead, before it can ever reach
 // a handshake.
 //
