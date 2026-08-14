@@ -3,10 +3,10 @@ id: OPN-0002
 title: >-
   main is red: WAN address reintroduced into public fixtures, check-public-ips
   failing since 2026-08-08
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-14 14:09'
-updated_date: '2026-08-14 14:22'
+updated_date: '2026-08-14 14:28'
 labels:
   - bug
   - security
@@ -89,20 +89,20 @@ upstream cannot produce, and a comment claiming provenance it no longer has is t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 make check-public-ips passes on a clean checkout
-- [ ] #2 Comments claiming the fixtures are unsanitised live captures are corrected to say they were sanitised
-- [ ] #3 ci-success is green on main, or the remaining failure is identified as a separate cause and tracked
-- [ ] #4 The WAN bind address and the v6 literal are replaced with RFC 5737 / RFC 3849 documentation addresses, not allowlisted
-- [ ] #5 The public-resolver address is replaced too rather than allowlisted, so the fixture needs no allowlist entry at all
+- [x] #1 make check-public-ips passes on a clean checkout
+- [x] #2 Comments claiming the fixtures are unsanitised live captures are corrected to say they were sanitised
+- [x] #3 ci-success is green on main, or the remaining failure is identified as a separate cause and tracked
+- [x] #4 The WAN bind address and the v6 literal are replaced with RFC 5737 / RFC 3849 documentation addresses, not allowlisted
+- [x] #5 The public-resolver address is replaced too rather than allowlisted, so the fixture needs no allowlist entry at all
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 make lint
-- [ ] #2 make test
-- [ ] #3 make check-public-ips
-- [ ] #4 make docs-check
-- [ ] #5 make grafana-check
+- [x] #1 make lint
+- [x] #2 make test
+- [x] #3 make check-public-ips
+- [x] #4 make docs-check
+- [x] #5 make grafana-check
 <!-- DOD:END -->
 
 ## Implementation Notes
@@ -138,3 +138,9 @@ appear, so substitution costs the fixture nothing.
 Both are the same defect class as the IP literals and neither is covered by `make check-public-ips`.
 Worth a decision, not worth folding into this fix.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in 5b23445a. All three literals replaced with RFC 5737 / RFC 3849 documentation addresses in internal/logship/syslog/dpinger.go, dpinger_test.go and internal/logship/unbound_test.go; the allowlist was not touched and still holds 91 entries. make check-public-ips: OK (1296 files scanned). ci-success is green on 5b23445a — the first green CI run on main since 2026-08-08. The comments that claimed the fixtures were unsanitised live captures now state the substitution and why bind_addr counts as a WAN address, which was the reasoning error behind all three reintroductions. AAISP as an interface/gateway name and the rob-knight.net hostname fixtures are deliberately untouched and are recorded in the notes as a separate decision.
+<!-- SECTION:FINAL_SUMMARY:END -->
