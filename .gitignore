@@ -73,9 +73,14 @@ docs/superpowers/
 # fixture (opnsense/testdata/health/...) to make it a permanent CI gate.
 /opnsense/testdata/captures/
 
-# Claude Code local session state (settings.local.json, agent scratch). Nothing here
-# is shared configuration — the repo's committed guidance lives in CLAUDE.md.
-/.claude/
+# Claude Code repo-local config. `settings.json` and `hooks/` ARE tracked — they
+# enforce the Backlog.md rules (bare --notes/--plan replaces a section silently;
+# hand-edited task markdown loses one at exit 0) for anyone working in this repo.
+# Everything else under .claude/ is per-machine state: worktrees, scheduler locks,
+# and settings.local.json.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 
 # Injected by the m7kni.io hub at build time — never commit these.
 # The hub copies its own SEO template, brand stylesheet and fonts into a clone
