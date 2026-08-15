@@ -1,5 +1,87 @@
 # Changelog
 
+## [4.1.0](https://github.com/rknightion/opnsense2otel/compare/v4.0.0...v4.1.0) (2026-08-15)
+
+
+### Features
+
+* **chart:** add Artifact Hub metadata and point home at the docs site ([5a5abbe](https://github.com/rknightion/opnsense2otel/commit/5a5abbecc39dbac77a2061d40fc01589986eb0d4))
+* **docs:** take the fleet project icon for the site logo and favicon ([c35a2c2](https://github.com/rknightion/opnsense2otel/commit/c35a2c2bb261fb134c3350059f49c53f6e844e54))
+* **docs:** take the fleet-generated social card ([73a9fda](https://github.com/rknightion/opnsense2otel/commit/73a9fda719e198fc237abd2a3ed82502820a3b9d))
+* **logship:** structure dpinger lifecycle, so a restart stops looking like a recovery ([8cca5da](https://github.com/rknightion/opnsense2otel/commit/8cca5da9651870b7de36553d34480ab61cf87b88)), closes [#668](https://github.com/rknightion/opnsense2otel/issues/668)
+* **logship:** structure kernel promiscuous-mode toggles and sudo ([3ea6692](https://github.com/rknightion/opnsense2otel/commit/3ea6692b4405d8f6c3323de5def5e5f2f94314cf)), closes [#669](https://github.com/rknightion/opnsense2otel/issues/669)
+* **logship:** structure rule-updater.py, making Suricata ruleset freshness observable ([10f315a](https://github.com/rknightion/opnsense2otel/commit/10f315a35b2daee1cf40a97e898f6b2162efcd03)), closes [#666](https://github.com/rknightion/opnsense2otel/issues/666)
+* **logship:** structure syslog-ng lines, the box's own report that our feed dropped ([26ce3c5](https://github.com/rknightion/opnsense2otel/commit/26ce3c59d01cdfe83d244db4e61b151679e6fca9)), closes [#665](https://github.com/rknightion/opnsense2otel/issues/665)
+* **logship:** structure the Kea lease-file-cleanup syslog family ([e85af85](https://github.com/rknightion/opnsense2otel/commit/e85af857b0c49d5bd569cfa1863d8b4e28c4e5d0)), closes [#664](https://github.com/rknightion/opnsense2otel/issues/664)
+* **logship:** structure Unbound's log-queries/log-replies syslog output ([8928d15](https://github.com/rknightion/opnsense2otel/commit/8928d155403d3c197ae4fcd1c0e72d61947bca6f)), closes [#659](https://github.com/rknightion/opnsense2otel/issues/659)
+* mint release-please token from the OpenBao broker ([2c7fb11](https://github.com/rknightion/opnsense2otel/commit/2c7fb11d5f6e259d72670be2440604b7fbfffea4))
+* mint the docs-sync token from the OpenBao broker ([81a03ea](https://github.com/rknightion/opnsense2otel/commit/81a03ea35e0d462c884ef02955cf640eea180279))
+
+
+### Bug Fixes
+
+* **alerts:** add hysteresis to gateway flapping rule, add RTT baseline-deviation rule ([b64d34b](https://github.com/rknightion/opnsense2otel/commit/b64d34b6e18d309cc87be2670349a8834a622293)), closes [#658](https://github.com/rknightion/opnsense2otel/issues/658)
+* **archive:** redact 26 more v6 addresses the hand-rolled pattern missed ([1be7545](https://github.com/rknightion/opnsense2otel/commit/1be7545cda6c70bb738af9940b7b8c6c460243ad))
+* author is Rob Knight, not Rob Knighton ([1a53b73](https://github.com/rknightion/opnsense2otel/commit/1a53b7368ffb46809a5eb51e5c9e30e86440632e))
+* **canary:** let oli start the live canary instead of GitHub's cron ([e9c8c1b](https://github.com/rknightion/opnsense2otel/commit/e9c8c1b79a99fded361a34e7a96153662b7e53e8)), closes [#654](https://github.com/rknightion/opnsense2otel/issues/654)
+* correct eight defects found by the production verification sweep ([671098d](https://github.com/rknightion/opnsense2otel/commit/671098dfe93c0462a6b29d0022c914e93a6e10e0)), closes [#637](https://github.com/rknightion/opnsense2otel/issues/637) [#638](https://github.com/rknightion/opnsense2otel/issues/638) [#639](https://github.com/rknightion/opnsense2otel/issues/639) [#640](https://github.com/rknightion/opnsense2otel/issues/640) [#641](https://github.com/rknightion/opnsense2otel/issues/641) [#642](https://github.com/rknightion/opnsense2otel/issues/642) [#643](https://github.com/rknightion/opnsense2otel/issues/643) [#644](https://github.com/rknightion/opnsense2otel/issues/644) [#645](https://github.com/rknightion/opnsense2otel/issues/645)
+* **deps:** update module github.com/grafana/pyroscope-go to v1.4.2 ([#674](https://github.com/rknightion/opnsense2otel/issues/674)) ([9a67a58](https://github.com/rknightion/opnsense2otel/commit/9a67a58c2d2bd722f5de340238225da86d99f476))
+* **deps:** update module github.com/oschwald/maxminddb-golang/v2 to v2.5.0 ([#670](https://github.com/rknightion/opnsense2otel/issues/670)) ([e7c8e8c](https://github.com/rknightion/opnsense2otel/commit/e7c8e8c33d282ce58c8e0e3f7f2861388709ad0f))
+* **deps:** update module google.golang.org/protobuf to v1.36.12 ([#671](https://github.com/rknightion/opnsense2otel/issues/671)) ([b1338c9](https://github.com/rknightion/opnsense2otel/commit/b1338c925f5d70b196af784c1a5fdb68c6b00270))
+* **deps:** update opentelemetry ([#635](https://github.com/rknightion/opnsense2otel/issues/635)) ([94b8bfd](https://github.com/rknightion/opnsense2otel/commit/94b8bfdeadcf0787a8c9de7914f354f40aaa00e3))
+* **docs:** render the changelog instead of the include directive ([213863d](https://github.com/rknightion/opnsense2otel/commit/213863db98d58626ccbbda4a2f3b52d49ae556e7))
+* **flow:** pair merge endpoints by address, not by position ([0cf91c3](https://github.com/rknightion/opnsense2otel/commit/0cf91c3aa3bdc5895aa83a014db09338454ef8cc)), closes [#647](https://github.com/rknightion/opnsense2otel/issues/647)
+* **flow:** pair NAT copies by conversation when the exact window cannot close ([07e7242](https://github.com/rknightion/opnsense2otel/commit/07e72429961445f65a6a8389348fcdbfe963a12d)), closes [#636](https://github.com/rknightion/opnsense2otel/issues/636)
+* **grafana:** bound percent gauges, gate opt-in flow panels, disambiguate one title ([1100c10](https://github.com/rknightion/opnsense2otel/commit/1100c10a310f887e41e7a0df91ea6ebad13d18af)), closes [#649](https://github.com/rknightion/opnsense2otel/issues/649)
+* **grafana:** keep instance identity in the [#647](https://github.com/rknightion/opnsense2otel/issues/647) panel aggregation ([cb5829d](https://github.com/rknightion/opnsense2otel/commit/cb5829d9bbb6a2dd071d02380a7a7467459634f1))
+* **grafana:** let the datasource own the min interval, not 815 panels ([ffa9335](https://github.com/rknightion/opnsense2otel/commit/ffa93356b5bcf89a8d908f9940ed31545e010fcc)), closes [#650](https://github.com/rknightion/opnsense2otel/issues/650)
+* **grafana:** make OPNsenseNetmapRingFull mean sustained, not one burst ([72585d3](https://github.com/rknightion/opnsense2otel/commit/72585d3556b982397133cdd6e7f987db97841733)), closes [#675](https://github.com/rknightion/opnsense2otel/issues/675)
+* **grafana:** pick instant-query format by viz, not by instant ([287d019](https://github.com/rknightion/opnsense2otel/commit/287d0193e756e031992663c0a21af843cd8ee707)), closes [#661](https://github.com/rknightion/opnsense2otel/issues/661)
+* **interfaces,firmware:** close two gaps found verifying 671098d on the box ([787dde3](https://github.com/rknightion/opnsense2otel/commit/787dde35a91b3e706b5e9ae338633b6ab3431a52))
+* **logship:** bound batches by ingest rate, split and pace on 429 ([a32463d](https://github.com/rknightion/opnsense2otel/commit/a32463daea811a6016df12fdb7b5d9bfda0a4e7a)), closes [#663](https://github.com/rknightion/opnsense2otel/issues/663)
+* **logship:** put documentation addresses back in the dpinger and unbound fixtures ([5b23445](https://github.com/rknightion/opnsense2otel/commit/5b23445a8bf0edf3da18e49a31f8e1423d832b71))
+* **logship:** structure the config-apply event, and only it ([dc76bc2](https://github.com/rknightion/opnsense2otel/commit/dc76bc2cb6aa6210d173ffbc5567814a17d3d79f)), closes [#667](https://github.com/rknightion/opnsense2otel/issues/667)
+* **opnsense:** decode unbound query-class counters as a map, not a fixed IN field ([99b7814](https://github.com/rknightion/opnsense2otel/commit/99b7814706ef3b7d1a28d383f716fd97c403c827))
+* pass the JWT role explicitly for docs-sync ([fc46201](https://github.com/rknightion/opnsense2otel/commit/fc46201085a8ce6730e9bc841c55f1620a3e7e0b))
+
+
+### Miscellaneous
+
+* **deps:** update anthropics/claude-code-action action to v1.0.184 ([#648](https://github.com/rknightion/opnsense2otel/issues/648)) ([2f5943b](https://github.com/rknightion/opnsense2otel/commit/2f5943ba9cd77d547e98a0e01114c7d6b01365ee))
+* **deps:** update anthropics/claude-code-action action to v1.0.185 ([#651](https://github.com/rknightion/opnsense2otel/issues/651)) ([a56bb3d](https://github.com/rknightion/opnsense2otel/commit/a56bb3dab20bcdb4d21d255ede810184e8ea57c9))
+* **deps:** update anthropics/claude-code-action action to v1.0.186 ([#657](https://github.com/rknightion/opnsense2otel/issues/657)) ([bb1dd4f](https://github.com/rknightion/opnsense2otel/commit/bb1dd4f15cbec22e9ae17c88475b0dafa52cb77d))
+* **deps:** update anthropics/claude-code-action action to v1.0.187 ([#662](https://github.com/rknightion/opnsense2otel/issues/662)) ([54faf9e](https://github.com/rknightion/opnsense2otel/commit/54faf9e76527ea976707e81554c0318f8c5e5465))
+* **deps:** update anthropics/claude-code-action action to v1.0.193 ([#676](https://github.com/rknightion/opnsense2otel/issues/676)) ([f17cb5e](https://github.com/rknightion/opnsense2otel/commit/f17cb5e0a4113490cc26f46ab188b007b9286044))
+* **deps:** update module github.com/anchore/syft to v1.51.0 ([#672](https://github.com/rknightion/opnsense2otel/issues/672)) ([cb26976](https://github.com/rknightion/opnsense2otel/commit/cb26976d3a11effdd2cbab3772e47316b99104f8))
+* **deps:** update module github.com/anchore/syft/cmd/syft to v1.51.0 ([#673](https://github.com/rknightion/opnsense2otel/issues/673)) ([2a9bfa8](https://github.com/rknightion/opnsense2otel/commit/2a9bfa8a6122ebd754dae55e83f3f15013ff2c87))
+* **deps:** update step-security/harden-runner action to v2.20.1 ([#652](https://github.com/rknightion/opnsense2otel/issues/652)) ([4787fdb](https://github.com/rknightion/opnsense2otel/commit/4787fdbc9036ec0a43290091ea408cd2446f6e00))
+* **deps:** update step-security/harden-runner action to v2.21.0 ([#677](https://github.com/rknightion/opnsense2otel/issues/677)) ([bb6bcee](https://github.com/rknightion/opnsense2otel/commit/bb6bcee29389e9b5a1ba5419aa5e8910d46f8ce1))
+* gitignore the build artifacts the hub injects ([f79080b](https://github.com/rknightion/opnsense2otel/commit/f79080be9ca729b3e6dd300b01362a1b3f3e8501))
+* **logship:** wire the capture-triage wave's shared seams ([0ad3d46](https://github.com/rknightion/opnsense2otel/commit/0ad3d4688a87fc2da21a8734e7b52c217bdce004))
+* **tracker:** close OPN-0002 — main is green on 5b23445a ([9a09bb4](https://github.com/rknightion/opnsense2otel/commit/9a09bb4fb51747d712b02096bebac030f351f305))
+* **tracker:** move issue tracking from GitHub to in-repo backlog.md ([f72a941](https://github.com/rknightion/opnsense2otel/commit/f72a941110415562d9d3df97ad1bef8c3b3170fa))
+
+
+### Documentation
+
+* add a "Why This Exporter" positioning page ([c9f587c](https://github.com/rknightion/opnsense2otel/commit/c9f587c7644910ed0b951d53ceaf3dd4f8299daf))
+* add an FAQ ([4c2db9f](https://github.com/rknightion/opnsense2otel/commit/4c2db9f857fce6ce8881e773eae36256c5bc5e53))
+* adopt the m7kni.io inverted docs model ([d5cf9c3](https://github.com/rknightion/opnsense2otel/commit/d5cf9c31f3f1305e102ed082bb25ff2361ae37ec))
+* **archive:** archive the GitHub Issues tracker before deleting it ([7999e7c](https://github.com/rknightion/opnsense2otel/commit/7999e7c65df09ab04b3d34d3a2d0fd1bffe3e996))
+* drop two overrides that never did anything ([3317545](https://github.com/rknightion/opnsense2otel/commit/3317545ea529c466da3a57bb6c3a12016693b9f1))
+* fix broken internal links ([3e868a6](https://github.com/rknightion/opnsense2otel/commit/3e868a6ad4177607316bca26603cfe3227f42de2))
+* **flow:** correct two claims [#636](https://github.com/rknightion/opnsense2otel/issues/636)'s own verification disproved ([eaab369](https://github.com/rknightion/opnsense2otel/commit/eaab369e0d23f6ba5535f54e69a24d8c39d303fc))
+* **flow:** state the three ways the per-WAN byte ratio lies ([c9a5b9d](https://github.com/rknightion/opnsense2otel/commit/c9a5b9dcd2dca85a91c3c11ad6d4843abd488d4b))
+* put a copy-paste quickstart on the landing page ([dc7ae7c](https://github.com/rknightion/opnsense2otel/commit/dc7ae7c2a24ff79e5e81105040d83dade20b4a8d))
+* re-import the fan-out protocol after promoting four orphan rules ([06d64b4](https://github.com/rknightion/opnsense2otel/commit/06d64b430bb96e42a576cdb205408de84c282091))
+* re-import the fan-out protocol, now harness-neutral ([c80b7b4](https://github.com/rknightion/opnsense2otel/commit/c80b7b4d1e8957920999039e78ad1b35c9134a13))
+* **tracker:** note that the bare --notes/--plan denial is hook-enforced ([be7b05c](https://github.com/rknightion/opnsense2otel/commit/be7b05c50237e854c2567b42c79da1bcc4846ae9))
+
+
+### CI/CD
+
+* mint the GitSync token from OpenBao instead of GITSYNC_PAT ([4200b25](https://github.com/rknightion/opnsense2otel/commit/4200b25804f9d1fa33a26c863c45907e379eb09e))
+
 ## [4.0.0](https://github.com/rknightion/opnsense2otel/compare/v3.0.0...v4.0.0) (2026-08-01)
 
 

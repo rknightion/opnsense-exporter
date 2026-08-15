@@ -24,7 +24,7 @@ spec:
           # each release by release-please via the x-release-please-version marker below;
           # keep that marker on the image line or the tag stops updating. Published tags
           # carry no leading "v" (the git tag is v2.2.1, the image tag is 2.2.1).
-          image: ghcr.io/rknightion/opnsense2otel:4.0.0 # x-release-please-version
+          image: ghcr.io/rknightion/opnsense2otel:4.1.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           # In pod, mount OPNSense API credentials as files
           volumeMounts:
