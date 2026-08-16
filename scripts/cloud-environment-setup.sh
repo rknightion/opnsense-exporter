@@ -61,8 +61,8 @@ install_go() {
   # GOTOOLCHAIN=auto can make an older launcher report the go.mod toolchain.
   # Inspect the installed binary itself so later commands do not trigger another
   # toolchain download outside this repository.
-  if command -v go >/dev/null 2>&1 && \
-    [[ "$(GOTOOLCHAIN=local go version | awk '{print $3}')" == "go${GO_VERSION}" ]]; then
+  if [[ -x "${GO_ROOT}/bin/go" ]] && \
+    [[ "$(GOTOOLCHAIN=local "${GO_ROOT}/bin/go" version | awk '{print $3}')" == "go${GO_VERSION}" ]]; then
     return
   fi
 
@@ -139,9 +139,10 @@ install_python_tools() {
   if [[ ! -x "${PYTHON_VENV}/bin/python" ]]; then
     python3 -m venv "${PYTHON_VENV}"
   fi
-  "${PYTHON_VENV}/bin/python" -m pip install --disable-pip-version-check --quiet --upgrade pip
   "${PYTHON_VENV}/bin/python" -m pip install --disable-pip-version-check --quiet \
-    -r tools/opnsense_api_contract/requirements.txt pyyaml
+    -r scripts/requirements-cloud-setup.txt
+  "${PYTHON_VENV}/bin/python" -m pip install --disable-pip-version-check --quiet \
+    -r tools/opnsense_api_contract/requirements.txt
 }
 
 install_backlog() {
