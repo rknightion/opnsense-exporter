@@ -1,9 +1,9 @@
 ---
 id: doc-0003
-title: Pre-backlog issue numbers
+title: Closed GitHub issues (pre-Backlog history index)
 type: other
 created_date: '2026-08-14 14:05'
-updated_date: '2026-08-14 16:09'
+updated_date: '2026-08-17 09:03'
 ---
 **Any `#NNNN` reference below 656 in this repo is a GitHub issue, not a backlog task.** Tracking moved
 in-repo on 2026-08-14 at issue #655; `OPN-0001` onwards are backlog tasks and the two numbering
