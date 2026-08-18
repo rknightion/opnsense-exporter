@@ -77,3 +77,8 @@ snapshot:
 
 changelog:
   disable: true
+
+# Without this, an RC tag (vX.Y.Z-rc.N) would publish as a full GitHub release and
+# steal "Latest" from the most recent stable release.
+release:
+  prerelease: auto
