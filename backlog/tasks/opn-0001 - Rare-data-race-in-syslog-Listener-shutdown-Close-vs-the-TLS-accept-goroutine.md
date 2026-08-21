@@ -1,11 +1,11 @@
 ---
 id: OPN-0001
 title: Rare data race in syslog Listener shutdown (Close vs the TLS accept goroutine)
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-08-14 14:06'
-updated_date: '2026-08-21 19:03'
+updated_date: '2026-08-21 19:04'
 labels:
   - bug
   - 'area:logship'
@@ -96,18 +96,18 @@ signal that it exists.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Race reproduced deterministically, or under a documented flag/platform/timing combination
-- [ ] #2 Root cause identified: the exact field, and which of the two accesses is unsynchronised
-- [ ] #3 Fix verified by the reproduction failing before it and passing after it
+- [x] #1 Race reproduced deterministically, or under a documented flag/platform/timing combination
+- [x] #2 Root cause identified: the exact field, and which of the two accesses is unsynchronised
+- [x] #3 Fix verified by the reproduction failing before it and passing after it
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [ ] #1 make lint
-- [ ] #2 make test
-- [ ] #3 make check-public-ips
-- [ ] #4 make docs-check
-- [ ] #5 make grafana-check
+- [x] #2 make test
+- [x] #3 make check-public-ips
+- [x] #4 make docs-check
+- [x] #5 make grafana-check
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -143,4 +143,45 @@ attempt differs.
 The amd64 result was taken at `8928d155`. `main` has moved since (#664-#669 and everything after),
 but none of those commits touch `listener.go` or the TLS accept path, so the negative result still
 stands. Re-check that claim before relying on it if `internal/logship/syslog/` has changed.
+
+## Resolved (2026-08-21, commit cb205d29)
+
+**The trace's two frames are CALL sites, not the racing accesses.** On linux/amd64 (go1.26.6, camden)
+`sync.(*Once).doSlow` +0xa1 is the return address of `CALL AX` at once.go:78 (f()), and
+`Run.func4` +0x7b is the return address of `CALL serveTLS`. So the accesses are inside Close's
+once closure and inside serveTLS; the frames above them were elided in the issue paste. That is why
+two rounds of reading listener.go:268 and :284 found nothing.
+
+**Root cause: `l.conns.Wait()` (Close) vs `l.conns.Add(1)` (accept loops).** sync.WaitGroup
+instruments this itself — `race.Write(&wg.sema)` in Wait for the first waiter, `race.Read(&wg.sema)`
+in Add on the 0->1 transition ($GOROOT/src/sync/waitgroup.go:190 and :115). Both appear as
+`runtime.racewrite`/`runtime.raceread` at the top of the report, which is why no sync frame is
+visible. It is a real shutdown defect, not an annotation artefact: if Wait observes 0 before the Add,
+Close returns while a connection goroutine is still running, and the unlucky ordering panics with
+"WaitGroup misuse: Add called concurrently with Wait".
+
+**Reproduction.** `TestListenerShutdownDoesNotRaceConnRegistration` (kept in the repo) sweeps the
+context cancellation across the accept path in 5us steps over 200 iterations. Pre-fix it fires on
+essentially the first iteration (0.03-0.2s); post-fix 20,000 iterations under
+`GORACE=halt_on_error=1` are clean in 37s. The reported race is byte-identical to CI's: same
+frames, same +0xa1/+0x7b offsets. The flaky test hit it because it polls for `len(l.tlsSem) == 1`,
+which is the line immediately before the Add — it cancels straight into the window.
+
+**Fix.** `connMu` orders the two: Close closes `l.closing` under it before `conns.Wait()`, and
+the new `trackConn()` registers under it, so an accept either registers before the close is visible
+(Wait waits for it) or sees the listener closing and drops the connection. The third Add site (the
+serveConn continuation ticker) needs no guard: the connection goroutine already holds a count, so
+there is no 0->1 transition there.
+
+**Verification.** make test, make check-public-ips, make docs-check, make grafana-check all pass.
+`make lint` fails on a clean tree too — golangci-lint 2.12.2 cannot typecheck the go1.26 stdlib
+(`math/rand/v2: method must have no type parameters`); a local toolchain mismatch, not this change.
+CodeRabbit's one finding (track and force-close accepted conns at shutdown) is a separate redesign,
+declined as out of scope.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Root-caused and fixed the #655 race (commit cb205d29). Disassembly on linux/amd64 showed the trace's two frames (doSlow +0xa1, Run.func4 +0x7b) are CALL sites, so the racing accesses are l.conns.Wait() inside Close and l.conns.Add(1) inside serveTLS — sync.WaitGroup's own race.Read/race.Write annotations on wg.sema for the 0->1 Add versus the first Wait. Reproduced deterministically by sweeping the context cancellation across the accept path (fires on the first iteration pre-fix); fixed by ordering close(l.closing) and the Add under a new connMu via trackConn(), with the accept loops dropping the connection when it reports closing. Post-fix: 20,000 shutdown iterations clean under -race in 37s, and the 200-iteration regression test still fails within 0.2s if the mutex is removed. make test / check-public-ips / docs-check / grafana-check pass; make lint fails identically on a clean tree (golangci-lint 2.12.2 vs the go1.26 stdlib), so DoD 1 is left unchecked.
+<!-- SECTION:FINAL_SUMMARY:END -->
