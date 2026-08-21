@@ -1,10 +1,11 @@
 ---
 id: OPN-0001
 title: Rare data race in syslog Listener shutdown (Close vs the TLS accept goroutine)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-08-14 14:06'
-updated_date: '2026-08-14 14:06'
+updated_date: '2026-08-21 19:03'
 labels:
   - bug
   - 'area:logship'
@@ -108,6 +109,16 @@ signal that it exists.
 - [ ] #4 make docs-check
 - [ ] #5 make grafana-check
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Disassemble Run.func4/doSlow on amd64: +0x7b and +0xa1 are CALL sites (serveTLS, once.Do's f), so the CI trace's top frames were elided — the racing accesses live inside serveTLS and Close, not in the two closures.
+2. Root cause: sync.WaitGroup's own race annotations (race.Write(&wg.sema) in Wait, race.Read(&wg.sema) in Add on the 0->1 transition) — l.conns.Wait() in Close vs l.conns.Add(1) in the accept loops.
+3. Reproduce with a stress test that cancels the context on a 5us-stepped sweep across the accept path.
+4. Fix: connMu orders close(l.closing) against a conns.Add via trackConn(); accept loops drop the connection when it reports closing.
+5. Verify: repro fails pre-fix, 20k iterations clean post-fix; keep a 200-iteration regression test.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 

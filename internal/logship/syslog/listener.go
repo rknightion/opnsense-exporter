@@ -108,7 +108,14 @@ type Listener struct {
 	// was supplied; every call site goes through the nil-safe methods.
 	slots *slotGauges
 
-	conns   sync.WaitGroup
+	conns sync.WaitGroup
+	// connMu orders a conns.Add against Close's conns.Wait. Close closes closing
+	// under it, so an accept loop either registers before the close is visible (and
+	// Wait waits for it) or sees the listener closing and refuses the connection.
+	// Checking closed() without the mutex leaves a few-instruction window in which
+	// Add races Wait on the 0->1 transition — a real shutdown bug, and the flaky
+	// race-detector failure of #655.
+	connMu  sync.Mutex
 	closing chan struct{}
 	once    sync.Once
 	closeMu sync.Mutex
@@ -293,7 +300,9 @@ func (l *Listener) Run(ctx context.Context) {
 // sync.Once-guarded and safe to call repeatedly.
 func (l *Listener) Close() error {
 	l.once.Do(func() {
+		l.connMu.Lock()
 		close(l.closing)
+		l.connMu.Unlock()
 		err := l.closeSockets()
 		l.conns.Wait()
 		l.closeMu.Lock()
@@ -323,6 +332,18 @@ func (l *Listener) closeSockets() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// trackConn registers a connection goroutine on l.conns, reporting false when the
+// listener is already closing and the caller must drop the connection instead.
+func (l *Listener) trackConn() bool {
+	l.connMu.Lock()
+	defer l.connMu.Unlock()
+	if l.closed() {
+		return false
+	}
+	l.conns.Add(1)
+	return true
 }
 
 func (l *Listener) closed() bool {
@@ -414,7 +435,12 @@ func (l *Listener) serveTCP() {
 			continue
 		}
 
-		l.conns.Add(1)
+		if !l.trackConn() {
+			<-l.tcpSem
+			l.slots.observe("tcp", len(l.tcpSem))
+			_ = conn.Close()
+			return
+		}
 		go func() {
 			defer l.conns.Done()
 			defer func() { <-l.tcpSem; l.slots.observe("tcp", len(l.tcpSem)) }()
@@ -470,7 +496,12 @@ func (l *Listener) serveTLS() {
 			continue
 		}
 
-		l.conns.Add(1)
+		if !l.trackConn() {
+			<-l.tlsSem
+			l.slots.observe("tls", len(l.tlsSem))
+			_ = conn.Close()
+			return
+		}
 		go func() {
 			defer l.conns.Done()
 			defer func() { <-l.tlsSem; l.slots.observe("tls", len(l.tlsSem)) }()
