@@ -1,6 +1,6 @@
 ---
 title: Metrics Reference
-description: Overview of all 1006 Prometheus metrics exposed by opnsense2otel
+description: Explore the 1,006 Prometheus metrics exposed by 65 opnsense2otel collectors across OPNsense firewall subsystems.
 tags:
   - Prometheus
   - Monitoring

@@ -1,6 +1,6 @@
 ---
 title: Systemd
-description: Deploy opnsense2otel as a systemd service on Linux hosts
+description: Install and operate opnsense2otel as a hardened systemd service on Linux, including configuration and log checks.
 tags:
   - Deployment
 ---

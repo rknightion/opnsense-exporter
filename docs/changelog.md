@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: Release history and changelog for opnsense2otel
+description: Review opnsense2otel releases, OPNsense collector coverage, telemetry changes, fixes, and deployment updates.
 tags:
   - OPNsense
 ---

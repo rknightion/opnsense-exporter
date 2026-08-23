@@ -1,6 +1,6 @@
 ---
 title: Adding a Collector
-description: Step-by-step guide for adding a new collector to opnsense2otel
+description: Add an opnsense2otel collector across the API client, collector registry, metric definitions, tests, and documentation.
 tags:
   - OPNsense
 ---
