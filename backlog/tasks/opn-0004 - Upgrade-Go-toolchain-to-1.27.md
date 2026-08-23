@@ -4,7 +4,7 @@ title: Upgrade Go toolchain to 1.27
 status: In Progress
 assignee: []
 created_date: '2026-08-23 19:06'
-updated_date: '2026-08-23 19:49'
+updated_date: '2026-08-23 20:21'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -42,4 +42,6 @@ Adopt Go 1.27 consistently across the application, nested modules, build images,
 
 <!-- SECTION:NOTES:BEGIN -->
 Local Go 1.27.0 evidence: build, make test, vet, lint with 0 issues, docs-check, check-public-ips, and grafana-check all passed. Generated docs were brought back to their existing exact wording contract. Paid-plan CodeRabbit review completed; the valid fuzz-cache and punctuation findings were fixed, while the systemd enforcement finding was already covered by the root Go 1.27 module requirement.
+
+The cloud setup golangci-lint pin was aligned from v2.12.2 to current v2.13.1 after the campaign's Linux checks showed v2.12.2 analyzers panic on Go 1.27 syntax. The hosted workflow already used v2.13.1. Linux-target v2.13.1 lint remained clean with 0 issues and the setup script passed shell syntax validation.
 <!-- SECTION:NOTES:END -->
