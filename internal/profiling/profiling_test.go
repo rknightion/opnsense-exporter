@@ -62,10 +62,9 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// leakType returns the goroutine-leak profile types present in a default build —
-// one when the binary was built with GOEXPERIMENT=goroutineleakprofile, none
-// otherwise. The type tests key their expected counts off this so they pass in
-// both CI (plain build) and release builds (with the experiment).
+// leakType returns the goroutine-leak profile types exposed by the runtime. The
+// type tests key their expected counts off this so they remain tolerant of a
+// runtime that does not expose the profile.
 func leakType() []pyroscope.ProfileType {
 	if GoroutineLeakAvailable() {
 		return []pyroscope.ProfileType{pyroscope.ProfileGoroutineLeak}

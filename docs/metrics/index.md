@@ -8,7 +8,7 @@ tags:
 
 # Metrics Reference
 
-opnsense2otel provides 1006 Prometheus metrics across 65 collectors, covering every major subsystem of the firewall platform.
+opnsense2otel provides all 1006 Prometheus metrics across 65 collectors, covering every major subsystem of the firewall platform.
 
 Every metric on this page is generated from the collector source, so it always matches the shipped
 binary. Read the collector implementations in

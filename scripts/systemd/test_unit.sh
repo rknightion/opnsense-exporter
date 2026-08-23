@@ -49,7 +49,7 @@ EOF
 printf '%s\n' 'smoke-api-key' >"$work/api-key"
 printf '%s\n' 'smoke-api-secret' >"$work/api-secret"
 
-CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" GOEXPERIMENT=goroutineleakprofile \
+CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" \
   go build -o "$work/opnsense2otel" "$root"
 
 # The digest pins the Ubuntu 24.04 multi-architecture base. Package installation

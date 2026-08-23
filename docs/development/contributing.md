@@ -14,7 +14,7 @@ pointer to this page — edit only this file; do not duplicate content into the 
 
 ## Prerequisites
 
-- **Go** - Check `go.mod` for the required version (currently Go 1.26)
+- **Go** - Check `go.mod` for the required version (currently Go 1.27)
 - **Make** - For build automation
 - **golangci-lint** - Optional; runs in CI but can be used locally
 - **Docker** - Optional; for container builds

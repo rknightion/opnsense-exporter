@@ -25,18 +25,11 @@ KUBECONFORM_VERSION ?= v0.8.0
 TOOLS_DIR := $(CURDIR)/.tools
 export PATH := $(TOOLS_DIR):$(PATH)
 
-# Build with the goroutineleakprofile runtime experiment so the shipped binary
-# registers the goroutineleak pprof profile (pushed to Pyroscope by default). The
-# profiling code guards on availability, so a build without this simply omits that
-# one profile type. Overriding to empty drops it. Must match the Dockerfile and
-# .goreleaser.yml. A future Go that removes the experiment fails the build loudly.
-GOEXPERIMENT ?= goroutineleakprofile
-
 .PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
         fieldaudit schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
         print-go-licenses-module tools-kubeconform deployment-test testbed-test check-public-ips
 default:
-	GOEXPERIMENT=$(GOEXPERIMENT) go build \
+	go build \
 	-tags osusergo,netgo \
 	-ldflags '-w -extldflags "-static" -X main.version=local-test' \
 	-v -o ${BINARY_NAME}
@@ -108,7 +101,7 @@ notices: tools-licensing
 # so no external linker — works on macOS too) and scans it so the SBOM reflects exactly the
 # linked modules. Override SBOM_TARGET (e.g. an image ref) to scan something else.
 sbom: tools-sbom
-	CGO_ENABLED=0 GOEXPERIMENT=$(GOEXPERIMENT) go build -mod=vendor -tags osusergo,netgo -trimpath \
+	CGO_ENABLED=0 go build -mod=vendor -tags osusergo,netgo -trimpath \
 	  -ldflags "-s -w -X main.version=$(VERSION)" -o bin/opnsense2otel .
 	SYFT=$(TOOLS_DIR)/syft bash scripts/sbom.sh
 

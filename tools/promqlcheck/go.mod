@@ -1,6 +1,6 @@
 module github.com/rknightion/opnsense2otel/v4/tools/promqlcheck
 
-go 1.26
+go 1.27.0
 
 require github.com/prometheus/prometheus v0.314.0
 

@@ -12,7 +12,7 @@ obvious from that guide.
 
 ### Requirements
 
-- Go 1.26
+- Go 1.27
 - GNU Make
 - Docker (optional)
 - An OPNsense box with admin access

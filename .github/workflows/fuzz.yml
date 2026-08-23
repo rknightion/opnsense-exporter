@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: "1.27.0"
 
       - name: Resolve fuzz cache path
         id: fuzz-cache
@@ -52,10 +52,10 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.fuzz-cache.outputs.path }}
-          key: fuzz-${{ runner.os }}-go1.26-${{ matrix.name }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: fuzz-${{ runner.os }}-go1.27-${{ matrix.name }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            fuzz-${{ runner.os }}-go1.26-${{ matrix.name }}-${{ hashFiles('go.sum') }}-
-            fuzz-${{ runner.os }}-go1.26-${{ matrix.name }}-
+            fuzz-${{ runner.os }}-go1.27-${{ matrix.name }}-${{ hashFiles('go.sum') }}-
+            fuzz-${{ runner.os }}-go1.27-${{ matrix.name }}-
 
       - name: Run retained fuzz target
         env:

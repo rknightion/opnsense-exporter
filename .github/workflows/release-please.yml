@@ -57,7 +57,7 @@ jobs:
     uses: rknightion/.github/.github/workflows/binaries.yml@d1c590b295b9d7f2535fadc7bc5e74f2eddbd512 # main
     with:
       release-tag: ${{ needs.release-please.outputs.tag_name }}
-      go-version: "1.26"
+      go-version: "1.27.0"
       install-cosign: true # keyless-sign the checksums (see .goreleaser.yml signs:)
       pre-cmd: "go install github.com/anchore/syft/cmd/syft@v1.51.0" # archive SBOMs
 
