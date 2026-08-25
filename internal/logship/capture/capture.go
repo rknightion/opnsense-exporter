@@ -26,9 +26,11 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -80,15 +82,16 @@ var capturedKinds = map[string][]string{
 }
 
 // dropReasons is the closed reason set for the dropped counter.
-var dropReasons = []string{"buffer_full", "cap_reached", "write_error", "duplicate_shape"}
+var dropReasons = []string{"buffer_full", "byte_budget", "cap_reached", "write_error", "duplicate_shape"}
 
 // receivers is the closed set the dropped counter is pre-initialised across.
 var receivers = []string{ReceiverZenarmor, ReceiverSyslog, ReceiverNetflow}
 
 // Defaults for the tunables a caller does not set.
 const (
-	defaultPerFileBytes int64 = 32 << 20 // 32 MiB: files stay small enough to copy off a box
-	defaultChanBuf            = 1024     // deep enough to ride out a disk stall, bounded so a runaway peer cannot grow it
+	defaultPerFileBytes  int64 = 32 << 20 // 32 MiB: files stay small enough to copy off a box
+	defaultChanBuf             = 1024     // deep enough to ride out a disk stall, bounded so a runaway peer cannot grow it
+	defaultQueueMaxBytes int64 = 64 << 20
 )
 
 // Config configures a Capturer.
@@ -103,6 +106,8 @@ type Config struct {
 	PerFileBytes int64
 	// ChanBuf is the hand-off channel depth. Zero uses defaultChanBuf.
 	ChanBuf int
+	// QueueMaxBytes caps detached entry data waiting for the writer. Zero uses 64 MiB.
+	QueueMaxBytes int64
 }
 
 // entry is one finished capture record, already detached from any caller-owned
@@ -111,6 +116,7 @@ type entry struct {
 	receiver string
 	kind     string
 	fields   map[string]any
+	bytes    int64
 }
 
 // Capturer is the disk sink. A nil *Capturer is a no-op throughout, so a receiver
@@ -131,7 +137,9 @@ type Capturer struct {
 	// lane calls it inline), so per-sink state would reset the window on every call and
 	// silently dedupe nothing. Keys are (receiver, kind, shape), so two receivers
 	// reporting the same text never suppress each other.
-	shapes *ShapeLimiter
+	shapes        *ShapeLimiter
+	queueMaxBytes int64
+	reserved      atomic.Int64
 
 	// closeOnce guards Close so a double Close (defer + explicit) cannot double-close
 	// the channel.
@@ -200,14 +208,18 @@ func New(cfg Config, reg prometheus.Registerer, log *slog.Logger) (*Capturer, er
 		buf = defaultChanBuf
 	}
 	c := &Capturer{
-		dir:          cfg.Dir,
-		maxBytes:     cfg.MaxBytes,
-		perFileBytes: perFile,
-		log:          log,
-		ch:           make(chan entry, buf),
-		done:         make(chan struct{}),
-		m:            newMetrics(reg),
-		shapes:       NewShapeLimiter(DefaultShapeWindow, DefaultMaxShapeKeys),
+		dir:           cfg.Dir,
+		maxBytes:      cfg.MaxBytes,
+		perFileBytes:  perFile,
+		log:           log,
+		ch:            make(chan entry, buf),
+		done:          make(chan struct{}),
+		m:             newMetrics(reg),
+		shapes:        NewShapeLimiter(DefaultShapeWindow, DefaultMaxShapeKeys),
+		queueMaxBytes: cfg.QueueMaxBytes,
+	}
+	if c.queueMaxBytes <= 0 {
+		c.queueMaxBytes = defaultQueueMaxBytes
 	}
 	go c.run()
 	return c, nil
@@ -223,10 +235,22 @@ func (c *Capturer) Capture(receiver, kind string, fields map[string]any) {
 	if c == nil {
 		return
 	}
-	e := entry{receiver: receiver, kind: kind, fields: copyFields(fields)}
+	cost := int64(fieldBytes(fields) + len(receiver) + len(kind))
+	for {
+		used := c.reserved.Load()
+		if cost > c.queueMaxBytes || used > c.queueMaxBytes-cost {
+			c.m.dropped.WithLabelValues(receiver, "byte_budget").Inc()
+			return
+		}
+		if c.reserved.CompareAndSwap(used, used+cost) {
+			break
+		}
+	}
+	e := entry{receiver: receiver, kind: kind, fields: copyFields(fields), bytes: cost}
 	select {
 	case c.ch <- e:
 	default:
+		c.reserved.Add(-cost)
 		// Disk cannot keep up. Dropping here, on the hot path, is the whole point of the
 		// bounded channel: a debug tool must never be able to stall ingest.
 		c.m.dropped.WithLabelValues(receiver, "buffer_full").Inc()
@@ -409,37 +433,86 @@ func (c *Capturer) run() {
 	defer flushAll()
 
 	for e := range c.ch {
-		line, err := encode(e)
-		if err != nil {
-			c.m.dropped.WithLabelValues(e.receiver, "write_error").Inc()
-			continue
-		}
-		if c.maxBytes > 0 && total+int64(len(line)) > c.maxBytes {
-			if !stopped {
-				stopped = true
-				c.log.Warn("debug capture reached its size cap; capture paused, oldest samples kept",
-					"dir", c.dir, "bytes", total, "max_bytes", c.maxBytes)
-			}
-			c.m.dropped.WithLabelValues(e.receiver, "cap_reached").Inc()
-			continue
-		}
-		f := files[e.receiver]
-		if f == nil {
-			nf, ferr := newRotatingFile(c.dir, e.receiver, c.perFileBytes, c.log)
-			if ferr != nil {
+		func() {
+			// Keep the reservation until encoding and writing are complete. Releasing
+			// on dequeue allowed the queue to admit a replacement while both this
+			// entry and its encoded copy were still resident.
+			defer c.reserved.Add(-e.bytes)
+			line, err := encode(e)
+			if err != nil {
 				c.m.dropped.WithLabelValues(e.receiver, "write_error").Inc()
-				continue
+				return
 			}
-			files[e.receiver] = nf
-			f = nf
+			if c.maxBytes > 0 && total+int64(len(line)) > c.maxBytes {
+				if !stopped {
+					stopped = true
+					c.log.Warn("debug capture reached its size cap; capture paused, oldest samples kept",
+						"dir", c.dir, "bytes", total, "max_bytes", c.maxBytes)
+				}
+				c.m.dropped.WithLabelValues(e.receiver, "cap_reached").Inc()
+				return
+			}
+			f := files[e.receiver]
+			if f == nil {
+				nf, ferr := newRotatingFile(c.dir, e.receiver, c.perFileBytes, c.log)
+				if ferr != nil {
+					c.m.dropped.WithLabelValues(e.receiver, "write_error").Inc()
+					return
+				}
+				files[e.receiver] = nf
+				f = nf
+			}
+			n, werr := f.write(line)
+			if werr != nil {
+				c.m.dropped.WithLabelValues(e.receiver, "write_error").Inc()
+				return
+			}
+			total += int64(n)
+			c.m.captured.WithLabelValues(e.receiver, e.kind).Inc()
+		}()
+	}
+}
+
+func fieldBytes(v any) int {
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return 0
+	}
+	if rv.Kind() == reflect.Interface || rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return 0
 		}
-		n, werr := f.write(line)
-		if werr != nil {
-			c.m.dropped.WithLabelValues(e.receiver, "write_error").Inc()
-			continue
+		return fieldBytes(rv.Elem().Interface())
+	}
+	switch rv.Kind() {
+	case reflect.String:
+		return rv.Len()
+	case reflect.Slice, reflect.Array:
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			return rv.Len()
 		}
-		total += int64(n)
-		c.m.captured.WithLabelValues(e.receiver, e.kind).Inc()
+		n := 0
+		for i := 0; i < rv.Len(); i++ {
+			n += fieldBytes(rv.Index(i).Interface())
+		}
+		return n
+	case reflect.Map:
+		n := 0
+		iter := rv.MapRange()
+		for iter.Next() {
+			n += fieldBytes(iter.Key().Interface()) + fieldBytes(iter.Value().Interface())
+		}
+		return n
+	case reflect.Struct:
+		n := 0
+		for i := 0; i < rv.NumField(); i++ {
+			if rv.Field(i).CanInterface() {
+				n += fieldBytes(rv.Field(i).Interface())
+			}
+		}
+		return n
+	default:
+		return int(rv.Type().Size())
 	}
 }
 

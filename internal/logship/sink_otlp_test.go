@@ -36,6 +36,28 @@ type fakeExporter struct {
 	shutdown int
 }
 
+func TestObservingHTTPClientDoesNotFollowRedirects(t *testing.T) {
+	var targetHits atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetHits.Add(1) }))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer source.Close()
+	client, err := newObservingHTTPClient(&options.OTLPConfig{}, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Post(source.URL, "application/x-protobuf", strings.NewReader("secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusTemporaryRedirect || targetHits.Load() != 0 {
+		t.Fatalf("status=%d target hits=%d", resp.StatusCode, targetHits.Load())
+	}
+}
+
 func (f *fakeExporter) Export(_ context.Context, records []sdklog.Record) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -68,8 +68,9 @@ func TestFlowConfig_ShippedDefaults(t *testing.T) {
 		// The NetFlow receiver is OFF by default and stays that way: unlike the
 		// Zenarmor lane it opens an unauthenticated UDP socket, and NetFlow has no
 		// authentication of any kind, so switching it on is a deliberate act.
-		"flow.netflow.enabled": "false",
-		"flow.netflow.listen":  ":2055",
+		"flow.netflow.enabled":     "false",
+		"flow.netflow.listen":      ":2055",
+		"flow.max-logs-per-window": "10000",
 	} {
 		if got, ok := defaults[name]; !ok {
 			t.Errorf("--%s is not registered", name)

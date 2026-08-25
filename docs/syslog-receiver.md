@@ -682,6 +682,8 @@ untrusted segment; on a LAN-local link it is unnecessary.
 opnsense2otel \
   --logs.enabled \
   --logs.syslog.enabled \
+  --logs.syslog.listen-udp= \
+  --logs.syslog.listen-tcp= \
   --logs.syslog.listen-tls=:6514 \
   --logs.syslog.tls-cert-file=/etc/exporter/syslog.pem \
   --logs.syslog.tls-key-file=/etc/exporter/syslog.key \

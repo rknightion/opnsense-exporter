@@ -381,7 +381,7 @@ services:
       # Hide the /devices page (exposes MAC/hostname).
       # OPN2OTEL_WEB_UI_DISABLE_DEVICES: "false"
       # Serve the operator console at / (else the minimal landing page).
-      # OPN2OTEL_WEB_UI_ENABLED: "true"
+      # OPN2OTEL_WEB_UI_ENABLED: "false"
       # Live-poll interval for the console's dynamic pages.
       # OPN2OTEL_WEB_UI_REFRESH_INTERVAL: "5s"
 
@@ -602,6 +602,9 @@ services:
       # Push-based. The firewall sends syslog here; the exporter parses, enriches and
       # ships it. UNAUTHENTICATED unless TLS client certs are configured.
       # ==========================================================================
+      # Explicitly allow plaintext UDP/TCP listeners alongside TLS for a mixed-mode
+      # migration.
+      # OPN2OTEL_LOGS_SYSLOG_ALLOW_PLAINTEXT_WITH_TLS: "false"
       # Comma-separated CIDR allowlist of hosts permitted to send syslog (e.g.
       # 10.0.0.254/32). Empty accepts any sender. Syslog is unauthenticated, so set this
       # on a shared network.
@@ -756,6 +759,9 @@ services:
       # each buffer that full allowance. Excess requests are refused with 503 before a
       # body is read. 0 disables the limit.
       # OPN2OTEL_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS: "8"
+      # Maximum accepted Zenarmor TCP connections, including TLS handshakes and partial
+      # headers.
+      # OPN2OTEL_LOGS_ZENARMOR_MAX_CONNECTIONS: "128"
       # PEM server certificate for the Zenarmor receiver. Set with
       # --logs.zenarmor.tls-key-file to serve HTTPS, and use an https:// URI in
       # Zenarmor's streaming settings.
@@ -989,7 +995,7 @@ services:
       # Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled)
       # and counted. A flood guard on the unauthenticated NetFlow ingress. 0 is
       # unlimited. Metrics are never truncated.
-      # OPN2OTEL_FLOW_MAX_LOGS_PER_WINDOW: "0"
+      # OPN2OTEL_FLOW_MAX_LOGS_PER_WINDOW: "10000"
       # Maximum flow series emitted per scrape. Everything beyond folds into a single
       # __other__ series per source, so the family still sums exactly at any limit. 0
       # emits every tracked combination. Raise --flow.max-keys with this: a value above

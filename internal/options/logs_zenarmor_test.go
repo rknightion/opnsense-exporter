@@ -12,11 +12,19 @@ func withZenarmorFlags(t *testing.T, fn func()) {
 	user, pass := *logsZenarmorAuthUser, *logsZenarmorAuthPassword
 	cert, key := *logsZenarmorTLSCertFile, *logsZenarmorTLSKeyFile
 	peers, enrich := *logsZenarmorAllowedPeers, *logsZenarmorEnrich
+	transport := *logsZenarmorTransport
+	syslogEnabled, syslogPeers := *logsSyslogEnabled, *logsSyslogAllowedPeers
+	syslogUDP, syslogTCP, syslogTLS := *logsSyslogListenUDP, *logsSyslogListenTCP, *logsSyslogListenTLS
+	syslogClientCA := *logsSyslogTLSClientCAFile
 	t.Cleanup(func() {
 		*logsZenarmorEnabled, *logsZenarmorListenHTTP, *logsZenarmorFamilies = enabled, addr, families
 		*logsZenarmorAuthUser, *logsZenarmorAuthPassword = user, pass
 		*logsZenarmorTLSCertFile, *logsZenarmorTLSKeyFile = cert, key
 		*logsZenarmorAllowedPeers, *logsZenarmorEnrich = peers, enrich
+		*logsZenarmorTransport = transport
+		*logsSyslogEnabled, *logsSyslogAllowedPeers = syslogEnabled, syslogPeers
+		*logsSyslogListenUDP, *logsSyslogListenTCP, *logsSyslogListenTLS = syslogUDP, syslogTCP, syslogTLS
+		*logsSyslogTLSClientCAFile = syslogClientCA
 	})
 	fn()
 }
@@ -178,6 +186,48 @@ func TestLogsZenarmor_NoWarningWithAuth(t *testing.T) {
 	})
 }
 
+func TestLogsZenarmor_SyslogEmptyParsedAllowlistStillWarns(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorTransport = "syslog"
+		*logsSyslogEnabled = true
+		*logsZenarmorAllowedPeers = ""
+		*logsSyslogAllowedPeers = ","
+		*logsSyslogListenUDP = ":5514"
+		*logsSyslogListenTCP = ""
+		*logsSyslogListenTLS = ""
+		*logsSyslogTLSClientCAFile = ""
+		cfg, ok, err := LogsZenarmor()
+		if err != nil || !ok {
+			t.Fatalf("got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+		if len(cfg.Warnings) != 1 {
+			t.Fatalf("Warnings = %v, want exactly 1", cfg.Warnings)
+		}
+	})
+}
+
+func TestLogsZenarmor_SyslogExclusiveMTLSSuppressesWarning(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorTransport = "syslog"
+		*logsSyslogEnabled = true
+		*logsZenarmorAllowedPeers = ""
+		*logsSyslogAllowedPeers = ""
+		*logsSyslogListenUDP = ""
+		*logsSyslogListenTCP = ""
+		*logsSyslogListenTLS = ":6514"
+		*logsSyslogTLSClientCAFile = "client-ca.pem"
+		cfg, ok, err := LogsZenarmor()
+		if err != nil || !ok {
+			t.Fatalf("got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+		if len(cfg.Warnings) != 0 {
+			t.Fatalf("Warnings = %v, want none for exclusive mTLS", cfg.Warnings)
+		}
+	})
+}
+
 func TestLogsZenarmor_TLSHalfConfiguredIsAnError(t *testing.T) {
 	withZenarmorFlags(t, func() {
 		*logsZenarmorEnabled = true
@@ -227,6 +277,23 @@ func TestLogsZenarmor_SyslogTransportRequiresSyslogEnabled(t *testing.T) {
 	})
 	if _, ok, err := LogsZenarmor(); err == nil || ok {
 		t.Fatalf("transport=syslog without --logs.syslog.enabled: want error, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestLogsZenarmor_SyslogTransportRejectsHTTPAuth(t *testing.T) {
+	*logsZenarmorEnabled = true
+	*logsZenarmorTransport = "syslog"
+	*logsSyslogEnabled = true
+	*logsZenarmorAuthUser = "user"
+	*logsZenarmorAuthPassword = "pass"
+	t.Cleanup(func() {
+		*logsZenarmorEnabled = false
+		*logsZenarmorTransport = "elasticsearch"
+		*logsSyslogEnabled = false
+		*logsZenarmorAuthUser, *logsZenarmorAuthPassword = "", ""
+	})
+	if _, _, err := LogsZenarmor(); err == nil || !strings.Contains(err.Error(), "not available") {
+		t.Fatalf("syslog auth error = %v, want unsupported-auth error", err)
 	}
 }
 

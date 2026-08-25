@@ -37,6 +37,11 @@ const DefaultEndpoint = "https://download.maxmind.com/geoip/databases"
 // this sits far above any real MaxMind database.
 const defaultMaxBytes = 512 << 20
 
+const (
+	maxArchiveMembers             = 1024
+	maxArchiveOverheadBytes int64 = 8 << 20
+)
+
 // Downloader fetches MaxMind databases over the official download API and installs
 // them, one file per edition, into Dir.
 //
@@ -153,7 +158,7 @@ func (d *Downloader) Fetch(ctx context.Context, edition string) (DownloadResult,
 			edition, sum, want)
 	}
 
-	if err := d.install(tmp, dest, edition, lastModified); err != nil {
+	if err := d.install(ctx, tmp, dest, edition, lastModified); err != nil {
 		return res, err
 	}
 	res.Updated = true
@@ -254,8 +259,8 @@ func (d *Downloader) spool(body io.Reader) (string, string, error) {
 // install extracts the archive's single .mmdb member and renames it over dest, then
 // stamps dest with the server's Last-Modified so the next Fetch can make an exact
 // conditional request.
-func (d *Downloader) install(archive, dest, edition string, lastModified time.Time) error {
-	tmp, err := d.extract(archive, dest, edition)
+func (d *Downloader) install(ctx context.Context, archive, dest, edition string, lastModified time.Time) error {
+	tmp, err := d.extract(ctx, archive, dest, edition)
 	if err != nil {
 		return err
 	}
@@ -282,7 +287,7 @@ func (d *Downloader) install(archive, dest, edition string, lastModified time.Ti
 // structurally impossible rather than filtered. What is still checked is the member
 // TYPE (only regular files; a symlink or device member is refused outright) and its
 // decompressed SIZE.
-func (d *Downloader) extract(archive, dest, edition string) (string, error) {
+func (d *Downloader) extract(ctx context.Context, archive, dest, edition string) (string, error) {
 	f, err := os.Open(archive) //nolint:gosec // archive is a temp file this package wrote
 	if err != nil {
 		return "", fmt.Errorf("open geoip archive: %w", err)
@@ -295,7 +300,8 @@ func (d *Downloader) extract(archive, dest, edition string) (string, error) {
 	}
 	defer gz.Close()
 
-	tr := tar.NewReader(gz)
+	tr := tar.NewReader(io.LimitReader(contextReader{ctx: ctx, r: gz}, d.maxBytes()+maxArchiveOverheadBytes+1))
+	members := 0
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -303,6 +309,10 @@ func (d *Downloader) extract(archive, dest, edition string) (string, error) {
 		}
 		if err != nil {
 			return "", fmt.Errorf("read geoip archive for %s: %w", edition, err)
+		}
+		members++
+		if members > maxArchiveMembers {
+			return "", fmt.Errorf("geoip archive for %s exceeds the %d-member limit", edition, maxArchiveMembers)
 		}
 		if !strings.HasSuffix(h.Name, ".mmdb") {
 			continue
@@ -318,6 +328,18 @@ func (d *Downloader) extract(archive, dest, edition string) (string, error) {
 		return d.spillMember(tr, dest, edition)
 	}
 	return "", fmt.Errorf("geoip archive for %s holds no .mmdb file", edition)
+}
+
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.r.Read(p)
 }
 
 // spillMember copies the current tar member to a temporary file beside dest.

@@ -87,7 +87,9 @@ const (
 	// the ceiling. Should a very long-lived process ever reach it, ingest itself is
 	// unaffected: handleBulk never consults the registry, which only backs the exists
 	// probe.
-	maxIndices = 512
+	maxIndices        = 512
+	maxIndexNameBytes = 255
+	maxIndexBytes     = 64 << 10
 )
 
 // errBodyTooLarge is returned by readBody when the DECOMPRESSED stream would exceed
@@ -127,6 +129,8 @@ type Config struct {
 	// request, so without this N concurrent requests each buffer that full allowance
 	// (#315). Zero disables the limit.
 	MaxConcurrentRequests int
+	// MaxConnections bounds sockets before request parsing and authentication.
+	MaxConnections int
 	// TLSConfig, when non-nil, serves HTTPS instead of HTTP.
 	TLSConfig *tls.Config
 	// DebugCapture opts this receiver into the shared debug-capture sink (#330). The
@@ -170,8 +174,9 @@ type server struct {
 	// and for the same reason: this is an ingress a peer can drive as hard as it likes.
 	sem chan struct{}
 
-	mu      sync.RWMutex
-	indices map[string]bool
+	mu         sync.RWMutex
+	indices    map[string]bool
+	indexBytes int
 }
 
 // newServer builds the ES handler. onBulk receives every document Zenarmor writes,
@@ -454,8 +459,11 @@ func (s *server) hasIndex(idx string) bool {
 func (s *server) addIndex(idx string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.indices[idx] && len(s.indices) >= maxIndices {
-		return false
+	if !s.indices[idx] {
+		if len(idx) > maxIndexNameBytes || len(s.indices) >= maxIndices || s.indexBytes+len(idx) > maxIndexBytes {
+			return false
+		}
+		s.indexBytes += len(idx)
 	}
 	s.indices[idx] = true
 	return true
@@ -464,7 +472,10 @@ func (s *server) addIndex(idx string) bool {
 func (s *server) dropIndex(idx string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.indices, idx)
+	if s.indices[idx] {
+		s.indexBytes -= len(idx)
+		delete(s.indices, idx)
+	}
 }
 
 func (s *server) peerAllowed(r *http.Request) bool {

@@ -16,16 +16,74 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
-	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/time/rate"
 )
+
+const (
+	maxBasicAuthUsernameBytes = 256
+	// bcrypt ignores password bytes after 72. Rejecting longer inputs avoids
+	// ambiguous credentials and bounds every allocation before expensive work.
+	maxBasicAuthPasswordBytes = 72
+	maxAuthLimiterPeers       = 4096
+	authAttemptBurst          = 5
+)
+
+type authAttemptLimiters struct {
+	mu       sync.Mutex
+	peers    map[string]*rate.Limiter
+	fallback *rate.Limiter
+}
+
+func newAuthAttemptLimiters() *authAttemptLimiters {
+	return &authAttemptLimiters{
+		peers:    make(map[string]*rate.Limiter),
+		fallback: rate.NewLimiter(rate.Every(time.Second), authAttemptBurst),
+	}
+}
+
+func (l *authAttemptLimiters) allow(remoteAddr string) bool {
+	peer, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		peer = remoteAddr
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	limiter := l.peers[peer]
+	if limiter == nil {
+		if len(l.peers) >= maxAuthLimiterPeers {
+			return l.fallback.Allow()
+		}
+		limiter = rate.NewLimiter(rate.Every(time.Second), authAttemptBurst)
+		l.peers[peer] = limiter
+	}
+	return limiter.Allow()
+}
+
+func credentialsWithinLimits(user, pass string) bool {
+	return len(user) <= maxBasicAuthUsernameBytes && len(pass) <= maxBasicAuthPasswordBytes
+}
+
+func authCacheKey(user, hashedPassword, pass string) string {
+	h := sha256.New()
+	var size [8]byte
+	for _, value := range []string{user, hashedPassword, pass} {
+		binary.BigEndian.PutUint64(size[:], uint64(len(value)))
+		_, _ = h.Write(size[:])
+		_, _ = h.Write([]byte(value))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
 
 // extraHTTPHeaders is a map of HTTP headers that can be added to HTTP
 // responses.
@@ -82,9 +140,10 @@ type webHandler struct {
 	logger        *slog.Logger
 	cache         *cache
 	limiter       *rate.Limiter
-	// bcryptMtx is there to ensure that bcrypt.CompareHashAndPassword is run
-	// only once in parallel as this is CPU intensive.
-	bcryptMtx sync.Mutex
+	// bcryptSem bounds expensive cache misses without allowing request goroutines
+	// to queue behind bcrypt work.
+	bcryptSem  chan struct{}
+	authMisses *authAttemptLimiters
 }
 
 func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +170,7 @@ func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, pass, auth := r.BasicAuth()
-	if auth {
+	if auth && credentialsWithinLimits(user, pass) {
 		hashedPassword, validUser := c.Users[user]
 
 		if !validUser {
@@ -121,22 +180,32 @@ func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			hashedPassword = "$2y$10$QOauhQNbBCuQDKes6eFzPeMqBSjb7Mr5DUmpZ/VcEd00UAV/LDeSi"
 		}
 
-		cacheKey := strings.Join(
-			[]string{
-				hex.EncodeToString([]byte(user)),
-				hex.EncodeToString([]byte(hashedPassword)),
-				hex.EncodeToString([]byte(pass)),
-			}, ":")
+		cacheKey := authCacheKey(user, string(hashedPassword), pass)
 		authOk, ok := u.cache.get(cacheKey)
 
 		if !ok {
+			// A cache miss is the only path that can invoke bcrypt. Bound misses per
+			// socket peer before global admission so one source cannot monopolise the
+			// expensive comparison slot by varying credentials.
+			if u.authMisses != nil && !u.authMisses.allow(r.RemoteAddr) {
+				http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+				return
+			}
 			// This user, hashedPassword, password is not cached.
-			u.bcryptMtx.Lock()
-			err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(pass))
-			u.bcryptMtx.Unlock()
-
-			authOk = validUser && err == nil
-			u.cache.set(cacheKey, authOk)
+			select {
+			case u.bcryptSem <- struct{}{}:
+			default:
+				http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+				return
+			}
+			// Recheck after admission: another request may have populated this key.
+			authOk, ok = u.cache.get(cacheKey)
+			if !ok {
+				err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(pass))
+				authOk = validUser && err == nil
+				u.cache.set(cacheKey, authOk)
+			}
+			<-u.bcryptSem
 		}
 
 		if authOk && validUser {

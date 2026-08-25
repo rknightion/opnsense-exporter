@@ -21,8 +21,9 @@ package collector
 // Not safe for concurrent use on its own: every caller in this package already
 // holds LogEventStore's mutex, and taking a second lock here would buy nothing.
 type cappedCounter[K comparable] struct {
-	m   map[K]float64
-	max int
+	m     map[K]float64
+	max   int
+	bytes int
 	// overflow accumulates observations for keys refused by the budget. It is a
 	// float64 for the same reason the per-key values are: it is emitted as a
 	// counter and must survive the same conversion.
@@ -36,9 +37,13 @@ func newCappedCounter[K comparable](max int) *cappedCounter[K] {
 // inc records one observation for k, folding into the overflow total when k is
 // novel and the budget is already met. max <= 0 disables the budget.
 func (c *cappedCounter[K]) inc(k K) {
-	if _, ok := c.m[k]; !ok && c.max > 0 && len(c.m) >= c.max {
-		c.overflow++
-		return
+	if _, ok := c.m[k]; !ok {
+		cost, valid := retainedStringBytes(k)
+		if !valid || c.bytes+cost > maxRetainedFamilyBytes || (c.max > 0 && len(c.m) >= c.max) {
+			c.overflow++
+			return
+		}
+		c.bytes += cost
 	}
 	c.m[k]++
 }

@@ -386,6 +386,9 @@ func TestCorrelator_OverflowForceEmitsOldest(t *testing.T) {
 	if st.Entries != 2 {
 		t.Errorf("Entries = %d, want the map held at the cap of 2", st.Entries)
 	}
+	if c.order.Len() != st.Entries {
+		t.Fatalf("age index length = %d, entries = %d", c.order.Len(), st.Entries)
+	}
 }
 
 // Flush drains every pending NetFlow entry at shutdown, whatever the window says.

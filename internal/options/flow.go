@@ -191,7 +191,7 @@ var (
 		"Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled) and counted. "+
 			"A flood guard on the unauthenticated NetFlow ingress. 0 is unlimited. Metrics are never "+
 			"truncated.",
-	).Envar("OPN2OTEL_FLOW_MAX_LOGS_PER_WINDOW").Default("0").Int()
+	).Envar("OPN2OTEL_FLOW_MAX_LOGS_PER_WINDOW").Default("10000").Int()
 
 	// Opt-in because the host label is unbounded cardinality — one series per internal
 	// host, unlike every other flow metric, which is exactly why it is off by default

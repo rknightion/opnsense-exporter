@@ -98,7 +98,12 @@
         "enabled": { "type": "boolean" },
         "allowedPeers": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 64,
+            "pattern": "^[0-9A-Fa-f:.]+/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$"
+          }
         }
       }
     },

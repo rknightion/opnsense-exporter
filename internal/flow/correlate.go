@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"container/heap"
 	"sync"
 	"time"
 )
@@ -36,6 +37,7 @@ type Correlator struct {
 
 	mu    sync.Mutex
 	cells map[corrKey]*corrEntry
+	order corrHeap
 
 	entries int // == len(cells); tracked so Stats never scans
 	emitted uint64
@@ -99,7 +101,37 @@ type corrEntry struct {
 	// repairs is the UNION of every fragment's repair markers, for the same reason
 	// tcpFlags is unioned: finalize takes every non-volume dimension from ONE chosen
 	// orientation, so a repair applied to any other fragment vanished at the merge.
-	repairs Repairs
+	repairs   Repairs
+	heapIndex int
+}
+
+type corrHeap []*corrEntry
+
+func (h corrHeap) Len() int { return len(h) }
+func (h corrHeap) Less(i, j int) bool {
+	if h[i].firstSeen.Equal(h[j].firstSeen) {
+		if h[i].key.bucket == h[j].key.bucket {
+			return h[i].key.community < h[j].key.community
+		}
+		return h[i].key.bucket < h[j].key.bucket
+	}
+	return h[i].firstSeen.Before(h[j].firstSeen)
+}
+func (h corrHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].heapIndex, h[j].heapIndex = i, j
+}
+func (h *corrHeap) Push(x any) {
+	e := x.(*corrEntry)
+	e.heapIndex = len(*h)
+	*h = append(*h, e)
+}
+func (h *corrHeap) Pop() any {
+	old := *h
+	e := old[len(old)-1]
+	e.heapIndex = -1
+	*h = old[:len(old)-1]
+	return e
 }
 
 // CorrelatorStats is the correlator's own health, published as self-metrics so a
@@ -212,12 +244,12 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 					c.evicted++
 					pending = append(pending, rec)
 				}
-				delete(c.cells, victim.key)
-				c.entries--
+				c.removeEntryLocked(victim)
 			}
 		}
 		e = &corrEntry{key: k, firstSeen: r.Observed}
 		c.cells[k] = e
+		heap.Push(&c.order, e)
 		c.entries++
 	}
 	if !e.hasNF {
@@ -330,6 +362,7 @@ func (c *Correlator) observeZenarmorLocked(r Record) {
 		}
 		e = &corrEntry{key: k, firstSeen: r.Observed}
 		c.cells[k] = e
+		heap.Push(&c.order, e)
 		c.entries++
 	}
 	if e.zen != nil {
@@ -351,7 +384,7 @@ func (c *Correlator) observeZenarmorLocked(r Record) {
 func (c *Correlator) Expire(now time.Time) {
 	var pending []Record
 	c.mu.Lock()
-	for k, e := range c.cells {
+	for _, e := range c.cells {
 		if now.Sub(e.firstSeen) < c.window {
 			continue
 		}
@@ -363,8 +396,7 @@ func (c *Correlator) Expire(now time.Time) {
 			}
 			pending = append(pending, rec)
 		}
-		delete(c.cells, k)
-		c.entries--
+		c.removeEntryLocked(e)
 	}
 	c.mu.Unlock()
 
@@ -388,6 +420,7 @@ func (c *Correlator) Flush() {
 		}
 		delete(c.cells, k)
 	}
+	c.order = nil
 	c.entries = 0
 	c.mu.Unlock()
 
@@ -564,17 +597,22 @@ func (e *corrEntry) orientation() (Record, bool) {
 	return b, true
 }
 
-// oldestLocked returns the entry with the earliest firstSeen, or nil if the map is
-// empty. Callers hold the lock. A linear scan is acceptable because eviction only runs
-// at capacity, which a correctly-sized deployment never reaches.
+// oldestLocked returns the entry with the earliest firstSeen from the age heap.
+// Callers hold the lock.
 func (c *Correlator) oldestLocked() *corrEntry {
-	var oldest *corrEntry
-	for _, e := range c.cells {
-		if oldest == nil || e.firstSeen.Before(oldest.firstSeen) {
-			oldest = e
-		}
+	if len(c.order) == 0 {
+		return nil
 	}
-	return oldest
+	return c.order[0]
+}
+
+func (c *Correlator) removeEntryLocked(e *corrEntry) {
+	if _, ok := c.cells[e.key]; !ok {
+		return
+	}
+	delete(c.cells, e.key)
+	heap.Remove(&c.order, e.heapIndex)
+	c.entries--
 }
 
 // keyOf groups a record by its community id and the window its flow-end falls in.

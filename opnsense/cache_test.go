@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -130,6 +131,25 @@ func TestClient_NoCachingWithoutConfiguredTTL(t *testing.T) {
 
 	if got := requests.Load(); got != 3 {
 		t.Errorf("expected 3 upstream requests with caching off, got %d", got)
+	}
+}
+
+func TestResponseCacheBoundsPerEntryAndAggregateBytes(t *testing.T) {
+	rc := newResponseCache()
+	for i := 0; i < maxResponseCacheBytes/maxResponseCacheEntryBytes+4; i++ {
+		path := EndpointPath(fmt.Sprintf("api/test/%d", i))
+		rc.setTTL(path, time.Hour)
+		if !rc.put(path, http.StatusOK, make([]byte, maxResponseCacheEntryBytes)) {
+			t.Fatalf("entry %d was not cached", i)
+		}
+	}
+	if rc.bytes > maxResponseCacheBytes {
+		t.Fatalf("cache bytes = %d, max %d", rc.bytes, maxResponseCacheBytes)
+	}
+	tooLarge := EndpointPath("api/test/too-large")
+	rc.setTTL(tooLarge, time.Hour)
+	if rc.put(tooLarge, http.StatusOK, make([]byte, maxResponseCacheEntryBytes+1)) {
+		t.Fatal("oversized cache entry was stored")
 	}
 }
 

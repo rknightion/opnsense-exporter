@@ -10,10 +10,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rknightion/opnsense2otel/v4/internal/options"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -24,30 +27,70 @@ import (
 
 // buildTLSConfig assembles a *tls.Config from the configured CA / client cert /
 // client key files, or returns (nil, nil) when none are set (use system defaults).
+// Explicit flags win; unset fields fall back to the standard signal-specific and
+// general OTEL_EXPORTER_OTLP_* certificate environment variables. This must be
+// resolved here because WithHTTPClient bypasses the SDK's environment-built TLS.
 func buildTLSConfig(cfg *options.OTLPConfig) (*tls.Config, error) {
-	if cfg.TLSCAFile == "" && cfg.TLSCertFile == "" && cfg.TLSKeyFile == "" {
+	caFile := cfg.TLSCAFile
+	if caFile == "" {
+		caFile = firstMetricsEnv("OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE", "OTEL_EXPORTER_OTLP_CERTIFICATE")
+	}
+	certFile, keyFile := cfg.TLSCertFile, cfg.TLSKeyFile
+	if certFile == "" && keyFile == "" {
+		certFile = firstMetricsEnv("OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE", "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE")
+		keyFile = firstMetricsEnv("OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY", "OTEL_EXPORTER_OTLP_CLIENT_KEY")
+	}
+	if caFile == "" && certFile == "" && keyFile == "" {
 		return nil, nil
 	}
+	if (certFile == "") != (keyFile == "") {
+		return nil, fmt.Errorf("otlp metrics: client certificate and key must be configured together")
+	}
 	tc := &tls.Config{MinVersion: tls.VersionTLS12}
-	if cfg.TLSCAFile != "" {
-		ca, err := os.ReadFile(cfg.TLSCAFile)
+	if caFile != "" {
+		ca, err := os.ReadFile(caFile)
 		if err != nil {
 			return nil, fmt.Errorf("read otlp tls-ca-file: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(ca) {
-			return nil, fmt.Errorf("otlp tls-ca-file %q contains no valid certificates", cfg.TLSCAFile)
+			return nil, fmt.Errorf("otlp tls-ca-file %q contains no valid certificates", caFile)
 		}
 		tc.RootCAs = pool
 	}
-	if cfg.TLSCertFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+	if certFile != "" {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
 			return nil, fmt.Errorf("load otlp client keypair: %w", err)
 		}
 		tc.Certificates = []tls.Certificate{cert}
 	}
 	return tc, nil
+}
+
+func firstMetricsEnv(names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func validateMetricsTransport(cfg *options.OTLPConfig, tlsCfg *tls.Config) error {
+	if cfg.Insecure && tlsCfg != nil {
+		return fmt.Errorf("otlp metrics: insecure transport cannot be combined with TLS certificate configuration")
+	}
+	if tlsCfg != nil && cfg.Endpoint != "" {
+		u, err := url.Parse(cfg.Endpoint)
+		if err != nil {
+			return fmt.Errorf("parse otlp endpoint %q: %w", cfg.Endpoint, err)
+		}
+		if strings.EqualFold(u.Scheme, "http") {
+			return fmt.Errorf("otlp metrics: http endpoint cannot be combined with TLS certificate configuration")
+		}
+	}
+	return nil
 }
 
 // metricsEndpointURL ensures an OTLP HTTP endpoint targets the metrics signal
@@ -89,6 +132,9 @@ func newExporter(ctx context.Context, cfg *options.OTLPConfig) (sdkmetric.Export
 	if err != nil {
 		return nil, err
 	}
+	if err := validateMetricsTransport(cfg, tlsCfg); err != nil {
+		return nil, err
+	}
 
 	// Temporality is intentionally not set: the metrics come from the Prometheus
 	// bridge producer already aggregated as cumulative, and an exporter-side
@@ -121,6 +167,11 @@ func newExporter(ctx context.Context, cfg *options.OTLPConfig) (sdkmetric.Export
 		return otlpmetricgrpc.New(ctx, opts...)
 	case "http/protobuf", "":
 		var opts []otlpmetrichttp.Option
+		client, err := newMetricsHTTPClient(tlsCfg)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, otlpmetrichttp.WithHTTPClient(client))
 		// See the grpc branch above for why this is conditional.
 		if options.OTLPGzipDefault(options.OTLPSignalMetrics) {
 			opts = append(opts, otlpmetrichttp.WithCompression(otlpmetrichttp.GzipCompression))
@@ -138,11 +189,39 @@ func newExporter(ctx context.Context, cfg *options.OTLPConfig) (sdkmetric.Export
 		if len(cfg.Headers) > 0 {
 			opts = append(opts, otlpmetrichttp.WithHeaders(cfg.Headers))
 		}
-		if tlsCfg != nil {
-			opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsCfg))
-		}
 		return otlpmetrichttp.New(ctx, opts...)
 	default:
 		return nil, fmt.Errorf("unsupported otlp protocol %q", cfg.Protocol)
 	}
+}
+
+func newMetricsHTTPClient(tlsCfg *tls.Config) (*http.Client, error) {
+	tr, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("otlp metrics: http.DefaultTransport is not an *http.Transport (%T)", http.DefaultTransport)
+	}
+	base := tr.Clone()
+	base.TLSClientConfig = tlsCfg
+	return &http.Client{
+		Transport: base,
+		Timeout:   metricsExportTimeout(),
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}, nil
+}
+
+func metricsExportTimeout() time.Duration {
+	const defaultTimeout = 10 * time.Second
+	for _, env := range []string{"OTEL_EXPORTER_OTLP_METRICS_TIMEOUT", "OTEL_EXPORTER_OTLP_TIMEOUT"} {
+		raw := strings.TrimSpace(os.Getenv(env))
+		if raw == "" {
+			continue
+		}
+		ms, err := strconv.Atoi(raw)
+		if err == nil && ms > 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return defaultTimeout
 }

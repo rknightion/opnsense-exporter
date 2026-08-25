@@ -303,6 +303,21 @@ func TestNilCapturerNoop(t *testing.T) {
 	}
 }
 
+func TestCaptureRejectsEntryBeforeCopyWhenQueueByteBudgetWouldBeExceeded(t *testing.T) {
+	c, err := New(Config{Dir: t.TempDir(), MaxBytes: 1 << 20, QueueMaxBytes: 32}, prometheus.NewRegistry(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Capture(ReceiverZenarmor, KindParseError, map[string]any{"document": make([]byte, 1024)})
+	if got := c.reserved.Load(); got != 0 {
+		t.Fatalf("reserved queue bytes = %d, want 0", got)
+	}
+	if got := counterVal(t, c.m.dropped, ReceiverZenarmor, "byte_budget"); got != 1 {
+		t.Fatalf("byte-budget drops = %v, want 1", got)
+	}
+	_ = c.Close()
+}
+
 func TestConcurrentWriters(t *testing.T) {
 	dir := t.TempDir()
 	c, _ := New(Config{Dir: dir, MaxBytes: 10 << 20, ChanBuf: 4096}, prometheus.NewRegistry(), nil)

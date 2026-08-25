@@ -114,6 +114,11 @@ var (
 			"Excess requests are refused with 503 before a body is read. 0 disables the limit.",
 	).Envar("OPN2OTEL_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS").Default("8").Int()
 
+	logsZenarmorMaxConnections = kingpin.Flag(
+		"logs.zenarmor.max-connections",
+		"Maximum accepted Zenarmor TCP connections, including TLS handshakes and partial headers.",
+	).Envar("OPN2OTEL_LOGS_ZENARMOR_MAX_CONNECTIONS").Default("128").Int()
+
 	logsZenarmorTLSCertFile = kingpin.Flag(
 		"logs.zenarmor.tls-cert-file",
 		"PEM server certificate for the Zenarmor receiver. Set with --logs.zenarmor.tls-key-file to "+
@@ -165,6 +170,7 @@ type ZenarmorConfig struct {
 	// limit is per request, so aggregate in-flight memory is otherwise unbounded.
 	// Zero disables the limit.
 	MaxConcurrentRequests int
+	MaxConnections        int
 	// DebugCapture opts this receiver into the shared debug-capture sink
 	// (--logs.debug-capture.dir). Validated against that dir being set.
 	DebugCapture bool
@@ -222,12 +228,19 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 		DebugCapture:    *logsZenarmorDebugCapture,
 
 		MaxConcurrentRequests: *logsZenarmorMaxConcurrentRequests,
+		MaxConnections:        *logsZenarmorMaxConnections,
 	}
 
 	if cfg.MaxConcurrentRequests < 0 {
 		return nil, false, fmt.Errorf(
 			"logs.zenarmor: --logs.zenarmor.max-concurrent-requests must not be negative, got %d",
 			cfg.MaxConcurrentRequests)
+	}
+	if cfg.MaxConnections == 0 {
+		cfg.MaxConnections = 128
+	}
+	if cfg.MaxConnections < 0 {
+		return nil, false, fmt.Errorf("logs.zenarmor: --logs.zenarmor.max-connections must be positive, got %d", cfg.MaxConnections)
 	}
 
 	if cfg.DebugCapture && !LogsDebugCaptureEnabled() {
@@ -284,6 +297,9 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 				"set, or both left empty; one without the other reads as auth-on but leaves the " +
 				"receiver open to anyone who knows (or guesses) the one value that is set")
 	}
+	if transport == "syslog" && cfg.AuthUser != "" {
+		return nil, false, fmt.Errorf("logs.zenarmor: HTTP basic auth is not available with transport=syslog; use a peer allowlist or syslog mTLS")
+	}
 
 	if transport == "elasticsearch" {
 		certFile := strings.TrimSpace(*logsZenarmorTLSCertFile)
@@ -312,7 +328,19 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 	// shipped logs. This is a deliberate, documented open mode (trusted management
 	// networks) so it is not fatal — but nothing else tells the operator at startup
 	// that they are running it, so warn.
-	if len(cfg.AllowedPeers) == 0 && cfg.AuthUser == "" && cfg.AuthPassword == "" {
+	effectiveSyslogAdmission := false
+	if transport == "syslog" {
+		syslogPeers, err := parseCIDRList(*logsSyslogAllowedPeers)
+		if err != nil {
+			return nil, false, err
+		}
+		exclusiveMTLS := strings.TrimSpace(*logsSyslogListenUDP) == "" &&
+			strings.TrimSpace(*logsSyslogListenTCP) == "" &&
+			strings.TrimSpace(*logsSyslogListenTLS) != "" &&
+			strings.TrimSpace(*logsSyslogTLSClientCAFile) != ""
+		effectiveSyslogAdmission = len(syslogPeers) > 0 || exclusiveMTLS
+	}
+	if len(cfg.AllowedPeers) == 0 && cfg.AuthUser == "" && cfg.AuthPassword == "" && !effectiveSyslogAdmission {
 		cfg.Warnings = append(cfg.Warnings,
 			"logs.zenarmor: the receiver is enabled with no peer allowlist and no authentication, "+
 				"so any host that can reach the listener can inject records that become metrics and "+

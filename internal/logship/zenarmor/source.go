@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rknightion/opnsense2otel/v4/internal/flow"
@@ -62,8 +63,9 @@ const (
 	// readTimeout is generous next to a real write (live bulk writes ran a few hundred
 	// KB, sub-second) yet large enough to admit the 64 MiB maxBodyBytes ceiling on a slow
 	// (~0.5 MB/s) deployment before it trips. A hostile peer's body still dies here.
-	readTimeout = 120 * time.Second
-	idleTimeout = 120 * time.Second
+	readTimeout  = 120 * time.Second
+	idleTimeout  = 120 * time.Second
+	writeTimeout = 30 * time.Second
 )
 
 func init() {
@@ -117,6 +119,7 @@ func loadConfig() (Config, bool, error) {
 		DropSelfTraffic:       oc.DropSelfTraffic,
 		DebugCapture:          oc.DebugCapture,
 		MaxConcurrentRequests: oc.MaxConcurrentRequests,
+		MaxConnections:        oc.MaxConnections,
 		Warnings:              oc.Warnings,
 	}, true, nil
 }
@@ -317,8 +320,48 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		IdleTimeout:       idleTimeout,
+		WriteTimeout:      writeTimeout,
+	}
+	if cfg.MaxConnections > 0 {
+		s.ln = newLimitedListener(s.ln, cfg.MaxConnections)
 	}
 	return s, nil
+}
+
+type limitedListener struct {
+	net.Listener
+	sem chan struct{}
+}
+
+func newLimitedListener(ln net.Listener, max int) net.Listener {
+	return &limitedListener{Listener: ln, sem: make(chan struct{}, max)}
+}
+
+func (l *limitedListener) Accept() (net.Conn, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		select {
+		case l.sem <- struct{}{}:
+			return &limitedConn{Conn: conn, release: func() { <-l.sem }}, nil
+		default:
+			_ = conn.Close()
+		}
+	}
+}
+
+type limitedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *limitedConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
 }
 
 func (s *zenarmorSource) Name() string { return sourceName }

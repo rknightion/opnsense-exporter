@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -276,6 +277,7 @@ type cappedGauge[K comparable, V any] struct {
 	m        map[K]V
 	max      int
 	overflow float64
+	bytes    int
 }
 
 func newCappedGauge[K comparable, V any](max int) *cappedGauge[K, V] {
@@ -285,11 +287,18 @@ func newCappedGauge[K comparable, V any](max int) *cappedGauge[K, V] {
 // set records the latest value for k, folding into the overflow total when k is
 // novel and the budget is already met. max <= 0 disables the budget.
 func (g *cappedGauge[K, V]) set(k K, v V) {
-	if _, ok := g.m[k]; !ok && g.max > 0 && len(g.m) >= g.max {
+	old, exists := g.m[k]
+	oldCost := 0
+	if exists {
+		oldCost, _ = retainedStringBytes(k, old)
+	}
+	cost, valid := retainedStringBytes(k, v)
+	if !valid || g.bytes-oldCost+cost > maxRetainedFamilyBytes || (!exists && g.max > 0 && len(g.m) >= g.max) {
 		g.overflow++
 		return
 	}
 	g.m[k] = v
+	g.bytes = g.bytes - oldCost + cost
 }
 
 // snapshot returns the live keys and the folded overflow total. Same contract as
@@ -304,7 +313,13 @@ func (g *cappedGauge[K, V]) snapshot() (map[K]V, float64) { return g.m, g.overfl
 // as "the interface went away" rather than "no new bind happened". This exists only
 // for a family whose source data can say so explicitly: dhcp6c's address-lease
 // REMOVED event. A key that was never present is a no-op.
-func (g *cappedGauge[K, V]) unset(k K) { delete(g.m, k) }
+func (g *cappedGauge[K, V]) unset(k K) {
+	if old, ok := g.m[k]; ok {
+		cost, _ := retainedStringBytes(k, old)
+		g.bytes -= cost
+		delete(g.m, k)
+	}
+}
 
 // setMax retunes the budget in place. Lowering it below the current size does not
 // evict, mirroring cappedCounter.setMax — and here eviction would be worse than a
@@ -517,6 +532,12 @@ func (s *LogEventStore) observe(cmd logEventCommand) bool {
 		return false
 	default:
 	}
+	// Parser values are commonly short substrings of the full syslog frame. A
+	// retained substring otherwise keeps that entire frame's backing allocation
+	// alive, defeating the byte budget even though len(value) is small. Detach at
+	// the single observation handoff so every family stores exactly the bytes it
+	// accounts for.
+	cmd = detachLogEventValues(cmd)
 	select {
 	case s.commands <- cmd:
 		return true
@@ -524,6 +545,15 @@ func (s *LogEventStore) observe(cmd logEventCommand) bool {
 		s.observationDrops.Add(1)
 		return false
 	}
+}
+
+func detachLogEventValues(cmd logEventCommand) logEventCommand {
+	for i := range cmd.values {
+		if cmd.values[i] != "" {
+			cmd.values[i] = strings.Clone(cmd.values[i])
+		}
+	}
+	return cmd
 }
 
 // ObserveFirewall implements logship.MetricSink.

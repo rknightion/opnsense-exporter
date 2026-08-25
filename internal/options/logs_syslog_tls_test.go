@@ -26,6 +26,23 @@ import (
 	"time"
 )
 
+func TestLogsSyslogMixedPlaintextAndTLSRequiresExplicitAcknowledgement(t *testing.T) {
+	oldEnabled := *logsSyslogEnabled
+	oldUDP, oldTCP, oldTLS := *logsSyslogListenUDP, *logsSyslogListenTCP, *logsSyslogListenTLS
+	oldAllow := *logsSyslogAllowPlaintextWithTLS
+	t.Cleanup(func() {
+		*logsSyslogEnabled = oldEnabled
+		*logsSyslogListenUDP, *logsSyslogListenTCP, *logsSyslogListenTLS = oldUDP, oldTCP, oldTLS
+		*logsSyslogAllowPlaintextWithTLS = oldAllow
+	})
+	*logsSyslogEnabled = true
+	*logsSyslogListenUDP, *logsSyslogListenTCP, *logsSyslogListenTLS = ":5514", "", ":6514"
+	*logsSyslogAllowPlaintextWithTLS = false
+	if _, _, err := LogsSyslog(); err == nil || !strings.Contains(err.Error(), "plaintext") {
+		t.Fatalf("mixed transport error = %v, want explicit acknowledgement error", err)
+	}
+}
+
 // writeSelfSignedCert mints an ephemeral self-signed EC cert/key pair and writes
 // both as PEM files under dir, returning their paths. Used as the server keypair.
 func writeSelfSignedCert(t *testing.T, dir, prefix string) (certPath, keyPath string) {

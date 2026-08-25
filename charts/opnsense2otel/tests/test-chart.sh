@@ -125,6 +125,14 @@ assert_contains "$settings" '"--collector.poll-interval-override=arp_table=30s"'
 assert_contains "$settings" '"--collector.poll-interval-override=carp=45s"'
 assert_contains "$settings" '"--annotations.extra-tags=env=prod"'
 
+# A setting value remains one argv scalar even when it contains YAML-significant
+# quotes and newlines. It must not grow a sibling argument that overrides a
+# protected env-derived option.
+render quoted-args "$fixture_dir/quoted-args.yaml"
+quoted_args="$render_dir/quoted-args.yaml"
+assert_not_contains "$quoted_args" '    - "--opnsense.address=attacker.example.net'
+assert_contains "$quoted_args" '\n    - \"--opnsense.address=attacker.example.net'
+
 helm template contract "$chart_dir" -f "$fixture_dir/upgrade.yaml" --is-upgrade > "$render_dir/upgrade.yaml"
 assert_contains "$render_dir/upgrade.yaml" 'kind: Deployment'
 
@@ -136,6 +144,14 @@ if helm template contract "$chart_dir" --set opnsense.address= > /dev/null 2>&1;
 fi
 if helm template contract "$chart_dir" -f "$fixture_dir/minimal.yaml" --set ports.http=70000 > /dev/null 2>&1; then
   fail 'schema accepted an invalid port'
+fi
+if helm template contract "$chart_dir" -f "$fixture_dir/minimal.yaml" \
+  --set-string 'receivers.netflow.allowedPeers[0]=not-a-cidr' > /dev/null 2>&1; then
+  fail 'schema accepted a non-CIDR receiver peer'
+fi
+if helm template contract "$chart_dir" -f "$fixture_dir/minimal.yaml" \
+  --set-string 'receivers.netflow.allowedPeers[0]=::::/999' > /dev/null 2>&1; then
+  fail 'schema accepted an out-of-range IPv6 CIDR prefix'
 fi
 
 for forbidden_arg in \

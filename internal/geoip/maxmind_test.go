@@ -215,6 +215,28 @@ func TestFetchRefusesAnOversizeMember(t *testing.T) {
 	}
 }
 
+func TestExtractBoundsAggregateMembersBeforeDatabase(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for i := 0; i < maxArchiveMembers+1; i++ {
+		if err := tw.WriteHeader(&tar.Header{Name: fmt.Sprintf("readme-%d", i), Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = tw.Close()
+	_ = gz.Close()
+	archive := filepath.Join(t.TempDir(), "many.tar.gz")
+	if err := os.WriteFile(archive, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := &Downloader{Dir: t.TempDir(), MaxBytes: 1 << 20}
+	_, err := d.extract(t.Context(), archive, filepath.Join(d.Dir, "db.mmdb"), "test")
+	if err == nil || !strings.Contains(err.Error(), "member limit") {
+		t.Fatalf("extract error = %v, want member limit", err)
+	}
+}
+
 func TestValidateEdition(t *testing.T) {
 	for _, ok := range []string{"GeoLite2-Country", "GeoLite2-ASN", "GeoIP2_City", "abc123"} {
 		if err := ValidateEdition(ok); err != nil {

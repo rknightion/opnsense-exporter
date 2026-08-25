@@ -1,8 +1,23 @@
 package options
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/alecthomas/kingpin/v2"
 )
+
+func TestWebUIIsOptInByDefault(t *testing.T) {
+	for _, flag := range kingpin.CommandLine.Model().Flags {
+		if flag.Name == "web.ui-enabled" {
+			if got := strings.Join(flag.Default, ","); got != "false" {
+				t.Fatalf("web.ui-enabled default = %q, want false", got)
+			}
+			return
+		}
+	}
+	t.Fatal("web.ui-enabled flag not registered")
+}
 
 // TestBuildEffectiveConfig_SecretsRedacted exercises the pure builder directly —
 // it must never call Init()/kingpin.Parse(), which would os.Exit on the required

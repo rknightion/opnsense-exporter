@@ -5,12 +5,37 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
+
+func TestProbeCaptureUsesPrivateModes(t *testing.T) {
+	p := newTestProber(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":0,"rows":[]}`))
+	}))
+	p.captures = filepath.Join(t.TempDir(), "captures")
+	res := p.probeOne(testSchema("private", "api/test/private"), opnsense.SchemaExemption{})
+	if res.ProbeErr != "" {
+		t.Fatalf("probe error: %s", res.ProbeErr)
+	}
+	for target, want := range map[string]os.FileMode{
+		p.captures: 0o700,
+		filepath.Join(p.captures, "private.json"): 0o600,
+	} {
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", target, got, want)
+		}
+	}
+}
 
 func testSchema(endpoint, path string) opnsense.EndpointSchema {
 	return opnsense.EndpointSchema{

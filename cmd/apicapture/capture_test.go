@@ -23,6 +23,9 @@ func TestCaptureContracts(t *testing.T) {
 	defer srv.Close()
 
 	outDir := t.TempDir()
+	if err := os.Chmod(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	contracts := []opnsense.ResponseContract{{Endpoint: "healthCheck"}}
 	manifest := map[opnsense.EndpointName]opnsense.EndpointContract{
 		"healthCheck": {Path: "api/core/system/status", Method: "GET"},
@@ -55,6 +58,15 @@ func TestCaptureContracts(t *testing.T) {
 	}
 	if string(got) != body {
 		t.Errorf("captured body = %q, want %q", got, body)
+	}
+	for target, wantMode := range map[string]os.FileMode{outDir: 0o700, want: 0o600} {
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMode := info.Mode().Perm(); gotMode != wantMode {
+			t.Errorf("%s mode = %o, want %o", target, gotMode, wantMode)
+		}
 	}
 }
 

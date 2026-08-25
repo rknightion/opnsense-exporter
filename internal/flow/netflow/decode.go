@@ -47,6 +47,16 @@ const (
 	// enough to not need tuning, and a CLI flag here would be attacker-facing
 	// surface for no real benefit.
 	maxCachedTemplates = 4096
+
+	// maxRecordsPerDatagram bounds work and retained Record values before any
+	// downstream filtering. A one-byte attacker template can otherwise turn one
+	// UDP datagram into roughly 65,000 records.
+	maxRecordsPerDatagram = 4096
+
+	// Template storage is bounded by shape as well as key count. Legitimate
+	// NetFlow v9 templates contain tens of fields, not hundreds.
+	maxFieldsPerTemplate    = 256
+	maxCachedTemplateFields = 65536
 )
 
 // Decoder decodes NetFlow v5 and v9 datagrams and owns the v9 template cache.
@@ -71,10 +81,11 @@ const (
 // never resends its template within the window, and one that has gone quiet
 // is the first evicted when a genuinely new key needs room.
 type Decoder struct {
-	mu        sync.Mutex
-	templates map[templateKey]*template
-	order     *list.List // list.Element.Value is a templateKey; front = most recently used
-	stats     Stats
+	mu             sync.Mutex
+	templates      map[templateKey]*template
+	order          *list.List // list.Element.Value is a templateKey; front = most recently used
+	templateFields int
+	stats          Stats
 }
 
 // New returns a Decoder with an empty template cache.
@@ -185,7 +196,10 @@ func (d *Decoder) decodeV9(payload []byte, exporter netip.Addr, now time.Time) (
 			d.stats.UnknownFlowsets++
 			dg.note(Unidentified{Kind: UnidentifiedFlowset, Detail: id})
 		default:
-			d.readDataFlowset(dg, set, exporter, id, sysUpTime)
+			if err := d.readDataFlowset(dg, set, exporter, id, sysUpTime); err != nil {
+				d.stats.Malformed++
+				return nil, err
+			}
 		}
 	}
 	// 0-3 bytes may remain: flowsets are padded to a 4-byte boundary, and a tail
@@ -197,7 +211,7 @@ func (d *Decoder) decodeV9(payload []byte, exporter netip.Addr, now time.Time) (
 }
 
 // readDataFlowset decodes every record in one data flowset. Callers hold d.mu.
-func (d *Decoder) readDataFlowset(dg *Datagram, set []byte, exporter netip.Addr, id uint16, sysUpTime uint32) {
+func (d *Decoder) readDataFlowset(dg *Datagram, set []byte, exporter netip.Addr, id uint16, sysUpTime uint32) error {
 	t, ok := d.lookup(exporter, dg.SourceID, id)
 	if !ok {
 		// Expected for up to ~2 minutes from a cold start, and after a sender
@@ -206,7 +220,7 @@ func (d *Decoder) readDataFlowset(dg *Datagram, set []byte, exporter netip.Addr,
 		// silently produces plausible-looking wrong records. Counted, never an
 		// error.
 		d.stats.NoTemplate++
-		return
+		return nil
 	}
 	if t.recLen <= 0 {
 		// Unreachable: learnTemplates rejects zero-field templates and zero-width
@@ -215,7 +229,10 @@ func (d *Decoder) readDataFlowset(dg *Datagram, set []byte, exporter netip.Addr,
 		// and a zero-width record there is not a wrong answer, it is a wedged worker
 		// goroutine and eventually a wedged pool.
 		d.stats.Malformed++
-		return
+		return nil
+	}
+	if len(dg.Records)+len(set)/t.recLen > maxRecordsPerDatagram {
+		return ErrMalformed
 	}
 	for len(set) >= t.recLen {
 		rec := d.readRecord(set[:t.recLen], t, dg.ExportTime, sysUpTime)
@@ -226,6 +243,7 @@ func (d *Decoder) readDataFlowset(dg *Datagram, set []byte, exporter netip.Addr,
 	// What remains is shorter than one record: the flowset's alignment padding.
 	// The box's IPv4 template is 57 bytes wide, so this is the common case, not a
 	// corner one.
+	return nil
 }
 
 // readRecord decodes one fixed-width record against its template. buf is exactly

@@ -30,7 +30,11 @@ func (s *Server) handleDevicesJSON(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	writeJSON(w, s.devicesReport(r.Context()))
+	view := s.devicesReport(r.Context())
+	if view.Error != "" {
+		w.Header().Set("Retry-After", "2")
+	}
+	writeJSON(w, view)
 }
 
 // devicesView is the render envelope for the devices page: the report plus an
@@ -61,7 +65,8 @@ const (
 	// exactly what ARP/DHCP lease state is. The window here is local to this
 	// route and short enough that no metric series can be frozen by it — no
 	// collector reads it.
-	devicesCacheTTL = 8 * time.Second
+	devicesCacheTTL   = 8 * time.Second
+	devicesFailureTTL = 2 * time.Second
 
 	// devicesFetchTimeout caps one upstream fetch. FetchDevices makes three
 	// sequential calls, each with the client's own 15s timeout and up to three
@@ -80,7 +85,7 @@ func (s *Server) devicesCache() *devicesCache {
 	if v, ok := devicesCaches.Load(s); ok {
 		return v.(*devicesCache)
 	}
-	v, _ := devicesCaches.LoadOrStore(s, &devicesCache{ttl: devicesCacheTTL, timeout: devicesFetchTimeout})
+	v, _ := devicesCaches.LoadOrStore(s, &devicesCache{ttl: devicesCacheTTL, failureTTL: devicesFailureTTL, timeout: devicesFetchTimeout, now: time.Now})
 	return v.(*devicesCache)
 }
 
@@ -88,8 +93,10 @@ func (s *Server) devicesCache() *devicesCache {
 // single-flight on misses. It is local to this route by design (see the const
 // block) and holds no reference to the API client.
 type devicesCache struct {
-	ttl     time.Duration
-	timeout time.Duration
+	ttl        time.Duration
+	failureTTL time.Duration
+	timeout    time.Duration
+	now        func() time.Time
 
 	mu       sync.Mutex
 	report   devicesView
@@ -110,7 +117,15 @@ type devicesFetch struct {
 // not cancel the result every other waiter is about to receive.
 func (c *devicesCache) get(ctx context.Context, fetch func(context.Context) devicesView) devicesView {
 	c.mu.Lock()
-	if !c.at.IsZero() && time.Since(c.at) < c.ttl {
+	now := time.Now
+	if c.now != nil {
+		now = c.now
+	}
+	ttl := c.ttl
+	if c.report.Error != "" {
+		ttl = c.failureTTL
+	}
+	if !c.at.IsZero() && now().Sub(c.at) < ttl {
 		v := c.report
 		c.mu.Unlock()
 		return v
@@ -145,9 +160,11 @@ func (c *devicesCache) run(f *devicesFetch, fetch func(context.Context) devicesV
 	if c.inflight == f {
 		c.inflight = nil
 	}
-	if v.Error == "" {
-		c.report, c.at = v, time.Now()
+	now := time.Now
+	if c.now != nil {
+		now = c.now
 	}
+	c.report, c.at = v, now()
 	c.mu.Unlock()
 
 	f.view = v

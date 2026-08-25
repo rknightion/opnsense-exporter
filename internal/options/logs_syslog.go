@@ -41,6 +41,11 @@ var (
 			"Prefer TCP for firewall logs: UDP datagram loss is silent and unrecoverable.",
 	).Envar("OPN2OTEL_LOGS_SYSLOG_LISTEN_TCP").Default(":5514").String()
 
+	logsSyslogAllowPlaintextWithTLS = kingpin.Flag(
+		"logs.syslog.allow-plaintext-with-tls",
+		"Explicitly allow plaintext UDP/TCP listeners alongside TLS for a mixed-mode migration.",
+	).Envar("OPN2OTEL_LOGS_SYSLOG_ALLOW_PLAINTEXT_WITH_TLS").Default("false").Bool()
+
 	// Syslog is UNAUTHENTICATED: anything that can reach the port can inject arbitrary
 	// log records into the user's observability stack. On a shared network, restrict
 	// senders to the firewall.
@@ -222,6 +227,10 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		Sample:       *logsSyslogSample,
 		SampledAttr:  *logsSyslogSampledAttr,
 		DebugCapture: *logsSyslogDebugCapture,
+	}
+	if cfg.TLSAddr != "" && (cfg.UDPAddr != "" || cfg.TCPAddr != "") && !*logsSyslogAllowPlaintextWithTLS {
+		return nil, false, fmt.Errorf(
+			"logs.syslog: TLS and plaintext listeners are both enabled; disable listen-udp/listen-tcp or set --logs.syslog.allow-plaintext-with-tls for an intentional migration")
 	}
 
 	if cfg.DebugCapture && !LogsDebugCaptureEnabled() {

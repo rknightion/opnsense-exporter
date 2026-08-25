@@ -18,6 +18,7 @@ type inventoryEntry[K comparable, V any] struct {
 type inventoryRecord[V any] struct {
 	val  V
 	last time.Time
+	cost int
 }
 
 // boundedInventory is a set of currently-known entities with an insert-time key
@@ -63,6 +64,7 @@ type boundedInventory[K comparable, V any] struct {
 	// refusals counts novel keys turned away by the budget. Emitted as a counter, so
 	// a float64 for the same reason cappedCounter's overflow is.
 	refusals float64
+	bytes    int
 }
 
 func newBoundedInventory[K comparable, V any](max int, ttl time.Duration, order func(a, b K) int) *boundedInventory[K, V] {
@@ -75,11 +77,14 @@ func newBoundedInventory[K comparable, V any](max int, ttl time.Duration, order 
 // attributes keep changing must not expire on its first sighting's timestamp.
 // max <= 0 disables the budget, matching cappedCounter.
 func (b *boundedInventory[K, V]) seen(k K, v V, now time.Time) {
-	if _, ok := b.m[k]; !ok && b.max > 0 && len(b.m) >= b.max {
+	old, exists := b.m[k]
+	cost, valid := retainedStringBytes(k, v)
+	if !valid || b.bytes-old.cost+cost > maxRetainedFamilyBytes || (!exists && b.max > 0 && len(b.m) >= b.max) {
 		b.refusals++
 		return
 	}
-	b.m[k] = inventoryRecord[V]{val: v, last: now}
+	b.bytes = b.bytes - old.cost + cost
+	b.m[k] = inventoryRecord[V]{val: v, last: now, cost: cost}
 }
 
 // live prunes everything not seen within the TTL and returns what remains, ordered by
@@ -93,6 +98,7 @@ func (b *boundedInventory[K, V]) live(now time.Time) []inventoryEntry[K, V] {
 	out := make([]inventoryEntry[K, V], 0, len(b.m))
 	for k, rec := range b.m {
 		if now.Sub(rec.last) >= b.ttl {
+			b.bytes -= rec.cost
 			delete(b.m, k)
 			continue
 		}

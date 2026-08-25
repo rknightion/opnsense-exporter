@@ -103,25 +103,25 @@ already set via receivers.netflow.*
 {{- end }}
 {{- if .Values.receivers.syslog.enabled }}
 - "--logs.syslog.enabled"
-- "--logs.syslog.listen-udp=:{{ .Values.ports.syslog }}"
-- "--logs.syslog.listen-tcp=:{{ .Values.ports.syslog }}"
+- {{ printf "--logs.syslog.listen-udp=:%v" .Values.ports.syslog | quote }}
+- {{ printf "--logs.syslog.listen-tcp=:%v" .Values.ports.syslog | quote }}
 {{- if .Values.receivers.syslog.allowedPeers }}
-- "--logs.syslog.allowed-peers={{ join "," .Values.receivers.syslog.allowedPeers }}"
+- {{ printf "--logs.syslog.allowed-peers=%s" (join "," .Values.receivers.syslog.allowedPeers) | quote }}
 {{- end }}
 {{- end }}
 {{- if .Values.receivers.zenarmor.enabled }}
 - "--logs.zenarmor.enabled"
-- "--logs.zenarmor.listen-http=:{{ .Values.ports.zenarmor }}"
+- {{ printf "--logs.zenarmor.listen-http=:%v" .Values.ports.zenarmor | quote }}
 {{- if .Values.receivers.zenarmor.allowedPeers }}
-- "--logs.zenarmor.allowed-peers={{ join "," .Values.receivers.zenarmor.allowedPeers }}"
+- {{ printf "--logs.zenarmor.allowed-peers=%s" (join "," .Values.receivers.zenarmor.allowedPeers) | quote }}
 {{- end }}
 {{- end }}
 {{- if .Values.receivers.netflow.enabled }}
 - "--flow.enabled"
 - "--flow.netflow.enabled"
-- "--flow.netflow.listen=:{{ .Values.ports.netflow }}"
+- {{ printf "--flow.netflow.listen=:%v" .Values.ports.netflow | quote }}
 {{- range .Values.receivers.netflow.allowedPeers }}
-- "--flow.netflow.allowed-peers={{ . }}"
+- {{ printf "--flow.netflow.allowed-peers=%s" . | quote }}
 {{- end }}
 {{- end }}
 {{- range .Values.extraArgs }}
@@ -134,10 +134,10 @@ already set via receivers.netflow.*
 {{- end }}
 {{- if kindIs "slice" $value }}
 {{- range $item := $value }}
-- "--{{ $name }}={{ $item }}"
+- {{ printf "--%s=%v" $name $item | quote }}
 {{- end }}
 {{- else }}
-- "--{{ $name }}={{ $value }}"
+- {{ printf "--%s=%v" $name $value | quote }}
 {{- end }}
 {{- end }}
 {{- end }}

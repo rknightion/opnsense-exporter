@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rknightion/opnsense2otel/v4/internal/secureio"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
@@ -168,8 +170,10 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 	if p.captures != "" {
 		// Runner-local scratch only — captures hold live values and are never
 		// committed or uploaded.
-		_ = os.MkdirAll(p.captures, 0o755)
-		_ = os.WriteFile(filepath.Join(p.captures, s.Endpoint+".json"), raw, 0o644)
+		if err := secureio.WritePrivateFile(filepath.Join(p.captures, s.Endpoint+".json"), raw); err != nil {
+			res.ProbeErr = fmt.Sprintf("capture response: %v", err)
+			return res
+		}
 	}
 
 	vr, err := opnsense.ValidateResponseSchema(s, raw, ex)
@@ -358,9 +362,12 @@ func (p *prober) fetchRaw(method, path, contentType, body string) ([]byte, int, 
 			lastErr = err
 			continue
 		}
-		raw, err := io.ReadAll(resp.Body)
+		raw, err := secureio.ReadAllLimited(resp.Body, secureio.MaxAPIResponseBytes)
 		resp.Body.Close()
 		if err != nil {
+			if errors.Is(err, secureio.ErrBodyTooLarge) {
+				return nil, resp.StatusCode, err
+			}
 			lastErr = err
 			continue
 		}

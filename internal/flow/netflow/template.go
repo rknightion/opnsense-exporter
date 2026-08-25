@@ -89,6 +89,9 @@ func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint3
 			// data reader loop forever over any flowset naming it.
 			return nil, ErrMalformed
 		}
+		if count > maxFieldsPerTemplate {
+			return nil, ErrMalformed
+		}
 		if len(set) < count*4 {
 			return nil, ErrMalformed
 		}
@@ -157,12 +160,13 @@ func (d *Decoder) store(k templateKey, t *template) bool {
 	old, ok := d.templates[k]
 	switch {
 	case !ok:
-		if len(d.templates) >= maxCachedTemplates {
+		for len(d.templates) >= maxCachedTemplates || d.templateFields+len(t.fields) > maxCachedTemplateFields {
 			d.evictLRU()
 		}
 		d.stats.TemplatesLearned++
 		t.elem = d.order.PushFront(k)
 		d.templates[k] = t
+		d.templateFields += len(t.fields)
 		return true
 	case old.sameShape(t):
 		// Refresh. Nothing to do to the template itself — keeping the existing
@@ -172,9 +176,13 @@ func (d *Decoder) store(k templateKey, t *template) bool {
 		return false
 	default:
 		d.stats.TemplatesReplaced++
-		t.elem = old.elem
-		d.order.MoveToFront(old.elem)
+		d.removeTemplate(k, false)
+		for d.templateFields+len(t.fields) > maxCachedTemplateFields {
+			d.evictLRU()
+		}
+		t.elem = d.order.PushFront(k)
 		d.templates[k] = t
+		d.templateFields += len(t.fields)
 	}
 	return true
 }
@@ -189,9 +197,22 @@ func (d *Decoder) evictLRU() {
 		return
 	}
 	key, _ := back.Value.(templateKey)
-	d.order.Remove(back)
+	d.removeTemplate(key, true)
+}
+
+func (d *Decoder) removeTemplate(key templateKey, evicted bool) {
+	t, ok := d.templates[key]
+	if !ok {
+		return
+	}
+	if t.elem != nil {
+		d.order.Remove(t.elem)
+	}
+	d.templateFields -= len(t.fields)
 	delete(d.templates, key)
-	d.stats.TemplatesEvicted++
+	if evicted {
+		d.stats.TemplatesEvicted++
+	}
 }
 
 // lookup returns the cached template for a data flowset, if one has been

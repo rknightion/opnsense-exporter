@@ -1342,6 +1342,9 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, tlsCfg *tls.Co
 				return nil, err
 			}
 		}
+		redirectSafeClient := *client
+		redirectSafeClient.CheckRedirect = refuseOTLPRedirect
+		client = &redirectSafeClient
 		// Pin the request ceiling rather than inheriting the SDK default, so it and
 		// maxExportBytes stay a matched pair (#506). See otlpMaxRequestBytes.
 		opts := []otlploghttp.Option{
@@ -1418,10 +1421,13 @@ func newObservingHTTPClient(cfg *options.OTLPConfig, tlsCfg *tls.Config, concurr
 		base.MaxIdleConns = concurrency
 	}
 	return &http.Client{
-		Transport: &observingTransport{base: base},
-		Timeout:   logExportTimeout(),
+		Transport:     &observingTransport{base: base},
+		Timeout:       logExportTimeout(),
+		CheckRedirect: refuseOTLPRedirect,
 	}, nil
 }
+
+func refuseOTLPRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 // logExportTimeout reproduces the exporter's own timeout resolution, which
 // WithHTTPClient would otherwise bypass: OTEL_EXPORTER_OTLP_LOGS_TIMEOUT, then

@@ -828,6 +828,18 @@ func TestDecodeV5_CountOverrunningPayloadIsMalformed(t *testing.T) {
 	}
 }
 
+func TestDecodeV9BoundsRecordsPerDatagram(t *testing.T) {
+	d := New()
+	oneByte := tDef{id: 300, fields: []tField{{typ: FieldProtocol, length: 1}}}
+	if _, err := d.Decode(v9Datagram(testHead(1000), templateFlowset(oneByte)), testExporter, testNow); err != nil {
+		t.Fatalf("learn template: %v", err)
+	}
+	payload := v9Datagram(testHead(1000), rawFlowset(300, make([]byte, maxRecordsPerDatagram+1)))
+	if _, err := d.Decode(payload, testExporter, testNow); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("Decode() error = %v, want ErrMalformed", err)
+	}
+}
+
 // unix_nsecs is the sub-second residual and is part of the export instant.
 func TestDecodeV5_SubSecondExportTime(t *testing.T) {
 	d := New()

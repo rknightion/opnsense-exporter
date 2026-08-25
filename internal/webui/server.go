@@ -29,6 +29,7 @@
 package webui
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"time"
@@ -100,10 +101,11 @@ type DeviceRow struct {
 
 // Server owns the resolved Deps and serves the console's HTTP handlers.
 type Server struct {
-	deps    Deps
-	growth  *growthSampler
-	runtime *runtimeSampler
-	trend   *trendSampler
+	deps      Deps
+	growth    *growthSampler
+	runtime   *runtimeSampler
+	trend     *trendSampler
+	admission chan struct{}
 }
 
 // growthSampleInterval is how often the cardinality growth ring samples the
@@ -111,6 +113,9 @@ type Server struct {
 const (
 	growthSampleInterval = 30 * time.Second
 	growthRingSize       = 30
+	consoleMaxConcurrent = 8
+	consoleWriteTimeout  = 30 * time.Second
+	consoleResponseBytes = 16 << 20
 )
 
 // NewServer returns a console Server over the given dependencies. Background
@@ -120,10 +125,11 @@ func NewServer(d Deps) *Server {
 	trend := newTrendSampler(growthRingSize)
 	trend.logShipping = d.LogThroughput != nil
 	return &Server{
-		deps:    d,
-		growth:  newGrowthSampler(growthRingSize),
-		runtime: newRuntimeSampler(growthRingSize),
-		trend:   trend,
+		deps:      d,
+		growth:    newGrowthSampler(growthRingSize),
+		runtime:   newRuntimeSampler(growthRingSize),
+		trend:     trend,
+		admission: make(chan struct{}, consoleMaxConcurrent),
 	}
 }
 
@@ -201,7 +207,58 @@ func (s *Server) Handler() http.Handler {
 	for _, reg := range routeRegistrars {
 		reg(s, mux)
 	}
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case s.admission <- struct{}{}:
+			defer func() { <-s.admission }()
+		default:
+			http.Error(w, http.StatusText(http.StatusServiceUnavailable), http.StatusServiceUnavailable)
+			return
+		}
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(consoleWriteTimeout))
+		buffer := &boundedResponse{header: make(http.Header), limit: consoleResponseBytes}
+		mux.ServeHTTP(buffer, r)
+		if buffer.overflow {
+			http.Error(w, "web console response exceeds limit", http.StatusInsufficientStorage)
+			return
+		}
+		for name, values := range buffer.header {
+			w.Header()[name] = append([]string(nil), values...)
+		}
+		status := buffer.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write(buffer.body.Bytes())
+	})
+}
+
+type boundedResponse struct {
+	header   http.Header
+	body     bytes.Buffer
+	status   int
+	limit    int
+	overflow bool
+}
+
+func (w *boundedResponse) Header() http.Header { return w.header }
+
+func (w *boundedResponse) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+func (w *boundedResponse) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	if w.body.Len()+len(p) > w.limit {
+		w.overflow = true
+		return 0, http.ErrContentLength
+	}
+	return w.body.Write(p)
 }
 
 // pageView assembles the root value for the single-page console: the

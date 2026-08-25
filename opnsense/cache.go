@@ -1,10 +1,16 @@
 package opnsense
 
 import (
+	"container/list"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
+)
+
+const (
+	maxResponseCacheEntryBytes = 4 << 20
+	maxResponseCacheBytes      = 32 << 20
 )
 
 // responseCache memoizes raw successful GET response bodies per endpoint, each
@@ -32,6 +38,8 @@ type responseCache struct {
 	// plugin. Most endpoints on the negative list have no positive TTL at all.
 	absentTTLs map[EndpointPath]time.Duration
 	entries    map[EndpointPath]cacheEntry
+	order      *list.List
+	bytes      int
 	mu         sync.Mutex
 }
 
@@ -39,6 +47,8 @@ type cacheEntry struct {
 	expiresAt  time.Time
 	body       []byte
 	statusCode int
+	elem       *list.Element
+	cost       int
 }
 
 func newResponseCache() *responseCache {
@@ -47,6 +57,7 @@ func newResponseCache() *responseCache {
 		ttls:       make(map[EndpointPath]time.Duration),
 		absentTTLs: make(map[EndpointPath]time.Duration),
 		entries:    make(map[EndpointPath]cacheEntry),
+		order:      list.New(),
 	}
 }
 
@@ -61,7 +72,7 @@ func (rc *responseCache) setTTL(path EndpointPath, ttl time.Duration) {
 
 	if ttl <= 0 {
 		delete(rc.ttls, path)
-		delete(rc.entries, path)
+		rc.remove(path)
 		return
 	}
 	rc.ttls[path] = ttl
@@ -78,7 +89,7 @@ func (rc *responseCache) setAbsentTTL(path EndpointPath, ttl time.Duration) {
 
 	if ttl <= 0 {
 		delete(rc.absentTTLs, path)
-		delete(rc.entries, path)
+		rc.remove(path)
 		return
 	}
 	rc.absentTTLs[path] = ttl
@@ -93,9 +104,14 @@ func (rc *responseCache) get(path EndpointPath) (cacheEntry, bool) {
 	defer rc.mu.Unlock()
 
 	entry, ok := rc.entries[path]
-	if !ok || !rc.now().Before(entry.expiresAt) {
+	if !ok {
 		return cacheEntry{}, false
 	}
+	if !rc.now().Before(entry.expiresAt) {
+		rc.remove(path)
+		return cacheEntry{}, false
+	}
+	rc.order.MoveToFront(entry.elem)
 	return entry, true
 }
 
@@ -130,8 +146,34 @@ func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) boo
 	if !ok {
 		return false
 	}
-	rc.entries[path] = cacheEntry{body: body, statusCode: statusCode, expiresAt: rc.now().Add(ttl)}
+	if len(body) > maxResponseCacheEntryBytes {
+		return false
+	}
+	rc.remove(path)
+	for rc.bytes+len(body) > maxResponseCacheBytes {
+		back := rc.order.Back()
+		if back == nil {
+			return false
+		}
+		rc.remove(back.Value.(EndpointPath))
+	}
+	entry := cacheEntry{body: body, statusCode: statusCode, expiresAt: rc.now().Add(ttl), cost: len(body)}
+	entry.elem = rc.order.PushFront(path)
+	rc.entries[path] = entry
+	rc.bytes += entry.cost
 	return true
+}
+
+func (rc *responseCache) remove(path EndpointPath) {
+	entry, ok := rc.entries[path]
+	if !ok {
+		return
+	}
+	if entry.elem != nil {
+		rc.order.Remove(entry.elem)
+	}
+	rc.bytes -= entry.cost
+	delete(rc.entries, path)
 }
 
 // SetEndpointCacheTTL serves successful GET responses from the named endpoint

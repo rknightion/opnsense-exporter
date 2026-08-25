@@ -461,7 +461,7 @@ settings:
   # web.ui-disable-devices: false
   #
   # Serve the operator console at / (else the minimal landing page).
-  # web.ui-enabled: true
+  # web.ui-enabled: false
   #
   # Live-poll interval for the console's dynamic pages.
   # web.ui-refresh-interval: "5s"
@@ -707,6 +707,9 @@ settings:
   # Push-based. The firewall sends syslog here; the exporter parses, enriches and ships it.
   # UNAUTHENTICATED unless TLS client certs are configured.
   #
+  # Explicitly allow plaintext UDP/TCP listeners alongside TLS for a mixed-mode migration.
+  # logs.syslog.allow-plaintext-with-tls: false
+  #
   # Comma-separated CIDR allowlist of hosts permitted to send syslog (e.g. 10.0.0.254/32).
   # Empty accepts any sender. Syslog is unauthenticated, so set this on a shared network.
   # logs.syslog.allowed-peers: ""
@@ -873,6 +876,9 @@ settings:
   # full allowance. Excess requests are refused with 503 before a body is read. 0 disables
   # the limit.
   # logs.zenarmor.max-concurrent-requests: "8"
+  #
+  # Maximum accepted Zenarmor TCP connections, including TLS handshakes and partial headers.
+  # logs.zenarmor.max-connections: "128"
   #
   # PEM server certificate for the Zenarmor receiver. Set with --logs.zenarmor.tls-key-file
   # to serve HTTPS, and use an https:// URI in Zenarmor's streaming settings.
@@ -1111,7 +1117,7 @@ settings:
   # Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled) and
   # counted. A flood guard on the unauthenticated NetFlow ingress. 0 is unlimited. Metrics
   # are never truncated.
-  # flow.max-logs-per-window: "0"
+  # flow.max-logs-per-window: "10000"
   #
   # Maximum flow series emitted per scrape. Everything beyond folds into a single __other__
   # series per source, so the family still sums exactly at any limit. 0 emits every tracked

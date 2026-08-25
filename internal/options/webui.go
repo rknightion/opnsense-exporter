@@ -10,7 +10,8 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 )
 
-// Web UI operator-console flags. Always-on by default (WebUIEnabled); the
+// Web UI operator-console flags. Opt-in by default because the console includes
+// device and effective-configuration inventory beyond the metrics surface; the
 // per-page kill switches (config/devices) exist because those pages surface
 // more than the bare metrics a scrape would (redacted config, MAC/hostname
 // device inventory) and an operator may want them off even though nothing on
@@ -19,7 +20,7 @@ var (
 	WebUIEnabled = kingpin.Flag(
 		"web.ui-enabled",
 		"Serve the operator console at / (else the minimal landing page).",
-	).Envar("OPN2OTEL_WEB_UI_ENABLED").Default("true").Bool()
+	).Envar("OPN2OTEL_WEB_UI_ENABLED").Default("false").Bool()
 	WebUIRefreshInterval = kingpin.Flag(
 		"web.ui-refresh-interval",
 		"Live-poll interval for the console's dynamic pages.",

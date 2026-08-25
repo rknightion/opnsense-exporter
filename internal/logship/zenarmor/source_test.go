@@ -55,6 +55,9 @@ func TestServerConfiguresBodyAndIdleTimeouts(t *testing.T) {
 	if s.srv.ReadHeaderTimeout != readHeaderTimeout {
 		t.Errorf("ReadHeaderTimeout = %v, want %v", s.srv.ReadHeaderTimeout, readHeaderTimeout)
 	}
+	if s.srv.WriteTimeout != writeTimeout {
+		t.Errorf("WriteTimeout = %v, want %v", s.srv.WriteTimeout, writeTimeout)
+	}
 	if s.srv.ReadTimeout != readTimeout {
 		t.Errorf("ReadTimeout = %v, want %v (bounds the whole body read, not just headers)", s.srv.ReadTimeout, readTimeout)
 	}

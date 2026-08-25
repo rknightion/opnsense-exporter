@@ -130,3 +130,44 @@ func TestMaxCachedTemplatesSaneBudget(t *testing.T) {
 		t.Fatalf("maxCachedTemplates = %d, must be positive", maxCachedTemplates)
 	}
 }
+
+func TestTemplateRejectsExcessiveFieldCountBeforeAllocation(t *testing.T) {
+	fields := make([]tField, maxFieldsPerTemplate+1)
+	for i := range fields {
+		fields[i] = tField{typ: 900, length: 1}
+	}
+	pkt := v9Datagram(testHead(1000), templateFlowset(tDef{id: 256, fields: fields}))
+	d := New()
+	if _, err := d.Decode(pkt, testExporter, testNow); err == nil {
+		t.Fatal("oversized template was accepted")
+	}
+	if len(d.templates) != 0 {
+		t.Fatalf("oversized template retained %d entries", len(d.templates))
+	}
+}
+
+func TestTemplateCacheBoundsAggregateFieldStorage(t *testing.T) {
+	d := New()
+	fields := make([]templateField, maxFieldsPerTemplate)
+	for i := range fields {
+		fields[i] = templateField{typ: 900, length: 1}
+	}
+	for i := 0; i < maxCachedTemplateFields/maxFieldsPerTemplate+10; i++ {
+		d.store(templateKey{exporter: testExporter, sourceID: uint32(i), id: 256},
+			&template{fields: append([]templateField(nil), fields...), recLen: len(fields)})
+	}
+	if d.templateFields > maxCachedTemplateFields {
+		t.Fatalf("retained fields = %d, limit %d", d.templateFields, maxCachedTemplateFields)
+	}
+	if d.templateFields != sumTemplateFields(d.templates) {
+		t.Fatalf("accounting = %d, actual %d", d.templateFields, sumTemplateFields(d.templates))
+	}
+}
+
+func sumTemplateFields(templates map[templateKey]*template) int {
+	total := 0
+	for _, tmpl := range templates {
+		total += len(tmpl.fields)
+	}
+	return total
+}

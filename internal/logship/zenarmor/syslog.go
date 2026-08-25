@@ -60,6 +60,19 @@ func (s *syslogProcessor) Process(env syslog.Envelope, peer netip.Addr, ports []
 	if !ok {
 		return false // not a Zenarmor daemon line; let the generic path ship it raw
 	}
+	if len(s.proc.cfg.AllowedPeers) > 0 {
+		allowed := false
+		for _, prefix := range s.proc.cfg.AllowedPeers {
+			if prefix.Contains(peer.Unmap()) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			s.proc.m.reject("peer")
+			return true
+		}
+	}
 	family := indexFamilies[fam]
 	if family == "" {
 		s.proc.m.reject("unknown_family")

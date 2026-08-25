@@ -171,10 +171,19 @@ func TestDevicesJSON_ConcurrentRequestsCollapseToOneFetch(t *testing.T) {
 	if got := atomic.LoadInt64(&calls); got != 1 {
 		t.Fatalf("upstream fetches = %d, want exactly 1 for %d concurrent requests", got, n)
 	}
-	for i, c := range codes {
-		if c != http.StatusOK {
-			t.Fatalf("request %d: status = %d, want 200", i, c)
+	ok, refused := 0, 0
+	for _, c := range codes {
+		switch c {
+		case http.StatusOK:
+			ok++
+		case http.StatusServiceUnavailable:
+			refused++
+		default:
+			t.Fatalf("unexpected status %d", c)
 		}
+	}
+	if ok == 0 || ok+refused != n {
+		t.Fatalf("admission results: ok=%d refused=%d", ok, refused)
 	}
 }
 
@@ -228,11 +237,9 @@ func TestDevicesCache_ExpiresAfterTTL(t *testing.T) {
 	}
 }
 
-// TestDevicesCache_FailedFetchIsNotCached asserts only a SUCCESSFUL report is
-// cached — caching a failure would pin an error callout on the tab for the whole
-// TTL after a transient API blip.
-func TestDevicesCache_FailedFetchIsNotCached(t *testing.T) {
-	c := &devicesCache{ttl: time.Minute, timeout: time.Second}
+func TestDevicesCache_FailedFetchUsesShortBackoff(t *testing.T) {
+	now := time.Unix(100, 0)
+	c := &devicesCache{ttl: time.Minute, failureTTL: 2 * time.Second, timeout: time.Second, now: func() time.Time { return now }}
 	var calls int64
 	fetch := func(context.Context) devicesView {
 		n := atomic.AddInt64(&calls, 1)
@@ -245,11 +252,18 @@ func TestDevicesCache_FailedFetchIsNotCached(t *testing.T) {
 	if v := c.get(t.Context(), fetch); v.Error != "boom" {
 		t.Fatalf("first view error = %q, want boom", v.Error)
 	}
+	if v := c.get(t.Context(), fetch); v.Error != "boom" {
+		t.Fatalf("second view error = %q, want cached backoff error", v.Error)
+	}
+	if got := atomic.LoadInt64(&calls); got != 1 {
+		t.Fatalf("fetches = %d, want 1 during failure backoff", got)
+	}
+	now = now.Add(3 * time.Second)
 	if v := c.get(t.Context(), fetch); v.Error != "" {
-		t.Fatalf("second view error = %q, want a fresh successful fetch", v.Error)
+		t.Fatalf("post-backoff view error = %q, want fresh success", v.Error)
 	}
 	if got := atomic.LoadInt64(&calls); got != 2 {
-		t.Fatalf("fetches = %d, want 2 (failure must not be cached)", got)
+		t.Fatalf("fetches after backoff = %d, want 2", got)
 	}
 }
 
