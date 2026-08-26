@@ -403,8 +403,6 @@ func Serve(l net.Listener, server *http.Server, flags *FlagConfig, logger *slog.
 		handler:       handler,
 		cache:         newCache(),
 		limiter:       limiter,
-		bcryptSem:     make(chan struct{}, 1),
-		authMisses:    newAuthAttemptLimiters(),
 	}
 
 	config, err := ConfigToTLSConfig(&c.TLSConfig)
