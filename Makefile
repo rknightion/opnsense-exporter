@@ -18,7 +18,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO_LICENSES_VERSION ?= v2.0.1
 GO_LICENSES_MODULE  := github.com/google/go-licenses/v2
 # renovate: datasource=go depName=github.com/anchore/syft
-SYFT_VERSION        ?= v1.51.0
+SYFT_VERSION        ?= v1.51.1
 # renovate: datasource=github-releases depName=yannh/kubeconform
 KUBECONFORM_VERSION ?= v0.8.0
 
