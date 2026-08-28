@@ -38,7 +38,7 @@ jobs:
           # across runs of the same commit and a new release can't fail CI with no repo
           # change (#132). Renovate bumps this via the annotation below.
           # renovate: datasource=github-releases depName=golangci/golangci-lint
-          version: v2.13.1
+          version: v2.13.2
           args: --verbose
 
       - name: Run tests
