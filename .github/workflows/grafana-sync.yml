@@ -101,8 +101,8 @@ jobs:
       # __dashboardUid__ deep-link. See the note on MAIN_UID in grafana/uids.py.
       - name: copy the generated dashboards into place
         run: |
-          cp grafana/dashboard.json        gitsync/networking/opnsense-exporter.json
-          cp grafana/dashboard-health.json gitsync/networking/opnsense-exporter-health.json
+          cp grafana/dashboard.json        gitsync/grafana/networking/opnsense-exporter.json
+          cp grafana/dashboard-health.json gitsync/grafana/networking/opnsense-exporter-health.json
 
       - name: commit and push
         id: push
