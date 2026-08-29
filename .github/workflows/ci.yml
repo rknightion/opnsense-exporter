@@ -434,11 +434,32 @@ jobs:
       - name: govulncheck
         run: govulncheck ./...
 
+  # This chart is published to GHCR and, until now, its manifests were never
+  # schema-validated: the only chart coverage was the live kind install inside
+  # docker-build-verify, which proves it applies to ONE cluster version but not
+  # that it is valid against the API schemas generally. That live test is kept —
+  # this is added alongside it, not in place of it.
+  #
+  # The two permutations are the ones the kind test already installs, so they are
+  # known to render. The bare default is deliberately NOT validated here: nothing
+  # currently proves it renders without credentials, and this port is not the
+  # place to find out.
+  helm-validate:
+    permissions:
+      contents: read
+    uses: rknightion/.github/.github/workflows/helm-validate.yml@97f4a7ad0cd1ddd83562a30b9061ef8295242405 # v1.14.0
+    with:
+      chart-path: charts/opnsense2otel
+      release-name: contract
+      permutations: |
+        -f charts/opnsense2otel/tests/fixtures/minimal.yaml
+        -f charts/opnsense2otel/tests/fixtures/all-receivers.yaml --set opnsense.existingSecret=edge-fw-api
+
   ci-success:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify, govulncheck]
+    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify, govulncheck, helm-validate]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
