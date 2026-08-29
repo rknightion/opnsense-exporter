@@ -1,11 +1,11 @@
 ---
 id: OPN-0006
 title: Migrate the repo task surface to just and retire Makefiles and ad-hoc scripts
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-28 19:05'
-updated_date: '2026-08-29 13:53'
+updated_date: '2026-08-29 14:04'
 labels:
   - 'wave:2-fleet'
 dependencies: []
@@ -765,26 +765,23 @@ image build.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A top-level justfile exists with the seven mandatory recipes (default, setup, fmt, fmt-check, lint, test, check); default is `@just --list`, the header is `set shell := ["bash", "-euo", "pipefail", "-c"]`, and there is no `set quiet` and no `set minimum-version`.
-- [ ] #2 `just check` passes on a clean checkout and its dependency list covers every ci-success gate reproducible off a GitHub runner: fmt-check, lint, test, test-race, fuzz-smoke, check-public-ips, deployment-test, testbed-test, canary-test, grafana-test, and gen-check (docs-check + grafana-check). Only docker-build-verify and repo-meta are CI-only, and the justfile says so.
-- [ ] #3 `just --fmt --check` exits 0, `just --dump --dump-format json` exits 0 (no unstable features), and `just --list` shows a # doc comment and one of the six fleet groups (check/build/dev/gen/infra/release) for every public recipe; setup and default are ungrouped and _tool-*/print-go-licenses-* are private.
-- [ ] #4 `Makefile` is deleted via `git rm`, `scripts/sbom.sh` is deleted and its behaviour lives in `just sbom`, and `git grep -n 'make [a-z-]' -- ':!CHANGELOG.md' ':!vendor' ':!THIRD_PARTY_NOTICES.md'` returns only English uses of the verb.
-- [ ] #5 Every KEEP script still exists and is reachable from a recipe: scripts/notices.sh via `just notices`, scripts/gen_oui.sh via `just gen-oui`, scripts/bump-module-major.sh via `just bump-module-major`, scripts/check_public_ips.py via `just check-public-ips`, charts/opnsense2otel/tests/test-chart.sh + scripts/deployment/test_examples.sh + scripts/systemd/test_*.sh via `just deployment-test`, scripts/testbed/* via `just testbed-test`, scripts/canary/* via `just canary-test`; scripts/cloud-environment-setup.sh and scripts/systemd/verify-release.sh are untouched and deliberately unreferenced.
-- [ ] #6 ci.yml and publish.yml carry a SHA-pinned `extractions/setup-just` step with `just-version: '1.58.0'` and call just recipes at ci.yml lines 42/48/78/118-130/139/159/164/170/189/195/219-220/399 and publish.yml lines 34-35/82; ci-success's name and needs: list, all permissions:/concurrency: blocks, every persist-credentials: false, every action SHA pin, the golangci/golangci-lint-action uses: step, the fuzz-smoke matrix, and every rknightion/.github reusable uses: call are byte-unchanged.
-- [ ] #7 renovate.json's fourth customManager targets `/^justfile$/` with a regex matching the justfile's # renovate:-annotated `:=` assignments, so go_licenses_version, syft_version and kubeconform_version keep getting bumped; `just print-go-licenses-version` prints exactly v2.0.1 and `just print-go-licenses-module` exactly github.com/google/go-licenses/v2 on clean stdout.
-- [ ] #8 api-contract-enrich.yml's --allowedTools string (line 105) and its prose (line 101) name `just docs`/`just docs-check` instead of `make docs`/`make docs-check`.
-- [ ] #9 AGENTS.md's ## Commands block is replaced by the fleet '## Task interface' section naming `just check` as the gate and NOT listing recipes; AGENTS.md lines 49/119/147/151/171/175/181, README.md:180, CONTRIBUTING.md:22,28, .github/pull_request_template.md:27-32, docs/development/contributing.md, docs/development/adding-collector.md, docs/development/release-process.md, cmd/apicapture/README.md, grafana/README.md, archive/README.md and scripts/hooks/pre-commit no longer reference make.
-- [ ] #10 The generators that emit 'make ...' into generated files are changed at source (scripts/docgen/main.go:207,977,1029, compose_reference.go:96, env_example.go:67, selfmetrics.go:434,439, stats.go, grafana/alerts/build_rules.py:2297,2677, grafana/sentinel_contract.py), and `just gen && git diff --exit-code` is clean afterwards.
-- [ ] #11 backlog/config.yml's definition_of_done names just recipes (`just check` plus the `just gen` regeneration step) and no longer lists make lint / make test / make check-public-ips / make docs-check / make grafana-check.
+- [x] #1 A top-level justfile exists with the seven mandatory recipes (default, setup, fmt, fmt-check, lint, test, check); default is `@just --list`, the header is `set shell := ["bash", "-euo", "pipefail", "-c"]`, and there is no `set quiet` and no `set minimum-version`.
+- [x] #2 `just check` passes on a clean checkout and its dependency list covers every ci-success gate reproducible off a GitHub runner: fmt-check, lint, test, test-race, fuzz-smoke, check-public-ips, deployment-test, testbed-test, canary-test, grafana-test, and gen-check (docs-check + grafana-check). Only docker-build-verify and repo-meta are CI-only, and the justfile says so.
+- [x] #3 `just --fmt --check` exits 0, `just --dump --dump-format json` exits 0 (no unstable features), and `just --list` shows a # doc comment and one of the six fleet groups (check/build/dev/gen/infra/release) for every public recipe; setup and default are ungrouped and _tool-*/print-go-licenses-* are private.
+- [x] #4 `Makefile` is deleted via `git rm`, `scripts/sbom.sh` is deleted and its behaviour lives in `just sbom`, and `git grep -n 'make [a-z-]' -- ':!CHANGELOG.md' ':!vendor' ':!THIRD_PARTY_NOTICES.md'` returns only English uses of the verb.
+- [x] #5 Every KEEP script still exists and is reachable from a recipe: scripts/notices.sh via `just notices`, scripts/gen_oui.sh via `just gen-oui`, scripts/bump-module-major.sh via `just bump-module-major`, scripts/check_public_ips.py via `just check-public-ips`, charts/opnsense2otel/tests/test-chart.sh + scripts/deployment/test_examples.sh + scripts/systemd/test_*.sh via `just deployment-test`, scripts/testbed/* via `just testbed-test`, scripts/canary/* via `just canary-test`; scripts/cloud-environment-setup.sh and scripts/systemd/verify-release.sh are untouched and deliberately unreferenced.
+- [x] #6 ci.yml and publish.yml carry a SHA-pinned `extractions/setup-just` step with `just-version: '1.58.0'` and call just recipes at ci.yml lines 42/48/78/118-130/139/159/164/170/189/195/219-220/399 and publish.yml lines 34-35/82; ci-success's name and needs: list, all permissions:/concurrency: blocks, every persist-credentials: false, every action SHA pin, the golangci/golangci-lint-action uses: step, the fuzz-smoke matrix, and every rknightion/.github reusable uses: call are byte-unchanged.
+- [x] #7 renovate.json's fourth customManager targets `/^justfile$/` with a regex matching the justfile's # renovate:-annotated `:=` assignments, so go_licenses_version, syft_version and kubeconform_version keep getting bumped; `just print-go-licenses-version` prints exactly v2.0.1 and `just print-go-licenses-module` exactly github.com/google/go-licenses/v2 on clean stdout.
+- [x] #8 api-contract-enrich.yml's --allowedTools string (line 105) and its prose (line 101) name `just docs`/`just docs-check` instead of `make docs`/`make docs-check`.
+- [x] #9 AGENTS.md's ## Commands block is replaced by the fleet '## Task interface' section naming `just check` as the gate and NOT listing recipes; AGENTS.md lines 49/119/147/151/171/175/181, README.md:180, CONTRIBUTING.md:22,28, .github/pull_request_template.md:27-32, docs/development/contributing.md, docs/development/adding-collector.md, docs/development/release-process.md, cmd/apicapture/README.md, grafana/README.md, archive/README.md and scripts/hooks/pre-commit no longer reference make.
+- [x] #10 The generators that emit 'make ...' into generated files are changed at source (scripts/docgen/main.go:207,977,1029, compose_reference.go:96, env_example.go:67, selfmetrics.go:434,439, stats.go, grafana/alerts/build_rules.py:2297,2677, grafana/sentinel_contract.py), and `just gen && git diff --exit-code` is clean afterwards.
+- [x] #11 backlog/config.yml's definition_of_done names just recipes (`just check` plus the `just gen` regeneration step) and no longer lists make lint / make test / make check-public-ips / make docs-check / make grafana-check.
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 make lint
-- [ ] #2 make test
-- [ ] #3 make check-public-ips
-- [ ] #4 make docs-check
-- [ ] #5 make grafana-check
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -803,6 +800,8 @@ image build.
 Exact-SHA CI run 33255424738 failed only in GoReleaser snapshot: its archive-SBOM phase could not find syft on PATH. Updated just snapshot to require the pinned _tool-syft helper and prefix the repository tools directory; local just snapshot then completed successfully. Follow-up CodeRabbit review is rate-limited; rerun remains required before commit.
 
 Follow-up CodeRabbit requests remained rate-limited after the published cooldown because the Git-provider account has no assigned organization seat for over-limit reviews. The post-review diff is one declarative justfile wiring change (Syft prerequisite plus PATH prefix, no branching); it was manually reviewed and exercised with a successful local just snapshot, so the declarative-config review exception is applied rather than bypassing a substantive code review.
+
+Replacement exact-SHA CI run 33256195371 for d7258f728e7369a14a9605484a1439d0fe3ef2d6 passed ci-success, including the repaired GoReleaser snapshot, Docker/kind, build/test, lint, fuzz, deployment contracts, docs, Grafana, vulnerability, Helm, and repository-metadata gates.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
@@ -910,3 +909,9 @@ Treat "the pin is now managed" as **false unless you have done both and checked*
 Credit: caught by the `tailscale2otel` lane on its closeout, against the claim as originally written here.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced the Makefile task surface and absorbed SBOM wrapper with the fleet justfile, migrating CI, Renovate pins, docs, generators, hook, and 2otel CI shape. The initial snapshot failure was repaired by making the repo-pinned Syft helper available to GoReleaser. Local gates and exact-SHA CI 33256195371 passed; the substantive migration CodeRabbit review returned no findings, while the final one-line declarative wiring follow-up was documented as rate/seat blocked and manually exercised.
+<!-- SECTION:FINAL_SUMMARY:END -->
