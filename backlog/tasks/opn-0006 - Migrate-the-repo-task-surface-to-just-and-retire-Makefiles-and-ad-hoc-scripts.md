@@ -4,7 +4,7 @@ title: Migrate the repo task surface to just and retire Makefiles and ad-hoc scr
 status: To Do
 assignee: []
 created_date: '2026-08-28 19:05'
-updated_date: '2026-08-29 10:57'
+updated_date: '2026-08-29 11:20'
 labels:
   - 'wave:2-fleet'
 dependencies: []
@@ -864,5 +864,30 @@ These seven Go repos are near-identical applications and had drifted into **two 
 - `codexlb2otel` — no `.golangci.yml`, no `-race`, no container build, and **no `ci-success` job and no branch ruleset**, so nothing gates its CI. Adding an aggregator is the right fix but is a separate decision; raise it rather than assuming.
 
 **One known trap:** the `govulncheck@v1.3.0` pins are invisible to Renovate — `go install pkg@version` inside a `run:` block matches no manager. All five are four minor versions behind (current is v1.7.0). Once the version moves into the justfile as a `# renovate:`-annotated `:=` assignment, it becomes managed. That is a real benefit of this migration, not incidental.
+---
+
+author: campaign-ordering
+created: 2026-08-29 11:20
+---
+## Correction — moving a pin into the justfile does NOT make it Renovate-managed
+
+The 2otel alignment comment above ends with a claim that needs narrowing. It says the `govulncheck@v1.3.0` pins become managed "once the version moves into the justfile as a `# renovate:`-annotated `:=` assignment". The conditional in that sentence is doing real work, and **the first completed migration did not satisfy it**.
+
+Verified on `tailscale2otel` at `origin/main` after TSO-0025 closed:
+
+- `justfile:21` — `govulncheck_version := "v1.3.0"`, with **no `# renovate:` annotation** above it.
+- `renovate.json` — **no justfile matcher at all**: no `customManagers` entry, nothing pointing at `/^justfile$/`.
+- `justfile:17` — a comment stating the pin *tracks* the `go install` line in the CI jobs, so the workflow is still the source of truth.
+
+The version relocated and nothing else changed. It is exactly as invisible to Renovate as it was in the `run:` block, and still four minors behind (`v1.3.0` against `v1.7.0`).
+
+**Two things are required, and neither is implied by "move the pin into the justfile":**
+
+1. The `:=` assignment carries a `# renovate: datasource=… depName=…` annotation directly above it.
+2. `renovate.json` points a custom manager at the justfile — the `customManagers:dockerfileVersions` preset does **not** cover justfiles; that one only matches Dockerfiles and Containerfiles.
+
+Treat "the pin is now managed" as **false unless you have done both and checked**. Do not record it as a benefit of this migration in a final summary without verifying `renovate.json` yourself.
+
+Credit: caught by the `tailscale2otel` lane on its closeout, against the claim as originally written here.
 ---
 <!-- COMMENTS:END -->
