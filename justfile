@@ -207,10 +207,10 @@ build:
 image tag="opnsense2otel:dev":
     docker build --build-arg VERSION='{{ version }}' --build-arg GO_LICENSES_VERSION='{{ go_licenses_version }}' --build-arg GO_LICENSES_MODULE='{{ go_licenses_module }}' -t '{{ tag }}' .
 
-# cross-compile the release matrix without publishing it
+# cross-compile the release matrix without publishing it (Syft emits archive SBOMs)
 [group('build')]
-snapshot: _tool-goreleaser
-    {{ tools_dir }}/goreleaser release --snapshot --clean --skip=sign
+snapshot: _tool-goreleaser _tool-syft
+    PATH="{{ tools_dir }}:$PATH" {{ tools_dir }}/goreleaser release --snapshot --clean --skip=sign
 
 # remove build output, the coverage profile and the .tools/ toolchain (all reproducible)
 [group('build')]

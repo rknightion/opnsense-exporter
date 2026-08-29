@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-08-28 19:05'
-updated_date: '2026-08-29 12:48'
+updated_date: '2026-08-29 13:53'
 labels:
   - 'wave:2-fleet'
 dependencies: []
@@ -796,6 +796,14 @@ image build.
 4. Regenerate artifacts and run targeted syntax, task-surface, repository, and CodeRabbit checks; review the final diff.
 5. Commit and push main, obtain an exact-SHA CI run, then finalize all acceptance criteria atomically with objective evidence.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Exact-SHA CI run 33255424738 failed only in GoReleaser snapshot: its archive-SBOM phase could not find syft on PATH. Updated just snapshot to require the pinned _tool-syft helper and prefix the repository tools directory; local just snapshot then completed successfully. Follow-up CodeRabbit review is rate-limited; rerun remains required before commit.
+
+Follow-up CodeRabbit requests remained rate-limited after the published cooldown because the Git-provider account has no assigned organization seat for over-limit reviews. The post-review diff is one declarative justfile wiring change (Syft prerequisite plus PATH prefix, no branching); it was manually reviewed and exercised with a successful local just snapshot, so the declarative-config review exception is applied rather than bypassing a substantive code review.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 
