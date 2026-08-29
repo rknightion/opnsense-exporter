@@ -411,11 +411,34 @@ jobs:
   # It fails if any required job failed or was cancelled; the main-only publish jobs aren't depended on
   # here, so a PR (where they're skipped) still passes. Renovate's automerge waits for this to go green.
   # NOTE: `coverage` is intentionally absent from `needs` — see its comment above.
+  # Dependency vulnerability scan against the Go vulnerability database.
+  # Pinned to v1.3.0 to match tailscale2otel, graph2otel, polylens2otel and
+  # rfc6035-2otel, which is what the rest of the 2otel family runs.
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: install govulncheck (pinned)
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
+
+      - name: govulncheck
+        run: govulncheck ./...
+
   ci-success:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify]
+    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify, govulncheck]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
