@@ -13,7 +13,7 @@ obvious from that guide.
 ### Requirements
 
 - Go 1.27
-- GNU Make
+- [just](https://just.systems) 1.58+
 - Docker (optional)
 - An OPNsense box with admin access
 
@@ -25,7 +25,7 @@ obvious from that guide.
 ### Run the exporter locally against that box
 
 ```bash
-OPS_ADDRESS="ops.example.com" OPS_API_KEY=your-api-key OPS_API_SECRET=your-api-secret make local-run
+OPS_ADDRESS="ops.example.com" OPS_API_KEY=your-api-key OPS_API_SECRET=your-api-secret just run
 curl http://localhost:8080/metrics
 ```
 

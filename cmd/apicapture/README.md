@@ -21,14 +21,14 @@ still decodes into usable values, and flags any **new top-level key** (which is 
   endpoint, the fixtures to check, its known top-level keys, and a semantic validator.
 - **`TestResponseContracts`** runs in normal CI (`go test ./...`) over committed fixtures
   (`opnsense/testdata/health/*.json`) plus any local captures.
-- **`make capture`** fetches the contract endpoints from a live box into the gitignored
+- **`just capture`** fetches the contract endpoints from a live box into the gitignored
   `opnsense/testdata/captures/` scratch dir so you can validate the **current** box's payloads.
 
 ## Catching a new release early
 
 ```bash
-# Point at a beta/RC box (reuses the same OPS_* vars as `make local-run`):
-OPS_ADDRESS=192.168.1.1 OPS_API_KEY=… OPS_API_SECRET=… OPS_INSECURE=1 make capture
+# Point at a beta/RC box (reuses the same OPS_* vars as `just run`):
+OPS_ADDRESS=192.168.1.1 OPS_API_KEY=… OPS_API_SECRET=… OPS_INSECURE=1 just capture
 go test ./opnsense/ -run TestResponseContracts -v
 ```
 
@@ -41,7 +41,7 @@ Captures may contain host/network data, so they are gitignored by default. To ma
 
 ## Adding a contract for another endpoint
 
-1. `make capture` (or hand-capture) a real response; save a sanitised copy under
+1. `just capture` (or hand-capture) a real response; save a sanitised copy under
    `opnsense/testdata/<area>/`.
 2. Add a `ResponseContract` entry in `opnsense/response_contract.go` with its `KnownTopLevelKeys`
    and a validator asserting the fields the collector consumes are populated.
@@ -52,7 +52,7 @@ Captures may contain host/network data, so they are gitignored by default. To ma
 **Contracted** (a `ResponseContract` + committed fixture guards payload-shape drift):
 `healthCheck`, `gatewaysStatus`, `pfStates`, `unboundDNSStatus`, `firmware`.
 
-**Not yet contracted** — highest-value gaps to fill next with `make capture`: interface
+**Not yet contracted** — highest-value gaps to fill next with `just capture`: interface
 traffic, `systemResources`/`systemTime`, and the fetchers whose response shapes are not yet
 validated against a live box (`apcupsd`, `chrony`, `crowdsec`, `dhcpv6` ISC, `frr`, `haproxy`,
 `hasync`, `nginx`, `nut`). Until contracted, those rely on the tolerant JSON decode: a renamed

@@ -30,6 +30,6 @@ func TestAgentsMDCollectorCount(t *testing.T) {
 	}
 	want := len(collector.AllCollectors())
 	if got != want {
-		t.Errorf("AGENTS.md says %d sub-collectors, but %d are registered (run `make docs`)", got, want)
+		t.Errorf("AGENTS.md says %d sub-collectors, but %d are registered (run `just docs`)", got, want)
 	}
 }

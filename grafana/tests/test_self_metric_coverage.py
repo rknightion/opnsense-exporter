@@ -48,7 +48,7 @@ class SelfMetricCatalogueTest(unittest.TestCase):
         ):
             self.assertIn(metric, catalogue,
                           f"{metric} is declared in source but absent from the coverage catalogue; "
-                          "run `make docs` to regenerate docs/metrics/self-metrics.md")
+                          "run `just docs` to regenerate docs/metrics/self-metrics.md")
 
     def test_catalogue_is_the_union_of_both_sources(self):
         """Neither source alone is the catalogue, and the overlap is deduplicated."""

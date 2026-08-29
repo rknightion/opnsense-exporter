@@ -81,7 +81,7 @@ func opsAPIKey() (string, error) {
 
 // ResolveOPSAPIKey resolves the OPNsense API key from OPN2OTEL_OPS_API_KEY_FILE
 // / OPS_API_KEY_FILE (first set-and-non-empty file wins), falling back to flagValue. It is
-// exported so other entrypoints — notably cmd/apicapture via `make capture` — resolve
+// exported so other entrypoints — notably cmd/apicapture via `just capture` — resolve
 // file-based secrets identically to the exporter itself (#157).
 func ResolveOPSAPIKey(flagValue string) (string, error) {
 	return resolveSecretMulti(flagValue,

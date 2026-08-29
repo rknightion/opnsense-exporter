@@ -13,7 +13,7 @@ opnsense2otel:
 | `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
 | `tests/test_empty_state_contract.py` | Gate: a panel that zero-fills with `or vector(0)` must be gated by a sentinel fed by its OWN collector, or the green `0` reads as "checked, nothing found" when the truth is "never checked". Collector ownership is derived from the generated metric docs and `sentinel-contract.json`, never hand-listed. |
 | `alerts/ruleeval.py` | A model of Grafana's alert-rule state machine (pending period, `noDataState`, `execErrState`, MissingSeries eviction), run against the generated manifests by `tests/test_rule_behaviour.py`. Not a PromQL evaluator — see its module docstring. |
-| `runbooks.md` | **Generated** - full per-alert runbook: what each rule measures, its threshold/window, absent/no-data semantics, first checks, likely causes, and recovery verification. Regenerate with `make rules`. |
+| `runbooks.md` | **Generated** - full per-alert runbook: what each rule measures, its threshold/window, absent/no-data semantics, first checks, likely causes, and recovery verification. Regenerate with `just rules`. |
 
 The dashboard is **mixed-datasource**: Prometheus metrics plus opt-in **Loki** log panels
 (raw Zenarmor/syslog streams, top-talker tables) that auto-hide when no matching log stream

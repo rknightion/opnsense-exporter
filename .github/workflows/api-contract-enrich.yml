@@ -98,8 +98,8 @@ jobs:
                and/or a verb change (moving an endpoint in/out of `postEndpoints` in
                `opnsense/contract.go`) — open a PR that makes the change, updates
                `opnsense/testhelpers_test.go` and the count in `opnsense/client_test.go` if the
-               path changed, runs `make docs`, and runs `CGO_ENABLED=0 go test ./...`. Do NOT
+               path changed, runs `just docs`, and runs `CGO_ENABLED=0 go test ./...`. Do NOT
                attempt struct/field reshaping; flag those for a human instead.
 
           claude_args: |
-            --allowedTools "Bash(gh api repos/opnsense/*:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(go test:*),Bash(go build:*),Bash(make docs:*),Bash(make docs-check:*),Edit,Write,WebFetch"
+            --allowedTools "Bash(gh api repos/opnsense/*:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(go test:*),Bash(go build:*),Bash(just docs:*),Bash(just docs-check:*),Edit,Write,WebFetch"

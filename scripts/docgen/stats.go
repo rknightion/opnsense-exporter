@@ -18,11 +18,11 @@ type docStats struct {
 }
 
 // loadDashboardStats reads grafana/dashboard-stats.json, written by
-// `make dashboard`, so dashboard counts + tab names in prose track the dashboard build.
+// `just dashboard`, so dashboard counts + tab names in prose track the dashboard build.
 func loadDashboardStats(repoRoot string) (metrics, tabs int, tabNames []string) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot, "grafana", "dashboard-stats.json"))
 	if err != nil {
-		fatal("reading grafana/dashboard-stats.json (run 'make dashboard' first): %v", err)
+		fatal("reading grafana/dashboard-stats.json (run 'just dashboard' first): %v", err)
 	}
 	var s struct {
 		Metrics  int      `json:"metrics"`
@@ -34,21 +34,21 @@ func loadDashboardStats(repoRoot string) (metrics, tabs int, tabNames []string) 
 		fatal("parsing grafana/dashboard-stats.json: %v", err)
 	}
 	if s.Metrics == 0 || s.Tabs == 0 {
-		fatal("grafana/dashboard-stats.json has zero metrics/tabs; rerun 'make dashboard'")
+		fatal("grafana/dashboard-stats.json has zero metrics/tabs; rerun 'just dashboard'")
 	}
 	if len(s.TabNames) != s.Tabs {
-		fatal("grafana/dashboard-stats.json tab_names (%d) != tabs (%d); rerun 'make dashboard'", len(s.TabNames), s.Tabs)
+		fatal("grafana/dashboard-stats.json tab_names (%d) != tabs (%d); rerun 'just dashboard'", len(s.TabNames), s.Tabs)
 	}
 	return s.Metrics, s.Tabs, s.TabNames
 }
 
 // loadRulesStats counts the committed Grafana-managed rule manifests so the counts in
-// grafana/README.md track `make rules` output. The manifests ARE the generated artifact.
+// grafana/README.md track `just rules` output. The manifests ARE the generated artifact.
 func loadRulesStats(repoRoot string) (alerts, recording int) {
 	dir := filepath.Join(repoRoot, "grafana", "alerts", "grafana-managed")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		fatal("reading %s (run 'make rules' first): %v", dir, err)
+		fatal("reading %s (run 'just rules' first): %v", dir, err)
 	}
 	for _, e := range entries {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
@@ -72,7 +72,7 @@ func loadRulesStats(repoRoot string) (alerts, recording int) {
 		}
 	}
 	if alerts == 0 {
-		fatal("no AlertRule manifests found in %s; rerun 'make rules'", dir)
+		fatal("no AlertRule manifests found in %s; rerun 'just rules'", dir)
 	}
 	return alerts, recording
 }

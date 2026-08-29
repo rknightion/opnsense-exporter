@@ -17,7 +17,7 @@ const minReasonLen = 20
 // Reasons that begin "SHOULD BE EXPORTED" are the honest ones: the data is worth
 // having and nobody has done the work. They are searchable on that phrase.
 //
-// Regenerate the report with `make fieldaudit`.
+// Regenerate the report with `just fieldaudit`.
 var Exemptions = map[string]string{
 	// opnsense/smart.go:72  json:"threshold_percent"
 	"opnsense.smartSpareAvailable.ThresholdPercent": "Modelled so the canary does not report it as unmodelled drift, and deliberately " +

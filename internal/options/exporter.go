@@ -80,7 +80,7 @@ var (
 //     use it at all.
 //   - exporter-toolkit registers the flag ONLY when GOOS=linux, so its mere
 //     presence in the kingpin model made generated docs depend on the platform
-//     docgen ran on: docs regenerated on macOS then failed `make docs-check` on
+//     docgen ran on: docs regenerated on macOS then failed `just docs-check` on
 //     a Linux CI runner (#532). Hiding it removes that divergence at the source,
 //     since docgen skips hidden flags — rather than compensating for it in each
 //     renderer that reads the live model.

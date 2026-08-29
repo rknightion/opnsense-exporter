@@ -10,7 +10,7 @@ import (
 // TestDocumentedFlagsAreNotPlatformDependent pins the one flag whose presence in
 // the kingpin model depends on GOOS: exporter-toolkit registers
 // --web.systemd-socket only when GOOS=linux. While it was documented, docs
-// regenerated on macOS failed `make docs-check` on a Linux CI runner, red-ing
+// regenerated on macOS failed `just docs-check` on a Linux CI runner, red-ing
 // main for a day (#532) — every generated artifact renders from the flag set, so
 // a platform-dependent entry makes the artifacts platform-dependent too.
 //

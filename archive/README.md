@@ -37,7 +37,7 @@ should use GraphQL `totalCount`, not `.comments`.
 ## It is redacted, and the placeholders are stable
 
 The tracker is a live-lab project's, and issue bodies quoted host names, LAN and tailnet addresses,
-MAC addresses and a WAN address — exactly what this repository's own rules (`make check-public-ips`,
+MAC addresses and a WAN address — exactly what this repository's own rules (`just check-public-ips`,
 `#565`) keep out of tracked files. Committing the raw dump would have moved those identifiers from
 somewhere deletable into permanent public git history at the very moment they were being deleted.
 

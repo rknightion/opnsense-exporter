@@ -1,10 +1,11 @@
 ---
 id: OPN-0006
 title: Migrate the repo task surface to just and retire Makefiles and ad-hoc scripts
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-08-28 19:05'
-updated_date: '2026-08-29 11:20'
+updated_date: '2026-08-29 12:48'
 labels:
   - 'wave:2-fleet'
 dependencies: []
@@ -785,6 +786,16 @@ image build.
 - [ ] #4 make docs-check
 - [ ] #5 make grafana-check
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Inventory the current Makefile, scripts, workflows, pins, and byte-sensitive CI invariants.
+2. Introduce the frozen justfile task surface, including the ratified bare-toolchain check / heavy-leg ci split and the 2otel recipes, then remove only absorbed wrappers.
+3. Align CI job names and one-line just calls, Renovate pin management, gosec, generated-source strings, docs, hook, and tracker definition of done.
+4. Regenerate artifacts and run targeted syntax, task-surface, repository, and CodeRabbit checks; review the final diff.
+5. Commit and push main, obtain an exact-SHA CI run, then finalize all acceptance criteria atomically with objective evidence.
+<!-- SECTION:PLAN:END -->
 
 ## Comments
 

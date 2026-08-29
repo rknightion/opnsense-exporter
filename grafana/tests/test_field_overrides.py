@@ -9,7 +9,7 @@ lists, and Grafana's GitSync rejected the ENTIRE dashboard on unmarshal:
     DashboardSpec.spec.elements.spec.vizConfig.spec.fieldConfig.overrides
     of type v2.DashboardV2FieldConfigSourceOverrides
 
-The failure was invisible from this repository: `make dashboard`, `make grafana-check`
+The failure was invisible from this repository: `just dashboard`, `just grafana-check`
 and CI all passed, because the JSON is perfectly well-formed — it is only wrong against
 a schema none of those check. The live dashboard silently stopped updating and drifted
 12 panels behind over two days.

@@ -6,7 +6,7 @@ the marked region of `grafana/tabs/AUTHORING.md` from the same `Builder` instanc
 `build_dashboard.build_all()` produces. This file is the fast, no-subprocess
 staleness check: it rebuilds the contract from the CURRENT registry and diffs it
 against the two committed artifacts, so a sentinel added/removed/rescoped without
-running `make dashboard` fails here (and, in CI, again via `make grafana-check`'s
+running `just dashboard` fails here (and, in CI, again via `just grafana-check`'s
 `git diff --exit-code`).
 
 It also re-asserts the two things #417 exists to keep true of the documentation:
@@ -139,12 +139,12 @@ class SentinelContractTest(unittest.TestCase):
     # ---- staleness: generated artifacts must match what ships NOW ---------
     def test_sentinel_contract_json_is_not_stale(self):
         self.assertTrue(CONTRACT_PATH.exists(),
-                         f"{CONTRACT_PATH} does not exist — run `make dashboard`")
+                         f"{CONTRACT_PATH} does not exist — run `just dashboard`")
         expected = sentinel_contract.contract_json(self.contract)
         actual = CONTRACT_PATH.read_text()
         self.assertEqual(expected, actual,
                           "grafana/sentinel-contract.json is stale relative to the live "
-                          "sentinel registry — run `make dashboard` and commit the result")
+                          "sentinel registry — run `just dashboard` and commit the result")
 
     def test_authoring_md_generated_section_is_not_stale(self):
         self.assertTrue(AUTHORING_PATH.exists())
@@ -157,7 +157,7 @@ class SentinelContractTest(unittest.TestCase):
         expected_section = sentinel_contract.render_authoring_section(self.contract).strip()
         self.assertEqual(expected_section, current_section,
                           "AUTHORING.md's generated sentinel section is stale — run "
-                          "`make dashboard` and commit the result")
+                          "`just dashboard` and commit the result")
 
 
 if __name__ == "__main__":

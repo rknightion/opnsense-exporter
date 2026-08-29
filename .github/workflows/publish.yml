@@ -9,9 +9,9 @@ on:
 permissions:
   contents: read
 jobs:
-  # Resolves the pinned go-licenses version/module out of the Makefile (the one source
+  # Resolves the pinned go-licenses version/module out of the justfile (the one source
   # of truth, #436) so the release image build below installs the SAME tool the
-  # `notices` job (and ci.yml's docker-build-verify) use — the Dockerfile has no
+  # `notices` job (and ci.yml's docker-build) use — the Dockerfile has no
   # default of its own to silently diverge from that pin.
   go-licenses-pin:
     runs-on: ubuntu-24.04
@@ -28,11 +28,14 @@ jobs:
         with:
           ref: ${{ inputs.release_tag || github.ref }}
           persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
       - name: Resolve pinned go-licenses version + module
         id: pin
         run: |
-          echo "version=$(make -s print-go-licenses-version)" >> "$GITHUB_OUTPUT"
-          echo "module=$(make -s print-go-licenses-module)" >> "$GITHUB_OUTPUT"
+          echo "version=$(just print-go-licenses-version)" >> "$GITHUB_OUTPUT"
+          echo "module=$(just print-go-licenses-module)" >> "$GITHUB_OUTPUT"
   image:
     needs: go-licenses-pin
     permissions:
@@ -72,6 +75,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
       # Only go-licenses notices here; the shared reusable already generates +
       # attaches the image SPDX+CycloneDX SBOMs (same filenames — don't double-upload).
       - name: Generate + attach third-party notices
@@ -79,5 +85,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          make notices
+          just notices
           gh release upload "${RELEASE_TAG}" THIRD_PARTY_NOTICES.md --clobber

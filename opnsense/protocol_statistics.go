@@ -216,7 +216,7 @@ type protocolStatisticsResponse struct {
 				// Added in #545. Both are sent by every release in the support window
 				// (verified live on 26.1, 26.7.1 and 27.1.a) — they were simply never
 				// declared, so encoding/json silently discarded them. Declaring them
-				// changes the reflected golden schema: `make schemas` is required.
+				// changes the reflected golden schema: `just schemas` is required.
 				LostRetransmissions json.Number `json:"lost-retransmissions"`
 				TsoChunkRetransmits json.Number `json:"tso-chunk-retransmits"`
 			} `json:"sack"`

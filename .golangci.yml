@@ -1,6 +1,7 @@
 version: "2"
 linters:
   enable:
+    - gosec
     - misspell
     - revive
   disable:
@@ -31,13 +32,126 @@ linters:
       - linters:
           - errcheck
         path: _test.go
+      # Tests deliberately construct hostile packets, URLs, fixtures and output paths;
+      # their assertions exercise those seams rather than shipping them in the binary.
+      - linters:
+          - gosec
+        path: '(_test)\.go'
+      # apicapture is an operator-invoked local CLI: its explicit base URL is the
+      # capture target, not an untrusted HTTP request received by the exporter.
+      - linters:
+          - gosec
+        path: cmd/apicapture/capture.go
+        text: 'G704:'
+      # apicontract and flowanon intentionally emit reviewable, non-secret artifacts.
+      - linters:
+          - gosec
+        path: cmd/apicontract/main.go
+        text: 'G306:'
+      # GitHub supplies GITHUB_OUTPUT for the workflow contract; it is not a
+      # request-derived pathname that this command can be induced to traverse.
+      - linters:
+          - gosec
+        path: cmd/apicontract/main.go
+        text: 'G703:'
+      - linters:
+          - gosec
+        path: cmd/apidrift/main.go
+        text: 'G306:'
+      - linters:
+          - gosec
+        path: cmd/apidrift/main.go
+        text: 'G703:'
+      # Schema and documentation generators write committed, reviewable artifacts.
+      - linters:
+          - gosec
+        path: cmd/apischema/main.go
+        text: 'G306:'
+      - linters:
+          - gosec
+        path: scripts/docgen/main.go
+        text: 'G306:'
+      - linters:
+          - gosec
+        path: scripts/docgen/main.go
+        text: 'G703:'
+      - linters:
+          - gosec
+        path: cmd/flowanon/main.go
+        text: 'G306:'
+      # flowanon is an offline fixture transformer. Its explicit wire-format casts
+      # preserve packet fields and cannot influence a live exporter process.
+      - linters:
+          - gosec
+        path: 'cmd/flowanon/(anon|main)\.go'
+        text: 'G115:'
+      # Retry jitter needs scheduling randomness, not a cryptographic secret.
+      - linters:
+          - gosec
+        path: internal/annotations/watcher.go
+        text: 'G404:'
+      # NetFlow fields are deliberately projected from template-declared wire widths
+      # into the fixed-width record model; UDP read counts are non-negative by contract.
+      - linters:
+          - gosec
+        path: internal/flow/netflow/decode.go
+        text: 'G115:'
+      - linters:
+          - gosec
+        path: internal/flow/netflow/listener.go
+        text: 'G115:'
+      # These values are monotonic process counters, while the scheduler cast is
+      # bounded by a positive time.Duration before conversion.
+      - linters:
+          - gosec
+        path: internal/collector/flow.go
+        text: 'G115:'
+      - linters:
+          - gosec
+        path: internal/collector/scheduler.go
+        text: 'G115:'
+      # The devices cache intentionally detaches a bounded shared fetch from one
+      # request, and the HTML helpers either escape inputs or render bounded values.
+      - linters:
+          - gosec
+        path: internal/webui/devices.go
+        text: 'G118:'
+      - linters:
+          - gosec
+        path: internal/webui/render.go
+        text: 'G203:'
+      # The enrichment cancel function is retained and called on each shutdown path.
+      - linters:
+          - gosec
+        path: main.go
+        text: 'G118:'
+      # Endpoint names are not credentials; TLS verification and retry jitter are
+      # explicit client options with their own operator-facing contracts.
+      - linters:
+          - gosec
+        path: opnsense/client.go
+        text: 'G101:'
+      - linters:
+          - gosec
+        path: opnsense/client.go
+        text: 'G402:'
+      - linters:
+          - gosec
+        path: opnsense/client.go
+        text: 'G404:'
+      # auth.pwd names a structured sudo working-directory attribute; it is not a
+      # credential literal and is never exposed as a metric label.
+      - linters:
+          - gosec
+        path: internal/logship/syslog/sudo.go
+        text: 'G101:'
     paths:
       - third_party$
       - builtin$
       - examples$
 formatters:
   # Enable gofmt (with -s simplify) so `golangci-lint run` gates formatting in CI, not
-  # just the local `make lint` write step (#132). Matches `gofmt -s` used by make lint.
+  # just the local `just fmt` write step (#132). Matches `gofmt -s` used by just fmt.
   enable:
     - gofmt
   settings:

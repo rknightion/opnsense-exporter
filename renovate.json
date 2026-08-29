@@ -27,11 +27,11 @@
       "datasourceTemplate": "go"
     },
     {
-      "description": "Bump the SYFT_VERSION / GO_LICENSES_VERSION pins in the Makefile via # renovate: annotations (#135).",
+      "description": "Bump the # renovate-annotated tooling pins in the justfile (#135).",
       "customType": "regex",
-      "managerFilePatterns": ["/^Makefile$/"],
+      "managerFilePatterns": ["/^justfile$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+[A-Z_]+_VERSION\\s*\\?=\\s*(?<currentValue>v[0-9.]+)"
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+[a-z_]+_version\\s*:=\\s*\\\"(?<currentValue>v[0-9.]+)\\\""
       ]
     }
   ],

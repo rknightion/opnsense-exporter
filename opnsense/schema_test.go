@@ -151,7 +151,7 @@ func TestAllEndpointSchemas(t *testing.T) {
 }
 
 // The committed golden schema files must match what the current structs
-// derive — run `make schemas` after changing a response struct.
+// derive — run `just schemas` after changing a response struct.
 func TestSchemasUpToDate(t *testing.T) {
 	schemas, err := AllEndpointSchemas()
 	if err != nil {
@@ -159,7 +159,7 @@ func TestSchemasUpToDate(t *testing.T) {
 	}
 	// Committed non-golden files that live alongside the goldens: the compat
 	// ledger and the live-coverage ledger (#377). Neither is generated, so
-	// neither may be reported as an orphan (nor removed by `make schemas` — see
+	// neither may be reported as an orphan (nor removed by `just schemas` — see
 	// the matching allowlist in cmd/apischema).
 	seen := map[string]bool{"exemptions.json": true, "coverage.json": true}
 	for _, s := range schemas {
@@ -172,11 +172,11 @@ func TestSchemasUpToDate(t *testing.T) {
 		want = append(want, '\n')
 		got, err := os.ReadFile(filepath.Join("testdata", "schemas", name))
 		if err != nil {
-			t.Errorf("golden schema for %q unreadable (run `make schemas`): %v", s.Endpoint, err)
+			t.Errorf("golden schema for %q unreadable (run `just schemas`): %v", s.Endpoint, err)
 			continue
 		}
 		if string(got) != string(want) {
-			t.Errorf("golden schema for %q is stale — run `make schemas`", s.Endpoint)
+			t.Errorf("golden schema for %q is stale — run `just schemas`", s.Endpoint)
 		}
 	}
 	entries, err := os.ReadDir(filepath.Join("testdata", "schemas"))
@@ -185,7 +185,7 @@ func TestSchemasUpToDate(t *testing.T) {
 	}
 	for _, e := range entries {
 		if !e.IsDir() && !seen[e.Name()] {
-			t.Errorf("orphan golden schema %q — run `make schemas`", e.Name())
+			t.Errorf("orphan golden schema %q — run `just schemas`", e.Name())
 		}
 	}
 }

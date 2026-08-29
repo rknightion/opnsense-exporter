@@ -46,29 +46,33 @@ cited below actually mean.
 - **Never let two agents edit the same task.** The v1.50.x concurrency fix covers the `task edit`
   funnel only — not reorder, draft saves, the TUI path, `doc update` or decision updates.
 - **`backlog/` is committed to a public repository.** No account identifiers, tokens, IP literals or
-  personal data in tasks or docs — write the shape, not the instance. `make check-public-ips` catches
+  personal data in tasks or docs — write the shape, not the instance. `just check-public-ips` catches
   IP literals; nothing catches the rest.
 - **Do not build on decisions or MCP.** `backlog decision` is half-built upstream (no edit, no view,
   no supersede) and the MCP server is frozen and costs 10-50k tokens of permanent context against
   1-2k for the CLI. Durable reference goes in **docs**; tasks are the unit of work.
 
-## Commands
+## Task interface
 
-```bash
-make              # Build binary (static, version-embedded)
-make test         # Run all tests: go test ./...
-make lint         # Run gofmt + golangci-lint --fix
-make docs         # Regenerate all generated docs (metrics, collector reference, config tables, counts) + doclint
-make docs-check   # CI gate: fail if generated docs are stale or doc tokens are invalid (alias: pre-commit hook via make install-hooks)
-make sync-vendor  # go mod tidy && go mod vendor (run after dependency changes)
-make clean        # Format, remove binary
-```
+This repo's task surface is a `justfile`. Discover it, don't guess it:
+
+    just --list                        # human-readable
+    just --dump --dump-format json     # machine-readable
+    just --show <recipe>               # what a recipe actually runs
+
+- `just check` is the bare-toolchain pre-commit gate and must pass before you commit.
+- `just ci` adds only CI legs that need Docker or cross-compilation. GitHub API metadata validation
+  and the full Docker/kind orchestration remain workflow-only.
+- Prefer `just <recipe>` over the underlying tool. If you are typing `go test`, you want `just test`.
+- Run `just` with stdin from `/dev/null`. Recipes marked `[confirm]` are destructive — stop and ask
+  before running one; never pass `--yes` or `JUST_YES=1`.
+- If a task you need does not exist, add a recipe with a `#` doc comment and a `[group(...)]`
+  rather than running a bare command.
 
 Run a single test:
-```bash
-go test ./internal/collector/ -run TestCollector
-go test ./opnsense/ -run TestFetchGateways
-```
+
+    just test TestFetchGateways
+    go test ./opnsense/ -run TestFetchGateways    # when you need a specific package
 
 ## Architecture
 
@@ -116,7 +120,7 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
     `PluginGatedEndpoints()` only — otherwise the canary files its 404 under "core route vanished
     upstream".
 2c. Add the endpoint's response struct to `schemaRegistry` in `opnsense/schema_registry.go` and run
-    `make schemas` (`TestSchemaRegistryComplete` / `TestSchemasUpToDate` fail otherwise). If the
+    `just schemas` (`TestSchemaRegistryComplete` / `TestSchemasUpToDate` fail otherwise). If the
     endpoint is POST, also add its request body to `captureRequests` in `opnsense/capture_requests.go`
     (`TestCaptureRequestsCoverPostEndpoints` enforces parity). These feed the daily live-box schema
     canary (`cmd/apidrift`, `.github/workflows/live-canary.yml`), which validates real payload
@@ -144,11 +148,11 @@ endpoint. Two rules, and they are not the same rule:
 
 6. Add the subsystem's display name to `SubsystemDisplayNames` in `internal/collector/collector.go` (a unit test fails without it)
 7. Add a `CollectorFlags` entry in `internal/options/collectors.go` binding the new flag to the subsystem string (a unit test fails without it)
-8. Run `make docs` and commit the result. It regenerates the metrics/collector references, re-injects the flag tables in `docs/configuration.md`, re-pins metric/collector counts across the site and README, lints all doc flag/env tokens, and cross-checks docs against the live collector registry. CI (`make docs-check`) fails if any of this is stale.
+8. Run `just docs` and commit the result. It regenerates the metrics/collector references, re-injects the flag tables in `docs/configuration.md`, re-pins metric/collector counts across the site and README, lints all doc flag/env tokens, and cross-checks docs against the live collector registry. CI (`just docs-check`) fails if any of this is stale.
 
 **Dashboard (required — a coverage gate enforces this):**
 
-9. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build (non-zero exit, in both write and `--check` mode) if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`. CI enforces all of this via `make grafana-check` (a required `ci-success` job): the coverage gate, regeneration staleness of `dashboard.json`/`dashboard-stats.json`/`grafana/alerts/grafana-managed/*.json`, and Grafana-managed manifest validity.
+9. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `just dashboard` — it **fails the build (non-zero exit, in both write and `--check` mode) if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `just rules`. See `grafana/README.md`. CI enforces all of this via `just grafana-check` (a required `ci-success` job): the coverage gate, regeneration staleness of `dashboard.json`/`dashboard-stats.json`/`grafana/alerts/grafana-managed/*.json`, and Grafana-managed manifest validity.
 
 ## Canary Drift Triage
 
@@ -168,17 +172,17 @@ Rules:
 - **Support window is current + previous stable OPNsense.** Never version-sniff — resolve by payload *shape*. Never remove a legacy field while a release that sends it is still in the window.
 - **A fixture must never encode a shape upstream cannot produce.** Derive fixtures from a real capture or from the source's own branches. If one is deliberately synthetic (pinning parser tolerance rather than a captured payload), say so in the case comment.
 - **`opnsense/testdata/schemas/exemptions.json` is the compat ledger.** Every kept-legacy path gets a `missingOK` entry (the prefix form `section.*` is supported) with a note naming the generation it belongs to and the trigger that will let us prune it. Unmodelled new top-level keys go in `knownExtraTopKeys`.
-- After changing structs, run `make schemas`. Goldens are structure-only — they must never contain response values.
+- After changing structs, run `just schemas`. Goldens are structure-only — they must never contain response values.
 
 ## Key Conventions
 
-- **Vendor directory is committed** — always run `make sync-vendor` after `go.mod` changes
+- **Vendor directory is committed** — always run `just sync-vendor` after `go.mod` changes
 - **Static binary build** with `-ldflags "-s -w"` and `CGO_ENABLED=0`
-- **Version** — the repository root contains a `version.txt` file managed by release-please; the binary version is embedded at build time via `-X main.version=...` (GoReleaser uses the git tag; local `make` builds embed `local-test`)
+- **Version** — the repository root contains a `version.txt` file managed by release-please; the binary version is embedded at build time via `-X main.version=...` (GoReleaser uses the git tag; local `just build` builds embed `local-test`)
 - Linters: `misspell` and `revive` are enabled; `unused` is disabled
 - API key/secret support file-based secrets (`OPS_API_KEY_FILE`, `OPS_API_SECRET_FILE`)
 - **Changelog** — release history lives in `CHANGELOG.md`, managed by release-please from conventional commits. There is no separate "changes from upstream" list to maintain; the README carries only a short hard-fork notice.
-- **Generated docs** — never hand-edit content between `<!-- docgen:begin/end -->` markers or the docgen-generated pages; run `make docs` instead.
+- **Generated docs** — never hand-edit content between `<!-- docgen:begin/end -->` markers or the docgen-generated pages; run `just docs` instead.
 
 <!-- BACKLOG.MD GUIDELINES START -->
 <!-- backlog.md-instructions-version: 1.50.1 -->

@@ -15,7 +15,7 @@ pointer to this page — edit only this file; do not duplicate content into the 
 ## Prerequisites
 
 - **Go** - Check `go.mod` for the required version (currently Go 1.27)
-- **Make** - For build automation
+- **just 1.58+** - For build automation
 - **golangci-lint** - Optional; runs in CI but can be used locally
 - **Docker** - Optional; for container builds
 
@@ -26,21 +26,26 @@ Clone the repository:
 ```bash
 git clone https://github.com/rknightion/opnsense2otel.git
 cd opnsense2otel
+just setup
 ```
 
 ## Build commands
 
 | Command | Description |
 |---------|-------------|
-| `make` | Build the binary (static, version-embedded) |
-| `make test` | Run all tests: `go test ./...` |
-| `make lint` | Run `gofmt` and `golangci-lint --fix` |
-| `make sync-vendor` | `go mod tidy && go mod vendor` |
-| `make clean` | Format source and remove the binary |
+| `just setup` | Install repo-local release tooling and warm the module cache |
+| `just build` | Build the binary (static, version-embedded) |
+| `just test` | Run the full test suite under the race detector |
+| `just fmt` | Rewrite Go and justfile formatting |
+| `just lint` | Report `golangci-lint` findings without mutating source |
+| `just check` | Run the bare-toolchain pre-commit gate |
+| `just ci` | Add the Docker and cross-compilation CI legs when those prerequisites are available |
+| `just sync-vendor` | `go mod tidy && go mod vendor` |
+| `just clean` | Remove reproducible build output |
 
 ### Building on macOS
 
-The Makefile uses `-extldflags "-static"` which does not work on macOS. Use this instead:
+`just build` uses the same static-link flags as CI. If your local toolchain cannot support them, use this instead:
 
 ```bash
 CGO_ENABLED=0 go build -o opnsense2otel .
@@ -57,10 +62,10 @@ go test ./opnsense/ -run TestFetchGateways
 
 ### Vendor directory
 
-The vendor directory is committed to the repository. Always run `make sync-vendor` after modifying `go.mod`:
+The vendor directory is committed to the repository. Always run `just sync-vendor` after modifying `go.mod`:
 
 ```bash
-make sync-vendor
+just sync-vendor
 ```
 
 ### Static binary
@@ -73,16 +78,16 @@ The build produces a fully static binary with:
 
 ### Version
 
-The version is embedded at build time via `-ldflags -X main.version=...`. The `version.txt` file at the repository root is managed by release-please and tracks the current released version; GoReleaser embeds the git tag as the version in release builds, while local `make` builds embed `local-test`.
+The version is embedded at build time via `-ldflags -X main.version=...`. The `version.txt` file at the repository root is managed by release-please and tracks the current released version; GoReleaser embeds the git tag as the version in release builds, while local `just build` builds embed `local-test`.
 
 ### Linters
 
 The project uses `golangci-lint` with:
 
-- `misspell` and `revive` enabled
+- `gosec`, `misspell`, and `revive` enabled
 - `unused` disabled
 
-Linting runs in CI. Locally, `make lint` will run `gofmt` formatting (the `golangci-lint` step may fail if the tool is not installed, which is expected).
+Linting runs in CI. Locally, `just fmt` rewrites formatting and `just lint` only reports findings (the `golangci-lint` step may fail if the tool is not installed, which is expected).
 
 ### Commit messages
 
@@ -104,23 +109,16 @@ drive the changelog instead.
 
 ## Pull request checklist
 
-Before submitting a PR, the local equivalent of everything `ci-success` requires:
+Before submitting a PR, run `just check`. It is the bare-toolchain pre-commit gate; run `just ci` too when Docker and cross-compilation are available. If generated artifacts changed, run `just gen` and commit the resulting diff.
 
-- [ ] Code compiles: `make` or `CGO_ENABLED=0 go build`
-- [ ] Tests pass: `go test ./...` (`make test`)
-- [ ] Tests pass under the race detector: `go test -race ./...`
-- [ ] Linters pass: `golangci-lint run ./...` (`make lint` runs `gofmt` plus `golangci-lint --fix`)
-- [ ] Generated docs are current: `make docs-check` (run `make docs` first if it fails, then commit the
-  regenerated files — never hand-edit content between `<!-- docgen:begin/end -->` markers)
-- [ ] Grafana dashboard/alerts are current: `make grafana-check` (run `make dashboard` and, if alert
-  rules changed, `make rules`, then commit the regenerated files — see `grafana/README.md`)
-- [ ] Vendor is synced (if dependencies changed): `make sync-vendor`
+- [ ] `just check` passes
+- [ ] Generated artifacts are current: `just gen` was run when needed and its diff is committed — never hand-edit content between `<!-- docgen:begin/end -->` markers
+- [ ] Vendor is synced when dependencies changed: `just sync-vendor`
 - [ ] Conventional commit messages used
 - [ ] New collectors follow the [adding a collector](adding-collector.md) guide
 
-CI additionally verifies the container image builds and embeds the correct version
-(`docker-build-verify`); this can optionally be reproduced locally with `docker build .` but is not
-required before opening a PR.
+CI additionally verifies the container image, its embedded version, Compose contracts, and a disposable
+kind cluster (`docker-build`); the local `just ci` superset runs the plain image and deployment legs.
 
 ## Project structure
 

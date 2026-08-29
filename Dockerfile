@@ -26,24 +26,24 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 # scripts/notices.sh, which forces module mode + `go mod download` (network required here).
 #
 # GO_LICENSES_VERSION / GO_LICENSES_MODULE have NO default here on purpose (#436): a prior
-# independent `ARG GO_LICENSES_VERSION=v1.6.0` silently diverged from the Makefile's v2.0.1
+# independent `ARG GO_LICENSES_VERSION=v1.6.0` silently diverged from the justfile's v2.0.1
 # pin for months, so this image build never caught the release-only "post-v2 module path"
-# install failure. The Makefile (`GO_LICENSES_VERSION`/`GO_LICENSES_MODULE`) is the one
-# source of truth; every caller resolves the current pin via `make print-go-licenses-version`
-# / `make print-go-licenses-module` and supplies it as a build-arg (ci.yml's
-# docker-build-verify job, publish.yml's release build) — Dockerfile itself cannot select a
+# install failure. The justfile (`go_licenses_version`/`go_licenses_module`) is the one
+# source of truth; every caller resolves the current pin via `just print-go-licenses-version`
+# / `just print-go-licenses-module` and supplies it as a build-arg (ci.yml's
+# docker-build job, publish.yml's release build) — Dockerfile itself cannot select a
 # different version unnoticed because it has nothing to select. `test -n` below fails the
 # build loudly if a caller forgets to pass them, e.g. a bare local:
 #   docker build \
-#     --build-arg GO_LICENSES_VERSION="$(make -s print-go-licenses-version)" \
-#     --build-arg GO_LICENSES_MODULE="$(make -s print-go-licenses-module)" .
+#     --build-arg GO_LICENSES_VERSION="$(just print-go-licenses-version)" \
+#     --build-arg GO_LICENSES_MODULE="$(just print-go-licenses-module)" .
 ARG GO_LICENSES_VERSION
 ARG GO_LICENSES_MODULE
 RUN --mount=type=cache,target=/root/.cache/go-build \
   apk add --no-cache bash && \
   test -n "${GO_LICENSES_VERSION}" && test -n "${GO_LICENSES_MODULE}" || \
     { echo "GO_LICENSES_VERSION and GO_LICENSES_MODULE build-args are required (#436) — pass" \
-           "them from 'make print-go-licenses-version' / 'make print-go-licenses-module'" >&2; exit 1; } && \
+           "them from 'just print-go-licenses-version' / 'just print-go-licenses-module'" >&2; exit 1; } && \
   GOBIN=/usr/local/bin go install ${GO_LICENSES_MODULE}@${GO_LICENSES_VERSION} && \
   GO_LICENSES=go-licenses OUT=/THIRD_PARTY_NOTICES.md bash scripts/notices.sh
 

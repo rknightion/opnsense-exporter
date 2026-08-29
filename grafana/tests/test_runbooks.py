@@ -12,7 +12,7 @@ don't already own:
     `SUMMARY_INSTANCE_EXEMPT` carries a real reason (never a bare skip).
 
 This suite regenerates runbooks.md into a temp path for its own assertions rather than
-trusting the checked-in copy is fresh - `make grafana-check` is what enforces the
+trusting the checked-in copy is fresh - `just grafana-check` is what enforces the
 checked-in copy is not stale (same pattern as dashboard.json).
 """
 import importlib.util
@@ -67,7 +67,7 @@ class RunbookContentContractTest(unittest.TestCase):
 
     def test_a_missing_runbook_key_fails_the_gate(self):
         # Prove the gate (build_rules.require_complete_runbook, wired into
-        # _runbook_section so `make rules` itself fails on this, not just a test)
+        # _runbook_section so `just rules` itself fails on this, not just a test)
         # actually fires on a broken input rather than only ever seeing the real,
         # already-complete RULES list.
         rb = dict(build_rules.RULES[0]["runbook"])
@@ -216,12 +216,12 @@ class RunbookAnchorResolutionTest(unittest.TestCase):
         self.assertEqual(len(anchors), len(set(anchors)), "two alerts slug to the same anchor")
 
     def test_the_checked_in_runbooks_md_matches_the_generator(self):
-        # `make grafana-check` / `make rules` is what enforces this isn't stale in CI;
+        # `just grafana-check` / `just rules` is what enforces this isn't stale in CI;
         # this test documents the expectation and gives a clear local signal too.
         checked_in = (GRAFANA_DIR / "runbooks.md").read_text()
         self.assertEqual(
             checked_in, self.markdown,
-            "grafana/runbooks.md is stale relative to build_rules.py - run `make rules`"
+                          "grafana/runbooks.md is stale relative to build_rules.py - run `just rules`"
         )
 
 

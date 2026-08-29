@@ -1439,8 +1439,8 @@ func TestFetchUnboundQueryStats_TopDomainsEmptyArrayShape(t *testing.T) {
 // "api/unbound/overview/totals/1" to "api/unbound/overview/totals/512". That file
 // is owned by a different lane in this change, so the edit is deliberately not
 // made here — this test is the handoff. Regenerate
-// testdata/schemas/unboundQueryStatsTotals.json (make schemas) and docs/security.md
-// (make docs) with it; both record the URL.
+// testdata/schemas/unboundQueryStatsTotals.json (just schemas) and docs/security.md
+// (just docs) with it; both record the URL.
 func TestUnboundQueryStatsTotalsMaxMatchesLeaderboardCap(t *testing.T) {
 	url := string(defaultEndpoints()["unboundQueryStatsTotals"])
 	want := fmt.Sprintf("api/unbound/overview/totals/%d", UnboundTopDomainsMax)

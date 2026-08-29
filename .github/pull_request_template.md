@@ -24,9 +24,9 @@ Delete if not relevant. Describe the tests you ran, and how to reproduce them.
 
 ## Checklist
 
-- [ ] If I added or changed a collector/metric, I ran `make docs` and committed the regenerated output. I did **not** hand-edit anything between `<!-- docgen:begin/end -->` markers — those are generated files (see `docs/metrics/metrics.md`, `docs/reference/collectors.md`, `docs/configuration.md`).
-- [ ] If I added or changed a metric, I added the corresponding Grafana panel and ran `make dashboard` (see `grafana/README.md`).
-- [ ] If I changed `go.mod`, I ran `make sync-vendor` and committed the vendor diff.
+- [ ] If I added or changed a collector/metric, I ran `just docs` and committed the regenerated output. I did **not** hand-edit anything between `<!-- docgen:begin/end -->` markers — those are generated files (see `docs/metrics/metrics.md`, `docs/reference/collectors.md`, `docs/configuration.md`).
+- [ ] If I added or changed a metric, I added the corresponding Grafana panel and ran `just dashboard` (see `grafana/README.md`).
+- [ ] If I changed `go.mod`, I ran `just sync-vendor` and committed the vendor diff.
 - [ ] I commented my code, particularly in hard-to-understand areas.
 - [ ] I added or updated tests that prove the fix or feature works.
-- [ ] Local gate is green: `go test ./...`, `go test -race ./...`, `golangci-lint run ./...`, `make docs-check`, `make grafana-check`. (These are exactly the jobs `ci-success` requires; a Docker build-verify job also runs in CI and can optionally be reproduced locally with `docker build .`.)
+- [ ] Local gate is green: `just check`. (These are exactly the bare-toolchain jobs `ci-success` requires; a Docker build job also runs in CI and can optionally be reproduced locally with `docker build .`.)

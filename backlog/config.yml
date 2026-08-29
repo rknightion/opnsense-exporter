@@ -2,11 +2,8 @@ project_name: "opnsense2otel"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Parked", "Done"]
 definition_of_done:
-  - "make lint"
-  - "make test"
-  - "make check-public-ips"
-  - "make docs-check"
-  - "make grafana-check"
+  - "just check"
+  - "just gen (if any generated artifact changed) and the diff committed"
 labels: []
 date_format: yyyy-mm-dd
 max_column_width: 20

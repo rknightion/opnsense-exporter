@@ -39,7 +39,7 @@ func main() {
 
 	// Resolve credentials the same way the exporter does: OPS_API_KEY_FILE /
 	// OPS_API_SECRET_FILE (file-based secrets) take precedence over the flag/plaintext
-	// env value, so `make capture` has full parity with `make local-run` (#157).
+	// env value, so `just capture` has full parity with `just run` (#157).
 	resolvedKey, err := options.ResolveOPSAPIKey(*apiKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error resolving API key: %v\n", err)

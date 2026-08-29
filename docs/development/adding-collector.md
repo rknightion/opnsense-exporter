@@ -16,7 +16,7 @@ This guide adds a new collector to opnsense2otel: five steps across three packag
 3. Add a `Fetch*()` method and data structs in `opnsense/`
 4. Add a disable flag in `internal/options/collectors.go`
 5. Wire the disable flag in `internal/collector/collector.go` and `main.go`
-6. Update the docs: add `SubsystemDisplayNames` + `CollectorFlags` entries, then run `make docs`
+6. Update the docs: add `SubsystemDisplayNames` + `CollectorFlags` entries, then run `just docs`
 
 ## Step 1: Create the collector
 
@@ -235,11 +235,11 @@ or the docgen-generated pages. After the code is in place:
    `internal/collector/collector.go` (a unit test fails without it).
 2. Add a `CollectorFlags` entry in `internal/options/collectors.go` binding the
    new flag to the subsystem string (a unit test fails without it).
-3. Run `make docs` and commit the result. It regenerates the metrics/collector
+3. Run `just docs` and commit the result. It regenerates the metrics/collector
    references, re-injects the flag tables in `docs/configuration.md`, re-pins
    metric/collector counts across the site and README, lints all doc flag/env
    tokens, and cross-checks docs against the live collector registry. CI
-   (`make docs-check`) fails if any of this is stale.
+   (`just docs-check`) fails if any of this is stale.
 
 ## Checklist
 
@@ -254,4 +254,4 @@ or the docgen-generated pages. After the code is in place:
 - [ ] Tests added and passing
 - [ ] `SubsystemDisplayNames` entry added in `internal/collector/collector.go`
 - [ ] `CollectorFlags` entry added in `internal/options/collectors.go`
-- [ ] `make docs` run and output committed
+- [ ] `just docs` run and output committed

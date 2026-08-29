@@ -4,7 +4,7 @@
 // types, no values) and are what the live canary (cmd/apidrift) validates a
 // real box's payloads against.
 //
-// Run via `make schemas` after changing any response struct;
+// Run via `just schemas` after changing any response struct;
 // opnsense.TestSchemasUpToDate fails CI when the committed files are stale.
 package main
 

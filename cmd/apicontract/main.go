@@ -39,7 +39,7 @@ import (
 // Coverage gap (acknowledged): these four endpoints have NO automated drift detection.
 // The source-diff canary is exempt for them by design, and there is no automated
 // live-box stage that re-validates them — the only live-box tooling (cmd/apicapture,
-// `make capture`) is a manual, local action that captures response contracts
+// `just capture`) is a manual, local action that captures response contracts
 // (opnsense/response_contract.go), not these manifest endpoints. A future OPNsense
 // rename/removal of firmware/status, firmware/info, or the Kea leases4/leases6 search
 // routes would surface only as broken collectors on user installs, not as a CI signal.

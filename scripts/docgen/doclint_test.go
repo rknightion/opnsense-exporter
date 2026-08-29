@@ -64,7 +64,7 @@ func TestFlagShapeCatchesNonWhitelistedPrefix(t *testing.T) {
 
 // TestEnvBrandPrefixTypoDetected guards the #151 env fix: a typo in the OPNSENSE brand
 // prefix (OPNSENSE_EXPORT_… missing the ER) is caught, while genuinely-third-party envs
-// (OTEL_*, SSL_CERT_FILE) and Makefile vars (OPS_*, GO_LICENSES_VERSION) are NOT — they
+// (OTEL_*, SSL_CERT_FILE) and justfile vars (OPS_*, GO_LICENSES_VERSION) are NOT — they
 // legitimately do not appear in the kingpin model.
 func TestEnvBrandPrefixTypoDetected(t *testing.T) {
 	_, envs := extractDocTokens("set OPNSENSE_EXPORT_OPS_API_KEY plus OTEL_SERVICE_NAME and GO_LICENSES_VERSION and SSL_CERT_FILE")
@@ -73,7 +73,7 @@ func TestEnvBrandPrefixTypoDetected(t *testing.T) {
 	}
 	for _, notMine := range []string{"OTEL_SERVICE_NAME", "GO_LICENSES_VERSION", "SSL_CERT_FILE"} {
 		if envs[notMine] {
-			t.Errorf("third-party/Makefile env %q must not be matched (got %v)", notMine, envs)
+			t.Errorf("third-party/justfile env %q must not be matched (got %v)", notMine, envs)
 		}
 	}
 

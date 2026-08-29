@@ -8,8 +8,8 @@ Dashboard schema, and a file that fails validation is simply skipped — the rep
 lands in `CompletedWithWarnings` and everything upstream reports success.
 
 `dashboard-health.json` sat rejected for two days that way (its fieldConfig.overrides
-serialised as a list of lists), 12 panels behind the repository, while `make dashboard`,
-`make grafana-check` and CI were all green — none of them validate against the schema
+serialised as a list of lists), 12 panels behind the repository, while `just dashboard`,
+`just grafana-check` and CI were all green — none of them validate against the schema
 Grafana enforces. Its companion dashboard, in the same commit, applied fine, so there
 was not even an obvious symptom.
 

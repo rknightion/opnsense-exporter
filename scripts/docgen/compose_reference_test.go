@@ -27,7 +27,7 @@ func TestComposeReferenceCoversEveryFlag(t *testing.T) {
 
 // TestComposeReferenceDeterministic pins byte-identical output across runs:
 // the page is generated content checked into docs, so a flaky rendering (map
-// iteration, timestamps) would make `make docs-check` fail intermittently.
+// iteration, timestamps) would make `just docs-check` fail intermittently.
 func TestComposeReferenceDeterministic(t *testing.T) {
 	flags := collectAllFlags()
 	a := renderComposeReference(flags)

@@ -1,4 +1,4 @@
-<!-- GENERATED FILE. Do not hand-edit; run `make rules` (grafana/alerts/build_rules.py). -->
+<!-- GENERATED FILE. Do not hand-edit; run `just rules` (grafana/alerts/build_rules.py). -->
 
 # Alerts & Recording Rules
 

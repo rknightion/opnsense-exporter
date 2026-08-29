@@ -303,10 +303,10 @@ hidden presence sentinel: its declared scope mode (`collector` / `self_labeled` 
 **existence** or a nonzero **value** (the #114/#417 rule above — `has_carp_vips` is the one
 justified exception), every tab/row it gates, and its built query.
 
-Regenerate with `make dashboard` — never hand-edit between the markers. The same data is also
-written machine-readably to `grafana/sentinel-contract.json`; `make grafana-check` fails the
+Regenerate with `just dashboard` — never hand-edit between the markers. The same data is also
+written machine-readably to `grafana/sentinel-contract.json`; `just grafana-check` fails the
 build if either drifts from the registry (`git diff --exit-code`), and
-`tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
+`tests/test_sentinel_contract.py` catches the same drift without needing to run just.
 
 <!-- sentinelgen:begin -->
 ### Prometheus sentinels — 114 total (collector 107 / self_labeled 5 / target_join 2 / global 0)

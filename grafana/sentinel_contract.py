@@ -8,8 +8,8 @@ that had drifted so far it prescribed queries the build now actively rejects (a
 `leases_total > 0` DHCP gate the #114 guard exists to fail on). This module replaces
 the hand-written table with a generator that reads the SAME `Builder` instance
 `build_dashboard.build_all()` produces, so the documentation cannot diverge from
-what actually ships — a stale page fails `make grafana-check` exactly like a stale
-`dashboard.json` (see the Makefile `grafana-check` target).
+what actually ships — a stale page fails `just grafana-check` exactly like a stale
+`dashboard.json` (see the justfile `grafana-check` recipe).
 
 Two callers consume this module:
 
@@ -19,7 +19,7 @@ Two callers consume this module:
   `<!-- sentinelgen:end -->`).
 * `tests/test_sentinel_contract.py` rebuilds both from the current registry and
   diffs them against the committed files — the fast, no-subprocess version of the
-  same staleness check `make grafana-check` runs via `git diff --exit-code`.
+  same staleness check `just grafana-check` runs via `git diff --exit-code`.
 
 Nothing here mutates a `Builder` — nor does it import from `grafana/tabs/*` or
 change `builder.py`; it only reads the manifest `build_dashboard.build_all()`
@@ -166,7 +166,7 @@ def build_contract(dashboards) -> dict:
     Deterministic by construction: sentinels are emitted in name-sorted order and
     scope totals in the fixed `SENTINEL_SCOPES` order, so two runs against an
     unchanged registry byte-for-byte agree — required for the `git diff
-    --exit-code` staleness check in `make grafana-check`.
+    --exit-code` staleness check in `just grafana-check`.
     """
     if not isinstance(dashboards, list):   # a bare Builder, the pre-#431 signature
         raise TypeError(

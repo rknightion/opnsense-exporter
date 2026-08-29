@@ -27,7 +27,7 @@ var flagTokenRe = regexp.MustCompile(`--([a-z][a-z0-9-]*\.[A-Za-z0-9.-]+)`)
 // it still matches the retired `OPNSENSE_EXPORTER_*` spelling, so any doc left quoting
 // the old prefix is reported as an unknown token instead of passing unnoticed.
 // It deliberately does NOT match arbitrary all-caps tokens: standard third-party envs
-// (OTEL_*, SSL_CERT_FILE) and Makefile vars (OPS_*, GO_LICENSES_VERSION) are legitimately
+// (OTEL_*, SSL_CERT_FILE) and justfile vars (OPS_*, GO_LICENSES_VERSION) are legitimately
 // absent from the kingpin model and must not be flagged. Legit-but-unknown OPN-brand
 // tokens go in doclint_allow.txt.
 var envTokenRe = regexp.MustCompile(`\b(OPN[A-Z0-9]*(?:_[A-Z0-9]+)+|OPS_API_(?:KEY|SECRET)_FILE|PYROSCOPE_AUTH_(?:USER|PASSWORD)_FILE)\b`)
@@ -104,7 +104,7 @@ func loadAllowlist(repoRoot string) map[string]bool {
 
 // lintTargets returns every prose/config file that may mention flags/env vars.
 func lintTargets(repoRoot string) []string {
-	targets := []string{"README.md", "CONTRIBUTING.md", "AGENTS.md", "Makefile", "grafana/README.md"}
+	targets := []string{"README.md", "CONTRIBUTING.md", "AGENTS.md", "justfile", "grafana/README.md"}
 	// grafana/tabs/*.py panel descriptions reference flags (e.g. --exporter.enable-*-details)
 	// that must stay valid as flags are renamed (#151).
 	_ = filepath.WalkDir(filepath.Join(repoRoot, "grafana", "tabs"), func(path string, d os.DirEntry, err error) error {

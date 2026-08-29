@@ -64,7 +64,7 @@ func (c ResponseContract) UnknownTopLevelKeys(raw []byte) ([]string, error) {
 }
 
 // ResponseContracts returns the registry of response-shape contracts. Grow it by
-// capturing a real-box response (`make capture`) and adding an entry here.
+// capturing a real-box response (`just capture`) and adding an entry here.
 func ResponseContracts() []ResponseContract {
 	return []ResponseContract{
 		{

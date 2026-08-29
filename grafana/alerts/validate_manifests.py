@@ -5,7 +5,7 @@ grafana/alerts/grafana-managed/. Fails (exit 1) if any file is not well-formed J
 does not carry the expected apiVersion/kind, or violates a manifest-contract
 invariant Prometheus's own syntax cannot check (severity, IRM routing labels,
 noDataState, execErrState, pending duration, per-instance label preservation, or a
-runbook anchor that does not actually resolve). Wired into `make grafana-check` and
+runbook anchor that does not actually resolve). Wired into `just grafana-check` and
 CI (#84, extended #429).
 
 Expected shapes:

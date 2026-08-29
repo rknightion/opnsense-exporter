@@ -157,12 +157,12 @@ The `version.txt` file at the repository root contains the current version strin
 
 Runs on every push and PR:
 
-- Go build (`CGO_ENABLED=0 go build ./...`)
-- Go test (`go test ./...`)
-- Race detector (`go test -race ./...`, dedicated `race` job) - a data-race failure is **blocking**: the `race` job feeds `ci-success`, so a race must be fixed before a release PR can merge
-- Generated documentation (`make docs-check`)
-- Grafana builders and generated artifacts (`make grafana-test` and
-  `make grafana-check`)
+- Go build and race-enabled test (`just test`, `build-test` job)
+- Linting, including gosec (`just lint`, `lint` job)
+- Dependency vulnerability scan (`just vuln`, `govulncheck` job)
+- Generated documentation (`just docs-check`)
+- Grafana builders and generated artifacts (`just grafana-test` and
+  `just grafana-check`)
 - The release Dockerfile, embedded version, Compose file-secret readability, and
   the native container healthcheck
 

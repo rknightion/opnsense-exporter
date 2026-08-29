@@ -1,5 +1,5 @@
 #!/bin/sh
 # Pre-commit gate: generated documentation must match code, and doc examples
-# must only reference real flags/env vars. Regenerate with: make docs
+# must only reference real flags/env vars. Regenerate with: just docs
 set -e
-make docs-check
+just docs-check

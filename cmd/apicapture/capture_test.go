@@ -95,7 +95,7 @@ func TestCaptureContracts_HTTPErrorRecorded(t *testing.T) {
 
 // TestCredentialResolutionParity verifies apicapture resolves credentials through the
 // same helper the exporter uses, so file-based secrets (OPS_API_KEY_FILE /
-// OPS_API_SECRET_FILE) work identically to `make local-run` (#157): a *_FILE secret
+// OPS_API_SECRET_FILE) work identically to `just run` (#157): a *_FILE secret
 // resolves to the same value as the plaintext env var, and takes precedence over the
 // flag/env fallback, while the plaintext path keeps working.
 func TestCredentialResolutionParity(t *testing.T) {

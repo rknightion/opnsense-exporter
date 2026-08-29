@@ -277,7 +277,7 @@ func TestCouldNameSelfMetric(t *testing.T) {
 
 // TestSelfMetricInventoryIsCurrent guards the real tree: every self-metric declared in
 // internal/ must be in the generated page. It is a cheap second opinion on
-// `make docs-check`'s staleness diff, and it fails with the metric NAME rather than
+// `just docs-check`'s staleness diff, and it fails with the metric NAME rather than
 // "file differs", which is what a reader actually needs.
 func TestSelfMetricInventoryIsCurrent(t *testing.T) {
 	root := findRepoRoot()
@@ -294,7 +294,7 @@ func TestSelfMetricInventoryIsCurrent(t *testing.T) {
 	}
 	for _, m := range metrics {
 		if !strings.Contains(string(doc), "| "+m.FullName+" |") {
-			t.Errorf("%s is declared at %s:%d but missing from docs/metrics/self-metrics.md; run `make docs`",
+			t.Errorf("%s is declared at %s:%d but missing from docs/metrics/self-metrics.md; run `just docs`",
 				m.FullName, m.File, m.Line)
 		}
 	}

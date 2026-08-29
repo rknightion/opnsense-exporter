@@ -14,7 +14,7 @@ import (
 // — the class the endpoint-manifest canary (cmd/apicontract) cannot see, because
 // the path and HTTP verb are identical (e.g. OPNsense 26.1 moving per-subsystem
 // health into a top-level "subsystems" map). Refresh fixtures from a real/beta
-// box with `make capture` to catch a new OPNsense release early.
+// box with `just capture` to catch a new OPNsense release early.
 func TestResponseContracts(t *testing.T) {
 	contracts := ResponseContracts()
 	if len(contracts) == 0 {

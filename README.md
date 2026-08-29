@@ -177,7 +177,7 @@ Bug reports, questions and ideas are welcome in
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) and the
 [development docs](https://m7kni.io/opnsense2otel/development/contributing/). Docs for
-metrics and configuration are generated from code; run `make docs` after changing flags or
+metrics and configuration are generated from code; run `just docs` after changing flags or
 collectors.
 
 ## License

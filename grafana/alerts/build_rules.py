@@ -2289,12 +2289,12 @@ def _panel_index():
             with open(path, encoding="utf-8") as fh:
                 doc = json.load(fh)
         except (OSError, ValueError) as err:
-            # `make rules` alone can be run against a dashboard that has not been
+            # `just rules` alone can be run against a dashboard that has not been
             # rebuilt yet. Say which target fixes it rather than emitting a rule with
             # a link into a stale panel id.
             raise ValueError(
                 f"cannot read the generated dashboard {path}: {err}. "
-                "Run `make dashboard` before `make rules`.") from err
+                "Run `just dashboard` before `just rules`.") from err
         where: dict = {}
         _walk_layout(doc["spec"].get("layout", {}), (), where)
         titles: dict = {}
@@ -2597,7 +2597,7 @@ RUNBOOK_KEYS = ("measures", "threshold", "absent", "checks", "causes", "verify")
 def require_complete_runbook(name: str, rb: dict) -> None:
     """Every rule's runbook=dict(...) must carry all six keys, each non-empty. Raises
     ValueError (a hard build failure, not a silent skip) otherwise - called from
-    `_runbook_section` so a missing/incomplete runbook fails `make rules` itself, not
+    `_runbook_section` so a missing/incomplete runbook fails `just rules` itself, not
     just a test that happens to be run."""
     for key in RUNBOOK_KEYS:
         if key not in rb:
@@ -2674,7 +2674,7 @@ def generate_runbooks_md() -> str:
         )
 
     parts = [
-        "<!-- GENERATED FILE. Do not hand-edit; run `make rules` "
+        "<!-- GENERATED FILE. Do not hand-edit; run `just rules` "
         "(grafana/alerts/build_rules.py). -->",
         "",
         f"# {RUNBOOKS_MD_TITLE}",

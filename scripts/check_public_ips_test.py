@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for check_public_ips.py's classifier, allowlist and scan logic.
 
-Run via `python3 scripts/check_public_ips.py --selftest` (the Makefile's
+Run via `python3 scripts/check_public_ips.py --selftest` (the justfile's
 check-public-ips target runs this before the real repo scan) or directly with
 `python3 -m unittest scripts.check_public_ips_test` from the repo root.
 """

@@ -19,8 +19,30 @@ jobs:
   repo-meta:
     uses: ./.github/workflows/repo-meta.yml
 
-  tests:
-    name: Tests & Linters
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.0"
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
+      - name: Run tests
+        run: just test
+
+      - name: Check for un-allowlisted globally routable IP literals (#565)
+        run: just check-public-ips
+
+  lint:
+    name: Lint
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,34 +62,6 @@ jobs:
           # renovate: datasource=github-releases depName=golangci/golangci-lint
           version: v2.13.2
           args: --verbose
-
-      - name: Run tests
-        run: go test -v ./...
-
-      - name: Check for un-allowlisted globally routable IP literals (#565)
-        run: make check-public-ips
-
-  # Dedicated race-detector gate. Runs the FULL suite under -race across every package,
-  # with no command-line -skip exception (#295): the one assertion that cannot survive
-  # race instrumentation — TestEnrichMessageAllocations — is excluded via a `//go:build
-  # !race` constraint in the code itself, so this job needs no per-test carve-out and any
-  # new test is race-covered by default. Split from `tests` so a data-race failure is a
-  # distinct, unambiguous signal (not tangled with lint) — and, via `ci-success` below,
-  # a blocking one. setup-go@v7 caches the build/module cache keyed on go.sum by default.
-  race:
-    name: Race detector
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.27.0"
-
-      - name: Run tests with the race detector
-        run: go test -race -timeout 15m ./...
 
   fuzz-smoke:
     name: Fuzz smoke (${{ matrix.name }})
@@ -98,6 +92,10 @@ jobs:
         with:
           go-version: "1.27.0"
 
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
       # This is a deterministic blocking smoke gate. Longer corpus-retaining runs
       # live in fuzz.yml so normal CI neither restores nor publishes mutable corpus.
       #
@@ -112,16 +110,7 @@ jobs:
         env:
           FUZZ_PACKAGE: ${{ matrix.package }}
           FUZZ_TARGET: ${{ matrix.target }}
-        run: >-
-          go test "$FUZZ_PACKAGE"
-          -run='^$'
-          -fuzz="^${FUZZ_TARGET}$"
-          -fuzztime=10s
-          -parallel=1
-          # 3m, not 5m: the job's own timeout-minutes is 5, and go test's timeout must
-          # fire FIRST so the log says which target hung instead of the runner killing
-          # the step with no attribution.
-          -timeout=3m
+        run: just fuzz-one "$FUZZ_PACKAGE" "$FUZZ_TARGET"
 
   docs:
     name: Generated docs up-to-date
@@ -135,8 +124,12 @@ jobs:
         with:
           go-version: "1.27.0"
 
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
       - name: Verify generated docs match code (docgen + doclint + registry gate)
-        run: make docs-check
+        run: just docs-check
 
   deployment-contracts:
     name: Executable deployment contracts
@@ -150,24 +143,28 @@ jobs:
         with:
           go-version: "1.27.0"
 
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       # Validates the exact documented Compose block, the systemd credential
       # permission model, canonical Kubernetes manifests, and Helm renders.
       - name: Run deployment contract tests
-        run: make deployment-test
+        run: just deployment-test
 
       # Checks for the testbed config linter (#504). It reads a firewall's config.xml,
       # which CI cannot reach, so only its unit tests run here.
       - name: Run testbed tooling tests
-        run: make testbed-test
+        run: just testbed-test
 
       # Checks for camden's prod canary decision logic (#612). The script needs the
       # production firewall, an admin credential and a GitHub token, so only its
       # open-vs-closed decision is exercised here, via its --decide-only seam.
       - name: Run prod canary tooling tests
-        run: make canary-test
+        run: just canary-test
 
   grafana:
     name: Grafana artifacts up-to-date
@@ -182,24 +179,32 @@ jobs:
           go-version: "1.27.0"
           cache-dependency-path: tools/promqlcheck/go.sum
 
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
       # The builders' own unit tests, run first and named separately so a failure
       # here is not read as a staleness failure. Wired into CI 2026-07-25: they had
       # never run anywhere, and three of sixteen had rotted into failure unnoticed.
       - name: Run the grafana builder unit tests
-        run: make grafana-test
+        run: just grafana-test
 
       # Coverage gate (every catalogue metric on the dashboard) + regeneration
       # staleness (dashboard.json / dashboard-stats.json / grafana-managed manifests)
       # + manifest validity. Pure-stdlib Python, no deps to install (#84).
       - name: Verify dashboard coverage, regeneration freshness and manifest validity
-        run: make grafana-check
+        run: just grafana-check
 
-  docker-build-verify:
+  docker-build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
 
       # NOTE: no OTEL build-telemetry driver-opts here — the OTEL_EXPORTER_OTLP_ENDPOINT
       # / _HEADERS repo secrets it referenced were never provisioned, so it set
@@ -209,15 +214,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
-      # Resolves the SAME go-licenses version/module the Makefile pins (#436), so this
+      # Resolves the SAME go-licenses version/module the justfile pins (#436), so this
       # job's docker build exercises the real release-tooling install on every push/PR
       # from a clean Docker layer (no reused .tools/ binary can mask a broken pin) —
       # this is the CI smoke step for the v2.0.1 "post-v2 module path" regression class.
-      - name: "Resolve pinned go-licenses version + module (single source: Makefile, #436)"
+      - name: "Resolve pinned go-licenses version + module (single source: justfile, #436)"
         id: go-licenses-pin
         run: |
-          echo "version=$(make -s print-go-licenses-version)" >> "$GITHUB_OUTPUT"
-          echo "module=$(make -s print-go-licenses-module)" >> "$GITHUB_OUTPUT"
+          echo "version=$(just print-go-licenses-version)" >> "$GITHUB_OUTPUT"
+          echo "module=$(just print-go-licenses-module)" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image (verify only)
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -395,8 +400,12 @@ jobs:
         with:
           go-version: "1.27.0"
 
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
       - name: Generate coverage profile
-        run: make coverage
+        run: just test-coverage
 
       - name: Upload coverage to Codacy
         if: ${{ env.CODACY_PROJECT_TOKEN != '' }}   # skip on fork PRs (secret unavailable)
@@ -406,14 +415,8 @@ jobs:
           coverage-reports: coverage.out
           force-coverage-parser: go
 
-  # Single required status check. Branch protection on `main` requires ONLY this job, so the gate's
-  # jobs (tests / docs / docker build-verify) can be added or renamed without re-touching protection.
-  # It fails if any required job failed or was cancelled; the main-only publish jobs aren't depended on
-  # here, so a PR (where they're skipped) still passes. Renovate's automerge waits for this to go green.
-  # NOTE: `coverage` is intentionally absent from `needs` — see its comment above.
   # Dependency vulnerability scan against the Go vulnerability database.
-  # Pinned to v1.3.0 to match tailscale2otel, graph2otel, polylens2otel and
-  # rfc6035-2otel, which is what the rest of the 2otel family runs.
+  # Its pin is declared and Renovate-managed in the justfile with the other tooling.
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
@@ -428,15 +431,35 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: install govulncheck (pinned)
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
 
       - name: govulncheck
-        run: govulncheck ./...
+        run: just vuln
+
+  goreleaser-snapshot:
+    name: GoReleaser snapshot
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+
+      - name: Build a release snapshot
+        run: just snapshot
 
   # This chart is published to GHCR and, until now, its manifests were never
   # schema-validated: the only chart coverage was the live kind install inside
-  # docker-build-verify, which proves it applies to ONE cluster version but not
+  # docker-build, which proves it applies to ONE cluster version but not
   # that it is valid against the API schemas generally. That live test is kept —
   # this is added alongside it, not in place of it.
   #
@@ -455,11 +478,15 @@ jobs:
         -f charts/opnsense2otel/tests/fixtures/minimal.yaml
         -f charts/opnsense2otel/tests/fixtures/all-receivers.yaml --set opnsense.existingSecret=edge-fw-api
 
+  # Single required status check. Branch protection on `main` requires ONLY this job, so the gate's
+  # jobs can be renamed without re-touching protection. It fails if any required job failed or was
+  # cancelled; the main-only publish jobs are not depended on here, so a PR still passes. Renovate's
+  # automerge waits for this to go green. NOTE: `coverage` is intentionally absent from `needs`.
   ci-success:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify, govulncheck, helm-validate]
+    needs: [repo-meta, build-test, lint, fuzz-smoke, docs, deployment-contracts, grafana, govulncheck, goreleaser-snapshot, docker-build, helm-validate]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}

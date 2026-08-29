@@ -12,7 +12,7 @@
 //	go run ./cmd/fieldaudit          # report everything, exit 1 on unexempted findings
 //	go run ./cmd/fieldaudit -all     # include already-exempted fields in the report
 //
-// The same analysis runs as a unit test (audit_test.go), so it rides `make test`
+// The same analysis runs as a unit test (audit_test.go), so it rides `just test`
 // and CI with no workflow change.
 //
 // Scope: package opnsense's struct fields ONLY — internal/flow and
