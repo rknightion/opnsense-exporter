@@ -23,6 +23,11 @@ on:
 permissions:
   contents: read
 
+# Cancel a superseded run on the same ref (rapid pushes / PR updates) to free runners.
+concurrency:
+  group: repo-meta-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Validate issue templates & CODEOWNERS
