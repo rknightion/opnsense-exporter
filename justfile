@@ -17,7 +17,7 @@ syft_version := "v1.51.1"
 # renovate: datasource=github-releases depName=yannh/kubeconform
 kubeconform_version := "v0.8.0"
 # renovate: datasource=go depName=golang.org/x/vuln
-govulncheck_version := "v1.3.0"
+govulncheck_version := "v1.7.0"
 # renovate: datasource=go depName=github.com/goreleaser/goreleaser/v2
 goreleaser_version := "v2.18.0"
 
