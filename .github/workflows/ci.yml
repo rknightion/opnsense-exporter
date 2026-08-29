@@ -451,7 +451,7 @@ jobs:
     with:
       chart-path: charts/opnsense2otel
       release-name: contract
-      permutations: |
+      permutations: |-
         -f charts/opnsense2otel/tests/fixtures/minimal.yaml
         -f charts/opnsense2otel/tests/fixtures/all-receivers.yaml --set opnsense.existingSecret=edge-fw-api
 
