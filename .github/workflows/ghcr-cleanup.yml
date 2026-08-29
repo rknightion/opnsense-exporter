@@ -23,6 +23,6 @@ jobs:
       packages: write # delete package versions
     uses: rknightion/.github/.github/workflows/ghcr-cleanup.yml@0e56520d848f5fda8cbfa0bda17797ef41f2a5a7 # v1.9.8
     with:
-      packages: "opnsense2otel,charts/opnsense2otel"
+      packages: "opnsense2otel,charts/opnsense2otel,opnsense-exporter"
       # Scheduled runs prune for real; a manual dispatch defaults to dry-run.
       dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || false }}
