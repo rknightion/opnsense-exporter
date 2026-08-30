@@ -88,3 +88,7 @@ docs/assets/project-icon-solid.svg
 docs/assets/social-card.png
 docs/assets/social-card.svg
 docs/fonts/
+
+# Product-development candidate scratchpad: reviewed manually, promoted to backlog
+# tasks one by one; never committed.
+/candidates.md
