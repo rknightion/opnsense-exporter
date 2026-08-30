@@ -4,12 +4,14 @@ title: Opt-in NetworkPolicy template in the Helm chart (all three receiver ports
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-5
 dependencies:
   - OPN-0011
 priority: medium
 type: enhancement
-ordinal: 46000
+ordinal: 602
 ---
 
 ## Description

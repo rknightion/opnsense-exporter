@@ -4,13 +4,14 @@ title: 'Device inventory fusion: one record per device to Loki'
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
-updated_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-1
 dependencies:
   - OPN-0028
 priority: medium
 type: feature
-ordinal: 29000
+ordinal: 202
 ---
 
 ## Description

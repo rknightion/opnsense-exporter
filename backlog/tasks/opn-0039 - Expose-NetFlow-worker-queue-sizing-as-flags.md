@@ -4,11 +4,13 @@ title: Expose NetFlow worker/queue sizing as flags
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-4
 dependencies: []
 priority: low
 type: enhancement
-ordinal: 39000
+ordinal: 506
 ---
 
 ## Description

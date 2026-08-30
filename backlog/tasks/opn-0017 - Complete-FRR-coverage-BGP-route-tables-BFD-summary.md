@@ -4,11 +4,13 @@ title: 'Complete FRR coverage: BGP route tables + BFD summary'
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-3
 dependencies: []
 priority: medium
 type: feature
-ordinal: 17000
+ordinal: 401
 ---
 
 ## Description

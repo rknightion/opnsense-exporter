@@ -4,11 +4,13 @@ title: ZeroTier plugin collector (network search/info)
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-3
 dependencies: []
 priority: medium
 type: feature
-ordinal: 18000
+ordinal: 402
 ---
 
 ## Description

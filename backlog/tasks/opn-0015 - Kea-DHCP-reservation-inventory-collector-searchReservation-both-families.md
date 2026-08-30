@@ -4,12 +4,14 @@ title: 'Kea DHCP reservation inventory collector (searchReservation, both famili
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-2
 dependencies:
   - OPN-0007
 priority: high
 type: feature
-ordinal: 15000
+ordinal: 301
 ---
 
 ## Description

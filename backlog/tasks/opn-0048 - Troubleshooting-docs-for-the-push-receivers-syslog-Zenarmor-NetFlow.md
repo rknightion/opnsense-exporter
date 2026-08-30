@@ -4,11 +4,13 @@ title: Troubleshooting docs for the push receivers (syslog/Zenarmor/NetFlow)
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-4
 dependencies: []
 priority: high
 type: docs
-ordinal: 48000
+ordinal: 508
 ---
 
 ## Description

@@ -6,14 +6,15 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-30 08:30'
-updated_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels:
   - bug
   - first-wave
+milestone: m-0
 dependencies: []
 priority: high
 type: bug
-ordinal: 7000
+ordinal: 101
 ---
 
 ## Description

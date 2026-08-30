@@ -4,11 +4,13 @@ title: HAProxy maintenance-state visibility (api/haproxy/maintenance/searchServe
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-3
 dependencies: []
 priority: low
 type: feature
-ordinal: 21000
+ordinal: 405
 ---
 
 ## Description

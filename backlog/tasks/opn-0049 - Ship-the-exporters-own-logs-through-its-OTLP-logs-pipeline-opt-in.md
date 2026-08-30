@@ -4,11 +4,13 @@ title: Ship the exporter's own logs through its OTLP logs pipeline (opt-in)
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-1
 dependencies: []
 priority: medium
 type: enhancement
-ordinal: 49000
+ordinal: 205
 ---
 
 ## Description

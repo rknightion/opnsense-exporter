@@ -4,11 +4,13 @@ title: DNS-domain enrichment for filterlog records
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-4
 dependencies: []
 priority: medium
 type: enhancement
-ordinal: 38000
+ordinal: 505
 ---
 
 ## Description

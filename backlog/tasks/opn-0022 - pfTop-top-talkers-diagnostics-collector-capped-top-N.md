@@ -4,11 +4,13 @@ title: 'pfTop / top-talkers diagnostics collector, capped top-N'
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-3
 dependencies: []
 priority: medium
 type: feature
-ordinal: 22000
+ordinal: 403
 ---
 
 ## Description

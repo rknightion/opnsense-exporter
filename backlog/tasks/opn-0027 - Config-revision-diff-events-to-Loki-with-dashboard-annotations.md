@@ -4,12 +4,14 @@ title: Config revision diff events to Loki with dashboard annotations
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels:
   - first-wave
+milestone: m-0
 dependencies: []
 priority: high
 type: feature
-ordinal: 27000
+ordinal: 103
 ---
 
 ## Description

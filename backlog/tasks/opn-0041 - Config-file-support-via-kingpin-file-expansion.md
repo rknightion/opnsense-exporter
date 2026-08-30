@@ -4,11 +4,13 @@ title: Config-file support via kingpin @file expansion
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-5
 dependencies: []
 priority: low
 type: enhancement
-ordinal: 41000
+ordinal: 604
 ---
 
 ## Description

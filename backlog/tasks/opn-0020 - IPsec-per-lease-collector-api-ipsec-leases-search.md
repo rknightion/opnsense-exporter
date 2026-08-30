@@ -4,11 +4,13 @@ title: IPsec per-lease collector (api/ipsec/leases/search)
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-3
 dependencies: []
 priority: low
 type: feature
-ordinal: 20000
+ordinal: 404
 ---
 
 ## Description

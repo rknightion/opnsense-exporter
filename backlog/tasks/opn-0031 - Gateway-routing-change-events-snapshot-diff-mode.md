@@ -4,12 +4,14 @@ title: Gateway/routing change events (snapshot diff mode)
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-1
 dependencies:
   - OPN-0028
 priority: low
 type: feature
-ordinal: 31000
+ordinal: 204
 ---
 
 ## Description

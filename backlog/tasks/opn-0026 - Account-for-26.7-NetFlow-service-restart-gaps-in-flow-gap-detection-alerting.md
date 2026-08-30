@@ -4,11 +4,13 @@ title: Account for 26.7 NetFlow-service restart gaps in flow gap-detection/alert
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-2
 dependencies: []
 priority: low
 type: task
-ordinal: 26000
+ordinal: 307
 ---
 
 ## Description

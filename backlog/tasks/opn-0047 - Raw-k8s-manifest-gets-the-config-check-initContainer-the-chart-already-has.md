@@ -4,11 +4,13 @@ title: Raw k8s manifest gets the config-check initContainer the chart already ha
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-5
 dependencies: []
 priority: low
 type: chore
-ordinal: 47000
+ordinal: 603
 ---
 
 ## Description

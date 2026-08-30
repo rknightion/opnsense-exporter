@@ -4,11 +4,13 @@ title: Set SO_RCVBUF on syslog and NetFlow UDP sockets
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-4
 dependencies: []
 priority: medium
 type: enhancement
-ordinal: 36000
+ordinal: 503
 ---
 
 ## Description

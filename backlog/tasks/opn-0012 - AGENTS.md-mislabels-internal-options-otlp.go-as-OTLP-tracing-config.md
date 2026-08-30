@@ -4,11 +4,13 @@ title: AGENTS.md mislabels internal/options/otlp.go as OTLP-tracing config
 status: To Do
 assignee: []
 created_date: '2026-08-30 08:30'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-0
 dependencies: []
 priority: low
 type: bug
-ordinal: 12000
+ordinal: 110
 ---
 
 ## Description

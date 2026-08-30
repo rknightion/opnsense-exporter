@@ -4,11 +4,14 @@ title: Gateway threshold-vs-actual dashboard panel
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
-dependencies: []
+milestone: m-4
+dependencies:
+  - OPN-0034
 priority: medium
 type: enhancement
-ordinal: 42000
+ordinal: 502
 ---
 
 ## Description

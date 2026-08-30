@@ -4,11 +4,13 @@ title: 'Operator console: receivers/flow visibility tab'
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-4
 dependencies: []
 priority: medium
 type: enhancement
-ordinal: 40000
+ordinal: 507
 ---
 
 ## Description

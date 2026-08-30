@@ -4,11 +4,13 @@ title: Document 26.7 ACL privilege merge impact on restricted API keys
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-2
 dependencies: []
 priority: low
 type: docs
-ordinal: 25000
+ordinal: 306
 ---
 
 ## Description

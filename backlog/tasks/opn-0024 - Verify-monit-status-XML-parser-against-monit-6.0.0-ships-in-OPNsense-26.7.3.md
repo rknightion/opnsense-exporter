@@ -4,11 +4,13 @@ title: Verify monit status-XML parser against monit 6.0.0 (ships in OPNsense 26.
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-2
 dependencies: []
 priority: medium
 type: spike
-ordinal: 24000
+ordinal: 304
 ---
 
 ## Description

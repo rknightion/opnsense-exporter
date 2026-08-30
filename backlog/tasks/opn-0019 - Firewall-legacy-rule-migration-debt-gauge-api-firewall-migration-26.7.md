@@ -4,11 +4,13 @@ title: 'Firewall legacy-rule migration debt gauge (api/firewall/migration, 26.7)
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:08'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-2
 dependencies: []
 priority: medium
 type: feature
-ordinal: 19000
+ordinal: 303
 ---
 
 ## Description

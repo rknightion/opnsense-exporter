@@ -4,11 +4,13 @@ title: Helm chart ships default resources in values.yaml
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-5
 dependencies: []
 priority: medium
 type: chore
-ordinal: 45000
+ordinal: 601
 ---
 
 ## Description

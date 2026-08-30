@@ -4,11 +4,13 @@ title: Deep-link hot firewall rules to the OPNsense UI from dashboard tables
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-4
 dependencies: []
 priority: low
 type: enhancement
-ordinal: 44000
+ordinal: 510
 ---
 
 ## Description

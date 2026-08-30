@@ -4,12 +4,14 @@ title: Reserve fast-tier poll capacity in the scheduler
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels:
   - first-wave
+milestone: m-0
 dependencies: []
 priority: high
 type: enhancement
-ordinal: 32000
+ordinal: 104
 ---
 
 ## Description

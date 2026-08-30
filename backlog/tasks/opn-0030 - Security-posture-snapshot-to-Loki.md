@@ -4,12 +4,14 @@ title: Security posture snapshot to Loki
 status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
+updated_date: '2026-08-30 09:35'
 labels: []
+milestone: m-1
 dependencies:
   - OPN-0028
 priority: medium
 type: feature
-ordinal: 30000
+ordinal: 203
 ---
 
 ## Description
