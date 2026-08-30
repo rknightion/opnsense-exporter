@@ -6,7 +6,10 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-30 08:30'
-labels: []
+updated_date: '2026-08-30 09:10'
+labels:
+  - bug
+  - first-wave
 dependencies: []
 priority: high
 type: bug
