@@ -3,10 +3,11 @@ id: OPN-0007
 title: >-
   Kea reserved/dynamic lease split silently wrong on OPNsense 26.7 (upstream
   removed is_reserved)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 21:59'
 labels:
   - bug
   - first-wave
@@ -36,3 +37,15 @@ OPNsense 26.7.0 removed the `is_reserved` enrichment from `api/kea/leases4/searc
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 plan: prove the 26.7 chase from upstream-produced shapes with a failing regression test; implement shape-based reservation matching while preserving the 26.1 is_reserved path; return exact root-owned endpoint/schema/contract wiring; run focused Kea tests and identify required generated artifacts.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 investigation disproved the task premise against released upstream source. OPNsense core tags 26.7 and 26.7.3 move reservation enrichment into src/opnsense/scripts/kea/get_kea_leases.py, but the script still emits is_reserved on every record: [] for dynamic leases and a non-empty identity array for reserved leases, matched within subnet-id. The exporter already accepts the array form via flexBool and existing v4/v6 tests pass. No synthetic missing-is_reserved fixture or reservation endpoint was added because inspected supported source cannot produce that shape. Live-box payload remains unobserved; source-derived proof is the accepted AC1 route.
+<!-- SECTION:NOTES:END -->
