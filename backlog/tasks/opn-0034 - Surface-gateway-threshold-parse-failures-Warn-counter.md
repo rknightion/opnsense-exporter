@@ -1,10 +1,11 @@
 ---
 id: OPN-0034
 title: Surface gateway threshold parse failures (Warn + counter)
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels: []
 milestone: m-4
 dependencies: []
@@ -30,3 +31,15 @@ ordinal: 501
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 L9 plan: read the receiver/pipeline acceptance contract, write the required focused regression first where applicable, implement only the task-owned files, return root-owned wiring precisely, and stop before OPN-0036.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP surfaces gateway threshold parse failures through warnings and a counter, with tests and dashboard coverage; integrated just check passed and L14 found no remaining issue. Not landed because CodeRabbit produced no complete event. Resume: obtain a complete review, triage findings, commit explicitly, integrate current origin/main, rerun just check, push, verify exact-SHA CI, then confirm the counter with a malformed live/test payload if runtime proof is required.
+<!-- SECTION:NOTES:END -->

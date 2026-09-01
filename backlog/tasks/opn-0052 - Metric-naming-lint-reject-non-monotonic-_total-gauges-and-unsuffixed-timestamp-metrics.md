@@ -3,9 +3,11 @@ id: OPN-0052
 title: >-
   Metric naming lint: reject non-monotonic _total gauges and unsuffixed
   timestamp metrics
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels: []
 milestone: m-0
 dependencies: []
@@ -31,3 +33,15 @@ Split out of OPN-0033 so the guard lands before the M3/M4 collector wave. Add a 
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 plan: inventory existing descriptor construction and exact legacy violations; add a deterministic lint tool with an OPN-0033-scoped allowlist, negative tests for new _total gauges and unsuffixed Unix timestamps, and a documented just recipe wired into just check; verify the CI workflow invokes just check and run the focused tool tests plus just formatting validation.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP adds deterministic metric naming lint, negative tests, an OPN-0033-scoped legacy allowlist, and just check wiring. Focused tests and integrated just check passed, including metric naming lint: OK; post-correction L14 found no remaining issue. Not landed because CodeRabbit failed twice before analysis. Resume: obtain a complete review, fix critical/major findings, commit explicitly, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
+<!-- SECTION:NOTES:END -->

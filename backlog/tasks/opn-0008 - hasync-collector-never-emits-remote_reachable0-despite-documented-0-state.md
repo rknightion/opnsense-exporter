@@ -1,10 +1,11 @@
 ---
 id: OPN-0008
 title: hasync collector never emits remote_reachable=0 despite documented 0 state
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels: []
 milestone: m-0
 dependencies: []
@@ -32,3 +33,15 @@ The metric help at `internal/collector/hasync.go:45-46` documents "1 = reachable
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 plan: inspect FetchHasyncStatus and upstream payload branches to distinguish unconfigured from unreachable; add a failing configured-unreachable test; emit zero only for configured peers, keep single-node silence, and run focused hasync tests.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP fixes configured-but-unreachable HA peers while keeping unconfigured single-node installations silent; focused tests and the integrated just check passed. Post-correction L14 found no remaining issue. Not landed: the required CodeRabbit review produced no complete event in two attempts because its service WebSocket closed before analysis. Resume: restore CodeRabbit, review the staged diff, fix every critical/major finding, commit this task with explicit pathspecs, integrate current origin/main without rebasing, rerun just check, push, and verify exact-SHA CI.
+<!-- SECTION:NOTES:END -->

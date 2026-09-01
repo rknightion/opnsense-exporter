@@ -3,10 +3,11 @@ id: OPN-0009
 title: >-
   Secondary-fetch failures invisible: scrape_collector_success stays 1 and
   endpoint_errors_total never increments
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels:
   - bug
   - first-wave
@@ -36,3 +37,15 @@ ordinal: 102
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 plan: inventory every secondary-fetch error path and establish failing tests for partial failure visibility and tolerated plugin-absence; specify the narrow metric/accounting and help-text change for the root-owned collector.go; update owned tests and return exact dashboard/registry edits; run focused collector tests.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP accounts secondary-fetch failures through a per-poll observer, preserves tolerated plugin absence, and adds partial-fetch regression coverage; focused collector/client tests and the integrated just check passed. Post-correction L14 found no remaining issue. Not landed: CodeRabbit failed twice before analysis and emitted no complete event. Resume: obtain a complete CodeRabbit finding set, fix critical/major findings, commit this task with explicit pathspecs, integrate current origin/main without rebasing, rerun just check, push, and verify exact-SHA CI.
+<!-- SECTION:NOTES:END -->

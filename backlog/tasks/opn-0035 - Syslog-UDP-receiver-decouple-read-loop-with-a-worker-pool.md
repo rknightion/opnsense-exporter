@@ -1,10 +1,11 @@
 ---
 id: OPN-0035
 title: 'Syslog UDP receiver: decouple read loop with a worker pool'
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels:
   - first-wave
 milestone: m-0
@@ -31,3 +32,15 @@ ordinal: 105
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 plan: benchmark the current UDP listener with the existing harness, add a failing overload test, introduce a bounded datagram queue and workers with counted drops, document ordering semantics, and report before/after from the same harness.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP decouples syslog UDP reads through a bounded worker queue with counted drops and shutdown coverage; targeted concurrency tests and integrated just check passed. Post-correction L14 found no remaining issue. Not landed because CodeRabbit failed before analysis twice. Resume: obtain a complete review, fix critical/major findings, commit explicitly, integrate current origin/main, rerun just check, push, verify exact-SHA CI, then run sustained live UDP overload if operational throughput proof is required.
+<!-- SECTION:NOTES:END -->

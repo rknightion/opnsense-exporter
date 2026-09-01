@@ -1,10 +1,11 @@
 ---
 id: OPN-0024
 title: Verify monit status-XML parser against monit 6.0.0 (ships in OPNsense 26.7.3)
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:08'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels: []
 milestone: m-2
 dependencies: []
@@ -29,3 +30,15 @@ OPNsense 26.7.3 bumps monit to 6.0.0. We parse `api/monit/status/get/xml` (`opns
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 L12 plan: verify the released upstream payload-producing source, write a focused regression for the Monit 26.7 behavior, implement only task-owned files, return root registry edits, and stop before OPN-0050.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP verifies the Monit 6.0.0 XML shape from released payload-producing source and adds focused parser coverage; the integrated just check passed. Not landed because the shared code-bearing batch lacks a complete CodeRabbit review. Resume: obtain the CodeRabbit complete event, triage findings, commit this task with explicit pathspecs, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
+<!-- SECTION:NOTES:END -->

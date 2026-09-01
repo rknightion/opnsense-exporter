@@ -1,10 +1,11 @@
 ---
 id: OPN-0048
 title: Troubleshooting docs for the push receivers (syslog/Zenarmor/NetFlow)
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:10'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels: []
 milestone: m-4
 dependencies: []
@@ -31,3 +32,15 @@ ordinal: 508
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Add receiver-first troubleshooting keyed to the actual shipped/rejected/parse metrics, add nothing-arrives sections and reciprocal links across the three receiver pages, then validate docs generation without changing generated regions by hand.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP adds receiver-first troubleshooting using the shipped/rejected/parse/drop metrics, nothing-arrives sections, and reciprocal receiver-page links. docs-check and integrated just check passed; post-correction L14 verified the metrics and links. Not landed because the shared code-bearing batch lacks a complete CodeRabbit review. Resume: obtain the review, commit this documentation task explicitly, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
+<!-- SECTION:NOTES:END -->

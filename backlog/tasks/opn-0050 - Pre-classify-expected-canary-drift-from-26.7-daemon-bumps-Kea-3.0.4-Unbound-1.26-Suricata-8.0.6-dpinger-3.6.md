@@ -3,10 +3,11 @@ id: OPN-0050
 title: >-
   Pre-classify expected canary drift from 26.7 daemon bumps (Kea 3.0.4, Unbound
   1.26, Suricata 8.0.6, dpinger 3.6)
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:28'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels: []
 milestone: m-2
 dependencies: []
@@ -32,3 +33,15 @@ OPNsense 26.7 bumps Kea to 3.0.4, Unbound to 1.26, Suricata to 8.0.6 and dpinger
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Inspect the 26.7-backed upstream sources for Kea, Unbound, Suricata and dpinger payload-shape changes, classify only source-proven drift under the repository taxonomy, and return any shared exemption edits to root for atomic application.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 source audit found no Kea, Unbound, dpinger, or production-path Suricata drift that warrants an exemptions.json entry; adding speculative exemptions would weaken the canary. just schemas/integrated just check passed, and live canary run 33571438780 succeeded for both release and nightly profiles at exact SHA d91cfb1b. The tracker result is not landed because origin/main advanced while the integrated staged batch remained under review. Resume: land this tracker-only no-change classification on current origin/main, verify exact-SHA CI, and finalize; re-open only for a source-proven or live-canary finding.
+<!-- SECTION:NOTES:END -->

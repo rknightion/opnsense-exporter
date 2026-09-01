@@ -1,10 +1,11 @@
 ---
 id: OPN-0032
 title: Reserve fast-tier poll capacity in the scheduler
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-01 23:42'
 labels:
   - first-wave
 milestone: m-0
@@ -31,3 +32,15 @@ ordinal: 104
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 plan: add a deterministic wedged-slow-poll regression test using the existing scheduler harness; implement reserved fast-tier capacity without changing unrelated poll semantics; document the behaviour and run focused scheduler tests.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 1 staged WIP reserves fast-tier scheduler capacity and adds wedged-slow-poll regression coverage; focused tests and integrated just check passed. Post-correction L14 found no remaining issue. Not landed because CodeRabbit produced no complete event. Resume: obtain a complete review, fix critical/major findings, commit this task explicitly, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
+<!-- SECTION:NOTES:END -->
