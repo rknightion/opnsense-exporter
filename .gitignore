@@ -92,3 +92,10 @@ docs/fonts/
 # Product-development candidate scratchpad: reviewed manually, promoted to backlog
 # tasks one by one; never committed.
 /candidates.md
+
+# Agent campaign run artefacts (goal files, launch messages, run reports).
+# Ignored as a DIRECTORY, not a filename pattern, so a new artefact type cannot
+# leak by being named something a pattern did not anticipate. The name is
+# load-bearing regardless of which harness runs the wave: codex-sync.sh mirrors
+# run artefacts between machines by matching this exact directory name.
+codex/
