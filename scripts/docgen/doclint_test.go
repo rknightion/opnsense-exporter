@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -40,6 +41,49 @@ func TestDoclintFlagsUnknownTokens(t *testing.T) {
 	problems = lintText("doc.md", "the removed --runtime.gomaxprocs flag", known, map[string]bool{"runtime.gomaxprocs": true})
 	if len(problems) != 0 {
 		t.Fatalf("allowlist not honoured: %v", problems)
+	}
+}
+
+// TestFlowDocDefaultsMatchFlagModel keeps the hand-written flow overview tied
+// to the kingpin model. docs/configuration.md is generated, but docs/flow.md is
+// intentionally a short operator-facing guide and therefore needs this small
+// drift check for the defaults it repeats.
+func TestFlowDocDefaultsMatchFlagModel(t *testing.T) {
+	root := findRepoRoot()
+	raw, err := os.ReadFile(filepath.Join(root, "docs", "flow.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		columns := strings.Split(line, "|")
+		if len(columns) < 4 {
+			continue
+		}
+		flag := strings.Trim(strings.TrimSpace(columns[1]), "`")
+		switch flag {
+		case "--flow.top-n", "--flow.max-keys":
+			got[flag] = strings.Trim(strings.TrimSpace(columns[2]), "`")
+		}
+	}
+
+	want := map[string]string{}
+	for _, flag := range collectAllFlags() {
+		switch flag.Name {
+		case "flow.top-n", "flow.max-keys":
+			want["--"+flag.Name] = flag.Default
+		}
+	}
+	if len(want) != 2 {
+		t.Fatalf("flag model yielded %d flow defaults, want 2: %v", len(want), want)
+	}
+	for flag, expected := range want {
+		if actual, ok := got[flag]; !ok {
+			t.Errorf("docs/flow.md is missing %s", flag)
+		} else if actual != expected {
+			t.Errorf("docs/flow.md %s default = %q, want %q", flag, actual, expected)
+		}
 	}
 }
 

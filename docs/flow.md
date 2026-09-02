@@ -32,8 +32,8 @@ to turn it off.
 |---|---|---|
 | `--flow.enabled` | `true` | master switch for flow rollups |
 | `--flow.zenarmor` | `true` | derive records from the Zenarmor receiver's `conn` documents |
-| `--flow.top-n` | `1000` | maximum series emitted per scrape |
-| `--flow.max-keys` | `2500` | maximum label combinations held in memory |
+| `--flow.top-n` | `10000` | maximum series emitted per scrape |
+| `--flow.max-keys` | `100000` | maximum label combinations held in memory |
 | `--exporter.disable-flow` | *(off)* | remove the collector entirely |
 
 To get any data you also need the Zenarmor receiver running
