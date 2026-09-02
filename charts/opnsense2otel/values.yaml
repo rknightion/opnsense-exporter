@@ -30,7 +30,13 @@ service:
 
 podAnnotations: {}
 
-resources: {}
+resources:
+  requests:
+    memory: 64Mi
+    cpu: 100m
+  limits:
+    memory: 128Mi
+    cpu: 500m
 
 # Extra exporter flags for settings outside this deliberately small chart surface.
 # Supply complete flags, for example: ["--collector.poll-interval=30s"].
