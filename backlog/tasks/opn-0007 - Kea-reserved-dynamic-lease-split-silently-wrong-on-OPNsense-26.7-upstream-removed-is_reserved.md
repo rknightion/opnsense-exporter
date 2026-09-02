@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 04:21'
 labels:
   - bug
   - first-wave
@@ -50,4 +50,6 @@ Wave 1 plan: prove the 26.7 chase from upstream-produced shapes with a failing r
 Wave 1 investigation disproved the task premise against released upstream source. OPNsense core tags 26.7 and 26.7.3 move reservation enrichment into src/opnsense/scripts/kea/get_kea_leases.py, but the script still emits is_reserved on every record: [] for dynamic leases and a non-empty identity array for reserved leases, matched within subnet-id. The exporter already accepts the array form via flexBool and existing v4/v6 tests pass. No synthetic missing-is_reserved fixture or reservation endpoint was added because inspected supported source cannot produce that shape. Live-box payload remains unobserved; source-derived proof is the accepted AC1 route.
 
 Wave 1 result: released OPNsense 26.7 and 26.7.3 source disproved the task premise; get_kea_leases.py still emits is_reserved for every row, and the exporter already accepts the emitted array shape. Existing v4/v6 tests and the integrated just check passed. A local tracker-only commit records this, but it is not on origin/main because the remote advanced during the run. Resume: reconcile the local tracker commit onto current origin/main, land it as documentation-only, verify CI at that exact SHA, and then finalize the disproven task; use a live 26.7 payload only if source-derived proof is no longer accepted.
+
+Closeout reconciliation: source-finding commit 4916dd73e8d195f244a45986275fcc3aa41ba420 is on main. The task remains Parked only because a live 26.7 lease payload was not observed. Resume: decide whether the released 26.7/26.7.3 payload-producing source is sufficient to close the disproved premise; if live proof is required, capture a 26.7 lease response and compare is_reserved rows before changing code. Do not add a synthetic missing-is_reserved fixture or reservation endpoint without a source- or live-produced shape.
 <!-- SECTION:NOTES:END -->
