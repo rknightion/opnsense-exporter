@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-02 02:13'
+updated_date: '2026-09-02 05:17'
 labels:
   - needs-triage
 dependencies: []
@@ -32,3 +33,9 @@ The Unbound search-query log source ships the API row blocklist value as a JSON 
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision, Rob 2026-09-02: take AC1's second branch - explicitly OMIT the blocklist identity when the legacy short code cannot be recovered, and document the limitation. Do not introduce a new display-valued attribute: inventing a stable-looking identity the 26.7 response does not guarantee is recurring defect class 1 (modelling a payload shape upstream cannot produce), and downstream would consume it as though it were stable.
+<!-- SECTION:NOTES:END -->

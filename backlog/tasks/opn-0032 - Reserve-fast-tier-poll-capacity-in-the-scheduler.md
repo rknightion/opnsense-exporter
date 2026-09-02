@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 03:39'
+updated_date: '2026-09-02 05:16'
 labels:
   - first-wave
 milestone: m-0
@@ -45,6 +45,8 @@ Wave 1 plan: add a deterministic wedged-slow-poll regression test using the exis
 Wave 1 staged WIP reserves fast-tier scheduler capacity and adds wedged-slow-poll regression coverage; focused tests and integrated just check passed. Post-correction L14 found no remaining issue. Not landed because CodeRabbit produced no complete event. Resume: obtain a complete review, fix critical/major findings, commit this task explicitly, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
 
 Integrated commit 5a241bb73917a874cb4771ecab1a9a3c3b9dfa84 reserves one of eight poll slots for fast-tier work while preserving the global cap. The deterministic wedged-general regression admits seven general polls and proves a fast gateway poll still runs. No new self-metric was warranted because the change prevents the starvation state.
+
+Decision, Rob 2026-09-02: no tier-specific admission/wait metric. The reservation prevents the starvation state rather than introducing a new one, so there is no wait condition for an operator to observe. Revisit only if a real scheduler stall is reported that this telemetry would have caught.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

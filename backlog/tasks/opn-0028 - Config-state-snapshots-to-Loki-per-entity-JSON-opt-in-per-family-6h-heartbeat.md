@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 05:17'
 labels: []
 milestone: m-1
 dependencies: []
@@ -68,4 +68,6 @@ Reachability: the Config dashboard queries {opnsense_source="configstate",opnsen
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP implements the frozen configstate snapshot framework, options, firewall family, persistence/dedupe/heartbeat/bounds, and Config dashboard reachability. Focused tests, Grafana coverage, and integrated just check passed; L14 found no remaining issue. The dashboard table deliberately shows distinct in-range batch/entity rows because current opaque batch IDs and labels cannot select only the dynamically latest batch in LogQL. Not landed because CodeRabbit failed twice before analysis. Resume: obtain a complete review, commit explicitly, integrate current origin/main, rerun gates, push, verify exact-SHA CI, then decide whether latest-batch-only selection warrants a backend or label-contract change.
+
+Decision, Rob 2026-09-02: keep the reversible in-range batch/entity table. Do NOT reshape the backend record or the label contract to make latest-complete-batch selection expressible in dashboard-only LogQL - that is a display concern buying a permanent data-contract cost, and the current table is truthful about what it shows. Revisit only if an operator hits the ambiguity in practice.
 <!-- SECTION:NOTES:END -->

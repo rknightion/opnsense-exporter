@@ -4,9 +4,11 @@ title: Correct `just gen` dependency order for new catalogue metrics
 status: To Do
 assignee: []
 created_date: '2026-09-02 03:37'
+updated_date: '2026-09-02 05:18'
 labels:
   - needs-triage
 dependencies: []
+priority: medium
 type: bug
 ordinal: 10000
 ---
@@ -29,3 +31,9 @@ The aggregate generator currently runs dashboard generation before documentation
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision, Rob 2026-09-02: fix this BEFORE the next metric-bearing task. It already cost wave 1 a detour on OPN-0034, and every collector in the M3/M4 train adds catalogue metrics, so the train would hit it repeatedly.
+<!-- SECTION:NOTES:END -->
