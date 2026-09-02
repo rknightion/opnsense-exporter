@@ -29,6 +29,38 @@ const monitRunningCollectorFixture = `{
 const monitDownCollectorFixture = `{"result": "failed",
  "status": "\nEither the file /var/run/monit.sock does not exists or it is not a unix socket.\nPlease check if the Monit service is running.\n\nIf you have started Monit recently, wait for StartDelay seconds and refresh this page."}`
 
+// monit6CollectorFixture is derived from Monit's release-6.0.0
+// src/http/xml.c status_service output as serialized by OPNsense's
+// SimpleXML-to-JSON controller. Monit 6 wraps service names in CDATA and adds
+// system.paging; both changes are intentionally outside the metrics modeled by
+// this collector. The single service uses the object form produced by
+// SimpleXML for one repeated child.
+const monit6CollectorFixture = `{
+  "result": "ok",
+  "status": {
+    "server": {"version": "6.0.0"},
+    "service": {
+      "@attributes": {"type": "5"},
+      "name": "system<quoted>",
+      "collected_sec": "1783962711",
+      "collected_usec": "270742",
+      "status": "0",
+      "status_hint": "0",
+      "monitor": "1",
+      "monitormode": "0",
+      "onreboot": "0",
+      "pendingaction": "0",
+      "system": {
+        "load": {"avg01": "0.01", "avg05": "0.02", "avg15": "0.03"},
+        "cpu": {"user": "1.0"},
+        "memory": {"percent": "12.3", "kilobyte": "1234"},
+        "swap": {"percent": "0.0", "kilobyte": "0"},
+        "paging": {"in": "0", "out": "0"}
+      }
+    }
+  }
+}`
+
 func monitCollectorMux(t *testing.T, statusBody, serviceStatus string) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -144,6 +176,67 @@ func TestMonitCollector_Update_MonitStopped(t *testing.T) {
 				t.Errorf("status_ok: expected 0, got %v", val)
 			}
 		}
+	}
+}
+
+func TestMonitCollector_Update_Monit6Shape(t *testing.T) {
+	server := httptest.NewServer(monitCollectorMux(t,
+		monit6CollectorFixture, `{"status":"running"}`))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &monitCollector{subsystem: MonitSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// 1 service_running + 1 status_ok + 1 checks_total + 1 check_status +
+	// 1 check_monitored + 3 system_load + 1 system_memory_percent +
+	// 1 system_swap_percent + 1 system_cpu_percent. Monit's new paging node
+	// is deliberately ignored because it has no corresponding metric.
+	const want = 11
+	if len(metrics) != want {
+		t.Errorf("expected %d metrics for the Monit 6 shape, got %d", want, len(metrics))
+		for _, m := range metrics {
+			t.Logf("  %s %v", m.Desc().String(), getMetricLabels(m))
+		}
+	}
+
+	var sawCheck, sawLoad, sawMemory, sawSwap, sawCPU bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		value := getMetricValue(m)
+		if strings.Contains(desc, "paging") {
+			t.Errorf("Monit 6 paging node unexpectedly produced a metric: %s", desc)
+		}
+
+		switch {
+		case strings.Contains(desc, "monit_check_status"):
+			sawCheck = true
+			if labels["name"] != "system<quoted>" || labels["type"] != "system" || value != 1 {
+				t.Errorf("check_status: unexpected metric labels/value %v/%v", labels, value)
+			}
+		case strings.Contains(desc, "monit_system_load"):
+			sawLoad = true
+		case strings.Contains(desc, "monit_system_memory_percent"):
+			sawMemory = true
+			if value != 12.3 {
+				t.Errorf("system_memory_percent: expected 12.3, got %v", value)
+			}
+		case strings.Contains(desc, "monit_system_swap_percent"):
+			sawSwap = true
+		case strings.Contains(desc, "monit_system_cpu_percent"):
+			sawCPU = true
+			if labels["mode"] != "user" || value != 1 {
+				t.Errorf("system_cpu_percent: unexpected mode/value %q/%v", labels["mode"], value)
+			}
+		}
+	}
+
+	if !sawCheck || !sawLoad || !sawMemory || !sawSwap || !sawCPU {
+		t.Errorf("Monit 6 shape did not emit all modeled system/check metrics: check=%v load=%v memory=%v swap=%v cpu=%v",
+			sawCheck, sawLoad, sawMemory, sawSwap, sawCPU)
 	}
 }
 
