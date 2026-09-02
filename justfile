@@ -80,6 +80,12 @@ check-public-ips:
     python3 scripts/check_public_ips.py --selftest
     python3 scripts/check_public_ips.py
 
+# enforce Prometheus metric naming contracts, including the OPN-0033 legacy ledger
+[group('check')]
+[no-exit-message]
+metric-lint:
+    go run ./cmd/metriclint
+
 # run the executable deployment contracts (Compose, systemd, k8s manifests, Helm chart)
 [group('infra')]
 [no-exit-message]
@@ -126,7 +132,7 @@ vuln: _tool-govulncheck
 # stay in workflows; the heavy local counterparts are collected by `just ci`.
 # run the bare-toolchain pre-commit gate
 [group('check')]
-check: fmt-check lint test fuzz-smoke check-public-ips testbed-test canary-test grafana-test gen-check vuln
+check: fmt-check lint test metric-lint fuzz-smoke check-public-ips testbed-test canary-test grafana-test gen-check vuln
 
 # deployment-test needs a Docker daemon for the containerised systemd contracts.
 # snapshot needs cross-compilation for the release archive matrix.
