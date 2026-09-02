@@ -1,10 +1,10 @@
 ---
 id: OPN-0054
 title: CodeQL initialization fails with repository Contents API 404
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-02 00:26'
-updated_date: '2026-09-02 05:19'
+updated_date: '2026-09-02 05:50'
 labels:
   - needs-triage
 dependencies: []
@@ -21,9 +21,9 @@ CodeQL cannot begin analysis on main because Initialize CodeQL fails with a GitH
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Identify why CodeQL initialization cannot read repository content
-- [ ] #2 Restore successful initialization and analysis for Go, Python, and Actions
-- [ ] #3 Verify a terminal CodeQL run at the exact repaired SHA
+- [x] #1 Identify why CodeQL initialization cannot read repository content
+- [x] #2 Restore successful initialization and analysis for Go, Python, and Actions
+- [x] #3 Verify a terminal CodeQL run at the exact repaired SHA
 <!-- AC:END -->
 
 ## Definition of Done
@@ -46,4 +46,16 @@ BLAST RADIUS: 16 rknightion repositories pin the same v1.17.1 SHA and have all b
 FIX: restore codeql/codeql-config.yml on rknightion/.github main. One commit, unbreaks all 16 at once, and does not revert the inline-config design because HEAD no longer reads the file. Bumping this caller to v1.18.1 is the follow-up Renovate will raise anyway, but it fixes one repo at a time and leaves the trap live for anything still pinned old. The restored file should carry a header comment saying why it must not be deleted again.
 
 This task's AC2/AC3 cannot be satisfied by any change in this repository.
+
+The other 15 affected repositories are fixed by the same commit and need no per-repo action: autopi-ha, bumblebee-catalog, bumblebee-intune, fleet-management-operator, genai-otel-bridge, grafana-cloud-org-insights, graph2otel, grotTrack, meraki-dashboard-ha, openbao-plugin-secrets-github, polylens2otel, rfc6035-2otel, sagemcom-f3896-py, synthkit, transceiver-exporter. Their next CodeQL run initializes normally; no re-run is required unless a green result is wanted at a specific older SHA.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+FIXED 2026-09-02 in another repository. rknightion/.github commit 09c52f4a restored codeql/codeql-config.yml, which 240da9e3 had deleted on 2026-09-01 22:27. This repo's caller is pinned at v1.17.1 and that pinned reusable passes 'config-file: rknightion/.github/codeql/codeql-config.yml@main' - a SHA pin on a reusable does not pin what the reusable itself resolves at run time, so one deletion broke 16 pinned repositories at once.
+
+Proof: re-ran the failing CodeQL run 33590596566 at the unchanged SHA d780775115b35f854a2bdaec03e59ff70f3fe7cb after the restore. All three matrices concluded success - Analyze (go), Analyze (python), Analyze (actions). Same SHA, same workflow, same caller pin; only the file in the other repository changed, which isolates the cause exactly.
+
+No change was made in this repository and none is needed. The restored file carries a header comment explaining why it must not be deleted again. Bumping this caller to v1.18.1, which inlines the config, is a separate Renovate follow-up and not a prerequisite.
+<!-- SECTION:FINAL_SUMMARY:END -->
