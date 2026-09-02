@@ -55,6 +55,14 @@ spec:
             - name: syslog-tcp
               containerPort: 5514
               protocol: TCP
+            # The Zenarmor receiver (--logs.zenarmor.enabled), off by default.
+            - name: zenarmor-tcp
+              containerPort: 9200
+              protocol: TCP
+            # The NetFlow receiver (--flow.netflow.enabled), off by default.
+            - name: netflow-udp
+              containerPort: 2055
+              protocol: UDP
           # /-/healthy: process liveness only — no firewall dependency. Do NOT
           # point readinessProbe at /-/ready here: when Prometheus scrapes via
           # Service endpoints, a not-ready pod stops being scraped and the
@@ -140,3 +148,16 @@ spec:
       protocol: TCP
       port: 5514
       targetPort: 5514
+    # Zenarmor's Elasticsearch-shaped receiver, off by default. As with syslog,
+    # expose this ClusterIP through a LoadBalancer/NodePort before pointing the
+    # firewall at it.
+    - name: zenarmor-tcp
+      protocol: TCP
+      port: 9200
+      targetPort: zenarmor-tcp
+    # NetFlow receiver, off by default and unauthenticated. Restrict the external
+    # exposure to the firewall when converting this Service type.
+    - name: netflow-udp
+      protocol: UDP
+      port: 2055
+      targetPort: netflow-udp

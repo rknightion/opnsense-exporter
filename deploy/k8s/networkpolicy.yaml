@@ -48,3 +48,27 @@ spec:
           port: 5514
         - protocol: TCP
           port: 5514
+    # The Zenarmor receiver (--logs.zenarmor.enabled), off by default. WITHOUT THIS
+    # RULE the CNI silently drops the Elasticsearch-shaped stream and Zenarmor looks
+    # broken while being perfectly healthy. Narrow the ipBlock to the firewall's own
+    # address: Zenarmor traffic is unauthenticated unless receiver auth is configured.
+    # Delete this whole rule if you do not use the receiver.
+    - from:
+        - ipBlock:
+            # Placeholder: your OPNsense firewall's address
+            cidr: 10.0.0.254/32
+      ports:
+        - protocol: TCP
+          port: 9200
+    # The NetFlow receiver (--flow.netflow.enabled), off by default. WITHOUT THIS RULE
+    # the CNI silently drops the firewall's UDP flow records and the receiver looks
+    # broken while being perfectly healthy. Narrow the ipBlock to the firewall's own
+    # address: NetFlow has no authentication, so anything that can reach the port can
+    # inject flow records. Delete this whole rule if you do not use the receiver.
+    - from:
+        - ipBlock:
+            # Placeholder: your OPNsense firewall's address
+            cidr: 10.0.0.254/32
+      ports:
+        - protocol: UDP
+          port: 2055
