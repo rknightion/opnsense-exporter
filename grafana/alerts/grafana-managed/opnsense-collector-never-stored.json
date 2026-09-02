@@ -26,7 +26,7 @@
       "description": "Collector {{ $labels.collector }} has been polling for 30m and has never once stored a metric buffer \u2014 every poll since the exporter started has failed with nothing to emit, so it exports no domain metrics at all. A clean poll that legitimately finds nothing still counts as stored, so this is a real failure, not an empty subsystem. OPNsenseCollectorDataStale cannot cover this: the snapshot-timestamp gauge is absent until the first successful store (deliberately, so it never renders as a 1970 epoch), leaving no series to measure staleness against. Usual causes are a missing plugin, an API key without permission for that endpoint, or a collector enabled against a firewall that does not run the subsystem (#382).",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensecollectorneverstoreddata",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "66"
+      "__panelId__": "67"
     },
     "expressions": {
       "A": {

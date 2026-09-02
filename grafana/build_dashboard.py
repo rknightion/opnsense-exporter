@@ -761,6 +761,16 @@ def build_diagnostics(b: Builder):
                             "large total with a flat rate panel beside it is history, not a live "
                             "problem; the two are meant to be read together."
                        ))
+    partial_fetches = b.ts(
+        "Tolerated Secondary Fetch Failures (rate)",
+        [(f'sum {grp("collector")} '
+          f'(rate({sel("opnsense_exporter_partial_fetch_failures_total")}[{RATE}]))',
+          "{{collector}}")],
+        unit="errps", w=12, h=7,
+        desc="Failed secondary OPNsense API calls per second that a sub-collector "
+             "tolerated while its scheduled poll otherwise succeeded. These failures "
+             "do not turn scrape_collector_success to zero and are deliberately excluded "
+             "from endpoint_errors_total; plugin-absent 404s are excluded from both.")
     # #494: the soft series budget is REPORTED, never enforced — nothing is dropped
     # or refused when it is exceeded. This counts the COLLECTOR registry only, which
     # is what /metrics and the OTLP bridge serve; the exporter's own process_*/go_*
@@ -1316,7 +1326,7 @@ def build_diagnostics(b: Builder):
     # paragraph explaining why it is scoped the way it is.
     b.tab("Scrape & Poll", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
-        b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
+        b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok, partial_fetches]),
         b.row("Per-Collector Poll Schedule", [poll_interval, poll_age, next_poll]),
         b.row("Per-Collector Data Freshness", [snapshot_age, success_age]),
     ])

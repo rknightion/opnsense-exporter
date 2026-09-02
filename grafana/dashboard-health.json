@@ -6948,6 +6948,93 @@
         "kind": "Panel",
         "spec": {
           "id": 58,
+          "title": "Tolerated Secondary Fetch Failures (rate)",
+          "description": "Failed secondary OPNsense API calls per second that a sub-collector tolerated while its scheduled poll otherwise succeeded. These failures do not turn scrape_collector_success to zero and are deliberately excluded from endpoint_errors_total; plugin-absent 404s are excluded from both.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, collector) (rate(opnsense_exporter_partial_fetch_failures_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "errps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-59": {
+        "kind": "Panel",
+        "spec": {
+          "id": 59,
           "title": "Collector Series Total (soft budget)",
           "description": "Total series on the collector registry, the number --exporter.series-budget is measured against. The budget is advisory: exceeding it logs a rate-limited warning and flags the console's Cardinality tab, and changes nothing about what is exported. Excludes the exporter's own process_*/go_* and OTLP delivery families, which are on a separate registry, so expect this to read lower than your tenant's series count for this job.",
           "links": [],
@@ -7031,10 +7118,10 @@
           }
         }
       },
-      "panel-59": {
+      "panel-60": {
         "kind": "Panel",
         "spec": {
-          "id": 59,
+          "id": 60,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -7136,10 +7223,10 @@
           }
         }
       },
-      "panel-60": {
+      "panel-61": {
         "kind": "Panel",
         "spec": {
-          "id": 60,
+          "id": 61,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -7243,10 +7330,10 @@
           }
         }
       },
-      "panel-61": {
+      "panel-62": {
         "kind": "Panel",
         "spec": {
-          "id": 61,
+          "id": 62,
           "title": "Plugin Availability (every plugin-gated collector)",
           "description": "opnsense_feature_available: which plugin-gated features this firewall has, refreshed every 15 minutes independent of --exporter.cache-ttl (#517, widened in #525). Installed=1 means the plugin's API endpoint answered; Installed=0 means it returned 404 and the plugin is absent. NO ROW means availability has never been determined - an unreachable firewall keeps the previous verdict rather than reporting every plugin as gone. Installed=1 with Scraped=false is the actionable combination, and covers both an opt-in collector nobody turned on and a default-on one somebody disabled. An already-enabled collector is not re-probed: its own polling answers the same question.",
           "links": [],
@@ -7348,10 +7435,10 @@
           }
         }
       },
-      "panel-62": {
+      "panel-63": {
         "kind": "Panel",
         "spec": {
-          "id": 62,
+          "id": 63,
           "title": "Plugins Installed But Not Scraped",
           "description": "Features whose plugin IS installed but whose collector is switched off, so the box is serving data nothing is reading. Non-zero is not an error - an opt-in collector is off for a stated reason (per-poll API cost, cardinality, or exposing usernames) and a default-on one may have been disabled deliberately. The exporter also names each one in a startup log line with the flag that would turn it on. --exporter.enable-all-available turns on every one whose plugin the startup probe found present. Fleet total: this is a deliberate count across every instance $opnsense_instance selects (#597), so with two boxes picked a 3 may be three features on one box or two plus one across both - the Plugin Availability table above says which.",
           "links": [],
@@ -7436,10 +7523,10 @@
           }
         }
       },
-      "panel-63": {
+      "panel-64": {
         "kind": "Panel",
         "spec": {
-          "id": 63,
+          "id": 64,
           "title": "Collector Poll Duration",
           "description": "Duration of the latest scheduled background poll. The metric keeps its historical node_exporter-compatible name; /metrics only replays this value.",
           "links": [],
@@ -7523,10 +7610,10 @@
           }
         }
       },
-      "panel-64": {
+      "panel-65": {
         "kind": "Panel",
         "spec": {
-          "id": 64,
+          "id": 65,
           "title": "Collector Poll Success",
           "description": "1 = the latest scheduled sub-collector poll completed cleanly; 0 = error or panic. The metric name is retained for compatibility.",
           "links": [],
@@ -7630,10 +7717,10 @@
           }
         }
       },
-      "panel-65": {
+      "panel-66": {
         "kind": "Panel",
         "spec": {
-          "id": 65,
+          "id": 66,
           "title": "Collector Poll Interval",
           "description": "Configured poll interval per collector (#336): fast 15s / medium 60s / slow 5m / cold 15m, overridable via --collector.poll-interval-override.",
           "links": [],
@@ -7747,10 +7834,10 @@
           }
         }
       },
-      "panel-66": {
+      "panel-67": {
         "kind": "Panel",
         "spec": {
-          "id": 66,
+          "id": 67,
           "title": "Collector Last Attempt Age (scheduler liveness)",
           "description": "Seconds since each collector's last poll ATTEMPT completed \u2014 successful or not. This is SCHEDULER LIVENESS, NOT data freshness: a failed poll advances this clock just like a successful one, so a collector that has been failing for six hours still reads under one interval here while replaying six-hour-old retained data. A value climbing past the collector's interval means the poller itself is stalled or starved of a concurrency slot. For how old the served data actually is, read 'Collector Retained Data Age' below (#382).",
           "links": [],
@@ -7834,10 +7921,10 @@
           }
         }
       },
-      "panel-67": {
+      "panel-68": {
         "kind": "Panel",
         "spec": {
-          "id": 67,
+          "id": 68,
           "title": "Collector Next Poll (in)",
           "description": "Seconds until each collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline rather than derived from last poll + interval (#385).",
           "links": [],
@@ -7921,10 +8008,10 @@
           }
         }
       },
-      "panel-68": {
+      "panel-69": {
         "kind": "Panel",
         "spec": {
-          "id": 68,
+          "id": 69,
           "title": "Collector Retained Data Age (true data age)",
           "description": "Seconds since each collector's stored metric buffer was last REPLACED \u2014 the true age of the data every scrape and every OTLP export replays. It advances on a successful poll and on a partial-error poll that still emitted data, and deliberately does NOT advance when a failed poll emitted nothing and the last-good buffer was retained. This is the freshness number: a line climbing past ~3x that collector's poll interval means it is serving stale retained data, which is what OPNsenseCollectorDataStale alerts on. A collector that has never stored data has no line at all (the gauge is absent rather than 0, so it cannot render as a 1970 epoch) \u2014 OPNsenseCollectorNeverStoredData covers that case.",
           "links": [],
@@ -8008,10 +8095,10 @@
           }
         }
       },
-      "panel-69": {
+      "panel-70": {
         "kind": "Panel",
         "spec": {
-          "id": 69,
+          "id": 70,
           "title": "Collector Time Since Last Full Success",
           "description": "Seconds since each collector's last FULLY CLEAN poll. Unlike retained data age this does not advance on a partial-error poll, so the two together separate 'refreshed but degraded' from 'fully healthy': if this climbs while retained data age stays low, the collector is still refreshing part of its data but one of its endpoints has been erroring the whole time \u2014 see the Endpoint Errors panels above for which one. OPNsenseCollectorDegraded alerts on this.",
           "links": [],
@@ -8095,10 +8182,10 @@
           }
         }
       },
-      "panel-70": {
+      "panel-71": {
         "kind": "Panel",
         "spec": {
-          "id": 70,
+          "id": 71,
           "title": "OTLP Export Enabled",
           "description": "1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery is working: the exporter connects lazily, so this reads 1 from startup even with a wrong endpoint or an expired credential. Judge delivery by the two panels to the right. Construction failure is fatal at startup, so there is no configured-but-inactive state \u2014 the metric is either 1 or absent.",
           "links": [],
@@ -8200,10 +8287,10 @@
           }
         }
       },
-      "panel-71": {
+      "panel-72": {
         "kind": "Panel",
         "spec": {
-          "id": 71,
+          "id": 72,
           "title": "OTLP Consecutive Failures",
           "description": "Exports that have failed back-to-back. Reset to 0 by the next success, so any sustained non-zero value is an ongoing delivery outage rather than a blip. OPNsenseOTLPDeliveryFailing alerts on this.",
           "links": [],
@@ -8287,10 +8374,10 @@
           }
         }
       },
-      "panel-72": {
+      "panel-73": {
         "kind": "Panel",
         "spec": {
-          "id": 72,
+          "id": 73,
           "title": "Time Since Last Successful OTLP Export",
           "description": "Seconds since the last export the backend accepted. NO DATA here means no export has EVER succeeded since this exporter started \u2014 the gauge is 0 in that state and the `> 0` guard suppresses it deliberately, because subtracting 0 from time() would render a 56-year age as though a real export had once landed. No-data plus a rising consecutive-failure count is the never-worked-since-boot case (wrong endpoint / bad credential).",
           "links": [],
@@ -8379,10 +8466,10 @@
           }
         }
       },
-      "panel-73": {
+      "panel-74": {
         "kind": "Panel",
         "spec": {
-          "id": 73,
+          "id": 74,
           "title": "OTLP Export Rate (by result)",
           "description": "Export calls per second by outcome, counted once per export call and never per metric. Both result values are seeded to 0 at startup, so a healthy exporter shows a flat zero error line rather than an absent series.",
           "links": [],
@@ -8466,10 +8553,10 @@
           }
         }
       },
-      "panel-74": {
+      "panel-75": {
         "kind": "Panel",
         "spec": {
-          "id": 74,
+          "id": 75,
           "title": "Exporter Goroutines",
           "description": "Go runtime goroutines in the exporter process. NOTE: go_* metrics carry no opnsense_instance label, so this panel is scoped by scrape job and does NOT follow the $opnsense_instance picker \u2014 with two exporters scraped it shows both.",
           "links": [],
@@ -8553,10 +8640,10 @@
           }
         }
       },
-      "panel-75": {
+      "panel-76": {
         "kind": "Panel",
         "spec": {
-          "id": 75,
+          "id": 76,
           "title": "Exporter Memory",
           "description": "Exporter process RSS and Go heap in use. Like the other two process panels this is scoped by scrape job, not by $opnsense_instance, because process_*/go_* metrics carry no appliance label. RSS above heap is normal \u2014 it includes the Go runtime's arenas.",
           "links": [],
@@ -8666,10 +8753,10 @@
           }
         }
       },
-      "panel-76": {
+      "panel-77": {
         "kind": "Panel",
         "spec": {
-          "id": 76,
+          "id": 77,
           "title": "Exporter CPU",
           "description": "CPU seconds per second consumed by the exporter process: 1.0 means one core saturated. Scoped by scrape job rather than by $opnsense_instance, since process_* metrics carry no appliance label.",
           "links": [],
@@ -8753,10 +8840,10 @@
           }
         }
       },
-      "panel-77": {
+      "panel-78": {
         "kind": "Panel",
         "spec": {
-          "id": 77,
+          "id": 78,
           "title": "Exporter GC Pressure",
           "description": "Go garbage-collector pause behaviour in the exporter process. Read this when a latency panel elsewhere has climbed and no single endpoint or collector explains it: stop-the-world pauses are charged to whichever goroutine was running, so they inflate every latency figure at once and appear on none of the per-endpoint breakdowns. 'pause seconds/sec' is the share of wall-clock time spent stopped and is the number that actually decides whether GC is the cause \u2014 worst pause on its own can be alarming and harmless if it happens once an hour. Like the other runtime panels this is scoped by scrape job, NOT by $opnsense_instance: go_* metrics come from the client library and carry no appliance label.",
           "links": [],
@@ -8943,10 +9030,10 @@
           }
         }
       },
-      "panel-78": {
+      "panel-79": {
         "kind": "Panel",
         "spec": {
-          "id": 78,
+          "id": 79,
           "title": "FD Utilisation",
           "description": "Open file descriptors as a share of the process rlimit. One shared budget covers the TCP and TLS syslog listeners, the NetFlow UDP socket, the OPNsense API connection pool and every in-flight /metrics request, so exhaustion presents as several unrelated-looking faults at once. The 70%/85% boundaries are headroom warnings, not limits: nothing degrades at 70%, but a descriptor leak that reaches it will reach 100%. Scoped by scrape job, not by $opnsense_instance \u2014 process_* metrics carry no appliance label. Absent on platforms whose process collector cannot read descriptor counts, which is what the row's sentinel gates on.",
           "links": [],
@@ -9035,10 +9122,10 @@
           }
         }
       },
-      "panel-79": {
+      "panel-80": {
         "kind": "Panel",
         "spec": {
-          "id": 79,
+          "id": 80,
           "title": "Open vs Max File Descriptors",
           "description": "Open descriptors against the rlimit over time. The tile beside this one cannot tell a leak from a burst and this panel can: a leak is a line that climbs and never returns, a burst is a spike that decays when the connections close. The limit is drawn because it is not a constant in practice \u2014 a container runtime or systemd unit can hand the process a far lower rlimit than the operator assumes, and a 'sudden' exhaustion is often the limit having always been small.",
           "links": [],
@@ -9148,10 +9235,10 @@
           }
         }
       },
-      "panel-80": {
+      "panel-81": {
         "kind": "Panel",
         "spec": {
-          "id": 80,
+          "id": 81,
           "title": "Exporter Alive (up)",
           "description": "Is the EXPORTER PROCESS alive \u2014 a different question from the tile beside it. In pull mode this is the `up` series Prometheus synthesizes for the scrape target; in OTLP push mode there is no scraper, so the exporter emits its own `up = 1` while it runs and the series simply stops when it dies. Both spellings are queried because they carry different labels and only one exists in each mode. NO DATA here means the exporter is gone or unreachable, and every other panel on both dashboards is showing history rather than the present.",
           "links": [],
@@ -9253,10 +9340,10 @@
           }
         }
       },
-      "panel-81": {
+      "panel-82": {
         "kind": "Panel",
         "spec": {
-          "id": 81,
+          "id": 82,
           "title": "Firewall Reachable (opnsense_up)",
           "description": "Did the exporter reach the FIREWALL on its last poll. Read as a pair with 'Exporter Alive' to the left, which is what tells the two 'it is down' incidents apart: alive=1 with this at 0 is a firewall, network or credential fault and the exporter is working correctly; alive absent makes this absent too, and the fault is the exporter or its host. OPNsenseExporterDown alerts on THIS metric, so despite its name it fires on firewall unreachability, not on a dead exporter.",
           "links": [],
@@ -9359,10 +9446,10 @@
           }
         }
       },
-      "panel-82": {
+      "panel-83": {
         "kind": "Panel",
         "spec": {
-          "id": 82,
+          "id": 83,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -9446,10 +9533,10 @@
           }
         }
       },
-      "panel-83": {
+      "panel-84": {
         "kind": "Panel",
         "spec": {
-          "id": 83,
+          "id": 84,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -9533,10 +9620,10 @@
           }
         }
       },
-      "panel-84": {
+      "panel-85": {
         "kind": "Panel",
         "spec": {
-          "id": 84,
+          "id": 85,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -9617,10 +9704,10 @@
           }
         }
       },
-      "panel-85": {
+      "panel-86": {
         "kind": "Panel",
         "spec": {
-          "id": 85,
+          "id": 86,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking on every scheduled poll.",
           "links": [],
@@ -9704,10 +9791,10 @@
           }
         }
       },
-      "panel-86": {
+      "panel-87": {
         "kind": "Panel",
         "spec": {
-          "id": 86,
+          "id": 87,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -9807,10 +9894,10 @@
           }
         }
       },
-      "panel-87": {
+      "panel-88": {
         "kind": "Panel",
         "spec": {
-          "id": 87,
+          "id": 88,
           "title": "Annotation Writes (rate)",
           "description": "Annotations written to Grafana per second, against those that failed or were skipped. A failed write is RETRIED on the next detection pass \u2014 the event is not marked seen \u2014 so a brief failure rate that stops without a matching drop in writes cost nothing. rate limited and undeliverable are BREAKDOWNS of failed, not additions to it, and they are the two shapes worth telling apart (#519): rate limited is HTTP 429, after which the writer backs off and posts nothing until the wait expires (honouring Retry-After when the server sends one) \u2014 a Grafana org shares one annotation limit, so another writer can cause it. undeliverable is a 4xx that can never succeed (malformed body, or a token without the annotation write permission); those events are abandoned rather than retried, so a sustained rate means annotations are being lost and the exporter log names the status. Skips are lossier still: a detection pass hit its --annotations.max-per-cycle cap and left the excess for the next pass, so a sustained skip rate means the backlog is not draining and the cap needs raising.",
           "links": [],
@@ -9998,10 +10085,10 @@
           }
         }
       },
-      "panel-88": {
+      "panel-89": {
         "kind": "Panel",
         "spec": {
-          "id": 88,
+          "id": 89,
           "title": "Time Since Last Annotation Written",
           "description": "Seconds since the last annotation Grafana accepted. Deliberately has NO red threshold: a long age is the normal state on a quiet firewall and says nothing on its own. NO DATA means no annotation has EVER been written since this exporter started. Read it beside the failure rate \u2014 a climbing age with a non-zero failure rate is a broken token or URL, while a climbing age with no failures at all is simply a firewall with nothing to report.",
           "links": [],
@@ -10082,10 +10169,10 @@
           }
         }
       },
-      "panel-89": {
+      "panel-90": {
         "kind": "Panel",
         "spec": {
-          "id": 89,
+          "id": 90,
           "title": "Metrics Handler In-Flight Requests",
           "description": "Requests currently admitted and being served by /metrics, bounded by the exporter's --collector.poll-interval-independent in-flight cap (40). Self-referential by construction: the very scrape that reads this gauge is itself one of the requests it counts, so it never reads 0 in its own response - read it as a trend, not a single-sample zero/nonzero check.",
           "links": [],
@@ -10167,10 +10254,10 @@
           }
         }
       },
-      "panel-90": {
+      "panel-91": {
         "kind": "Panel",
         "spec": {
-          "id": 90,
+          "id": 91,
           "title": "Metrics Handler Requests (rate, by status)",
           "description": "Admitted /metrics requests completed per second, by outcome status: ok = served (however the underlying gather went - see Gather Errors below); bad_request = rejected collect[]/exclude[] parameters; internal_error = the scrape view itself failed to register. A request the admission cap rejected outright is never counted here - see the Rejections panel.",
           "links": [],
@@ -10254,10 +10341,10 @@
           }
         }
       },
-      "panel-91": {
+      "panel-92": {
         "kind": "Panel",
         "spec": {
-          "id": 91,
+          "id": 92,
           "title": "Metrics Handler Admission Rejections (rate)",
           "description": "Requests refused before admission because 40 concurrent /metrics requests were already being served (reason=in_flight_limit). The exporter's listener has no authentication by default, so any reachable client can drive this; a sustained non-zero rate means either a slow-reading scraper backlog or more concurrent scrapers than the exporter is sized for.",
           "links": [],
@@ -10341,10 +10428,10 @@
           }
         }
       },
-      "panel-92": {
+      "panel-93": {
         "kind": "Panel",
         "spec": {
-          "id": 92,
+          "id": 93,
           "title": "Metrics Handler Gather Errors / Partial Scrapes (rate)",
           "description": "Gather() errors ContinueOnError caught and logged instead of blanking the whole response (#81) - most commonly a collector emitting a duplicate label tuple. The response still returned 200 with whatever WAS collected; this is the only queryable evidence that a scrape was partial rather than complete.",
           "links": [],
@@ -10428,10 +10515,10 @@
           }
         }
       },
-      "panel-93": {
+      "panel-94": {
         "kind": "Panel",
         "spec": {
-          "id": 93,
+          "id": 94,
           "title": "Metrics Handler Request p95 Latency (by status)",
           "description": "p95 of opnsense_exporter_server_metrics_request_duration_seconds, timed from admission to response completion, by outcome status. Excludes requests the admission cap rejected outright (they never do enough work to be worth timing) - a rejection shows up on the Rejections panel instead.",
           "links": [],
@@ -10515,10 +10602,10 @@
           }
         }
       },
-      "panel-94": {
+      "panel-95": {
         "kind": "Panel",
         "spec": {
-          "id": 94,
+          "id": 95,
           "title": "Failing Collectors",
           "description": "Sub-collectors whose most recent scheduled poll failed. Anything above zero means part of the operational dashboard is showing retained data rather than current data \u2014 which collector is affected is on the health dashboard's Scrape & Poll tab.",
           "links": [
@@ -10609,10 +10696,10 @@
           }
         }
       },
-      "panel-95": {
+      "panel-96": {
         "kind": "Panel",
         "spec": {
-          "id": 95,
+          "id": 96,
           "title": "Stalest Collector Data",
           "description": "Age of the oldest metric buffer any scrape or OTLP export would replay \u2014 the true age of the data, which does not advance on a failed poll that emitted nothing. Compare against the poll tiers before alarming: the cold tier legitimately sits at 15 minutes, so a value under an hour is normal.",
           "links": [
@@ -10707,10 +10794,10 @@
           }
         }
       },
-      "panel-96": {
+      "panel-97": {
         "kind": "Panel",
         "spec": {
-          "id": 96,
+          "id": 97,
           "title": "OPNsense API Error Rate",
           "description": "Errors per second calling the firewall's API. A plugin-gated endpoint returning 404 is not counted, so anything here is a real failure \u2014 auth, TLS, timeout or a 5xx.",
           "links": [
@@ -10801,10 +10888,10 @@
           }
         }
       },
-      "panel-97": {
+      "panel-98": {
         "kind": "Panel",
         "spec": {
-          "id": 97,
+          "id": 98,
           "title": "Firewall Reachable",
           "description": "1 = the exporter reached the firewall on its last poll. Absent \u2014 rather than 0 \u2014 means Prometheus is getting nothing from the exporter at all, which is a different fault with a different fix.",
           "links": [
@@ -10912,10 +10999,10 @@
           }
         }
       },
-      "panel-98": {
+      "panel-99": {
         "kind": "Panel",
         "spec": {
-          "id": 98,
+          "id": 99,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache. Per instance, never blended across appliances \u2014 a sum/sum ratio lets one exporter's broken cache hide behind a healthy one. A collapse here shows up as a step in the API request rate on the OPNsense API tab.",
           "links": [
@@ -11001,10 +11088,10 @@
           }
         }
       },
-      "panel-99": {
+      "panel-100": {
         "kind": "Panel",
         "spec": {
-          "id": 99,
+          "id": 100,
           "title": "Collector Series",
           "description": "Series on the collector registry, the number --exporter.series-budget is measured against. The budget is advisory: exceeding it warns and changes nothing about what is exported. Excludes the exporter's own process_*/go_* and OTLP families, which live on a separate registry.",
           "links": [
@@ -11090,10 +11177,10 @@
           }
         }
       },
-      "panel-100": {
+      "panel-101": {
         "kind": "Panel",
         "spec": {
-          "id": 100,
+          "id": 101,
           "title": "OTLP Export Enabled",
           "description": "1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery is working \u2014 the exporter connects lazily, so this reads 1 from startup even with a wrong endpoint. Judge delivery by the two tiles beside it.",
           "links": [
@@ -11200,10 +11287,10 @@
           }
         }
       },
-      "panel-101": {
+      "panel-102": {
         "kind": "Panel",
         "spec": {
-          "id": 101,
+          "id": 102,
           "title": "OTLP Consecutive Failures",
           "description": "Exports that have failed back-to-back, reset to 0 by the next success. Any sustained non-zero value is an ongoing delivery outage.",
           "links": [
@@ -11293,10 +11380,10 @@
           }
         }
       },
-      "panel-102": {
+      "panel-103": {
         "kind": "Panel",
         "spec": {
-          "id": 102,
+          "id": 103,
           "title": "Since Last OTLP Export",
           "description": "Seconds since the last export the backend accepted. NO DATA means no export has EVER succeeded since this exporter started \u2014 the `> 0` guard suppresses the zero deliberately, since time() minus 0 would render a 56-year age as though an export had once landed.",
           "links": [
@@ -11390,10 +11477,10 @@
           }
         }
       },
-      "panel-103": {
+      "panel-104": {
         "kind": "Panel",
         "spec": {
-          "id": 103,
+          "id": 104,
           "title": "Syslog Connection Slots Used",
           "description": "Syslog receiver connection slots held against the --logs.syslog.max-conns ceiling, ONE TILE PER TRANSPORT. The budget is per transport rather than a shared pool, so that an unauthenticated plaintext flood cannot starve the mTLS senders you trust \u2014 never read these as one number. A missing tile means that transport is not configured, which is a different state from a tile at 100%. Reaching the ceiling is the point at which new senders are refused and logs_rejected_total{reason=\"conn_limit\"} starts climbing, so this is the panel that gives you warning where that counter gives you the post-mortem. A TLS connection holds its slot from accept, BEFORE it has authenticated: rising TLS occupancy with no matching rise in records shipped is the slowloris signature, not busy senders.",
           "links": [
@@ -11488,10 +11575,10 @@
           }
         }
       },
-      "panel-104": {
+      "panel-105": {
         "kind": "Panel",
         "spec": {
-          "id": 104,
+          "id": 105,
           "title": "Log Records Shipped",
           "description": "Records per second the log pipeline handed to its sink. Zero on a box that ships logs is the signal; absent means log shipping is off.",
           "links": [
@@ -11608,7 +11695,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-97"
+                                    "name": "panel-98"
                                   }
                                 }
                               },
@@ -11621,7 +11708,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-94"
+                                    "name": "panel-95"
                                   }
                                 }
                               },
@@ -11634,7 +11721,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-95"
+                                    "name": "panel-96"
                                   }
                                 }
                               },
@@ -11647,7 +11734,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-96"
+                                    "name": "panel-97"
                                   }
                                 }
                               },
@@ -11660,7 +11747,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-98"
+                                    "name": "panel-99"
                                   }
                                 }
                               },
@@ -11673,7 +11760,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-99"
+                                    "name": "panel-100"
                                   }
                                 }
                               }
@@ -11700,7 +11787,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-100"
+                                    "name": "panel-101"
                                   }
                                 }
                               },
@@ -11713,7 +11800,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-101"
+                                    "name": "panel-102"
                                   }
                                 }
                               },
@@ -11726,7 +11813,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-102"
+                                    "name": "panel-103"
                                   }
                                 }
                               }
@@ -11770,7 +11857,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-104"
+                                    "name": "panel-105"
                                   }
                                 }
                               }
@@ -11814,7 +11901,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-103"
+                                    "name": "panel-104"
                                   }
                                 }
                               }
@@ -11979,7 +12066,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-63"
+                                              "name": "panel-64"
                                             }
                                           }
                                         },
@@ -11992,7 +12079,20 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-64"
+                                              "name": "panel-65"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 8,
+                                            "width": 12,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-58"
                                             }
                                           }
                                         }
@@ -12019,7 +12119,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-65"
+                                              "name": "panel-66"
                                             }
                                           }
                                         },
@@ -12032,7 +12132,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-66"
+                                              "name": "panel-67"
                                             }
                                           }
                                         },
@@ -12045,7 +12145,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-67"
+                                              "name": "panel-68"
                                             }
                                           }
                                         }
@@ -12072,7 +12172,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-68"
+                                              "name": "panel-69"
                                             }
                                           }
                                         },
@@ -12085,7 +12185,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-69"
+                                              "name": "panel-70"
                                             }
                                           }
                                         }
@@ -12125,7 +12225,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-82"
+                                              "name": "panel-83"
                                             }
                                           }
                                         },
@@ -12138,7 +12238,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-83"
+                                              "name": "panel-84"
                                             }
                                           }
                                         }
@@ -12165,7 +12265,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-84"
+                                              "name": "panel-85"
                                             }
                                           }
                                         },
@@ -12178,7 +12278,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-85"
+                                              "name": "panel-86"
                                             }
                                           }
                                         },
@@ -12191,7 +12291,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-86"
+                                              "name": "panel-87"
                                             }
                                           }
                                         }
@@ -12244,7 +12344,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-70"
+                                              "name": "panel-71"
                                             }
                                           }
                                         },
@@ -12257,7 +12357,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-71"
+                                              "name": "panel-72"
                                             }
                                           }
                                         },
@@ -12270,7 +12370,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-72"
+                                              "name": "panel-73"
                                             }
                                           }
                                         },
@@ -12283,7 +12383,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-73"
+                                              "name": "panel-74"
                                             }
                                           }
                                         }
@@ -12327,19 +12427,6 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-89"
-                                            }
-                                          }
-                                        },
-                                        {
-                                          "kind": "GridLayoutItem",
-                                          "spec": {
-                                            "x": 6,
-                                            "y": 0,
-                                            "width": 9,
-                                            "height": 6,
-                                            "element": {
-                                              "kind": "ElementReference",
                                               "name": "panel-90"
                                             }
                                           }
@@ -12347,7 +12434,7 @@
                                         {
                                           "kind": "GridLayoutItem",
                                           "spec": {
-                                            "x": 15,
+                                            "x": 6,
                                             "y": 0,
                                             "width": 9,
                                             "height": 6,
@@ -12360,13 +12447,26 @@
                                         {
                                           "kind": "GridLayoutItem",
                                           "spec": {
+                                            "x": 15,
+                                            "y": 0,
+                                            "width": 9,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-92"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
                                             "x": 0,
                                             "y": 6,
                                             "width": 6,
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-92"
+                                              "name": "panel-93"
                                             }
                                           }
                                         },
@@ -12379,7 +12479,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-93"
+                                              "name": "panel-94"
                                             }
                                           }
                                         }
@@ -12406,7 +12506,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-87"
+                                              "name": "panel-88"
                                             }
                                           }
                                         },
@@ -12419,7 +12519,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-88"
+                                              "name": "panel-89"
                                             }
                                           }
                                         }
@@ -13586,7 +13686,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-80"
+                                    "name": "panel-81"
                                   }
                                 }
                               },
@@ -13599,7 +13699,7 @@
                                   "height": 5,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-81"
+                                    "name": "panel-82"
                                   }
                                 }
                               }
@@ -13626,7 +13726,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-59"
+                                    "name": "panel-60"
                                   }
                                 }
                               },
@@ -13639,7 +13739,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-60"
+                                    "name": "panel-61"
                                   }
                                 }
                               },
@@ -13652,7 +13752,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-58"
+                                    "name": "panel-59"
                                   }
                                 }
                               }
@@ -13679,7 +13779,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-61"
+                                    "name": "panel-62"
                                   }
                                 }
                               },
@@ -13692,7 +13792,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-62"
+                                    "name": "panel-63"
                                   }
                                 }
                               }
@@ -13719,7 +13819,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-74"
+                                    "name": "panel-75"
                                   }
                                 }
                               },
@@ -13732,7 +13832,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-75"
+                                    "name": "panel-76"
                                   }
                                 }
                               },
@@ -13745,7 +13845,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-76"
+                                    "name": "panel-77"
                                   }
                                 }
                               },
@@ -13758,7 +13858,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-77"
+                                    "name": "panel-78"
                                   }
                                 }
                               }
@@ -13802,7 +13902,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-78"
+                                    "name": "panel-79"
                                   }
                                 }
                               },
@@ -13815,7 +13915,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-79"
+                                    "name": "panel-80"
                                   }
                                 }
                               }

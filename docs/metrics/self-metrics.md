@@ -16,7 +16,7 @@ library's own collectors rather than from this codebase, they carry no
 `opnsense_instance` label, and they are charted from the Exporter Runtime row behind
 the `has_go_runtime` sentinel.
 
-Total: 56 self-metrics.
+Total: 57 self-metrics.
 
 | Metric | Type | Declared in |
 | --- | --- | --- |
@@ -67,6 +67,7 @@ Total: 56 self-metrics.
 | opnsense_exporter_otlp_enabled | Gauge | `internal/telemetry` |
 | opnsense_exporter_otlp_exports_total | Counter | `internal/telemetry` |
 | opnsense_exporter_otlp_last_success_timestamp_seconds | Gauge | `internal/telemetry` |
+| opnsense_exporter_partial_fetch_failures_total | Counter | `internal/collector` |
 | opnsense_exporter_scrape_collector_duration_seconds | Desc | `internal/collector` |
 | opnsense_exporter_scrape_collector_success | Desc | `internal/collector` |
 | opnsense_exporter_scrapes_total | Counter | `internal/collector` |

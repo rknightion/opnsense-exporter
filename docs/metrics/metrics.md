@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1006
+- **Total metrics:** 1007
 - **Gauges:** 655
-- **Counters:** 351
+- **Counters:** 352
 
 ## General
 
@@ -31,7 +31,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_system_status_code | Gauge | --- | Numeric OPNsense system status code from the health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1) |
 | opnsense_system_subsystem_status_code | Gauge | subsystem | Numeric OPNsense SystemStatusCode (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) for every health-check subsystem present in the response, by subsystem short name (e.g. diskspace, rootlock, crashreporter, firewall, plus any plugin-contributed key). OPNsense omits healthy subsystems from the report, so a subsystem's series is present only while it is unhealthy; absence should be read as healthy, the same convention as opnsense_firewall_status and opnsense_crash_reporter_status. |
 | opnsense_exporter_scrapes_total | Counter | --- | Total number of times this exporter served a /metrics scrape. Since #336 a scrape replays the in-memory poll snapshot and makes no OPNsense API call, so this counts SERVING, not collection: it tracks how often Prometheus asked, never how often the firewall was polled. For polling use opnsense_exporter_collector_last_poll_timestamp_seconds and opnsense_exporter_api_requests_total. |
-| opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead. |
+| opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of top-level sub-collector Update errors and recovered sub-collector panics. The endpoint label is normally an api/* path for a returned Update error, or 'panic:<collector>' for a recovered panic; tolerated secondary fetch failures are excluded and counted by opnsense_exporter_partial_fetch_failures_total. |
+| opnsense_exporter_partial_fetch_failures_total | Counter | collector | Total number of failed OPNsense API calls tolerated by a sub-collector while its scheduled poll otherwise succeeded, by collector. Plugin-absent 404s are excluded. |
 | opnsense_exporter_api_requests_total | Counter | endpoint, code | Total number of OPNsense API requests made, by endpoint (api/* path) and HTTP response code (0 = no response, e.g. network error or context cancellation). Provides the denominator for a per-endpoint error rate alongside opnsense_exporter_endpoint_errors_total. |
 | opnsense_exporter_api_request_duration_seconds | Histogram | endpoint | Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scheduled poll duration spikes. |
 | opnsense_exporter_api_cache_hits_total | Counter | endpoint, kind | Total number of OPNsense API calls served from the response cache instead of the firewall, by endpoint (api/* path) and kind. kind=\"body\" is a replayed payload from a slow-moving endpoint (--exporter.cache-ttl / --exporter.firmware-cache-ttl); kind=\"absent\" is a replayed 404 from a plugin-gated endpoint, meaning the plugin is not installed. Only endpoints with a configured TTL are counted, so this and opnsense_exporter_api_cache_misses_total form a hit rate for the cache itself. |

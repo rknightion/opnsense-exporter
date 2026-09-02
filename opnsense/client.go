@@ -352,6 +352,13 @@ type RequestObserver interface {
 	ObserveAPIRequest(endpoint string, statusCode int, duration time.Duration)
 }
 
+// RequestResultObserver is the optional richer request-observer seam. It preserves
+// RequestObserver compatibility while exposing logical failures that still carry a
+// successful HTTP status, such as a malformed JSON body returned with 200 OK.
+type RequestResultObserver interface {
+	ObserveAPIRequestResult(endpoint string, statusCode int, duration time.Duration, apiErr *APICallError)
+}
+
 // SetRequestObserver installs o as the per-request observer for this client (and any
 // request-scoped clone made afterwards via WithContext, since the clone is shallow).
 func (c *Client) SetRequestObserver(o RequestObserver) {
@@ -598,7 +605,12 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 			if apiErr != nil && apiErr.StatusCode != 0 {
 				code = apiErr.StatusCode
 			}
-			c.observer.ObserveAPIRequest(string(path), code, time.Since(start))
+			duration := time.Since(start)
+			if observer, ok := c.observer.(RequestResultObserver); ok {
+				observer.ObserveAPIRequestResult(string(path), code, duration, apiErr)
+				return
+			}
+			c.observer.ObserveAPIRequest(string(path), code, duration)
 		}()
 	}
 

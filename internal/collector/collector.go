@@ -212,6 +212,7 @@ type Collector struct {
 	subsystemStatusCode  *prometheus.GaugeVec
 	scrapes              prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
+	partialFetchFailures prometheus.CounterVec
 	apiRequests          prometheus.CounterVec
 	apiRequestDuration   prometheus.HistogramVec
 	apiCacheHits         prometheus.CounterVec
@@ -1364,8 +1365,14 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.endpointErrors = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_endpoint_errors_total",
-		Help:      "Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead.",
+		Help:      "Total number of top-level sub-collector Update errors and recovered sub-collector panics. The endpoint label is normally an api/* path for a returned Update error, or 'panic:<collector>' for a recovered panic; tolerated secondary fetch failures are excluded and counted by opnsense_exporter_partial_fetch_failures_total.",
 	}, []string{"endpoint", "opnsense_instance"})
+
+	c.partialFetchFailures = *prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "exporter_partial_fetch_failures_total",
+		Help:      "Total number of failed OPNsense API calls tolerated by a sub-collector while its scheduled poll otherwise succeeded, by collector. Plugin-absent 404s are excluded.",
+	}, []string{"collector", "opnsense_instance"})
 
 	c.apiRequests = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
@@ -1407,6 +1414,9 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		// api_requests counter is not pre-initialised — its `code` label is unknown
 		// until a real response arrives.
 		c.apiRequestDuration.WithLabelValues(string(path), c.instanceLabel)
+	}
+	for _, coll := range c.collectors {
+		c.partialFetchFailures.WithLabelValues(coll.Name(), c.instanceLabel).Add(0)
 	}
 
 	// Install this Collector as the client's per-request observer so api_requests_total
@@ -1504,6 +1514,7 @@ func (c *Collector) ObserveCacheMiss(endpoint string) {
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapes.Describe(ch)
 	c.endpointErrors.Describe(ch)
+	c.partialFetchFailures.Describe(ch)
 	c.apiRequests.Describe(ch)
 	c.apiRequestDuration.Describe(ch)
 	c.apiCacheHits.Describe(ch)
@@ -1583,6 +1594,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 	c.scrapes.Collect(ch)
 	c.endpointErrors.Collect(ch)
+	if c.partialFetchFailures.MetricVec != nil {
+		c.partialFetchFailures.Collect(ch)
+	}
 	c.apiRequests.Collect(ch)
 	c.apiRequestDuration.Collect(ch)
 	c.apiCacheHits.Collect(ch)

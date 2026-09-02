@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +18,39 @@ import (
 // across all poll goroutines (D7), so a box with many collectors isn't dialed by
 // dozens of pollers simultaneously.
 const maxPollConcurrency = 8
+
+// pollRequestObserver delegates the established request metrics while counting
+// logical API failures swallowed by a sub-collector. Calls may arrive concurrently
+// from a collector's internal fan-out, so the failure count is atomic.
+type pollRequestObserver struct {
+	collector *Collector
+	client    *opnsense.Client
+	failures  atomic.Int64
+}
+
+func (o *pollRequestObserver) ObserveAPIRequest(endpoint string, statusCode int, duration time.Duration) {
+	o.collector.ObserveAPIRequest(endpoint, statusCode, duration)
+}
+
+func (o *pollRequestObserver) ObserveAPIRequestResult(endpoint string, statusCode int, duration time.Duration, apiErr *opnsense.APICallError) {
+	o.collector.ObserveAPIRequest(endpoint, statusCode, duration)
+	if apiErr == nil || o.isPluginAbsent(endpoint, apiErr) {
+		return
+	}
+	o.failures.Add(1)
+}
+
+func (o *pollRequestObserver) isPluginAbsent(endpoint string, apiErr *opnsense.APICallError) bool {
+	if apiErr.StatusCode != 404 {
+		return false
+	}
+	for _, name := range opnsense.PluginGatedEndpoints() {
+		if path, ok := o.client.EndpointPathFor(name); ok && string(path) == endpoint {
+			return true
+		}
+	}
+	return false
+}
 
 // coldStartJitterCap bounds the deterministic startup jitter so the first poll of
 // every collector still lands within a few seconds (D4) while staggering the herd.
@@ -258,6 +292,8 @@ func (c *Collector) pollTimeout() time.Duration {
 // It shields the poll from panics, mirroring the old execute() path.
 func (c *Collector) pollOnce(ctx context.Context, coll CollectorInstance) {
 	client := c.Client.WithContext(ctx)
+	observer := &pollRequestObserver{collector: c, client: client}
+	client.SetRequestObserver(observer)
 	begin := time.Now()
 
 	buf := make([]prometheus.Metric, 0, 64)
@@ -296,6 +332,11 @@ func (c *Collector) pollOnce(ctx context.Context, coll CollectorInstance) {
 			)
 		}
 	}()
+	if success {
+		if failures := observer.failures.Load(); failures > 0 {
+			c.partialFetchFailures.WithLabelValues(coll.Name(), c.instanceLabel).Add(float64(failures))
+		}
+	}
 	close(sink)
 	<-done
 
