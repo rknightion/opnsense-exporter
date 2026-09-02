@@ -1,0 +1,78 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opnsense2otel.fullname" . }}
+  labels:
+    {{- include "opnsense2otel.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opnsense2otel.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # The chart's default scrape contract follows deploy/k8s/networkpolicy.yaml.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: {{ .Values.ports.http }}
+{{- if .Values.receivers.syslog.enabled }}
+{{- if .Values.receivers.syslog.allowedPeers }}
+    - from:
+{{- range .Values.receivers.syslog.allowedPeers }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+{{- end }}
+      ports:
+        - protocol: UDP
+          port: {{ .Values.ports.syslog }}
+        - protocol: TCP
+          port: {{ .Values.ports.syslog }}
+{{- else }}
+    - ports:
+        - protocol: UDP
+          port: {{ .Values.ports.syslog }}
+        - protocol: TCP
+          port: {{ .Values.ports.syslog }}
+{{- end }}
+{{- end }}
+{{- if .Values.receivers.zenarmor.enabled }}
+{{- if .Values.receivers.zenarmor.allowedPeers }}
+    - from:
+{{- range .Values.receivers.zenarmor.allowedPeers }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+{{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.ports.zenarmor }}
+{{- else }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.ports.zenarmor }}
+{{- end }}
+{{- end }}
+{{- if .Values.receivers.netflow.enabled }}
+{{- if .Values.receivers.netflow.allowedPeers }}
+    - from:
+{{- range .Values.receivers.netflow.allowedPeers }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+{{- end }}
+      ports:
+        - protocol: UDP
+          port: {{ .Values.ports.netflow }}
+{{- else }}
+    - ports:
+        - protocol: UDP
+          port: {{ .Values.ports.netflow }}
+{{- end }}
+{{- end }}
+{{- end }}

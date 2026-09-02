@@ -28,6 +28,13 @@ service:
   type: ClusterIP
   annotations: {}
 
+# Opt-in ingress policy. When enabled, Prometheus may scrape the HTTP port and
+# each enabled push receiver may receive traffic on its configured port(s).
+# An empty receiver allowedPeers list leaves that receiver port open to any
+# source; set it to one or more CIDRs to restrict ingress at the network layer.
+networkPolicy:
+  enabled: false
+
 podAnnotations: {}
 
 resources:

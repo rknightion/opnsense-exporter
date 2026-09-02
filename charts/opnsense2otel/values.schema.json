@@ -3,7 +3,7 @@
   "title": "opnsense2otel values",
   "type": "object",
   "additionalProperties": false,
-  "required": ["image", "opnsense", "ports", "service", "receivers", "extraArgs"],
+  "required": ["image", "opnsense", "ports", "service", "networkPolicy", "receivers", "extraArgs"],
   "properties": {
     "image": {
       "type": "object",
@@ -57,6 +57,14 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" }
       }
     },
     "podAnnotations": {

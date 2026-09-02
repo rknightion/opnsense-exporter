@@ -36,7 +36,8 @@ assert_count() {
 
 render() {
   local name="$1" values="$2"
-  helm template contract "$chart_dir" --namespace monitoring -f "$values" > "$render_dir/$name.yaml"
+  shift 2
+  helm template contract "$chart_dir" --namespace monitoring -f "$values" "$@" > "$render_dir/$name.yaml"
 }
 
 helm lint "$chart_dir" --strict -f "$fixture_dir/minimal.yaml"
@@ -69,11 +70,26 @@ assert_contains "$minimal" 'path: /-/healthy'
 assert_contains "$minimal" 'containerPort: 8080'
 assert_contains "$minimal" 'name: config-check'
 assert_contains "$minimal" '"--config.check"'
+assert_not_contains "$minimal" 'kind: NetworkPolicy'
 assert_not_contains "$minimal" 'syslog-udp'
 assert_not_contains "$minimal" 'syslog-tcp'
 assert_not_contains "$minimal" 'zenarmor'
 assert_not_contains "$minimal" 'netflow'
 assert_not_contains "$minimal" 'supersecret'
+
+render policy-empty "$fixture_dir/minimal.yaml" --set networkPolicy.enabled=true
+policy_empty="$render_dir/policy-empty.yaml"
+assert_count "$policy_empty" 'kind: NetworkPolicy' 1
+assert_contains "$policy_empty" 'name: contract-opnsense2otel'
+assert_contains "$policy_empty" 'app.kubernetes.io/instance: contract'
+assert_contains "$policy_empty" 'kubernetes.io/metadata.name: monitoring'
+assert_contains "$policy_empty" 'app.kubernetes.io/name: prometheus'
+assert_contains "$policy_empty" 'protocol: TCP'
+assert_contains "$policy_empty" 'port: 8080'
+assert_not_contains "$policy_empty" 'port: 5514'
+assert_not_contains "$policy_empty" 'port: 9200'
+assert_not_contains "$policy_empty" 'port: 2055'
+assert_count "$policy_empty" '    - from:' 1
 
 render syslog "$fixture_dir/syslog.yaml"
 syslog="$render_dir/syslog.yaml"
@@ -84,6 +100,17 @@ assert_contains "$syslog" 'name: syslog-udp'
 assert_contains "$syslog" 'name: syslog-tcp'
 assert_contains "$syslog" 'protocol: UDP'
 
+render policy-syslog "$fixture_dir/syslog.yaml" --set networkPolicy.enabled=true
+policy_syslog="$render_dir/policy-syslog.yaml"
+assert_count "$policy_syslog" 'kind: NetworkPolicy' 1
+assert_contains "$policy_syslog" 'port: 5514'
+assert_contains "$policy_syslog" 'protocol: UDP'
+assert_contains "$policy_syslog" 'protocol: TCP'
+assert_contains "$policy_syslog" 'cidr: "10.0.0.254/32"'
+assert_contains "$policy_syslog" 'cidr: "10.0.1.254/32"'
+assert_not_contains "$policy_syslog" 'port: 9200'
+assert_not_contains "$policy_syslog" 'port: 2055'
+
 render zenarmor "$fixture_dir/zenarmor.yaml"
 zenarmor="$render_dir/zenarmor.yaml"
 assert_contains "$zenarmor" '"--logs.enabled"'
@@ -91,6 +118,16 @@ assert_contains "$zenarmor" '"--logs.zenarmor.enabled"'
 assert_contains "$zenarmor" '"--logs.zenarmor.allowed-peers=10.0.0.254/32,10.0.1.254/32"'
 assert_contains "$zenarmor" 'name: zenarmor'
 assert_contains "$zenarmor" 'containerPort: 9200'
+
+render policy-zenarmor "$fixture_dir/zenarmor.yaml" --set networkPolicy.enabled=true
+policy_zenarmor="$render_dir/policy-zenarmor.yaml"
+assert_count "$policy_zenarmor" 'kind: NetworkPolicy' 1
+assert_contains "$policy_zenarmor" 'port: 9200'
+assert_contains "$policy_zenarmor" 'protocol: TCP'
+assert_contains "$policy_zenarmor" 'cidr: "10.0.0.254/32"'
+assert_contains "$policy_zenarmor" 'cidr: "10.0.1.254/32"'
+assert_not_contains "$policy_zenarmor" 'port: 5514'
+assert_not_contains "$policy_zenarmor" 'port: 2055'
 
 render netflow "$fixture_dir/netflow.yaml"
 netflow="$render_dir/netflow.yaml"
@@ -100,6 +137,15 @@ assert_contains "$netflow" '"--flow.netflow.allowed-peers=10.0.0.254/32"'
 assert_contains "$netflow" 'name: netflow'
 assert_contains "$netflow" 'protocol: UDP'
 assert_contains "$netflow" 'containerPort: 2055'
+
+render policy-netflow "$fixture_dir/netflow.yaml" --set networkPolicy.enabled=true
+policy_netflow="$render_dir/policy-netflow.yaml"
+assert_count "$policy_netflow" 'kind: NetworkPolicy' 1
+assert_contains "$policy_netflow" 'port: 2055'
+assert_contains "$policy_netflow" 'protocol: UDP'
+assert_contains "$policy_netflow" 'cidr: "10.0.0.254/32"'
+assert_not_contains "$policy_netflow" 'port: 5514'
+assert_not_contains "$policy_netflow" 'port: 9200'
 
 render all-receivers "$fixture_dir/all-receivers.yaml"
 all_receivers="$render_dir/all-receivers.yaml"
@@ -115,6 +161,17 @@ assert_count "$all_receivers" '"--flow.netflow.enabled"' 2
 assert_count "$all_receivers" '"--collector.poll-interval=30s"' 2
 assert_count "$all_receivers" '"--logs.sink=stdout"' 2
 assert_count "$all_receivers" '"--config.check"' 1
+
+render policy-all-receivers "$fixture_dir/all-receivers.yaml" --set networkPolicy.enabled=true
+policy_all_receivers="$render_dir/policy-all-receivers.yaml"
+assert_count "$policy_all_receivers" 'kind: NetworkPolicy' 1
+assert_contains "$policy_all_receivers" 'port: 8080'
+assert_contains "$policy_all_receivers" 'port: 5514'
+assert_contains "$policy_all_receivers" 'port: 9200'
+assert_contains "$policy_all_receivers" 'port: 2055'
+# Empty receiver allowlists intentionally omit `from`, which permits any source
+# on the enabled receiver ports; only the Prometheus scrape rule has a source.
+assert_count "$policy_all_receivers" '    - from:' 1
 
 render settings "$fixture_dir/settings.yaml"
 settings="$render_dir/settings.yaml"
