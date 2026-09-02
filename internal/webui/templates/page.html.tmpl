@@ -133,6 +133,7 @@
   <button class="tab-btn" data-target="collectors">Collectors</button>
   <button class="tab-btn" data-target="api">API</button>
   <button class="tab-btn" data-target="cardinality">Cardinality</button>
+  <button class="tab-btn" data-target="pipeline">Logs / Flow</button>
   {{if not .DisableDevices}}<button class="tab-btn" data-target="devices">Devices</button>{{end}}
   <button class="tab-btn" data-target="ifindex">ifIndex</button>
   {{if not .DisableConfig}}<button class="tab-btn" data-target="config">Config</button>{{end}}
@@ -291,6 +292,55 @@
     </table></div>
     {{end}}
     <p class="note" style="margin-top:12px;color:var(--muted)">Full export: <a href="/cardinality/export.json"><code>/cardinality/export.json</code></a> · <a href="/api/cardinality.json"><code>/api/cardinality.json</code></a></p>
+  </section>
+
+  <!-- ═══ LOGS / FLOW ═══ -->
+  <section data-tab="pipeline">
+    <p class="note" style="color:var(--muted)">Receiver and flow-pipeline self-metrics from the last passive metric capture. This tab never performs a live registry gather.</p>
+    <div class="sub-h">Input rejected</div>
+    <div class="scroll"><table id="pipelineRejects">
+      <thead><tr><th>Source</th><th>Reason</th><th class="num">Count</th></tr></thead>
+      <tbody id="pipelineRejectBody">
+      {{range .Pipeline.Rejects}}
+        <tr><td class="mono">{{.Source}}</td><td class="mono">{{.Reason}}</td><td class="num">{{printf "%.0f" .Count}}</td></tr>
+      {{else}}
+        <tr><td colspan="3" class="empty">No receiver rejection metrics captured yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table></div>
+
+    <div class="sub-h">Parse errors</div>
+    <div class="scroll"><table id="pipelineParseErrors">
+      <thead><tr><th>Source</th><th>Stage</th><th class="num">Count</th></tr></thead>
+      <tbody id="pipelineParseBody">
+      {{range .Pipeline.ParseErrors}}
+        <tr><td class="mono">{{.Source}}</td><td class="mono">{{.Stage}}</td><td class="num">{{printf "%.0f" .Count}}</td></tr>
+      {{else}}
+        <tr><td colspan="3" class="empty">No parse errors captured yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table></div>
+
+    <div class="sub-h">Flow rollup</div>
+    <div class="cards" style="margin-bottom:12px">
+      <div class="card"><div class="k">Tracked keys</div><div class="v" id="pipelineRollupKeys">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupKeys}}{{else}}—{{end}}</div><div class="sub">live accumulator entries</div></div>
+      <div class="card"><div class="k">Max keys</div><div class="v" id="pipelineRollupKeysMax">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupKeysMax}}{{else}}—{{end}}</div><div class="sub">configured memory ceiling</div></div>
+      <div class="card"><div class="k">Top-N</div><div class="v" id="pipelineRollupTopN">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupTopN}}{{else}}—{{end}}</div><div class="sub">emitted-series ceiling</div></div>
+      <div class="card"><div class="k">Folded keys</div><div class="v" id="pipelineRollupFolded">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupKeysFolded}}{{else}}—{{end}}</div><div class="sub">outside top-N</div></div>
+      <div class="card"><div class="k">Rollup capping</div><div class="v" id="pipelineRollupCapped">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupCapped}}{{else}}—{{end}}</div><div class="sub">records folded at max-keys</div></div>
+    </div>
+
+    <div class="sub-h">Correlator</div>
+    <div class="cards">
+      <div class="card"><div class="k">Occupancy</div><div class="v" id="pipelineCorrEntries">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorEntries}}{{else}}—{{end}}</div><div class="sub">connection windows held</div></div>
+      <div class="card"><div class="k">Emitted</div><div class="v" id="pipelineCorrEmitted">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorEmitted}}{{else}}—{{end}}</div><div class="sub">flow-log records</div></div>
+      <div class="card"><div class="k">Matched</div><div class="v" id="pipelineCorrMatched">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorMatched}}{{else}}—{{end}}</div><div class="sub">with Zenarmor enrichment</div></div>
+      <div class="card"><div class="k">Evicted</div><div class="v" id="pipelineCorrEvicted">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorEvicted}}{{else}}—{{end}}</div><div class="sub">forced early at capacity</div></div>
+      <div class="card"><div class="k">Expired</div><div class="v" id="pipelineCorrExpired">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorExpired}}{{else}}—{{end}}</div><div class="sub">normal window expiry</div></div>
+      <div class="card"><div class="k">Enrichment overwrites</div><div class="v" id="pipelineCorrOverwrites">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorEnrichmentOverwrites}}{{else}}—{{end}}</div><div class="sub">second document replaced first</div></div>
+      <div class="card"><div class="k">Fragment disagreements</div><div class="v" id="pipelineCorrDisagreements">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorFragmentDisagreements}}{{else}}—{{end}}</div><div class="sub">same-orientation dimension mismatch</div></div>
+      <div class="card"><div class="k">Mirrored fragments</div><div class="v" id="pipelineCorrMirrored">{{if .Pipeline.Flow.CorrelatorAvailable}}{{printf "%.0f" .Pipeline.Flow.CorrelatorFragmentMirrored}}{{else}}—{{end}}</div><div class="sub">expected reverse direction</div></div>
+    </div>
   </section>
 
   <!-- ═══ DEVICES ═══ -->
@@ -515,6 +565,35 @@ function rebuildCardinality(cd){
   }
 }
 
+// ── Logs / Flow pipeline ─────────────────────────────────────────────────
+function pipelineNumber(v,available){ return available ? String(Math.round(Number(v)||0)) : '—'; }
+function rebuildPipeline(p){
+  if(!p) return;
+  function rows(id,items,secondKey,empty){
+    var tb=document.getElementById(id); if(!tb) return; tb.textContent='';
+    if(!items || !items.length){ tb.appendChild(el('tr')).appendChild(el('td',{'colspan':'3','class':'empty'},empty)); return; }
+    items.forEach(function(x){ var tr=el('tr'); tr.appendChild(el('td',{'class':'mono'},x.Source||'—')); tr.appendChild(el('td',{'class':'mono'},x[secondKey]||'—')); tr.appendChild(el('td',{'class':'num'},String(Math.round(Number(x.Count)||0)))); tb.appendChild(tr); });
+  }
+  rows('pipelineRejectBody',p.Rejects,'Reason','No receiver rejection metrics captured yet.');
+  rows('pipelineParseBody',p.ParseErrors,'Stage','No parse errors captured yet.');
+  var f=p.Flow||{};
+  var rollup=f.RollupAvailable;
+  setText('pipelineRollupKeys',pipelineNumber(f.RollupKeys,rollup));
+  setText('pipelineRollupKeysMax',pipelineNumber(f.RollupKeysMax,rollup));
+  setText('pipelineRollupTopN',pipelineNumber(f.RollupTopN,rollup));
+  setText('pipelineRollupFolded',pipelineNumber(f.RollupKeysFolded,rollup));
+  setText('pipelineRollupCapped',pipelineNumber(f.RollupCapped,rollup));
+  var corr=f.CorrelatorAvailable;
+  setText('pipelineCorrEntries',pipelineNumber(f.CorrelatorEntries,corr));
+  setText('pipelineCorrEmitted',pipelineNumber(f.CorrelatorEmitted,corr));
+  setText('pipelineCorrMatched',pipelineNumber(f.CorrelatorMatched,corr));
+  setText('pipelineCorrEvicted',pipelineNumber(f.CorrelatorEvicted,corr));
+  setText('pipelineCorrExpired',pipelineNumber(f.CorrelatorExpired,corr));
+  setText('pipelineCorrOverwrites',pipelineNumber(f.CorrelatorEnrichmentOverwrites,corr));
+  setText('pipelineCorrDisagreements',pipelineNumber(f.CorrelatorFragmentDisagreements,corr));
+  setText('pipelineCorrMirrored',pipelineNumber(f.CorrelatorFragmentMirrored,corr));
+}
+
 // ── Overview roll-up + runtime ────────────────────────────────────────────
 function updateRollup(d){
   setText('ruHealth', d.Health);
@@ -620,7 +699,7 @@ function refresh(){
   fetch('/api/status.json',{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); }).then(function(d){
     lastData=d; lastOkMs=Date.now(); setStale(false);
     setHealth(d); updateRollup(d); updateOverview(d); updateTrend(d);
-    rebuildCollectors(d.Collectors); rebuildAPI(d.API); rebuildCardinality(d.Cardinality);
+    rebuildCollectors(d.Collectors); rebuildAPI(d.API); rebuildCardinality(d.Cardinality); rebuildPipeline(d.Pipeline);
     if(d.Generated){ var g=new Date(d.Generated); if(!isNaN(g)) setText('generatedAt', g.toLocaleTimeString()); }
     redrawCharts();
   }).catch(function(){ setStale(true); });

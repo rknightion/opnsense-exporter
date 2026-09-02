@@ -1,6 +1,6 @@
 // Package webui serves the opnsense2otel operator console: a single
 // server-rendered, tabbed page (Overview / Collectors / API / Cardinality /
-// Devices / Config) with inline CSS/JS and zero external assets. It mirrors the
+// Logs / Flow / Devices / Config) with inline CSS/JS and zero external assets. It mirrors the
 // tailscale2otel/graph2otel fleet console standard — a manual theme toggle, a
 // poll-and-patch refresh of /api/status.json, a freshness ticker, Pause/Resume,
 // and a disconnect banner.

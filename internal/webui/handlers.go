@@ -16,7 +16,7 @@ func init() {
 }
 
 // registerStatus mounts the single-page console and its JSON twin. The console
-// is one tabbed page (Overview/Collectors/API/Cardinality/Devices/Config); the
+// is one tabbed page (Overview/Collectors/API/Cardinality/Logs/Flow/Devices/Config); the
 // JSON twin carries the poll-refreshed snapshot the page's JS patches into view.
 func (s *Server) registerStatus(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", s.handleStatus)

@@ -32,6 +32,7 @@ type Status struct {
 	Runtime     RuntimeStats
 	Trend       TrendStats
 	Cardinality CardinalityReport
+	Pipeline    PipelineStats
 	Capture     CaptureInfo
 	ScrapeAge   string // "Ns ago" style; "never" if no capture yet
 	Generated   time.Time
@@ -357,6 +358,7 @@ func buildStatus(stats []collector.CollectorStat, capt metricsnap.Capture, cache
 		Skipped:    skipped,
 		Cache:      cacheRows,
 		API:        parseAPIStats(families),
+		Pipeline:   parsePipelineStats(families),
 		Capture:    captureInfo,
 		ScrapeAge:  captureInfo.Age,
 	}
