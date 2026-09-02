@@ -24,6 +24,24 @@ type intervalFake struct {
 
 func (f *intervalFake) PollInterval() time.Duration { return f.d }
 
+// wedgedSchedulerCollector signals once it has entered Update, then holds its
+// poll slot until the test cancels its context. It models a slow/cold endpoint
+// whose request is still within the configured poll timeout.
+type wedgedSchedulerCollector struct {
+	fakeCollectorInstance
+	started chan<- struct{}
+}
+
+func (f *wedgedSchedulerCollector) Update(ctx context.Context, _ *opnsense.Client, _ chan<- prometheus.Metric) *opnsense.APICallError {
+	select {
+	case f.started <- struct{}{}:
+	case <-ctx.Done():
+		return nil
+	}
+	<-ctx.Done()
+	return nil
+}
+
 func TestPollOnceCapturesRecordsAndPropagatesCtx(t *testing.T) {
 	client := newCollectorTestClient(t, healthOKServer(t))
 	tracker := NewStatusTracker()
@@ -93,6 +111,79 @@ func TestPollCollectorSkipsWhenUnreachable(t *testing.T) {
 	c.pollCollector(context.Background(), fake)
 	if fake.callCount() != 0 {
 		t.Errorf("poll must skip Update while the box is unreachable, got %d calls", fake.callCount())
+	}
+}
+
+// TestFastPollKeepsReservedCapacityFromWedgedGeneralPolls pins OPN-0032. Slow
+// and cold polls must be unable to occupy every global slot: otherwise the fast
+// gateway poll queues behind wedged API calls exactly when failover detection is
+// most important. The same eight-wedge harness proves the before/after boundary:
+// the old scheduler reaches eight general polls and leaves the fast poll blocked;
+// the reservation admits only seven general polls, then lets the fast poll run.
+func TestFastPollKeepsReservedCapacityFromWedgedGeneralPolls(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	c := newScrapeTestCollector(t, client)
+	c.pollSem = make(chan struct{}, maxPollConcurrency)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{}, maxPollConcurrency)
+	for i := 0; i < maxPollConcurrency; i++ {
+		slow := &wedgedSchedulerCollector{
+			fakeCollectorInstance: fakeCollectorInstance{name: fmt.Sprintf("wedged-general-%d", i)},
+			started:               started,
+		}
+		go c.pollCollector(ctx, slow)
+	}
+
+	// First establish the common precondition: enough slow polls have entered to
+	// fill every non-reserved slot. This is channel-synchronised rather than a
+	// scheduling delay, so a loaded race run cannot mistake an unstarted poll for
+	// a reserved slot.
+	generalStarted := 0
+	for generalStarted < maxPollConcurrency-1 {
+		select {
+		case <-started:
+			generalStarted++
+		case <-time.After(time.Second):
+			t.Fatalf("only %d wedged general polls entered; want at least %d", generalStarted, maxPollConcurrency-1)
+		}
+	}
+
+	// On the unfixed scheduler the eighth general poll enters too. With one
+	// reserved fast slot it remains queued indefinitely (until ctx is cancelled).
+	select {
+	case <-started:
+		generalStarted++
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	fast := &fakeCollectorInstance{name: GatewaysSubsystem}
+	fastDone := make(chan struct{})
+	go func() {
+		defer close(fastDone)
+		c.pollCollector(ctx, fast)
+	}()
+
+	if generalStarted == maxPollConcurrency {
+		select {
+		case <-fastDone:
+			t.Fatal("fast poll ran after slow polls occupied every slot")
+		case <-time.After(150 * time.Millisecond):
+			t.Fatalf("fast poll was blocked behind %d wedged general polls; reserve one fast-tier slot", generalStarted)
+		}
+	}
+	if want := maxPollConcurrency - 1; generalStarted != want {
+		t.Fatalf("wedged general polls admitted = %d, want %d with one slot reserved for fast polls", generalStarted, want)
+	}
+
+	select {
+	case <-fastDone:
+	case <-time.After(time.Second):
+		t.Fatal("fast poll did not use its reserved slot")
+	}
+	if got := fast.callCount(); got != 1 {
+		t.Fatalf("fast poll Update calls = %d, want 1", got)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,6 +19,24 @@ import (
 // across all poll goroutines (D7), so a box with many collectors isn't dialed by
 // dozens of pollers simultaneously.
 const maxPollConcurrency = 8
+
+// reservedFastPollConcurrency is held back from general (medium, slow and cold)
+// polls so a wedged API endpoint cannot delay failover-sensitive fast polls. One
+// slot is enough to admit a fast poll while retaining the existing total cap.
+const reservedFastPollConcurrency = 1
+
+// pollReservation is the general-poll half of a two-level admission control:
+// pollSem remains the process-wide total cap, while general holds back one of its
+// slots for a fast-tier poll. It is kept outside Collector because the scheduler's
+// lifecycle fields are intentionally grouped in collector.go.
+type pollReservation struct {
+	general chan struct{}
+}
+
+// pollReservations is keyed by Collector so each exporter instance retains its
+// own total-cap partition. StartPolling installs an entry before its goroutines
+// begin; pollReservation also initializes one lazily for direct scheduler tests.
+var pollReservations sync.Map // map[*Collector]*pollReservation
 
 // pollRequestObserver delegates the established request metrics while counting
 // logical API failures swallowed by a sub-collector. Calls may arrive concurrently
@@ -108,6 +127,7 @@ func (c *Collector) StartPolling(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	c.pollCancel = cancel
 	c.pollSem = make(chan struct{}, pollConcurrency())
+	c.initPollReservation()
 
 	c.pollWG.Add(1)
 	go c.runHealthPoller(ctx, c.healthPollInterval())
@@ -140,6 +160,7 @@ func (c *Collector) StopPolling() {
 		c.pollCancel()
 	}
 	c.pollWG.Wait()
+	pollReservations.Delete(c)
 }
 
 // SnapshotWarm reports whether the snapshot the serving path replays is COMPLETE:
@@ -245,12 +266,11 @@ func (c *Collector) pollCollector(ctx context.Context, coll CollectorInstance) {
 	if c.unreachable.Load() {
 		return
 	}
-	select {
-	case c.pollSem <- struct{}{}:
-	case <-ctx.Done():
+	release, ok := c.acquirePollSlot(ctx, coll)
+	if !ok {
 		return
 	}
-	defer func() { <-c.pollSem }()
+	defer release()
 
 	// Re-check after admission (#383). The check above is not enough: with ~60
 	// collectors sharing 8 slots, a caller can pass it, queue behind the cap, and
@@ -275,6 +295,67 @@ func (c *Collector) pollCollector(ctx context.Context, coll CollectorInstance) {
 		defer cancel()
 	}
 	c.pollOnce(pollCtx, coll)
+}
+
+// initPollReservation resets this collector's general-poll gate for the current
+// poll semaphore. A one-slot process has no capacity to reserve without making
+// every general poll ineligible, so it keeps the historical single-slot behaviour.
+func (c *Collector) initPollReservation() {
+	capacity := cap(c.pollSem)
+	if capacity <= reservedFastPollConcurrency {
+		pollReservations.Delete(c)
+		return
+	}
+	pollReservations.Store(c, &pollReservation{
+		general: make(chan struct{}, capacity-reservedFastPollConcurrency),
+	})
+}
+
+// pollReservation returns this collector's general-poll gate. The lazy path keeps
+// direct pollCollector callers (notably the deterministic scheduler tests) under
+// the same admission policy as StartPolling without requiring a second setup API.
+func (c *Collector) pollReservation() *pollReservation {
+	if cap(c.pollSem) <= reservedFastPollConcurrency {
+		return nil
+	}
+	if existing, ok := pollReservations.Load(c); ok {
+		return existing.(*pollReservation)
+	}
+	candidate := &pollReservation{
+		general: make(chan struct{}, cap(c.pollSem)-reservedFastPollConcurrency),
+	}
+	actual, _ := pollReservations.LoadOrStore(c, candidate)
+	return actual.(*pollReservation)
+}
+
+// acquirePollSlot admits a poll under the unchanged global cap. General polls
+// must first pass their smaller gate; a collector declared fast bypasses that gate
+// and can therefore take the one slot general work cannot occupy.
+func (c *Collector) acquirePollSlot(ctx context.Context, coll CollectorInstance) (func(), bool) {
+	reservation := c.pollReservation()
+	general := reservation != nil && c.resolveInterval(coll) > IntervalFast
+	if general {
+		select {
+		case reservation.general <- struct{}{}:
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
+
+	select {
+	case c.pollSem <- struct{}{}:
+	case <-ctx.Done():
+		if general {
+			<-reservation.general
+		}
+		return nil, false
+	}
+	return func() {
+		<-c.pollSem
+		if general {
+			<-reservation.general
+		}
+	}, true
 }
 
 // pollTimeout bounds a single collector poll. It reuses --exporter.max-scrape-duration
