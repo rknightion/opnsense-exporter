@@ -1,11 +1,11 @@
 ---
 id: OPN-0008
 title: hasync collector never emits remote_reachable=0 despite documented 0 state
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 00:26'
 labels: []
 milestone: m-0
 dependencies: []
@@ -22,16 +22,16 @@ The metric help at `internal/collector/hasync.go:45-46` documents "1 = reachable
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Confirmed whether FetchHasyncStatus can distinguish unconfigured from unreachable
-- [ ] #2 remote_reachable emits 0 when a peer is configured but unreachable, and emits nothing on unconfigured single-node boxes
-- [ ] #3 Help text matches actual emission behaviour
-- [ ] #4 Test covers the configured-but-unreachable case
+- [x] #1 Confirmed whether FetchHasyncStatus can distinguish unconfigured from unreachable
+- [x] #2 remote_reachable emits 0 when a peer is configured but unreachable, and emits nothing on unconfigured single-node boxes
+- [x] #3 Help text matches actual emission behaviour
+- [x] #4 Test covers the configured-but-unreachable case
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -44,4 +44,14 @@ Wave 1 plan: inspect FetchHasyncStatus and upstream payload branches to distingu
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP fixes configured-but-unreachable HA peers while keeping unconfigured single-node installations silent; focused tests and the integrated just check passed. Post-correction L14 found no remaining issue. Not landed: the required CodeRabbit review produced no complete event in two attempts because its service WebSocket closed before analysis. Resume: restore CodeRabbit, review the staged diff, fix every critical/major finding, commit this task with explicit pathspecs, integrate current origin/main without rebasing, rerun just check, push, and verify exact-SHA CI.
+
+Task-sized integration on current origin/main passed focused race tests and just check. CodeRabbit completed with no code findings; its sole minor finding claimed updated_date 2026-09-02 was future-dated, but the authoritative run date is 2026-09-02 Europe/London, so the metadata was left unchanged.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Distinguished unconfigured response:false from a configured error envelope, kept single-node HA silent, emitted remote_reachable=0 for configured outages, removed the now-stale field-audit exemption, and regenerated metric docs. Verified with focused race tests, full just check, and a complete CodeRabbit review with no code findings.
+
+Landed as e24769904b6377107ba5815a0e118415494177e3. Exact-head CI run 33574848875 concluded success, including ci-success.
+<!-- SECTION:FINAL_SUMMARY:END -->
