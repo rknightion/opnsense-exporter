@@ -1,6 +1,8 @@
 package collector
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -76,8 +78,9 @@ func TestGatewaysCollector_Update_EnabledWithMonitor(t *testing.T) {
 
 	// For an enabled gateway with monitoring enabled:
 	// 1 info + 1 monitor + 10 monitoring metrics (rtt, rttd, rttLow, rttHigh, loss, lossLow, lossHigh, interval, period, timeout) + 1 status
-	// + 3 new unconditional (force_down, virtual, dynamic) + 1 priority = 17
-	expectedCount := 19
+	// + 5 new unconditional (force_down, virtual, dynamic, monitor_killstates,
+	// monitor_killstates_priority) + 1 priority + 1 threshold parse-error counter = 20
+	expectedCount := 20
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -146,9 +149,10 @@ func TestGatewaysCollector_Update_Disabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Disabled gateway: 1 info + 3 new unconditional (force_down, virtual, dynamic) + 1 priority = 5
-	// (no monitor, no monitoring metrics, no status)
-	expectedCount := 7
+	// Disabled gateway: 1 info + 5 new unconditional (force_down, virtual, dynamic,
+	// monitor_killstates, monitor_killstates_priority) + 1 priority + 1 threshold
+	// parse-error counter = 8 (no monitor or monitoring metrics, no status).
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -219,9 +223,9 @@ func TestGatewaysCollector_Update_EnabledWithoutMonitor(t *testing.T) {
 
 	// Enabled but monitor disabled: 1 info + 1 monitor + 5 new unconditional
 	// (force_down, virtual, dynamic, monitor_killstates, monitor_killstates_priority)
-	// + 1 priority + 1 status = 9. status is now emitted from the API-reported
-	// value even without monitoring (#77).
-	expectedCount := 9
+	// + 1 priority + 1 status + 1 threshold parse-error counter = 10. status is
+	// now emitted from the API-reported value even without monitoring (#77).
+	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -345,8 +349,9 @@ func TestGatewaysCollector_Update_NewMetrics_BoolFields(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Enabled, monitor disabled, force_down=true, virtual=true, dynamic=true, priority=10
-	// 1 info + 3 bool metrics + 1 priority + 1 monitor + 2 monitor_killstates* = 9
-	expectedCount := 9
+	// 1 info + 3 bool metrics + 1 priority + 1 monitor + 2 monitor_killstates*
+	// + 1 threshold parse-error counter = 10
+	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -451,8 +456,9 @@ func TestGatewaysCollector_Update_NewMetrics_ZeroBools(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Enabled, monitor disabled, force_down=false, virtual=false, dynamic=false, priority=255
-	// 1 info + 3 bool metrics + 1 priority + 1 monitor + 2 monitor_killstates* = 9
-	expectedCount := 9
+	// 1 info + 3 bool metrics + 1 priority + 1 monitor + 2 monitor_killstates*
+	// + 1 threshold parse-error counter = 10
+	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -540,8 +546,9 @@ func TestGatewaysCollector_Update_Priority_Empty(t *testing.T) {
 
 	// Enabled, monitor disabled, priority="" (empty) — priority metric must be skipped
 	// 1 info + 5 bool metrics (force_down, virtual, dynamic, monitor_killstates,
-	// monitor_killstates_priority) + 1 monitor = 7 (no priority)
-	expectedCount := 8
+	// monitor_killstates_priority) + 1 monitor + 1 status + 1 threshold parse-error
+	// counter = 9 (no priority)
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics (priority skipped when empty; status now always emitted), got %d", expectedCount, len(metrics))
 	}
@@ -619,9 +626,9 @@ func TestGatewaysCollector_Update_ProbeUnavailableSkipped(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Same shape as TestGatewaysCollector_Update_EnabledWithMonitor (19 metrics)
-	// minus rtt, rttd and loss_percentage (skipped): 16.
-	expectedCount := 16
+	// Same shape as TestGatewaysCollector_Update_EnabledWithMonitor (20 metrics)
+	// minus rtt, rttd and loss_percentage (skipped): 17.
+	expectedCount := 17
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics (rtt/rttd/loss skipped), got %d", expectedCount, len(metrics))
 	}
@@ -662,6 +669,7 @@ func TestGatewaysCollector_Describe_CoversUpdateMetrics(t *testing.T) {
 		"opnsense_gateways_virtual",
 		"opnsense_gateways_dynamic",
 		"opnsense_gateways_priority",
+		"opnsense_gateways_threshold_parse_errors_total",
 		"opnsense_gateways_monitor_killstates",
 		"opnsense_gateways_monitor_killstates_priority",
 	}
@@ -683,9 +691,21 @@ func TestGatewaysCollector_Describe_CoversUpdateMetrics(t *testing.T) {
 	}
 }
 
+func TestGatewaysCollector_RegisterPreservesParseErrorCounter(t *testing.T) {
+	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c.thresholdParseErrorCount.Store(2)
+
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	if got := c.thresholdParseErrorCount.Load(); got != 2 {
+		t.Fatalf("threshold parse-error count after re-registration = %d, want 2", got)
+	}
+}
+
 // TestGatewaysCollector_Update_ThresholdInvalidSkipped verifies that empty or
-// unparseable threshold/probe configuration values are skipped (with a debug
-// log) rather than emitted as a misleading 0.
+// unparseable threshold/probe configuration values are skipped rather than
+// emitted as a misleading 0, while malformed values are surfaced through a
+// warning and a counter.
 func TestGatewaysCollector_Update_ThresholdInvalidSkipped(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
@@ -744,17 +764,36 @@ func TestGatewaysCollector_Update_ThresholdInvalidSkipped(t *testing.T) {
 
 	client := newCollectorTestClient(t, server)
 
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
-	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.Register(namespace, "test", logger)
 
 	metrics := collectMetrics(t, c, client)
 
 	// All 7 threshold metrics (rttLow/rttHigh/lossLow/lossHigh/interval/period/
 	// timeout) are skipped because their values are empty or unparseable:
-	// 19 (full monitor case) - 7 = 12.
-	expectedCount := 12
+	// 20 (full monitor case) - 7 threshold metrics = 13.
+	expectedCount := 13
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics (invalid thresholds skipped), got %d", expectedCount, len(metrics))
+	}
+	assertMetricsAreCounters(t, metrics, "opnsense_gateways_threshold_parse_errors_total")
+	parseErrorsFound := false
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_gateways_threshold_parse_errors_total") {
+			parseErrorsFound = true
+			if got := getMetricValue(m); got != 1 {
+				t.Errorf("expected one malformed threshold parse error, got %v", got)
+			}
+		}
+	}
+	if !parseErrorsFound {
+		t.Error("expected gateway threshold parse-errors counter")
+	}
+	if !strings.Contains(logOutput.String(), "level=WARN") ||
+		!strings.Contains(logOutput.String(), "unparseable value") {
+		t.Errorf("expected WARN for malformed threshold, got log output %q", logOutput.String())
 	}
 
 	// None of the emitted threshold-related descriptors should be present.

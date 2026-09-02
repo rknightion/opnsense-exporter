@@ -1,5 +1,5 @@
 """
-Gateways & WAN tab — all 17 opnsense_gateways_* metrics.
+Gateways & WAN tab — all opnsense_gateways_* metrics.
 
 Rows:
   1. Status & Alarm Events — current state plus dpinger alarm transition rate
@@ -62,6 +62,15 @@ def build(b: Builder):
         },
         sort_by="Gateway",
         desc="Configured low/high RTT alarm thresholds per gateway.",
+    )
+    threshold_parse_errors = b.ts(
+        "Gateway Threshold Parse Errors",
+        [(f'rate({sel("opnsense_gateways_threshold_parse_errors_total")}[{RATE}])',
+          "{{opnsense_instance}}")],
+        unit="errps", w=12, h=8,
+        desc="Rate of non-empty RTT or loss thresholds that OPNsense returned in an "
+             "unparseable form. The affected threshold series is omitted and the "
+             "exporter logs a warning; blank optional thresholds are not errors.",
     )
 
     # ---- Row 2: Packet Loss -----------------------------------------------
@@ -205,7 +214,7 @@ def build(b: Builder):
 
     b.tab("Gateways & WAN", [
         b.row("Status & Alarm Events", [gw_status, gateway_alarms]),
-        b.row("Latency", [rtt, rtt_thresholds]),
+        b.row("Latency", [rtt, rtt_thresholds, threshold_parse_errors]),
         b.row("Packet Loss", [loss, loss_thresholds]),
         b.row("Gateway Inventory", [gw_info, monitor_info, flags]),
         b.row("Probe Config", [probe_cfg]),

@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1007
+- **Total metrics:** 1008
 - **Gauges:** 655
-- **Counters:** 352
+- **Counters:** 353
 
 ## General
 
@@ -486,6 +486,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_gateways_virtual | Gauge | name, address | 1 if the gateway is virtual, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_priority | Gauge | name, address | Gateway priority (lower value = higher priority) | --exporter.disable-gateways |
+| opnsense_gateways_threshold_parse_errors_total | Counter | --- | Total number of non-empty gateway threshold and probe values that could not be parsed and were omitted from the corresponding threshold series; intentionally blank values are not counted. | --exporter.disable-gateways |
 | opnsense_gateways_monitor_killstates | Gauge | name, address | 1 if pf states are killed for this gateway when its monitor marks it down, 0 otherwise. Determines what a failover actually does to already-established connections through this gateway. | --exporter.disable-gateways |
 | opnsense_gateways_monitor_killstates_priority | Gauge | name, address | 1 if this gateway's state-killing on down is priority-scoped, 0 otherwise. Sibling configuration to monitor_killstates. | --exporter.disable-gateways |
 

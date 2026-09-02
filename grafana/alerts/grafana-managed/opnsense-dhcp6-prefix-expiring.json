@@ -26,7 +26,7 @@
       "description": "The valid lifetime of the /{{ $labels.prefix_length }} prefix delegated on {{ $labels.interface }} has run out with no refresh. This is not just the WAN losing its own address: every downstream address derived from this prefix is removed, so IPv6 goes away on every LAN it was delegated to.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6prefixexpiring",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "320"
+      "__panelId__": "321"
     },
     "expressions": {
       "A": {

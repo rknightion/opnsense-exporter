@@ -4,37 +4,40 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 type gatewaysCollector struct {
-	log            *slog.Logger
-	info           *prometheus.Desc
-	monitor        *prometheus.Desc
-	rtt            *prometheus.Desc
-	rttd           *prometheus.Desc
-	rttLow         *prometheus.Desc
-	rttHigh        *prometheus.Desc
-	lossPercentage *prometheus.Desc
-	lossLow        *prometheus.Desc
-	lossHigh       *prometheus.Desc
-	interval       *prometheus.Desc
-	period         *prometheus.Desc
-	timeout        *prometheus.Desc
-	status         *prometheus.Desc
-	forceDown      *prometheus.Desc
-	virtual        *prometheus.Desc
-	dynamic        *prometheus.Desc
-	priority       *prometheus.Desc
+	log                  *slog.Logger
+	info                 *prometheus.Desc
+	monitor              *prometheus.Desc
+	rtt                  *prometheus.Desc
+	rttd                 *prometheus.Desc
+	rttLow               *prometheus.Desc
+	rttHigh              *prometheus.Desc
+	lossPercentage       *prometheus.Desc
+	lossLow              *prometheus.Desc
+	lossHigh             *prometheus.Desc
+	interval             *prometheus.Desc
+	period               *prometheus.Desc
+	timeout              *prometheus.Desc
+	status               *prometheus.Desc
+	forceDown            *prometheus.Desc
+	virtual              *prometheus.Desc
+	dynamic              *prometheus.Desc
+	priority             *prometheus.Desc
+	thresholdParseErrors *prometheus.Desc
 
 	// killStates/killStatesPriority: whether pf states are killed when this
 	// gateway is marked down (#584). Same label surface and unconditional
 	// (Enabled-independent) emission convention as forceDown/virtual/dynamic
 	// above -- see Update()'s doc comment on why they are not presence-gated.
-	killStates         *prometheus.Desc
-	killStatesPriority *prometheus.Desc
+	killStates               *prometheus.Desc
+	killStatesPriority       *prometheus.Desc
+	thresholdParseErrorCount atomic.Uint64
 
 	subsystem string
 	instance  string
@@ -140,6 +143,12 @@ func (c *gatewaysCollector) Register(namespace, instanceLabel string, log *slog.
 		"Gateway priority (lower value = higher priority)",
 		[]string{"name", "address"},
 	)
+	c.thresholdParseErrors = buildPrometheusDesc(
+		c.subsystem,
+		"threshold_parse_errors_total",
+		"Total number of non-empty gateway threshold and probe values that could not be parsed and were omitted from the corresponding threshold series; intentionally blank values are not counted.",
+		nil,
+	)
 	c.killStates = buildPrometheusDesc(
 		c.subsystem, "monitor_killstates",
 		"1 if pf states are killed for this gateway when its monitor marks it down, 0 otherwise. "+
@@ -173,15 +182,17 @@ func (c *gatewaysCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.virtual
 	ch <- c.dynamic
 	ch <- c.priority
+	ch <- c.thresholdParseErrors
 	ch <- c.killStates
 	ch <- c.killStatesPriority
 }
 
 // emitThreshold parses a string gateway threshold/probe value (e.g. latency or
 // loss limits, probe interval/period/timeout) and emits it as a gauge. An empty
-// or unparseable value is skipped with a debug log rather than emitted as a
-// misleading 0, since these OPNsense fields are configuration strings that are
-// legitimately blank when a gateway has no monitor configuration set.
+// or unparseable value is skipped rather than emitted as a misleading 0, since
+// these OPNsense fields are configuration strings that are legitimately blank
+// when a gateway has no monitor configuration set. Unparseable values are
+// counted and warned so an omitted series is observable at the default log level.
 func (c *gatewaysCollector) emitThreshold(ch chan<- prometheus.Metric, desc *prometheus.Desc, field, raw, name, monitor string) {
 	if raw == "" {
 		c.log.Debug("skipping gateway threshold metric: empty value", "gateway", name, "field", field)
@@ -189,7 +200,8 @@ func (c *gatewaysCollector) emitThreshold(ch chan<- prometheus.Metric, desc *pro
 	}
 	f64, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		c.log.Debug("skipping gateway threshold metric: unparseable value",
+		c.thresholdParseErrorCount.Add(1)
+		c.log.Warn("skipping gateway threshold metric: unparseable value",
 			"gateway", name, "field", field, "value", raw, "error", err)
 		return
 	}
@@ -388,5 +400,11 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 			}
 		}
 	}
+	ch <- prometheus.MustNewConstMetric(
+		c.thresholdParseErrors,
+		prometheus.CounterValue,
+		float64(c.thresholdParseErrorCount.Load()),
+		c.instance,
+	)
 	return nil
 }
