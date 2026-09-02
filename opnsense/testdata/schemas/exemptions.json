@@ -874,6 +874,12 @@
       "top_blocked.*.pcnt"
     ]
   },
+  "unboundSearchQueries": {
+    "knownExtraPaths": [
+      "rows[].category"
+    ],
+    "note": "OPNsense 26.7 OverviewController::searchQueriesAction adds rows[].category from the configured blocklist type optgroup. UnboundSearchQueryRow does not decode or export it. This is new upstream metadata and an opportunity, not absorb, chase, drop, or box-state. Source: opnsense/core commit d7f455bdfb3586eb943d533edded011bd9972014. PRUNE TRIGGER: remove when category is deliberately modelled/exported or upstream stops serving it."
+  },
   "unboundServiceStatus": {
     "knownExtraTopKeys": [
       "widget"
