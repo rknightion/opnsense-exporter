@@ -1,11 +1,11 @@
 ---
 id: OPN-0040
 title: 'Operator console: receivers/flow visibility tab'
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:10'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 03:39'
 labels: []
 milestone: m-4
 dependencies: []
@@ -22,14 +22,14 @@ The console's entire push-pipeline view is `LogThroughput() (shipped, dropped)` 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Console tab shows per-reason rejects, parse stages, correlator occupancy from metricsnap only
-- [ ] #2 No live-registry Gather introduced (existing invariant test still holds)
+- [x] #1 Console tab shows per-reason rejects, parse stages, correlator occupancy from metricsnap only
+- [x] #2 No live-registry Gather introduced (existing invariant test still holds)
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -42,4 +42,12 @@ Wave 1 L10 plan: implement and test only the first console task in its owned web
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP adds passive receiver/flow pipeline visibility to the operator console without gathering the live registry; focused web UI tests and integrated just check passed. Post-correction L14 found no remaining issue. Not landed because CodeRabbit produced no complete event. Resume: obtain a complete review, commit explicitly, integrate current origin/main, rerun just check, push, verify exact-SHA CI, then exercise the console route in a deployed browser session for person-visible proof.
+
+Landed passive metricsnap-based Logs and Flow views at the existing console routes in 9ff61e58fd88a4d52c6f145de7ed6a687d3e5c4b. CodeRabbit returned zero findings.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added passive receiver and flow pipeline visibility without introducing a live-registry gather. Focused web UI tests and just check passed; exact-head CI run 33584279038 succeeded at 9ff61e58fd88a4d52c6f145de7ed6a687d3e5c4b.
+<!-- SECTION:FINAL_SUMMARY:END -->

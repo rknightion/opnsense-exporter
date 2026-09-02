@@ -1,11 +1,11 @@
 ---
 id: OPN-0032
 title: Reserve fast-tier poll capacity in the scheduler
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 03:39'
 labels:
   - first-wave
 milestone: m-0
@@ -23,14 +23,14 @@ ordinal: 104
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fast-tier polls cannot be starved by slow/cold polls occupying all semaphore slots (test proves it under a wedged-endpoint simulation)
-- [ ] #2 Behaviour documented; scheduler self-metrics expose fast-tier wait if a new metric is warranted
+- [x] #1 Fast-tier polls cannot be starved by slow/cold polls occupying all semaphore slots (test proves it under a wedged-endpoint simulation)
+- [x] #2 Behaviour documented; scheduler self-metrics expose fast-tier wait if a new metric is warranted
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -43,4 +43,12 @@ Wave 1 plan: add a deterministic wedged-slow-poll regression test using the exis
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP reserves fast-tier scheduler capacity and adds wedged-slow-poll regression coverage; focused tests and integrated just check passed. Post-correction L14 found no remaining issue. Not landed because CodeRabbit produced no complete event. Resume: obtain a complete review, fix critical/major findings, commit this task explicitly, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
+
+Integrated commit 5a241bb73917a874cb4771ecab1a9a3c3b9dfa84 reserves one of eight poll slots for fast-tier work while preserving the global cap. The deterministic wedged-general regression admits seven general polls and proves a fast gateway poll still runs. No new self-metric was warranted because the change prevents the starvation state.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Reserved fast-tier scheduler capacity with deterministic race-tested coverage. just check and a zero-finding CodeRabbit review passed; exact-head CI run 33582936222 succeeded at 5a241bb73917a874cb4771ecab1a9a3c3b9dfa84.
+<!-- SECTION:FINAL_SUMMARY:END -->

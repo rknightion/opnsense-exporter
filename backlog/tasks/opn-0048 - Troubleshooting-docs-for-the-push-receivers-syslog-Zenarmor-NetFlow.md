@@ -1,11 +1,11 @@
 ---
 id: OPN-0048
 title: Troubleshooting docs for the push receivers (syslog/Zenarmor/NetFlow)
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:10'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 03:39'
 labels: []
 milestone: m-4
 dependencies: []
@@ -22,15 +22,15 @@ ordinal: 508
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 troubleshooting.md has a receiver section keyed on the real reject/ship metrics
-- [ ] #2 zenarmor-receiver.md and flow.md each have a nothing-arrives heading; cross-links in place
-- [ ] #3 just docs-check clean
+- [x] #1 troubleshooting.md has a receiver section keyed on the real reject/ship metrics
+- [x] #2 zenarmor-receiver.md and flow.md each have a nothing-arrives heading; cross-links in place
+- [x] #3 just docs-check clean
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -43,4 +43,12 @@ Add receiver-first troubleshooting keyed to the actual shipped/rejected/parse me
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP adds receiver-first troubleshooting using the shipped/rejected/parse/drop metrics, nothing-arrives sections, and reciprocal receiver-page links. docs-check and integrated just check passed; post-correction L14 verified the metrics and links. Not landed because the shared code-bearing batch lacks a complete CodeRabbit review. Resume: obtain the review, commit this documentation task explicitly, integrate current origin/main, rerun just check, push, and verify exact-SHA CI.
+
+Landed receiver-first troubleshooting, nothing-arrives sections, and reciprocal links in 3090b8cffabe39f2241fffd6340dc773277b8632. CodeRabbit was skipped because this was documentation-only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added push-receiver troubleshooting keyed to the real shipped, rejected, parse, and drop metrics. docs-check and just check passed; exact-head CI run 33583442198 succeeded at 3090b8cffabe39f2241fffd6340dc773277b8632.
+<!-- SECTION:FINAL_SUMMARY:END -->
