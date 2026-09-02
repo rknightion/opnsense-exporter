@@ -558,6 +558,59 @@ func TestFetchInterfacesOverview_Success(t *testing.T) {
 	}
 }
 
+// TestFetchInterfacesOverview_LinkTypeV6Fallback covers the two payload shapes
+// produced by OPNsense's OverviewController for a v6-only interface. The
+// 26.1-era controller folded ipaddrv6 into link_type when ipaddr was empty;
+// 26.7.2 keeps link_type as "none" and emits the v6 value as link_typev6.
+// These fixtures are derived from the controller branches in opnsense/core
+// (stable/26.1 and tag 26.7.2), not invented response fields.
+func TestFetchInterfacesOverview_LinkTypeV6Fallback(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name: "legacy v6-only",
+			payload: `{"rows":[{
+				"device":"pppoe0", "identifier":"wan", "description":"WAN",
+				"status":"up", "flags":["up"], "media":"PPPoE",
+				"link_type":"dhcp6", "is_physical":false
+			}]}`,
+			want: "dhcp6",
+		},
+		{
+			name: "26.7.2 v6-only",
+			payload: `{"rows":[{
+				"device":"pppoe0", "identifier":"wan", "description":"WAN",
+				"status":"up", "flags":["up"], "media":"PPPoE",
+				"link_type":"none", "link_typev6":"dhcp6", "is_physical":false
+			}]}`,
+			want: "dhcp6",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.payload))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfacesOverview()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			if got := data.Interfaces[0].LinkType; got != tc.want {
+				t.Errorf("LinkType = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestFetchInterfacesOverview_EnabledIndependentOfAdminUp guards #584: Enabled
 // (the config-level admin-enabled flag, OverviewController's parseIfInfo:
 // `!empty($config['enable'])`) is genuinely independent of AdminUp (derived

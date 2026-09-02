@@ -116,6 +116,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].link_typev6",
+      "kind": "string"
+    },
+    {
       "path": "rows[].media",
       "kind": "string"
     },

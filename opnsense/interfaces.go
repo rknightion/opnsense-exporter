@@ -358,6 +358,7 @@ type interfaceOverviewRow struct {
 	Flags       []string `json:"flags"`
 	Media       string   `json:"media"`
 	LinkType    string   `json:"link_type"`
+	LinkTypeV6  string   `json:"link_typev6"`
 	VlanTag     string   `json:"vlan_tag"`
 	Vlan        *struct {
 		Tag    string `json:"tag"`
@@ -427,6 +428,18 @@ type interfaceOverviewRow struct {
 	SFP map[string]string `json:"sfp"`
 }
 
+// effectiveLinkType preserves the single link_type label's historical IPv4
+// preference while tolerating the 26.7.2 response shape. OPNsense 26.1 used
+// link_type for IPv4 and fell back to IPv6 when IPv4 was unset; 26.7.2 keeps
+// that field at "none" and exposes the IPv6 value as link_typev6 instead.
+func (r interfaceOverviewRow) effectiveLinkType() string {
+	if (r.LinkType == "" || r.LinkType == "none") &&
+		r.LinkTypeV6 != "" && r.LinkTypeV6 != "none" {
+		return r.LinkTypeV6
+	}
+	return r.LinkType
+}
+
 // interfaceAddressRaw is one entry of an interfaces_info row's "ipv4"/"ipv6"
 // array. Only the CIDR-form address is modelled; the sibling keys OPNsense may
 // add (e.g. "link-local", "tunnel") are ignored.
@@ -459,7 +472,7 @@ type InterfaceOverview struct {
 	Description string // human name (e.g. "LAN", "Unassigned Interface")
 	Status      string // operational status: "up", "down", "no carrier"
 	Media       string // negotiated media incl. duplex (e.g. "10Gbase-SR <full-duplex>")
-	LinkType    string // "static", "dhcp", "pppoe", "none"; empty when unassigned
+	LinkType    string // "static", "dhcp", "dhcp6", "pppoe", "none"; empty when unassigned
 	VlanTag     string // 802.1q tag; empty for non-VLAN interfaces
 	VlanParent  string // parent device for VLAN interfaces
 	AdminUp     bool   // ifconfig UP flag present
@@ -811,7 +824,7 @@ func (c *Client) FetchInterfacesOverview() (InterfacesOverview, *APICallError) {
 			Description: row.Description,
 			Status:      row.Status,
 			Media:       row.Media,
-			LinkType:    row.LinkType,
+			LinkType:    row.effectiveLinkType(),
 			VlanTag:     row.VlanTag,
 			AdminUp:     adminUp,
 			Physical:    row.IsPhysical,
