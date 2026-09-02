@@ -908,6 +908,9 @@ their environment variables) are still set.
 
 ## Troubleshooting
 
+For the shared reject, parse, and delivery checks, see
+[Push receivers: nothing arrives](troubleshooting.md#push-receivers-nothing-arrives).
+
 **Nothing arrives.** Check `opnsense_exporter_logs_shipped_total{source="syslog"}` is
 climbing. If it is flat: confirm the port is published for *both* UDP and TCP, confirm
 the target on the firewall is **enabled** and points at the right address, and check

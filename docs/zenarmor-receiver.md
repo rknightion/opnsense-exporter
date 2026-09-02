@@ -372,9 +372,32 @@ populate automatically the moment Zenarmor has something to put in them.
 **`asn` is always `0` on a box with no GeoIP database configured.** Same story: modelled,
 just empty until Zenarmor has data to give it.
 
+## Troubleshooting
+
+For the shared reject, parse, and delivery checks, see
+[Push receivers: nothing arrives](troubleshooting.md#push-receivers-nothing-arrives).
+
+**Nothing arrives.** Check `opnsense_exporter_logs_shipped_total{source="zenarmor"}` is
+climbing. If it is flat, first confirm `--logs.enabled` and
+`--logs.zenarmor.enabled`. With `transport=elasticsearch`, verify that Zenarmor's
+Streaming Data URI and port reach the exporter and match `--logs.zenarmor.listen-http`.
+With `transport=syslog`, verify `--logs.syslog.enabled` and that the Zenarmor syslog
+target points at a listener from the [syslog receiver](syslog-receiver.md#troubleshooting).
+
+Then check
+`opnsense_exporter_logs_rejected_total{source="zenarmor",reason="<reason>"}`:
+`peer`, `auth`, `body`, `overloaded`, `index_limit`, `unknown_family`, `filtered`,
+`self_traffic`, `excluded`, and `unhandled_endpoint` distinguish input refusal from
+an idle sender. A non-zero
+`opnsense_exporter_logs_parse_errors_total{source="zenarmor",stage="bulk"}` or
+`stage="document"` means the input arrived but lost structure; the raw record still
+ships.
+
 ## See also
 
 - [Log shipping](log-shipping.md) - the pipeline this receiver ships through, its sinks,
   delivery semantics and self-metrics.
 - [Syslog receiver](syslog-receiver.md) - the other push source, for everything Zenarmor
   doesn't see (firewall, auth, DHCP, IPsec/OpenVPN and more).
+- [Push receivers: nothing arrives](troubleshooting.md#push-receivers-nothing-arrives) -
+  the shared metric-first decision tree.

@@ -55,6 +55,40 @@ Run with `--log.level=debug` to see each API call and its failure reason.
 - **Unbound statistics empty?** Enable *Unbound DNS > Advanced > Extended Statistics*
   on the firewall.
 
+## Push receivers: nothing arrives
+
+Syslog, Zenarmor, and NetFlow are push lanes, so a quiet dashboard can mean that
+the sender never reached the exporter, the receiver rejected the input, or the
+OTLP sink has not acknowledged it. Start with the receiver self-metrics on
+`/metrics`:
+
+- `opnsense_exporter_logs_shipped_total{source="syslog"}` and
+  `opnsense_exporter_logs_shipped_total{source="zenarmor"}` count records the
+  sink confirmed as delivered. Flow-log records use `source="netflow"` or
+  `source="merged"`.
+- `opnsense_exporter_logs_rejected_total{source="<receiver>",reason="<reason>"}`
+  counts input refused before parsing. The `source` is `syslog` or `zenarmor`;
+  `reason` identifies the allowlist, authentication, body, filter, capacity, or
+  endpoint path that refused it.
+- `opnsense_exporter_logs_parse_errors_total{source="<receiver>",stage="<stage>"}`
+  means the record arrived but lost structure while parsing; the raw record still
+  ships. Syslog reports `stage="envelope"`; Zenarmor reports `stage="bulk"` or
+  `stage="document"`.
+- If input is arriving but acknowledgement is not, check
+  `opnsense_exporter_logs_dropped_total{source="<source>",reason="<reason>"}`
+  and `opnsense_exporter_logs_ship_errors_total` for queue or destination
+  failures.
+
+Then follow the receiver-specific checklist:
+
+- [Syslog receiver](syslog-receiver.md#troubleshooting) - verify both UDP and TCP
+  publication, the enabled OPNsense target, and the peer allowlist.
+- [Zenarmor receiver](zenarmor-receiver.md#troubleshooting) - verify the selected
+  transport, its destination URI/port, and the matching receiver switch.
+- [NetFlow and flow volume](flow.md#troubleshooting) - verify the OPNsense
+  **Reporting → NetFlow** export target, UDP reachability, and template/decoder
+  counters.
+
 ## Data is stale or collector polls are slow
 
 Prometheus scrapes replay an in-memory snapshot; they do not fan out to OPNsense.

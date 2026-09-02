@@ -1049,9 +1049,38 @@ cannot distinguish "a few small categories folded" from "the map saturated weeks
 and everything new since has been invisible". `keys_folded` being non-zero is
 ordinary top-N overflow and is expected.
 
+## Troubleshooting
+
+For the shared reject, parse, and delivery checks, see
+[Push receivers: nothing arrives](troubleshooting.md#push-receivers-nothing-arrives).
+The [Zenarmor receiver troubleshooting](zenarmor-receiver.md#troubleshooting) section
+covers its Elasticsearch and syslog transports.
+
+**Nothing arrives.** First check which source is meant to feed the rollup. For
+Zenarmor `conn` records, `--logs.enabled`, `--logs.zenarmor.enabled`,
+`--flow.enabled`, and `--flow.zenarmor` must be enabled, and the flow collector
+must not be removed with `--exporter.disable-flow`. Check
+`opnsense_exporter_logs_shipped_total{source="zenarmor"}` for acknowledged input
+and the Zenarmor receiver's reject/parse metrics for an ingress problem.
+
+For NetFlow, `opnsense_flow_netflow_datagrams_total{result="accepted"}` proves
+that datagrams passed the exporter listener's peer check. If it is flat, enable
+`--flow.netflow.enabled`, publish the UDP `--flow.netflow.listen` port, and point
+OPNsense **Reporting → NetFlow** at the exporter's address and port. A rising
+`result="peer_rejected"` count means `--flow.netflow.allowed-peers` is blocking
+the sender. If accepted datagrams do not decode, compare
+`opnsense_flow_netflow_records_decoded_total` with
+`opnsense_flow_netflow_records_dropped_total{reason="no_template"}`; a short
+no-template window after either end restarts is normal, while a sustained count
+means template datagrams are not arriving. Finally,
+`opnsense_flow_netflow_records_emitted_total` should follow decoded records;
+the other drop reasons identify repair-stage exclusions.
+
 ## Related
 
 - [Log shipping](log-shipping.md) - the Zenarmor receiver that feeds this
 - [Native log export](log-export-native.md) - when a dedicated flow pipeline is the
   better tool
 - [Metrics reference](metrics/metrics.md) - the full `opnsense_flow_*` family
+- [Push receivers: nothing arrives](troubleshooting.md#push-receivers-nothing-arrives) -
+  the shared metric-first decision tree
