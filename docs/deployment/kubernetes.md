@@ -58,6 +58,47 @@ spec:
       # The exporter is a pure HTTP scrape target and never calls the Kubernetes API,
       # so don't mount a ServiceAccount token (shrinks the pivot surface on compromise).
       automountServiceAccountToken: false
+      # Validate the same environment and mounted credentials before replacing a
+      # working pod. --config.check performs no API call and binds no listener.
+      initContainers:
+        - name: config-check
+          image: ghcr.io/rknightion/opnsense2otel:4.1.0 # x-release-please-version
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--log.level=info"
+            - "--log.format=json"
+            - "--config.check"
+          env:
+            - name: OPN2OTEL_INSTANCE_LABEL
+              value: "opnsense"
+            - name: OPN2OTEL_OPS_API
+              valueFrom:
+                secretKeyRef:
+                  name: opnsense2otel-cfg
+                  key: host
+            - name: OPN2OTEL_OPS_PROTOCOL
+              valueFrom:
+                secretKeyRef:
+                  name: opnsense2otel-cfg
+                  key: protocol
+            - name: OPS_API_KEY_FILE
+              value: /etc/opnsense2otel/creds/api-key
+            - name: OPS_API_SECRET_FILE
+              value: /etc/opnsense2otel/creds/api-secret
+          volumeMounts:
+            - name: api-key-vol
+              mountPath: /etc/opnsense2otel/creds
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
       containers:
         - name: opnsense2otel
           # Pin to an immutable release tag, not :latest — :latest is retagged every
