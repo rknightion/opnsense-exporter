@@ -3,11 +3,11 @@ id: OPN-0009
 title: >-
   Secondary-fetch failures invisible: scrape_collector_success stays 1 and
   endpoint_errors_total never increments
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 00:53'
 labels:
   - bug
   - first-wave
@@ -26,16 +26,16 @@ ordinal: 102
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Partial fetch failures are observable via a per-collector metric an operator can alert on without enumerating endpoint names
-- [ ] #2 Plugin-absent (negative-cached 404) fetches do not count as failures
-- [ ] #3 endpoint_errors_total help text matches its actual increment sites
-- [ ] #4 Dashboard/alerts updated if a new metric is introduced (just grafana-check clean)
+- [x] #1 Partial fetch failures are observable via a per-collector metric an operator can alert on without enumerating endpoint names
+- [x] #2 Plugin-absent (negative-cached 404) fetches do not count as failures
+- [x] #3 endpoint_errors_total help text matches its actual increment sites
+- [x] #4 Dashboard/alerts updated if a new metric is introduced (just grafana-check clean)
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -48,4 +48,12 @@ Wave 1 plan: inventory every secondary-fetch error path and establish failing te
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP accounts secondary-fetch failures through a per-poll observer, preserves tolerated plugin absence, and adds partial-fetch regression coverage; focused collector/client tests and the integrated just check passed. Post-correction L14 found no remaining issue. Not landed: CodeRabbit failed twice before analysis and emitted no complete event. Resume: obtain a complete CodeRabbit finding set, fix critical/major findings, commit this task with explicit pathspecs, integrate current origin/main without rebasing, rerun just check, push, and verify exact-SHA CI.
+
+Landed as 354cc309d3eb34d09681180894af04ba3bf9960b. Exact-head CI run 33576599607 reached terminal success, including ci-success. CodeRabbit pass 1 found one minor hardcoded-rate-window issue, fixed to use the shared RATE token and reverified. Pass 2 suggested duplicating cache request-reuse coverage in the partial-fetch negative-cache test; left unchanged because cache reuse is already the cache suite contract and this regression pins partial-failure exclusion. No critical or major findings.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented per-collector partial-fetch failure accounting while preserving successful top-level polls and excluding plugin-absence 404s. Narrowed endpoint_errors_total help text to its real semantics, added dashboard and generated-doc coverage, and verified focused race/client tests plus just check. Landed in 354cc309d3eb34d09681180894af04ba3bf9960b; exact-head CI run 33576599607 succeeded.
+<!-- SECTION:FINAL_SUMMARY:END -->
