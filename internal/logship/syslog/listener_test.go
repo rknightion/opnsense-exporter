@@ -1,11 +1,14 @@
 package syslog
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/netip"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +19,71 @@ import (
 
 	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
+
+type fakeUDPBufferSocket struct {
+	requested int
+	effective int
+	setErr    error
+	readErr   error
+}
+
+func (f *fakeUDPBufferSocket) SetReadBuffer(size int) error {
+	f.requested = size
+	return f.setErr
+}
+
+func (f *fakeUDPBufferSocket) ReadBuffer() (int, error) {
+	return f.effective, f.readErr
+}
+
+func TestConfigureUDPReceiveBufferWarnsWhenClamped(t *testing.T) {
+	socket := &fakeUDPBufferSocket{effective: 256 * 1024}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	if err := configureUDPReceiveBuffer(socket, 4*1024*1024, logger); err != nil {
+		t.Fatalf("configureUDPReceiveBuffer: %v", err)
+	}
+	if socket.requested != 4*1024*1024 {
+		t.Fatalf("requested receive buffer = %d, want %d", socket.requested, 4*1024*1024)
+	}
+	if !strings.Contains(logs.String(), "was clamped") {
+		t.Fatalf("clamp warning = %q, want a portable clamp diagnostic", logs.String())
+	}
+	if runtime.GOOS == "linux" && !strings.Contains(logs.String(), "net.core.rmem_max") {
+		t.Fatalf("Linux clamp warning = %q, want net.core.rmem_max", logs.String())
+	}
+}
+
+func TestMinimumEffectiveUDPReceiveBufferAccountsForLinuxDoubling(t *testing.T) {
+	const requested = 4 * 1024 * 1024
+	if got := minimumEffectiveUDPReceiveBuffer(requested, "linux"); got != 2*requested {
+		t.Fatalf("Linux minimum effective buffer = %d, want %d", got, 2*requested)
+	}
+	if got := minimumEffectiveUDPReceiveBuffer(requested, "darwin"); got != requested {
+		t.Fatalf("Darwin minimum effective buffer = %d, want %d", got, requested)
+	}
+}
+
+func TestConfigureUDPReceiveBufferDoesNotWarnWhenEffectiveSizeMeetsRequest(t *testing.T) {
+	socket := &fakeUDPBufferSocket{effective: 8 * 1024 * 1024}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	if err := configureUDPReceiveBuffer(socket, 4*1024*1024, logger); err != nil {
+		t.Fatalf("configureUDPReceiveBuffer: %v", err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("unexpected warning when receive buffer was sufficient: %q", logs.String())
+	}
+}
+
+func TestConfigureUDPReceiveBufferReturnsSetError(t *testing.T) {
+	socket := &fakeUDPBufferSocket{setErr: errors.New("set failed")}
+	if err := configureUDPReceiveBuffer(socket, 4*1024*1024, testLogger()); err == nil {
+		t.Fatal("configureUDPReceiveBuffer succeeded after SetReadBuffer failed")
+	}
+}
 
 // counterValue reads a single counter sample out of reg. (prometheus/testutil is
 // not vendored, and vendor/ is not this lane's file to touch.)

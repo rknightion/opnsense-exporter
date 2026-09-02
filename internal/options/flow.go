@@ -290,9 +290,10 @@ type FlowConfig struct {
 	TopN           int
 	MaxKeys        int
 
-	NetflowListen       string
-	NetflowAllowedPeers []netip.Prefix
-	NetflowIfIndexMap   map[uint32]string
+	NetflowListen           string
+	NetflowUDPReceiveBuffer int
+	NetflowAllowedPeers     []netip.Prefix
+	NetflowIfIndexMap       map[uint32]string
 	// NetflowDebugCapture is "off", "unidentified" or "all"; kingpin's Enum has
 	// already rejected anything else. main resolves it with netflow.ParseCaptureMode.
 	NetflowDebugCapture string
@@ -317,22 +318,23 @@ func Flow() (FlowConfig, error) {
 		return FlowConfig{}, err
 	}
 	c := FlowConfig{
-		Enabled:             *flowEnabled,
-		Zenarmor:            *flowZenarmor,
-		NetflowEnabled:      *flowNetflowEnabled,
-		TopN:                *flowTopN,
-		MaxKeys:             *flowMaxKeys,
-		NetflowListen:       *flowNetflowListen,
-		NetflowAllowedPeers: peers,
-		NetflowIfIndexMap:   ifmap,
-		NetflowDebugCapture: captureModeOrOff(*flowNetflowDebugCapture),
-		Correlate:           *flowCorrelate,
-		CorrelateWindow:     *flowCorrelateWindow,
-		CorrelateMaxEntries: *flowCorrelateMaxEntries,
-		LogMode:             *flowLogMode,
-		MaxLogsPerWindow:    *flowMaxLogsPerWindow,
-		TopTalkers:          *flowTopTalkers,
-		DNSCacheSize:        *flowDNSCacheSize,
+		Enabled:                 *flowEnabled,
+		Zenarmor:                *flowZenarmor,
+		NetflowEnabled:          *flowNetflowEnabled,
+		TopN:                    *flowTopN,
+		MaxKeys:                 *flowMaxKeys,
+		NetflowListen:           *flowNetflowListen,
+		NetflowUDPReceiveBuffer: FlowNetflowUDPReceiveBufferBytes(),
+		NetflowAllowedPeers:     peers,
+		NetflowIfIndexMap:       ifmap,
+		NetflowDebugCapture:     captureModeOrOff(*flowNetflowDebugCapture),
+		Correlate:               *flowCorrelate,
+		CorrelateWindow:         *flowCorrelateWindow,
+		CorrelateMaxEntries:     *flowCorrelateMaxEntries,
+		LogMode:                 *flowLogMode,
+		MaxLogsPerWindow:        *flowMaxLogsPerWindow,
+		TopTalkers:              *flowTopTalkers,
+		DNSCacheSize:            *flowDNSCacheSize,
 	}
 	if err := c.Validate(); err != nil {
 		return FlowConfig{}, err
@@ -371,6 +373,11 @@ func (c FlowConfig) Validate() error {
 	}
 	if c.MaxKeys < 0 {
 		return fmt.Errorf("flow: --flow.max-keys must not be negative (got %d); 0 means unbounded", c.MaxKeys)
+	}
+	if c.NetflowUDPReceiveBuffer < 0 {
+		return fmt.Errorf(
+			"flow: --flow.netflow.udp-receive-buffer-bytes must not be negative (got %d); 0 uses the built-in default",
+			c.NetflowUDPReceiveBuffer)
 	}
 	// Incoherent rather than merely odd: the emit cap can never bind above the
 	// insert cap, so an operator who sets this believes they raised a limit that

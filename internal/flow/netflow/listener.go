@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/netip"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +22,11 @@ const maxDatagram = 65535
 const (
 	defaultWorkers   = 4
 	defaultQueueSize = 1024
+
+	// defaultUDPReceiveBuffer is the requested kernel receive-buffer size for the
+	// datagram socket. Linux may cap it at net.core.rmem_max (and reports the
+	// effective size through ReadBuffer), which configureUDPReceiveBuffer reports.
+	defaultUDPReceiveBuffer = 4 * 1024 * 1024
 )
 
 // decoder is the slice of *Decoder the listener actually needs. Taking an
@@ -32,6 +39,11 @@ type decoder interface {
 // ListenerConfig configures the UDP receiver.
 type ListenerConfig struct {
 	Addr string
+	// UDPReceiveBuffer is the requested kernel receive-buffer size in bytes. Zero
+	// selects defaultUDPReceiveBuffer. The effective size is checked after bind;
+	// when the operating system clamps it, Start logs a warning naming the Linux
+	// net.core.rmem_max sysctl.
+	UDPReceiveBuffer int
 	// AllowedPeers, when non-empty, is an allowlist. NetFlow carries no
 	// authentication of any kind — whatever can reach the port can inject flow
 	// records — so this is the only access control that exists. Leaving it empty is
@@ -47,6 +59,65 @@ type ListenerConfig struct {
 	// unidentified content happens regardless of these.
 	Capture     CaptureSink
 	CaptureMode CaptureMode
+}
+
+type udpBufferSocket interface {
+	SetReadBuffer(int) error
+	ReadBuffer() (int, error)
+}
+
+type netUDPBufferSocket struct {
+	conn *net.UDPConn
+}
+
+func (s netUDPBufferSocket) SetReadBuffer(size int) error {
+	return s.conn.SetReadBuffer(size)
+}
+
+func (s netUDPBufferSocket) ReadBuffer() (int, error) {
+	return effectiveUDPReceiveBuffer(s.conn)
+}
+
+// configureUDPReceiveBuffer requests and verifies the kernel receive buffer. A
+// successful SetReadBuffer call alone is not enough: kernels may silently clamp
+// the request, so read the effective value back and make the loss of headroom
+// visible to operators. Linux doubles SO_RCVBUF on read-back, including after a
+// clamp, so its comparison threshold must be doubled too.
+func configureUDPReceiveBuffer(socket udpBufferSocket, requested int, log *slog.Logger) error {
+	if requested <= 0 {
+		requested = defaultUDPReceiveBuffer
+	}
+	if err := socket.SetReadBuffer(requested); err != nil {
+		return fmt.Errorf("set UDP receive buffer to %d bytes: %w", requested, err)
+	}
+	effective, err := socket.ReadBuffer()
+	if err != nil {
+		return fmt.Errorf("read effective UDP receive buffer after requesting %d bytes: %w", requested, err)
+	}
+	if effective < minimumEffectiveUDPReceiveBuffer(requested, runtime.GOOS) {
+		if log == nil {
+			log = slog.Default()
+		}
+		attrs := []any{
+			"requested_bytes", requested,
+			"effective_bytes", effective,
+		}
+		if runtime.GOOS == "linux" {
+			attrs = append(attrs, "limit_setting", "net.core.rmem_max")
+		}
+		log.Warn("UDP receive buffer was clamped; raise the host socket receive-buffer limit", attrs...)
+	}
+	return nil
+}
+
+func minimumEffectiveUDPReceiveBuffer(requested int, goos string) int {
+	if goos != "linux" {
+		return requested
+	}
+	if requested > math.MaxInt/2 {
+		return math.MaxInt
+	}
+	return requested * 2
 }
 
 // ListenerStats counts everything the listener discarded. Each becomes a metric:
@@ -127,6 +198,11 @@ func (l *Listener) Start() error {
 		return fmt.Errorf("netflow: listen %q: %w", l.cfg.Addr, err)
 	}
 	l.conn = conn
+	if err := configureUDPReceiveBuffer(netUDPBufferSocket{conn: conn}, l.cfg.UDPReceiveBuffer, l.log); err != nil {
+		_ = l.conn.Close()
+		l.conn = nil
+		return fmt.Errorf("netflow: configure UDP receive buffer: %w", err)
+	}
 	return nil
 }
 

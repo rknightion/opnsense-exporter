@@ -1660,10 +1660,11 @@ func main() {
 		}
 
 		listener := netflow.NewListener(netflow.ListenerConfig{
-			Addr:         flowCfg.NetflowListen,
-			AllowedPeers: flowCfg.NetflowAllowedPeers,
-			Capture:      captureSink,
-			CaptureMode:  netflowCaptureMode,
+			Addr:             flowCfg.NetflowListen,
+			UDPReceiveBuffer: flowCfg.NetflowUDPReceiveBuffer,
+			AllowedPeers:     flowCfg.NetflowAllowedPeers,
+			Capture:          captureSink,
+			CaptureMode:      netflowCaptureMode,
 		}, decoder, func(dg *netflow.Datagram, _ netip.Addr) {
 			proc.ObserveDatagram(dg, time.Now())
 		}, logger)

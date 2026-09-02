@@ -171,12 +171,13 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		}
 	}
 	s.l = NewListener(Config{
-		UDPAddr:      cfg.UDPAddr,
-		TCPAddr:      cfg.TCPAddr,
-		TLSAddr:      cfg.TLSAddr,
-		TLSConfig:    cfg.TLSConfig,
-		AllowedPeers: cfg.AllowedPeers,
-		MaxConns:     cfg.MaxConns,
+		UDPAddr:          cfg.UDPAddr,
+		UDPReceiveBuffer: cfg.UDPReceiveBuffer,
+		TCPAddr:          cfg.TCPAddr,
+		TLSAddr:          cfg.TLSAddr,
+		TLSConfig:        cfg.TLSConfig,
+		AllowedPeers:     cfg.AllowedPeers,
+		MaxConns:         cfg.MaxConns,
 		// Same registerer the ReceiverMetrics counters use, so the slot gauges land
 		// beside logs_rejected_total{reason="conn_limit"} — the wall-hit counter they
 		// give headroom context to (#592).

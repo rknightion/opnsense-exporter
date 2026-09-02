@@ -679,6 +679,10 @@ services:
       # OPN2OTEL_LOGS_SYSLOG_TLS_CLIENT_CA_FILE: ""
       # PEM private key for the TLS syslog listener.
       # OPN2OTEL_LOGS_SYSLOG_TLS_KEY_FILE: ""
+      # Requested kernel receive-buffer size for the syslog UDP listener, in bytes. The
+      # operating system may clamp this value; on Linux raise net.core.rmem_max when the
+      # startup warning reports a smaller effective buffer. 0 uses the built-in default.
+      # OPN2OTEL_LOGS_SYSLOG_UDP_RECEIVE_BUFFER_BYTES: "4194304"
       # Enable the opt-in second per-query DNS log route: structure Unbound's own
       # log-queries/log-replies syslog output (raw client IP, resolve time, cache-hit
       # flag, rcode) and ship it to Loki. Off by default; requires --logs.enabled and
@@ -938,6 +942,10 @@ services:
       # port already in use is a startup error rather than a receiver that is silently
       # never there.
       # OPN2OTEL_FLOW_NETFLOW_LISTEN: ":2055"
+      # Requested kernel receive-buffer size for the NetFlow UDP listener, in bytes. The
+      # operating system may clamp this value; on Linux raise net.core.rmem_max when the
+      # startup warning reports a smaller effective buffer. 0 uses the built-in default.
+      # OPN2OTEL_FLOW_NETFLOW_UDP_RECEIVE_BUFFER_BYTES: "4194304"
 
       # ==========================================================================
       # Flow: rollups and correlation

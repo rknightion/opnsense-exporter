@@ -168,13 +168,14 @@ var (
 
 // SyslogConfig is the resolved configuration for the syslog receiver.
 type SyslogConfig struct {
-	UDPAddr      string
-	TCPAddr      string
-	TLSAddr      string
-	TLSConfig    *tls.Config
-	AllowedPeers []netip.Prefix
-	MaxConns     int
-	Enrich       bool
+	UDPAddr          string
+	UDPReceiveBuffer int
+	TCPAddr          string
+	TLSAddr          string
+	TLSConfig        *tls.Config
+	AllowedPeers     []netip.Prefix
+	MaxConns         int
+	Enrich           bool
 	// GeoIP is the per-lane opt-out for --geoip.enabled on filterlog/sshd/Suricata
 	// log lines (#528). Independent of Enrich: GeoIP reads a local MaxMind database,
 	// never the OPNsense API, so it is not part of the API-enrichment toggle above.
@@ -218,15 +219,21 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		return nil, false, nil
 	}
 	cfg := &SyslogConfig{
-		UDPAddr:      strings.TrimSpace(*logsSyslogListenUDP),
-		TCPAddr:      strings.TrimSpace(*logsSyslogListenTCP),
-		TLSAddr:      strings.TrimSpace(*logsSyslogListenTLS),
-		MaxConns:     *logsSyslogMaxConns,
-		Enrich:       *logsSyslogEnrich,
-		GeoIP:        *logsSyslogGeoIP,
-		Sample:       *logsSyslogSample,
-		SampledAttr:  *logsSyslogSampledAttr,
-		DebugCapture: *logsSyslogDebugCapture,
+		UDPAddr:          strings.TrimSpace(*logsSyslogListenUDP),
+		UDPReceiveBuffer: LogsSyslogUDPReceiveBufferBytes(),
+		TCPAddr:          strings.TrimSpace(*logsSyslogListenTCP),
+		TLSAddr:          strings.TrimSpace(*logsSyslogListenTLS),
+		MaxConns:         *logsSyslogMaxConns,
+		Enrich:           *logsSyslogEnrich,
+		GeoIP:            *logsSyslogGeoIP,
+		Sample:           *logsSyslogSample,
+		SampledAttr:      *logsSyslogSampledAttr,
+		DebugCapture:     *logsSyslogDebugCapture,
+	}
+	if cfg.UDPReceiveBuffer < 0 {
+		return nil, false, fmt.Errorf(
+			"logs.syslog: --logs.syslog.udp-receive-buffer-bytes must not be negative (got %d); 0 uses the built-in default",
+			cfg.UDPReceiveBuffer)
 	}
 	if cfg.TLSAddr != "" && (cfg.UDPAddr != "" || cfg.TCPAddr != "") && !*logsSyslogAllowPlaintextWithTLS {
 		return nil, false, fmt.Errorf(

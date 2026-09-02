@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -18,9 +20,16 @@ import (
 	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 )
 
-// defaultMaxConns caps concurrent TCP connections. Syslog is an unauthenticated
-// ingress: unbounded goroutines with no read deadline is textbook slowloris.
-const defaultMaxConns = 64
+const (
+	// defaultMaxConns caps concurrent TCP connections. Syslog is an unauthenticated
+	// ingress: unbounded goroutines with no read deadline is textbook slowloris.
+	defaultMaxConns = 64
+
+	// defaultUDPReceiveBuffer is the requested kernel receive-buffer size for the
+	// datagram socket. Linux may cap it at net.core.rmem_max (and reports the
+	// effective size through ReadBuffer), which configureUDPReceiveBuffer reports.
+	defaultUDPReceiveBuffer = 4 * 1024 * 1024
+)
 
 // connIdleTimeout is refreshed per frame, so an idle peer cannot pin a goroutine
 // forever, but a busy one is never cut off.
@@ -62,6 +71,11 @@ const (
 // inject records).
 type Config struct {
 	UDPAddr, TCPAddr string
+	// UDPReceiveBuffer is the requested kernel receive-buffer size in bytes. Zero
+	// selects defaultUDPReceiveBuffer. The effective size is checked after bind;
+	// when the operating system clamps it, Start logs a warning naming the Linux
+	// net.core.rmem_max sysctl.
+	UDPReceiveBuffer int
 	// TLSAddr + TLSConfig together enable a third, TLS-wrapped TCP transport that
 	// feeds the SAME handler as plain TCP. The TLS listener is enabled only when
 	// BOTH are set (a non-empty address and a non-nil config).
@@ -80,6 +94,65 @@ type Config struct {
 	// listener's own gauges over its own budgets. Nil disables them, exactly as a nil
 	// ReceiverMetrics disables the counters.
 	Registerer prometheus.Registerer
+}
+
+type udpBufferSocket interface {
+	SetReadBuffer(int) error
+	ReadBuffer() (int, error)
+}
+
+type netUDPBufferSocket struct {
+	conn *net.UDPConn
+}
+
+func (s netUDPBufferSocket) SetReadBuffer(size int) error {
+	return s.conn.SetReadBuffer(size)
+}
+
+func (s netUDPBufferSocket) ReadBuffer() (int, error) {
+	return effectiveUDPReceiveBuffer(s.conn)
+}
+
+// configureUDPReceiveBuffer requests and verifies the kernel receive buffer. A
+// successful SetReadBuffer call alone is not enough: kernels may silently clamp
+// the request, so read the effective value back and make the loss of headroom
+// visible to operators. Linux doubles SO_RCVBUF on read-back, including after a
+// clamp, so its comparison threshold must be doubled too.
+func configureUDPReceiveBuffer(socket udpBufferSocket, requested int, log *slog.Logger) error {
+	if requested <= 0 {
+		requested = defaultUDPReceiveBuffer
+	}
+	if err := socket.SetReadBuffer(requested); err != nil {
+		return fmt.Errorf("set UDP receive buffer to %d bytes: %w", requested, err)
+	}
+	effective, err := socket.ReadBuffer()
+	if err != nil {
+		return fmt.Errorf("read effective UDP receive buffer after requesting %d bytes: %w", requested, err)
+	}
+	if effective < minimumEffectiveUDPReceiveBuffer(requested, runtime.GOOS) {
+		if log == nil {
+			log = slog.Default()
+		}
+		attrs := []any{
+			"requested_bytes", requested,
+			"effective_bytes", effective,
+		}
+		if runtime.GOOS == "linux" {
+			attrs = append(attrs, "limit_setting", "net.core.rmem_max")
+		}
+		log.Warn("UDP receive buffer was clamped; raise the host socket receive-buffer limit", attrs...)
+	}
+	return nil
+}
+
+func minimumEffectiveUDPReceiveBuffer(requested int, goos string) int {
+	if goos != "linux" {
+		return requested
+	}
+	if requested > math.MaxInt/2 {
+		return math.MaxInt
+	}
+	return requested * 2
 }
 
 // Listener is a hardened UDP + TCP syslog receiver. It hands each framed line to
@@ -193,6 +266,10 @@ func (l *Listener) Start() error {
 			return fmt.Errorf("syslog: listen UDP %q: %w", l.cfg.UDPAddr, err)
 		}
 		l.udp = conn
+		if err := configureUDPReceiveBuffer(netUDPBufferSocket{conn: conn}, l.cfg.UDPReceiveBuffer, l.log); err != nil {
+			_ = l.closeSockets()
+			return fmt.Errorf("syslog: configure UDP receive buffer: %w", err)
+		}
 	}
 	if l.cfg.TCPAddr != "" {
 		addr, err := net.ResolveTCPAddr("tcp", l.cfg.TCPAddr)

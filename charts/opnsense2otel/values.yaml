@@ -807,6 +807,11 @@ settings:
   # PEM private key for the TLS syslog listener.
   # logs.syslog.tls-key-file: ""
   #
+  # Requested kernel receive-buffer size for the syslog UDP listener, in bytes. The
+  # operating system may clamp this value; on Linux raise net.core.rmem_max when the startup
+  # warning reports a smaller effective buffer. 0 uses the built-in default.
+  # logs.syslog.udp-receive-buffer-bytes: "4194304"
+  #
   # Enable the opt-in second per-query DNS log route: structure Unbound's own
   # log-queries/log-replies syslog output (raw client IP, resolve time, cache-hit flag,
   # rcode) and ship it to Loki. Off by default; requires --logs.enabled and the syslog
@@ -1068,6 +1073,11 @@ settings:
   # Address the NetFlow receiver binds, host:port. Bound eagerly at startup, so a port
   # already in use is a startup error rather than a receiver that is silently never there.
   # flow.netflow.listen: ":2055"
+  #
+  # Requested kernel receive-buffer size for the NetFlow UDP listener, in bytes. The
+  # operating system may clamp this value; on Linux raise net.core.rmem_max when the startup
+  # warning reports a smaller effective buffer. 0 uses the built-in default.
+  # flow.netflow.udp-receive-buffer-bytes: "4194304"
 
   # ---- Flow: rollups and correlation ----
   # Volume counters derived from flow records, and the correlator that joins NetFlow
