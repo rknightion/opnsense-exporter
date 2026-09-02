@@ -56,6 +56,25 @@ Unbound's core totals - `opnsense_unbound_dns_queries_total`, `opnsense_unbound_
 `opnsense_unbound_dns_cache_miss_total`, the `recursion_time_*` and `request_list_*` series and
 `opnsense_unbound_dns_uptime_seconds` - are not part of the extended block and are unaffected.
 
+### API-key permissions after the 26.7 ACL merge
+
+OPNsense 26.7 consolidates the local user-management ACL entries. In 26.1,
+`api/auth/group/*` belonged to `page-system-groupmanager` (System: Access: Groups),
+while `api/auth/user/*` - including `search_api_key` - belonged to
+`page-system-usermanager` (System: Access: Users). In 26.7 the separate group-manager
+and privilege entries are gone: the user, group and privilege API paths are all under
+`page-system-usermanager`, renamed System: Access: Management. Compare the
+[26.1 ACL definition](https://github.com/opnsense/core/blob/stable/26.1/src/opnsense/mvc/app/models/OPNsense/Core/ACL/ACL.xml#L540-L580)
+with the [26.7 ACL definition](https://github.com/opnsense/core/blob/stable/26.7/src/opnsense/mvc/app/models/OPNsense/Core/ACL/ACL.xml#L550-L575).
+
+After upgrading a restricted monitoring user, check **System > Access > Users > Effective
+Privileges** and re-grant/save `System: Access: Management`
+(`page-system-usermanager`) if it is absent. That is the consolidated grant needed by the
+`authUsers`, `authGroups` and `authAPIKeys` searches. A 403 from one of these endpoints
+after the upgrade is an ACL grant issue; no exporter compatibility switch is needed. The
+[security matrix](security.md#generated-collector-to-acl-matrix) records the same
+cross-release difference for `authGroups`.
+
 Several other fields disappeared from OPNsense payloads in the same window without any metric
 impact, because the exporter never exposed them: the mbuf pool's `mbuf-max`, `percentage` and
 `mbuf-and-cluster` keys, and the per-counter `rate` values in the pf state-table and

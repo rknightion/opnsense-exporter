@@ -66,6 +66,24 @@ its templates about every two minutes, so a cold start is blind for at most that
 long, and records arriving before their template are counted as
 `records_dropped_total{reason="no_template"}` rather than guessed at.
 
+### Configuration reloads on OPNsense 26.7
+
+On OPNsense 26.7, applying a NetFlow configuration stops the NetFlow service before
+reloading the `OPNsense/Netflow` template and starts it again afterward (see the
+[26.7 reconfigure action](https://github.com/opnsense/core/blob/stable/26.7/src/opnsense/mvc/app/controllers/OPNsense/Diagnostics/Api/NetflowController.php#L121-L140)).
+That ordering creates a brief export gap while the configuration is applied. The
+receiver may then also have its normal template warm-up: data that arrives before the
+template is learned is counted as `records_dropped_total{reason="no_template"}` for
+the expected short restart window. Treat a gap that lasts only for the configuration
+reload as expected 26.7 behavior, not as a dead hook.
+
+`opnsense_netflow_capture_last_record_seconds` is a raw age and has no built-in
+threshold. The managed `OPNsenseNetFlowHookDead` alert requires no increase in the
+hook's packet counter for 45 minutes, traffic on the same device, a configured active
+timeout below 45 minutes, and then a five-minute hold. A configuration-reload-length
+gap by itself cannot satisfy that evidence window; persistent silence still warrants
+the hook-liveness investigation below.
+
 ### What this lane repairs
 
 A generic flow collector gets three things wrong on OPNsense, and only something
