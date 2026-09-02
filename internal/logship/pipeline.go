@@ -38,6 +38,7 @@ type pipeline struct {
 	metrics *metrics
 	cfg     *options.LogsConfig
 	log     *slog.Logger
+	selfLog *SelfLogHandler
 
 	sources     []Source
 	pushSources []PushSource
@@ -86,9 +87,26 @@ func Start(
 	deps Deps,
 	version, instance string,
 	reg prometheus.Registerer,
+	selfLogs ...*SelfLogHandler,
 ) (func(context.Context) error, error) {
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()
+	}
+	var selfLog *SelfLogHandler
+	for _, candidate := range selfLogs {
+		if candidate != nil {
+			selfLog = candidate
+			break
+		}
+	}
+	if selfLog != nil {
+		if cfg.Sink != "otlp" {
+			return nil, fmt.Errorf("self-log shipping requires --logs.sink=otlp; stdout cannot carry OTLP resource attributes")
+		}
+		// Sink/pipeline diagnostics must stay on the wrapped stderr handler. A
+		// failing sink otherwise logs an error which re-enters the same queue and
+		// creates a feedback loop while the endpoint is down.
+		deps.Logger = selfLog.DiagnosticLogger()
 	}
 
 	// Stamp instance identity onto EVERY logship self-metric (#395). Both registerers
@@ -109,7 +127,7 @@ func Start(
 	if err != nil {
 		return nil, fmt.Errorf("build push log sources: %w", err)
 	}
-	if len(sources) == 0 && len(pushSources) == 0 {
+	if len(sources) == 0 && len(pushSources) == 0 && selfLog == nil {
 		deps.Logger.Warn("log shipping enabled but no source is enabled; nothing will be shipped " +
 			"(enable a source, e.g. --logs.syslog.enabled)")
 		return func(context.Context) error { return nil }, nil
@@ -125,6 +143,7 @@ func Start(
 		sink:        sink,
 		cfg:         cfg,
 		log:         deps.Logger,
+		selfLog:     selfLog,
 		sources:     sources,
 		pushSources: pushSources,
 		stateFile:   cfg.StateFile,
@@ -133,12 +152,23 @@ func Start(
 		limiter:     NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueueBytes(cfg.BufferSize, cfg.BufferMaxBytes, p.noteOverflow)
+	sourceLabels := collectSourceNames(sources, pushSources)
+	if selfLog != nil {
+		sourceLabels.all = append(sourceLabels.all, SelfLogSource)
+	}
 	p.metrics = newMetrics(reg, queueBounds{
 		capacity: cfg.BufferSize,
 		maxBytes: cfg.BufferMaxBytes,
 		length:   func() float64 { return float64(p.queue.length()) },
 		bytes:    func() float64 { return float64(p.queue.queuedBytes()) },
-	}, collectSourceNames(sources, pushSources))
+	}, sourceLabels)
+	if selfLog != nil {
+		selfLog.Bind(func(e Entry) bool {
+			e.Record.Attributes = sanitizeAttributes(e.Record.Attributes)
+			_, ok := p.enqueue(e)
+			return ok
+		})
+	}
 
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {
@@ -703,6 +733,9 @@ func (p *pipeline) runStateFlusher() {
 // The emitter goroutine still exits shortly after, when its in-flight export returns and
 // it observes the cancelled context.
 func (p *pipeline) stop(ctx context.Context) error {
+	if p.selfLog != nil {
+		p.selfLog.Unbind()
+	}
 	p.cancel()
 	p.pollerWG.Wait()
 	p.queue.close()

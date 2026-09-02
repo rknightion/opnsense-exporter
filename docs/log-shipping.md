@@ -25,8 +25,9 @@ self-contained contribution.
 !!! note "Sources are added incrementally"
     Enabling `--logs.enabled` starts the pipeline, but nothing is shipped until at
     least one **source** is also enabled (each source has its own
-    `--logs.<source>.enabled` flag). With the pipeline enabled and no source
-    enabled, the exporter logs a warning and ships nothing.
+    `--logs.<source>.enabled` flag), unless `--logs.self.enabled` admits the
+    exporter's own process logs. With neither an event source nor self-logs enabled,
+    the exporter logs a warning and ships nothing.
 
 ## Sinks
 
@@ -49,6 +50,20 @@ no Grafana Cloud endpoint, and no `OTEL_EXPORTER_OTLP_ENDPOINT` /
 error naming the missing flag rather than silently shipping nothing.
 
 ## Sources
+
+### Exporter self-logs (`--logs.self.enabled`)
+
+`--logs.self.enabled` copies the exporter's own structured logs into the shared
+log pipeline while preserving the normal stderr output. It is off by default and
+requires both `--logs.enabled` and `--logs.sink=otlp`; stdout is refused because it
+cannot carry the OTLP resource identity this stream relies on. Records enter the
+same bounded queue and use the same retry, overflow, and delivery accounting as
+the event sources. Sink and pipeline diagnostics bypass this adapter so an OTLP
+outage cannot feed its own failure logs back into the failing sink.
+
+The fixed resource dimensions are `opnsense.source=exporter` and
+`opnsense.subsystem=self`. Logger attributes remain structured metadata, subject
+to the pipeline's normal sanitisation; they are not promoted to Loki labels.
 
 ### Syslog receiver (`--logs.syslog.enabled`)
 
@@ -217,14 +232,24 @@ volumes (a handful to ~100 qps) are fine; a busy enterprise resolver should not
 enable this source.
 
 Loki structured metadata for this source: `dns.client_label`, `domain`, `qtype`,
-`action`, `query_source`, `rcode`, `blocklist`, `dnssec_status`, plus `src.ip` and
-its enrichment (`src.hostname`, `src.mac`, `src.scope`) on the minority of records
-where the client value is an address - see below. (Unbound's own `source` field -
-where the answer came from - is deliberately mapped to the `query_source` attribute
-rather than a bare `source`, to keep it clear of this pipeline's own
-`opnsense.source` stamp; see [Loki label model](#loki-label-model).) The log body is
-a compact JSON encoding of the full row, including fields not promoted to structured
-metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
+`action`, `query_source`, `rcode`, `blocklist` when its legacy short code is
+recoverable, `dnssec_status`, plus `src.ip` and its enrichment (`src.hostname`,
+`src.mac`, `src.scope`) on the minority of records where the client value is an
+address - see below. (Unbound's own `source` field - where the answer came from -
+is deliberately mapped to the `query_source` attribute rather than a bare `source`,
+to keep it clear of this pipeline's own `opnsense.source` stamp; see [Loki label
+model](#loki-label-model).) The log body is compact JSON encoding of the row's
+stable fields, including fields not promoted to structured metadata (`family`,
+`resolve_time_ms`, `ttl`, `policy`).
+
+**Blocklist compatibility limitation.** Legacy `search_queries` responses carry
+the backend blocklist short code, so the exporter keeps that value as `blocklist`
+in both the JSON body and structured metadata. OPNsense 26.7 adds `category` and
+replaces the short code with the configured display value; the original code is
+not present in that response and cannot be recovered. The exporter therefore
+omits `blocklist` from both places for that shape rather than presenting the
+display value as a stable identity. Consumers must treat a missing `blocklist` as
+expected on 26.7; there is no display-valued replacement attribute.
 
 **This lane cannot be joined to flow records by IP.** OPNsense collapses the client
 address and its resolved hostname into one column before serialising the query log -
@@ -315,6 +340,30 @@ When this route is **off**, these lines are not dropped - they ship as generic
 records exactly as they did before the parser existed. The firewall sends them either
 way; the flag decides whether the exporter structures them.
 
+### Configuration revision diffs (`configchange`)
+
+`--logs.configchange.enabled` polls the retained OPNsense configuration history and
+ships one `configchange` record for each revision observed after the persisted
+cursor. The record body is OPNsense's unified diff, HTML-unescaped and capped at
+192 KiB with an explicit truncation marker; `revision`, `user`, and `uri` remain
+structured metadata rather than stream labels. A fresh source, or a cursor whose
+revision has fallen out of the retained history, re-baselines at the newest revision
+without replaying older configuration. Configure `--logs.state-file` to preserve
+that cursor across restarts. This source is independent of the syslog receiver.
+
+### Configuration snapshots (`configstate`)
+
+Configuration snapshots are default-off and enabled per family. The first family,
+`--logs.config-snapshot.firewall.enabled`, emits compact `configstate` JSON records
+for firewall and NAT entities. A content hash suppresses unchanged batches; the full
+family repeats after a six-hour heartbeat. Records share an opaque `snapshot.id` and
+carry ordered `snapshot.seq`, `snapshot.total`, `snapshot.family`, `snapshot.reason`,
+and `snapshot.entity_id` metadata. Bodies remain valid JSON under the 192 KiB bound:
+an oversized entity becomes a bounded envelope with `truncated=true`, its original
+size, and a content digest rather than a byte-sliced document. These records contain
+firewall policy and topology detail, so enabling the general logs pipeline does not
+enable them.
+
 ### Flow log records (`netflow`, `merged`)
 
 A **push** source layered on the separate NetFlow/Zenarmor flow pipeline
@@ -343,7 +392,7 @@ them, whatever the tenant config says. Cardinality discipline therefore falls ou
 | `service.name` | `--otlp.service-name` | **yes** |
 | `service.instance.id` | the resolved instance label | **yes** |
 | `service.version` | the exporter version | no |
-| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor`, `netflow`, `merged` | no - opt in below |
+| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor`, `configchange`, `configstate`, `exporter`, `netflow`, `merged` | no - opt in below |
 | `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (26) | no - opt in below |
 | `opnsense.action` | `pass`, `block` | no - opt in below |
 | `opnsense.device_category` | `laptop`, `camera`, `iot`, `server`, … (9) | no - opt in below |
@@ -683,7 +732,8 @@ labels are listed exactly below; `source`, `reason`, `stage`, `table`, `receiver
   lost, not data lost.
 - `opnsense_exporter_logs_rejected_total{source,reason}` - receiver input refused
   before shipping. Closed syslog reasons are `peer`, `oversized`, `filtered`,
-  `sampled`, `conn_limit`, `tls_timeout`, `tls_auth_failed`, and `tls_deadline_error`;
+  `sampled`, `conn_limit`, `tls_timeout`, `tls_auth_failed`, `tls_deadline_error`,
+  and `queue_full`;
   closed Zenarmor reasons are `peer`, `auth`, `unhandled_endpoint`, `body`,
   `overloaded`, `index_limit`, `unknown_family`, `filtered`, `self_traffic`, and
   `excluded`.

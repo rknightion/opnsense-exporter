@@ -18,12 +18,14 @@ a box shipping no syslog at all never renders it.
 """
 
 from builder import Builder
-from tabs.log_events import audit_row, radius_row, sshd_row
+from tabs.log_events import audit_row, configchange_row, radius_row, sshd_row
 
 
 def build(b: Builder):
     b.tab("Authentication & Audit", [
         sshd_row(b),
         audit_row(b),
+        configchange_row(b),
         radius_row(b),
-    ], present=["has_log_events_sshd", "has_log_events_audit", "has_log_events_radius"])
+    ], present=["has_log_events_sshd", "has_log_events_audit", "has_configchange_logs",
+                "has_log_events_radius"])

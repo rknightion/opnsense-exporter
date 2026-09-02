@@ -3,7 +3,9 @@ package opnsense
 import (
 	"math"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestFetchConfigBackupHistory_Success(t *testing.T) {
@@ -49,6 +51,63 @@ func TestFetchConfigBackupHistory_Success(t *testing.T) {
 	}
 	if data.LastSizeBytes != 417639 {
 		t.Errorf("expected LastSizeBytes=417639, got %v", data.LastSizeBytes)
+	}
+}
+
+func TestFetchConfigBackupRevisions(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[{"id":"config-1783886416.5486.xml","time":"1783886416.55","username":"operator","description":"/api/firewall/filter/savepoint made changes","filesize":417639}]}`))
+	})
+	defer server.Close()
+
+	revisions, err := client.FetchConfigBackupRevisions()
+	if err != nil {
+		t.Fatalf("FetchConfigBackupRevisions: %v", err)
+	}
+	if len(revisions) != 1 {
+		t.Fatalf("got %d revisions, want 1", len(revisions))
+	}
+	wantTime := time.Unix(1783886416, 550000000).UTC()
+	if got := revisions[0]; got.ID != "config-1783886416.5486.xml" || got.Timestamp.Sub(wantTime).Abs() > time.Microsecond || got.User != "operator" || !strings.HasPrefix(got.Description, "/api/firewall/filter/savepoint") {
+		t.Fatalf("revision = %+v, want identity, timestamp, user and description", got)
+	}
+}
+
+func TestFetchConfigBackupDiff(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.EscapedPath(); got != "/api/core/backup/diff/this/config-old.xml/config-new.xml" {
+			t.Errorf("escaped path = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"items":["--- old","+++ new","+&lt;rule/&gt;"]}`))
+	})
+	defer server.Close()
+
+	diff, err := client.FetchConfigBackupDiff("this", "config-old.xml", "config-new.xml")
+	if err != nil {
+		t.Fatalf("FetchConfigBackupDiff: %v", err)
+	}
+	if diff != "--- old\n+++ new\n+&lt;rule/&gt;" {
+		t.Fatalf("diff = %q", diff)
+	}
+}
+
+func TestFetchConfigBackupDiff_UsesStableObserverEndpoint(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[]}`))
+	})
+	defer server.Close()
+
+	observer := &fakeResultObserver{}
+	client.SetRequestObserver(observer)
+	if _, err := client.FetchConfigBackupDiff("this", "config-old.xml", "config-new.xml"); err != nil {
+		t.Fatalf("FetchConfigBackupDiff: %v", err)
+	}
+	calls := observer.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("observer calls = %#v, want one", calls)
+	}
+	if got, want := calls[0].endpoint, "api/core/backup/diff"; got != want {
+		t.Fatalf("observer endpoint = %q, want static route %q", got, want)
 	}
 }
 

@@ -30,7 +30,10 @@ certificate subjects, IKE identities and free-text rule descriptions are never
 labels here (they stay as log-line metadata).
 """
 
-from builder import Builder, sel, grp, RATE
+from builder import Builder, sel, grp, loki_sel, RATE
+
+
+CONFIGCHANGE_STREAM = loki_sel('opnsense_source="configchange"')
 
 
 def firewall_row(b: Builder):
@@ -117,6 +120,22 @@ def audit_row(b: Builder):
              "configuration writes, event=authorization tracks GUI/API auth decisions.",
     )
     return b.row("Config / Audit", [audit], present="has_log_events_audit")
+
+
+def configchange_row(b: Builder):
+    b.loki_sentinel("has_configchange_logs", matchers='opnsense_source="configchange"',
+                    label="opnsense_source")
+    raw = b.logs(
+        "Configuration Revision Diffs",
+        CONFIGCHANGE_STREAM,
+        desc="One retained OPNsense configuration revision per record from "
+             "--logs.configchange.enabled. The body is the upstream unified diff; who, "
+             "revision and uri are structured metadata. Fresh or retention-evicted "
+             "cursors re-baseline without replay, so an empty window is not evidence "
+             "that the historical backup window was shipped.",
+        w=24,
+    )
+    return b.row("Configuration Revision Diffs", [raw], present="has_configchange_logs")
 
 
 def radius_row(b: Builder):

@@ -189,6 +189,134 @@ func TestListenerUDPDelivers(t *testing.T) {
 	}
 }
 
+// UDP parsing/enrichment/emission can be slower than the sender. The socket read
+// loop must keep draining into its bounded queue while every worker is occupied;
+// once that queue is full, the listener must count its own drop instead of leaving
+// the kernel to discard datagrams invisibly. Four blockers match the listener's
+// default worker count and 2,048 fillers exceed its default queue depth.
+func TestListenerUDPWorkerQueueDecouplesReadAndCountsOverload(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{Reasons: []string{"queue_full"}})
+
+	const workers = 4
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseWorkers := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseWorkers()
+	var blockedWorkers int
+	var blockedMu sync.Mutex
+	h := func(line []byte, _ netip.Addr) {
+		if string(line) != "block" {
+			return
+		}
+		blockedMu.Lock()
+		blockedWorkers++
+		if blockedWorkers == workers {
+			close(blocked)
+		}
+		blockedMu.Unlock()
+		<-release
+	}
+	l := startListener(t, Config{UDPAddr: "127.0.0.1:0"}, h, m)
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	for range workers {
+		if _, err := conn.Write([]byte("block")); err != nil {
+			t.Fatalf("write blocker: %v", err)
+		}
+	}
+	select {
+	case <-blocked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("UDP processing did not use independent workers")
+	}
+
+	for range 2048 {
+		if _, err := conn.Write([]byte("fill")); err != nil {
+			t.Fatalf("write filler: %v", err)
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if counterValue(t, reg, "opnsense_exporter_logs_rejected_total", "reason", "queue_full") > 0 {
+			releaseWorkers()
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	releaseWorkers()
+	t.Fatal("full UDP worker queue did not count a locally attributable drop")
+}
+
+// Run is the completion boundary for UDP work: Close first stops the socket reader,
+// then the read loop closes its queue, and finally Run waits for workers to finish
+// accepted datagrams. That ordering makes shutdown race-safe without a send-on-closed
+// channel race or an untracked worker surviving the receiver.
+func TestListenerUDPWorkersDrainBeforeRunReturns(t *testing.T) {
+	const workers = 4
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseWorkers := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseWorkers()
+	var blockedWorkers int
+	var blockedMu sync.Mutex
+	h := func(line []byte, _ netip.Addr) {
+		if string(line) != "block" {
+			return
+		}
+		blockedMu.Lock()
+		blockedWorkers++
+		if blockedWorkers == workers {
+			close(blocked)
+		}
+		blockedMu.Unlock()
+		<-release
+	}
+	l := NewListener(Config{UDPAddr: "127.0.0.1:0"}, h, nil, testLogger())
+	if err := l.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); l.Run(ctx) }()
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	for range workers {
+		if _, err := conn.Write([]byte("block")); err != nil {
+			t.Fatalf("write blocker: %v", err)
+		}
+	}
+	select {
+	case <-blocked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("UDP processing did not use independent workers")
+	}
+
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("Run returned before accepted UDP work drained")
+	case <-time.After(100 * time.Millisecond):
+	}
+	releaseWorkers()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return after UDP workers drained")
+	}
+}
+
 func TestListenerTCPDelivers(t *testing.T) {
 	c := newCollector()
 	l := startListener(t, Config{TCPAddr: "127.0.0.1:0"}, c.handle, nil)

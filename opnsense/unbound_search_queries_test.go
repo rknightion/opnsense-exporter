@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 )
@@ -100,6 +101,70 @@ func TestFetchUnboundSearchQueries_UUIDPresent(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].UUID.String() != "abc-123" {
 		t.Fatalf("expected uuid abc-123 to survive decoding, got %+v", rows)
+	}
+}
+
+func TestFetchUnboundSearchQueries_CategoryMarksLowercaseDisplayValue(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":[` +
+			`{"time":1,"client":"10.0.0.5","domain":"x.test.","type":"A",` +
+			`"action":"Block","source":"Cache","blocklist":"easylist",` +
+			`"category":"General Blocklists","rcode":"NOERROR"}` +
+			`]}`))
+	})
+	defer server.Close()
+
+	rows, err := client.FetchUnboundSearchQueries()
+	if err != nil {
+		t.Fatalf("FetchUnboundSearchQueries returned error: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if got, present := rows[0].BlocklistIdentity(); present {
+		t.Fatalf("BlocklistIdentity() = %q, %t; category marks the value as display-only", got, present)
+	}
+}
+
+// TestUnboundSearchQueryRow_BlocklistIdentityByResponseShape pins the source
+// seam used by the log shipper. Legacy search_queries rows retain the backend
+// short code. OPNsense 26.7 adds category while replacing that code with a
+// display value, which cannot be used as a stable identity.
+func TestUnboundSearchQueryRow_BlocklistIdentityByResponseShape(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		payload      string
+		wantIdentity string
+		wantPresent  bool
+	}{
+		{
+			name:         "legacy short code",
+			payload:      `{"blocklist":"ag"}`,
+			wantIdentity: "ag",
+			wantPresent:  true,
+		},
+		{
+			name:        "26.7 display value with category",
+			payload:     `{"blocklist":"AdGuard List","category":"General Blocklists"}`,
+			wantPresent: false,
+		},
+		{
+			name:        "empty blocklist",
+			payload:     `{"blocklist":""}`,
+			wantPresent: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var row UnboundSearchQueryRow
+			if err := json.Unmarshal([]byte(tc.payload), &row); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			got, present := row.BlocklistIdentity()
+			if present != tc.wantPresent || got != tc.wantIdentity {
+				t.Fatalf("BlocklistIdentity() = %q, %t; want %q, %t", got, present, tc.wantIdentity, tc.wantPresent)
+			}
+		})
 	}
 }
 

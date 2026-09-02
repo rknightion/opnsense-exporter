@@ -30,6 +30,7 @@ import (
 	"github.com/rknightion/opnsense2otel/v4/internal/healthprobe"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
+	_ "github.com/rknightion/opnsense2otel/v4/internal/logship/configsnapshot" // registers opt-in configuration snapshot sources
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/flowlog"
 	logshipsyslog "github.com/rknightion/opnsense2otel/v4/internal/logship/syslog" // registers the syslog push source; also the log-lane GeoIP enricher (#528)
@@ -269,6 +270,7 @@ type startupConfig struct {
 	// exists (resolveOptions runs before it does).
 	AutoEnabledFeatures []options.AutoEnabledFeature
 	Flow                options.FlowConfig
+	Netflow             options.NetflowConfig
 	NetflowCapture      netflow.CaptureMode
 	PollOverrides       map[string]time.Duration
 	Pyroscope           *options.PyroscopeConfig
@@ -372,6 +374,13 @@ func resolveOptions() (*startupConfig, []error) {
 		cfg.NetflowCapture = mode
 	}
 
+	netflowCfg, nerr := options.Netflow()
+	if nerr != nil {
+		errs = append(errs, fmt.Errorf("invalid NetFlow worker-pool configuration: %w", nerr))
+	} else {
+		cfg.Netflow = netflowCfg
+	}
+
 	geoCfg, gerr := options.GeoIP()
 	if gerr != nil {
 		errs = append(errs, fmt.Errorf("invalid geoip configuration: %w", gerr))
@@ -421,6 +430,13 @@ func resolveOptions() (*startupConfig, []error) {
 	cfg.Logs, cfg.LogsOn, err = options.Logs()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("invalid logs configuration: %w", err))
+	}
+	logsSink := ""
+	if cfg.Logs != nil {
+		logsSink = cfg.Logs.Sink
+	}
+	if err := options.ValidateLogsSelf(options.LogsSelfEnabled(), cfg.LogsOn, logsSink); err != nil {
+		errs = append(errs, fmt.Errorf("invalid self-log configuration: %w", err))
 	}
 	if cfg.LogsOn && cfg.Logs.Sink == "otlp" {
 		// Resolved WITHOUT the --otlp.enabled gate so logs can ship even when metrics
@@ -614,7 +630,13 @@ func main() {
 		os.Exit(runConfigCheck(cfg, cfgErrs, os.Stdout, os.Stderr))
 	}
 
-	logger := promslog.New(options.PromLogConfig)
+	baseLogger := promslog.New(options.PromLogConfig)
+	logger := baseLogger
+	var selfLogHandler *logship.SelfLogHandler
+	if options.LogsSelfEnabled() {
+		selfLogHandler = logship.NewSelfLogHandler(baseLogger.Handler())
+		logger = slog.New(selfLogHandler)
+	}
 
 	logger.Info("starting opnsense2otel", "version", version)
 
@@ -643,6 +665,7 @@ func main() {
 	opnsConfig := cfg.OPNsense
 	collectorsSwitches := cfg.Collectors
 	flowCfg := cfg.Flow
+	netflowCfg := cfg.Netflow
 
 	// GeoIP enrichment (#520). Started here, before any receiver exists, because
 	// flow.ConfigureGeoIP has to be in place before the first record is normalised —
@@ -1594,6 +1617,7 @@ func main() {
 			context.Background(), logsCfg, logsTransport,
 			deps,
 			version, instanceLabel, selfMetricsRegistry,
+			selfLogHandler,
 		)
 		if lerr != nil {
 			if stopEnrich != nil {
@@ -1663,6 +1687,8 @@ func main() {
 			Addr:             flowCfg.NetflowListen,
 			UDPReceiveBuffer: flowCfg.NetflowUDPReceiveBuffer,
 			AllowedPeers:     flowCfg.NetflowAllowedPeers,
+			Workers:          netflowCfg.Workers,
+			QueueSize:        netflowCfg.QueueSize,
 			Capture:          captureSink,
 			CaptureMode:      netflowCaptureMode,
 		}, decoder, func(dg *netflow.Datagram, _ netip.Addr) {

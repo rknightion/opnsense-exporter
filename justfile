@@ -143,9 +143,16 @@ ci: check deployment-test snapshot image
 
 # ── gen ─────────────────────────────────────────────────────────────────────
 
-# regenerate every committed generated artifact (dashboard -> rules -> docs -> schemas)
+# regenerate every committed generated artifact. The first docs pass refreshes the
+# metric catalogue before dashboard coverage; the second refreshes docs' dashboard
+# and rule statistics after those generators have produced their artifacts.
 [group('gen')]
-gen: dashboard rules docs schemas
+gen:
+    just docs
+    just dashboard
+    just rules
+    just docs
+    just schemas
 
 # fail if any committed generated artifact is stale — the drift gate
 [group('gen')]

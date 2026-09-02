@@ -242,9 +242,9 @@ func rowFingerprint(row opnsense.UnboundSearchQueryRow) string {
 	}, "|")
 }
 
-// unboundLogLine is the compact JSON Record.Body for one query — full row
-// fidelity, independent of the (smaller) structured-metadata attribute set
-// below.
+// unboundLogLine is the compact JSON Record.Body for one query. The blocklist
+// field is populated only when the API row carries an unambiguous recoverable
+// short code; the 26.7 display-only value is intentionally omitted.
 type unboundLogLine struct {
 	Time          int64  `json:"time"`
 	Client        string `json:"client"`
@@ -273,7 +273,11 @@ type unboundLogLine struct {
 // Client note (#660): the upstream `client` column is mixed-type by construction,
 // so it ships as unboundClientLabelAttr rather than a bare `client`, and src.ip is
 // set only when that value already parses as an address — see the const's comment.
+// Blocklist note: row.Blocklist is a short code on legacy responses, but a
+// display value on 26.7 responses marked by the new `category` key. The latter
+// is not a stable identity and is omitted from both the body and metadata.
 func unboundRecord(row opnsense.UnboundSearchQueryRow, snap *enrich.Snapshot) Record {
+	blocklistIdentity, hasBlocklistIdentity := row.BlocklistIdentity()
 	line := unboundLogLine{
 		Time:          int64(row.Time.Int()),
 		Client:        row.Client.String(),
@@ -282,7 +286,7 @@ func unboundRecord(row opnsense.UnboundSearchQueryRow, snap *enrich.Snapshot) Re
 		Domain:        row.Domain.String(),
 		Action:        row.Action.String(),
 		Source:        row.Source.String(),
-		Blocklist:     row.Blocklist.String(),
+		Blocklist:     blocklistIdentity,
 		RCode:         row.RCode.String(),
 		ResolveTimeMs: int64(row.ResolveTimeMs.Int()),
 		DNSSECStatus:  row.DNSSECStatus.String(),
@@ -300,8 +304,10 @@ func unboundRecord(row opnsense.UnboundSearchQueryRow, snap *enrich.Snapshot) Re
 		"action":        row.Action.String(),
 		"query_source":  row.Source.String(),
 		"rcode":         row.RCode.String(),
-		"blocklist":     row.Blocklist.String(),
 		"dnssec_status": row.DNSSECStatus.String(),
+	}
+	if hasBlocklistIdentity {
+		attrs["blocklist"] = blocklistIdentity
 	}
 	// Normalised, promotable disposition. The resolver's own Capitalised verb
 	// (Pass/Block/Drop) stays in `action` above — Drop vs Block is a real

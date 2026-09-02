@@ -379,6 +379,104 @@ func TestUnboundRecord_UnknownActionLeavesAttrActionUnset(t *testing.T) {
 	}
 }
 
+// TestUnboundRecord_BlocklistIdentityAcrossResponseShapes pins the tolerant
+// contract for the two search_queries generations. Legacy rows carry the
+// backend short code; 26.7 rows carry only the configured display value and a
+// category marker. The display value is not a stable identity, so it must not
+// be shipped as either a body field or structured metadata.
+func TestUnboundRecord_BlocklistIdentityAcrossResponseShapes(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		payload       string
+		wantIdentity  string
+		wantBodyField bool
+	}{
+		{
+			name: "legacy short code remains the identity",
+			payload: `{"time":1,"client":"10.0.0.5","domain":"x.test.","type":"A",` +
+				`"action":"Block","source":"Cache","blocklist":"ag","rcode":"NOERROR"}`,
+			wantIdentity:  "ag",
+			wantBodyField: true,
+		},
+		{
+			name: "26.7 display value is omitted when code is unrecoverable",
+			payload: `{"time":1,"client":"10.0.0.5","domain":"x.test.","type":"A",` +
+				`"action":"Block","source":"Cache","blocklist":"AdGuard List",` +
+				`"category":"General Blocklists","rcode":"NOERROR"}`,
+			wantIdentity:  "",
+			wantBodyField: false,
+		},
+		{
+			name: "26.7 single-word display value is also omitted",
+			payload: `{"time":1,"client":"10.0.0.5","domain":"x.test.","type":"A",` +
+				`"action":"Block","source":"Cache","blocklist":"EasyList",` +
+				`"category":"General Blocklists","rcode":"NOERROR"}`,
+			wantIdentity:  "",
+			wantBodyField: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var row opnsense.UnboundSearchQueryRow
+			if err := json.Unmarshal([]byte(tc.payload), &row); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			record := unboundRecord(row, nil)
+
+			gotIdentity, present := record.Attributes["blocklist"]
+			if tc.wantIdentity == "" {
+				if present {
+					t.Fatalf("blocklist metadata = %q; display-only identity must be omitted", gotIdentity)
+				}
+			} else if !present || gotIdentity != tc.wantIdentity {
+				t.Fatalf("blocklist metadata = %q (present=%t), want %q", gotIdentity, present, tc.wantIdentity)
+			}
+
+			var body map[string]any
+			if err := json.Unmarshal([]byte(record.Body), &body); err != nil {
+				t.Fatalf("unmarshal record body: %v", err)
+			}
+			gotBody, bodyPresent := body["blocklist"]
+			if bodyPresent != tc.wantBodyField {
+				t.Fatalf("body blocklist present = %t, want %t (value=%v)", bodyPresent, tc.wantBodyField, gotBody)
+			}
+			if tc.wantBodyField && gotBody != tc.wantIdentity {
+				t.Fatalf("body blocklist = %v, want %q", gotBody, tc.wantIdentity)
+			}
+		})
+	}
+}
+
+func TestUnboundSource_CategorySuppressesLowercaseDisplayValue(t *testing.T) {
+	legacy := unboundRow(100, "10.0.0.5", "legacy.test.", "A", "Block", "Cache")
+	legacy["blocklist"] = "ag"
+	display := unboundRow(101, "10.0.0.5", "display.test.", "A", "Block", "Cache")
+	display["blocklist"] = "easylist"
+	display["category"] = "General Blocklists"
+
+	_, client := newUnboundTestServer(t, []map[string]any{legacy}, []map[string]any{display, legacy})
+	s := newTestUnboundSource(client)
+	if _, err := s.Poll(context.Background()); err != nil {
+		t.Fatalf("first Poll: %v", err)
+	}
+	records, err := s.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("second Poll: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected one new record, got %d", len(records))
+	}
+	if _, present := records[0].Attributes["blocklist"]; present {
+		t.Fatalf("lowercase 26.7 display value must be absent from metadata")
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(records[0].Body), &body); err != nil {
+		t.Fatalf("unmarshal record body: %v", err)
+	}
+	if _, present := body["blocklist"]; present {
+		t.Fatalf("lowercase 26.7 display value must be absent from body")
+	}
+}
+
 // unboundRowRecord builds a Record from one raw client value, the only field these
 // tests vary.
 func unboundRowRecord(t *testing.T, client string, snap *enrich.Snapshot) Record {

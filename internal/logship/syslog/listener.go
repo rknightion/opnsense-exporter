@@ -29,6 +29,12 @@ const (
 	// datagram socket. Linux may cap it at net.core.rmem_max (and reports the
 	// effective size through ReadBuffer), which configureUDPReceiveBuffer reports.
 	defaultUDPReceiveBuffer = 4 * 1024 * 1024
+
+	// UDP needs a short, bounded shock absorber between the socket and parsing. A
+	// full queue is observable as logs_rejected_total{reason="queue_full"}; blocking
+	// the reader instead would lose datagrams in the kernel without attribution.
+	defaultUDPWorkers   = 4
+	defaultUDPQueueSize = 1024
 )
 
 // connIdleTimeout is refreshed per frame, so an idle peer cannot pin a goroutine
@@ -76,6 +82,10 @@ type Config struct {
 	// when the operating system clamps it, Start logs a warning naming the Linux
 	// net.core.rmem_max sysctl.
 	UDPReceiveBuffer int
+	// UDPWorkers and UDPQueueSize control the bounded UDP processing pool. Zero
+	// selects the defaults above. More than one worker intentionally means UDP
+	// delivery order is not preserved after the socket read loop.
+	UDPWorkers, UDPQueueSize int
 	// TLSAddr + TLSConfig together enable a third, TLS-wrapped TCP transport that
 	// feeds the SAME handler as plain TCP. The TLS listener is enabled only when
 	// BOTH are set (a non-empty address and a non-nil config).
@@ -155,9 +165,11 @@ func minimumEffectiveUDPReceiveBuffer(requested int, goos string) int {
 	return requested * 2
 }
 
-// Listener is a hardened UDP + TCP syslog receiver. It hands each framed line to
-// handle on the receiving goroutine — handle must not block and must not retain
-// the line buffer.
+// Listener is a hardened UDP + TCP syslog receiver. TCP hands each framed line to
+// handle on its connection goroutine. UDP first copies each datagram into a bounded
+// queue, then invokes handle from a worker pool; consequently, UDP delivery order
+// is not guaranteed when more than one worker is configured. Handlers must not
+// retain their line buffer.
 type Listener struct {
 	cfg    Config
 	handle func(line []byte, peer netip.Addr)
@@ -167,6 +179,8 @@ type Listener struct {
 	udp   *net.UDPConn
 	tcp   *net.TCPListener
 	tlsLn net.Listener
+	udpQ  chan udpJob
+	udpWG sync.WaitGroup
 
 	// tcpSem and tlsSem are SEPARATE budgets, deliberately. They were one shared
 	// semaphore, which meant a plaintext flood — needing no credentials whatsoever —
@@ -200,6 +214,13 @@ type Listener struct {
 	refusalLast map[refusalLogKey]time.Time
 }
 
+// udpJob owns its payload. serveUDP reuses its read buffer on every datagram, so a
+// worker must never be given a slice into that buffer.
+type udpJob struct {
+	line []byte
+	peer netip.Addr
+}
+
 // logRefusal reports whether this class of refusal may log now, recording the time
 // when it may. See refusalLogEvery for why refusals are throttled at all.
 func (l *Listener) logRefusal(k refusalLogKey) bool {
@@ -218,6 +239,12 @@ func (l *Listener) logRefusal(k refusalLogKey) bool {
 func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logship.ReceiverMetrics, log *slog.Logger) *Listener {
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = defaultMaxConns
+	}
+	if cfg.UDPWorkers <= 0 {
+		cfg.UDPWorkers = defaultUDPWorkers
+	}
+	if cfg.UDPQueueSize <= 0 {
+		cfg.UDPQueueSize = defaultUDPQueueSize
 	}
 	if cfg.TLSHandshakeTimeout <= 0 {
 		cfg.TLSHandshakeTimeout = defaultTLSHandshakeTimeout
@@ -242,6 +269,7 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 		log:     log,
 		tcpSem:  make(chan struct{}, cfg.MaxConns),
 		tlsSem:  make(chan struct{}, cfg.MaxConns),
+		udpQ:    make(chan udpJob, cfg.UDPQueueSize),
 		slots:   newSlotGauges(cfg.Registerer, cfg.MaxConns, slotTransports),
 		closing: make(chan struct{}),
 
@@ -356,6 +384,10 @@ func (l *Listener) Run(ctx context.Context) {
 
 	var wg sync.WaitGroup
 	if l.udp != nil {
+		for range l.cfg.UDPWorkers {
+			l.udpWG.Add(1)
+			go l.serveUDPWorker()
+		}
 		wg.Add(1)
 		go func() { defer wg.Done(); l.serveUDP() }()
 	}
@@ -370,6 +402,10 @@ func (l *Listener) Run(ctx context.Context) {
 	wg.Wait()
 
 	_ = l.Close() // idempotent: also waits for the connection goroutines
+	// serveUDP is the sole closer of udpQ, after ReadFromUDPAddrPort has stopped.
+	// Drain accepted work so Run's return is an explicit completion boundary; Close
+	// itself only closes sockets, because it may be the call that unblocks serveUDP.
+	l.udpWG.Wait()
 	<-watchdogDone
 }
 
@@ -446,8 +482,12 @@ func (l *Listener) allowed(peer netip.Addr) bool {
 	return false
 }
 
-// serveUDP reads datagrams: one datagram is one message, no framing.
+// serveUDP reads datagrams: one datagram is one message, no framing. It never calls
+// handle itself: parsing/enrichment/emission can be slow, but socket draining cannot
+// wait for it. UDP workers race by design, so this transport has no delivery-order
+// guarantee once UDPWorkers is greater than one.
 func (l *Listener) serveUDP() {
+	defer close(l.udpQ)
 	buf := make([]byte, maxMessageBytes)
 	for {
 		n, addr, err := l.udp.ReadFromUDPAddrPort(buf)
@@ -466,7 +506,23 @@ func (l *Listener) serveUDP() {
 		if n == 0 {
 			continue
 		}
-		l.handle(buf[:n], peer)
+		// Copy before handoff: buf is reused by the next ReadFromUDPAddrPort.
+		line := append([]byte(nil), buf[:n]...)
+		select {
+		case l.udpQ <- udpJob{line: line, peer: peer}:
+		default:
+			// A non-blocking enqueue keeps the reader ahead of the kernel receive
+			// buffer. This drop is attributable and exported; a blocked reader would
+			// turn the same overload into an invisible kernel-level loss.
+			l.m.Reject("queue_full")
+		}
+	}
+}
+
+func (l *Listener) serveUDPWorker() {
+	defer l.udpWG.Done()
+	for job := range l.udpQ {
+		l.handle(job.line, job.peer)
 	}
 }
 

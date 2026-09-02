@@ -1,5 +1,12 @@
 package opnsense
 
+import (
+	"math"
+	"net/url"
+	"strings"
+	"time"
+)
+
 // configBackupItem mirrors one entry of the api/core/backup/backups/this
 // bootgrid response — the on-box history of automatic config backups written
 // by OPNsense's own BackupController (globbed from /conf/backup/config-*.xml).
@@ -13,13 +20,52 @@ package opnsense
 //   - filesize is a JSON int on the wire; flexString is still used so a
 //     string-typed filesize on some release doesn't break decoding.
 type configBackupItem struct {
-	Time     flexString `json:"time"`
-	Filesize flexString `json:"filesize"`
+	ID          flexString `json:"id"`
+	Time        flexString `json:"time"`
+	Username    flexString `json:"username"`
+	Description flexString `json:"description"`
+	Filesize    flexString `json:"filesize"`
 }
 
 // configBackupResponse is the top-level api/core/backup/backups/this payload.
 type configBackupResponse struct {
 	Items []configBackupItem `json:"items"`
+}
+
+type configBackupDiffResponse struct {
+	Items []string `json:"items"`
+}
+
+// requestObserverAtPath retains the client's per-request instrumentation while
+// collapsing a parameterized route onto its registered endpoint path. In
+// particular, a config-revision filename is a fresh value on every write and
+// must never become a Prometheus endpoint-label value.
+type requestObserverAtPath struct {
+	observer RequestObserver
+	path     string
+}
+
+func (o requestObserverAtPath) ObserveAPIRequest(_ string, statusCode int, duration time.Duration) {
+	o.observer.ObserveAPIRequest(o.path, statusCode, duration)
+}
+
+func (o requestObserverAtPath) ObserveAPIRequestResult(_ string, statusCode int, duration time.Duration, apiErr *APICallError) {
+	if rich, ok := o.observer.(RequestResultObserver); ok {
+		rich.ObserveAPIRequestResult(o.path, statusCode, duration, apiErr)
+		return
+	}
+	o.observer.ObserveAPIRequest(o.path, statusCode, duration)
+}
+
+// ConfigBackupRevision is the public, identity-bearing view of a retained
+// configuration-history row used by the opt-in config-change log source. These
+// fields are deliberately not metric labels; user and description may contain
+// operator identity or free text and belong only on the emitted log record.
+type ConfigBackupRevision struct {
+	ID          string
+	Timestamp   time.Time
+	User        string
+	Description string
 }
 
 // ConfigBackupHistory is the normalised config-backup freshness summary: is the
@@ -81,4 +127,63 @@ func (c *Client) FetchConfigBackupHistory() (ConfigBackupHistory, *APICallError)
 	data.LastSizeBytes = safeParseFloat(resp.Items[newestIdx].Filesize.String())
 
 	return data, nil
+}
+
+// FetchConfigBackupRevisions returns the retained configuration-history rows.
+// The response order is preserved; consumers that need chronology must sort by
+// Timestamp and ID because the upstream grid is normally newest-first.
+func (c *Client) FetchConfigBackupRevisions() ([]ConfigBackupRevision, *APICallError) {
+	var resp configBackupResponse
+	path, ok := c.endpoints["backupHistory"]
+	if !ok {
+		return nil, &APICallError{Endpoint: "backupHistory", Message: "endpoint not found in client endpoints"}
+	}
+	if err := c.do("GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	revisions := make([]ConfigBackupRevision, 0, len(resp.Items))
+	for _, item := range resp.Items {
+		revisions = append(revisions, ConfigBackupRevision{
+			ID:          item.ID.String(),
+			Timestamp:   configBackupTime(item.Time.String()),
+			User:        item.Username.String(),
+			Description: item.Description.String(),
+		})
+	}
+	return revisions, nil
+}
+
+// FetchConfigBackupDiff fetches the upstream-produced unified diff between two
+// retained revisions. It intentionally returns the raw HTML-escaped lines: the
+// log source owns presentation unescaping immediately before emission.
+func (c *Client) FetchConfigBackupDiff(host, oldRevision, newRevision string) (string, *APICallError) {
+	base, ok := c.endpoints["backupDiff"]
+	if !ok {
+		return "", &APICallError{Endpoint: "backupDiff", Message: "endpoint not found in client endpoints"}
+	}
+	path := EndpointPath(strings.Join([]string{
+		string(base), url.PathEscape(host), url.PathEscape(oldRevision), url.PathEscape(newRevision),
+	}, "/"))
+	// The request path embeds revision names. Keep the operational request and
+	// duration metrics keyed by the static registered route, rather than growing
+	// a new time series for every configuration write.
+	requestClient := *c
+	if c.observer != nil {
+		requestClient.observer = requestObserverAtPath{observer: c.observer, path: string(base)}
+	}
+	var resp configBackupDiffResponse
+	if err := requestClient.do("GET", path, nil, &resp); err != nil {
+		return "", err
+	}
+	return strings.Join(resp.Items, "\n"), nil
+}
+
+func configBackupTime(raw string) time.Time {
+	seconds := safeParseFloat(raw)
+	if seconds <= 0 {
+		return time.Time{}
+	}
+	whole, fraction := math.Modf(seconds)
+	return time.Unix(int64(whole), int64(fraction*1e9)).UTC()
 }

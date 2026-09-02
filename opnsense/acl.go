@@ -398,6 +398,14 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-diagnostics-configurationhistory", Name: "Diagnostics: Configuration History", Origin: "core", Pattern: "api/core/backup/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"backupDiff": {
+		Consumer:  "configchange",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Privileges: []ACLPrivilege{
+			{Key: "page-diagnostics-configurationhistory", Name: "Diagnostics: Configuration History", Origin: "core", Pattern: "api/core/backup/*", Scope: ACLScopeWildcard},
+		},
+	},
 	"bpfStatistics": {
 		Consumer:  "bpf",
 		Component: "core",

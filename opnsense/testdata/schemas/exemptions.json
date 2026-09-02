@@ -1599,12 +1599,9 @@
   },
   "backupHistory": {
     "knownExtraPaths": [
-      "items[].description",
-      "items[].id",
-      "items[].time_iso",
-      "items[].username"
+      "items[].time_iso"
     ],
-    "note": "knownExtraPaths (#457): configBackupResponse/ConfigBackupHistory (opnsense/backup.go) explicitly aggregates only Count/LastTimestamp/LastSizeBytes; the doc comment states descriptions/usernames can carry hostnames or admin identity and are deliberately excluded from per-backup metrics, keeping only aggregate freshness signals. PRUNE TRIGGER: none. (fixup) items[].time_iso was missed in the first pass: it is an ISO-formatted display twin of the already-modeled unix timestamp backing LastTimestamp - redundant, not new information."
+    "note": "knownExtraPaths (#457): items[].time_iso is an ISO-formatted display twin of the already-modelled Unix timestamp backing LastTimestamp, so it is redundant rather than new information. PRUNE TRIGGER: none."
   },
   "relaydStatusSum": {
     "knownExtraPaths": [

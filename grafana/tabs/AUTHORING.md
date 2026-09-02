@@ -428,10 +428,12 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_wireguard_peers` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > VPN > WireGuard Peers | `label_values(opnsense_wireguard_peer_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_zenarmor_metrics` | `collector` | existence (series presence) | opnsense2otel > Security > Zenarmor; opnsense2otel > Security > Zenarmor > Overview | `label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 
-### Loki sentinels — 7 total (scope: `stream_selector`)
+### Loki sentinels — 9 total (scope: `stream_selector`)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
+| `has_config_snapshot_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Config; opnsense2otel > Config > Firewall & NAT | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="configstate", opnsense_subsystem="config"}, opnsense_source)` |
+| `has_configchange_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > Authentication & Audit; opnsense2otel > Security > Authentication & Audit > Configuration Revision Diffs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="configchange"}, opnsense_source)` |
 | `has_crowdsec_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > CrowdSec > Alert & Decision Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="crowdsec"}, opnsense_source)` |
 | `has_flow_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > Flow Volume > Flow Record Drilldown | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source=~"netflow\|merged"}, opnsense_source)` |
 | `has_ids_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > IDS/IPS > Alert Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="ids"}, opnsense_source)` |

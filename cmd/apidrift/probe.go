@@ -193,6 +193,26 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 // e.g. no voucher provider configured) — probeOne turns that into
 // SkippedParam, not an error.
 var getPathParamResolvers = map[string]func(p *prober) ([]string, error){
+	"backupDiff": func(p *prober) ([]string, error) {
+		raw, _, err := p.probeSource("backupHistory")
+		if err != nil {
+			return nil, err
+		}
+		var history struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal(raw, &history); err != nil {
+			return nil, fmt.Errorf("decode backupHistory: %w", err)
+		}
+		if len(history.Items) < 2 {
+			return nil, nil
+		}
+		// BackupController returns newest first. The diff route expects the
+		// older revision before the newer one.
+		return []string{"this", history.Items[1].ID, history.Items[0].ID}, nil
+	},
 	// diagLog's module/scope are configured, not discovered from live box
 	// state (unlike the voucher provider/group below) — core/audit is a
 	// built-in scope guaranteed present on any OPNsense install, so this is a

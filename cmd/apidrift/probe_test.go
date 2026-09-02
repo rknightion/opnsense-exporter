@@ -288,6 +288,54 @@ func TestProbeOneParameterizedSkip(t *testing.T) {
 	}
 }
 
+func TestProbeOneParameterizedBackupDiff(t *testing.T) {
+	var gotPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/core/backup/backups/this", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[{"id":"config-new.xml"},{"id":"config-old.xml"}]}`))
+	})
+	mux.HandleFunc("/api/core/backup/diff/this/config-old.xml/config-new.xml", func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"items":["--- old","+++ new"]}`))
+	})
+	p := newTestProber(t, mux)
+	s := opnsense.EndpointSchema{
+		Endpoint:     "backupDiff",
+		Method:       "GET",
+		Path:         "api/core/backup/diff",
+		TopLevelKind: opnsense.KindObject,
+		Fields:       []opnsense.SchemaField{{Path: "items", Kind: opnsense.KindArray}},
+	}
+	res := p.probeOne(s, opnsense.SchemaExemption{})
+	if res.ProbeErr != "" || res.SkippedParam {
+		t.Fatalf("backupDiff probe failed: %+v", res)
+	}
+	if gotPath != "/api/core/backup/diff/this/config-old.xml/config-new.xml" {
+		t.Errorf("backupDiff requested path = %q", gotPath)
+	}
+}
+
+func TestProbeOneParameterizedBackupDiffSkip(t *testing.T) {
+	var bareHit bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/core/backup/backups/this", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[{"id":"config-only.xml"}]}`))
+	})
+	mux.HandleFunc("/api/core/backup/diff", func(w http.ResponseWriter, r *http.Request) {
+		bareHit = true
+		http.NotFound(w, r)
+	})
+	p := newTestProber(t, mux)
+	s := opnsense.EndpointSchema{Endpoint: "backupDiff", Method: "GET", Path: "api/core/backup/diff", TopLevelKind: opnsense.KindObject}
+	res := p.probeOne(s, opnsense.SchemaExemption{})
+	if !res.SkippedParam || res.ProbeErr != "" {
+		t.Errorf("expected SkippedParam for backupDiff, got %+v", res)
+	}
+	if bareHit {
+		t.Error("the bare backupDiff route must never be requested")
+	}
+}
+
 // captivePortalVouchers has two positional path segments (provider, group),
 // each resolved from a prior live GET — unlike smartInfo/ipsecPhase2, which
 // resolve one POST-body parameter.

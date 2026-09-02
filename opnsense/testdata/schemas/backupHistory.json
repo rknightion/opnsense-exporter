@@ -16,11 +16,23 @@
       "kind": "object"
     },
     {
+      "path": "items[].description",
+      "kind": "any"
+    },
+    {
       "path": "items[].filesize",
       "kind": "any"
     },
     {
+      "path": "items[].id",
+      "kind": "any"
+    },
+    {
       "path": "items[].time",
+      "kind": "any"
+    },
+    {
+      "path": "items[].username",
       "kind": "any"
     }
   ]

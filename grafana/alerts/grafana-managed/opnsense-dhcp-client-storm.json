@@ -26,7 +26,7 @@
       "description": "dhclient has been retransmitting DHCPREQUEST far above its normal cadence for 30m. A healthy WAN renews on the order of once per lease period; a sustained retransmit rate means renewals are not being answered, and is a leading indicator of losing the address hours before it happens.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcpclientrequeststorm",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "316"
+      "__panelId__": "318"
     },
     "expressions": {
       "A": {

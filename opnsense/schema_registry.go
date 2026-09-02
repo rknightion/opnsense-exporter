@@ -252,6 +252,7 @@ var schemaRegistry = map[EndpointName]any{
 	"authGroups":           authGroupSearchResponse{},
 	"authUsers":            authUserSearchResponse{},
 	"backupHistory":        configBackupResponse{},
+	"backupDiff":           configBackupDiffResponse{},
 	// bpf-entry is a json.RawMessage because decodeBPFEntries also accepts a
 	// bare object, but the array is the only shape the wire can actually take:
 	// configd's `interface show bpf` is `netstat -B --libxo json`, and FreeBSD's

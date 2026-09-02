@@ -49,8 +49,11 @@ type ListenerConfig struct {
 	// records — so this is the only access control that exists. Leaving it empty is
 	// a deliberate choice to trust the network, not a default to drift into.
 	AllowedPeers []netip.Prefix
-	Workers      int
-	QueueSize    int
+	// Workers and QueueSize control the bounded decoder pool. Zero selects the
+	// built-in defaults; NewListener also falls back for negative values as a
+	// defensive boundary, while the options layer rejects negative flag values.
+	Workers   int
+	QueueSize int
 
 	// Capture and CaptureMode are the opt-in debug capture (#360). Capture is where
 	// datagrams are written; CaptureMode decides which ones. Both must be set for

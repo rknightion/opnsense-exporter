@@ -389,6 +389,31 @@
           "builtIn": false,
           "enable": true,
           "hide": false,
+          "iconColor": "blue",
+          "name": "Config revision diff",
+          "placement": "inControlsMenu",
+          "legacyOptions": {
+            "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_source=\"configchange\"}",
+            "titleFormat": "Configuration revision diff",
+            "tagKeys": "service_instance_id,uri"
+          },
+          "query": {
+            "datasource": {
+              "name": "${loki_datasource}"
+            },
+            "group": "loki",
+            "kind": "DataQuery",
+            "spec": {},
+            "version": "v0"
+          }
+        }
+      },
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "builtIn": false,
+          "enable": true,
+          "hide": false,
           "iconColor": "red",
           "name": "Gateway alarm",
           "placement": "inControlsMenu",

@@ -89,10 +89,14 @@ type fakeDecoder struct {
 	seen    [][]byte
 	peers   []netip.Addr
 	err     error
+	started chan struct{} // one signal per Decode invocation, when non-nil
 	blockOn chan struct{} // when non-nil, every Decode waits on it
 }
 
 func (f *fakeDecoder) Decode(payload []byte, exporter netip.Addr, _ time.Time) (*Datagram, error) {
+	if f.started != nil {
+		f.started <- struct{}{}
+	}
 	if f.blockOn != nil {
 		<-f.blockOn
 	}
@@ -111,6 +115,67 @@ func (f *fakeDecoder) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.seen)
+}
+
+func TestNewListener_UsesDefaultWorkerAndQueueSizing(t *testing.T) {
+	l := NewListener(ListenerConfig{}, &fakeDecoder{}, nil, nil)
+
+	if l.cfg.Workers != defaultWorkers {
+		t.Fatalf("default worker count = %d, want %d", l.cfg.Workers, defaultWorkers)
+	}
+	if got := cap(l.work); got != defaultQueueSize {
+		t.Fatalf("default queue depth = %d, want %d", got, defaultQueueSize)
+	}
+}
+
+func TestNewListener_UsesConfiguredWorkerAndQueueSizing(t *testing.T) {
+	const (
+		workers  = 2
+		queueCap = 7
+	)
+	l := NewListener(ListenerConfig{Workers: workers, QueueSize: queueCap}, &fakeDecoder{}, nil, nil)
+
+	if l.cfg.Workers != workers {
+		t.Fatalf("configured worker count = %d, want %d", l.cfg.Workers, workers)
+	}
+	if got := cap(l.work); got != queueCap {
+		t.Fatalf("configured queue depth = %d, want %d", got, queueCap)
+	}
+}
+
+func TestListener_ConfiguredWorkersDecodeConcurrently(t *testing.T) {
+	const workers = 2
+	release := make(chan struct{})
+	started := make(chan struct{}, workers)
+	dec := &fakeDecoder{started: started, blockOn: release}
+	l := newTestListener(t, ListenerConfig{Workers: workers, QueueSize: workers}, dec,
+		func(*Datagram, netip.Addr) {})
+
+	for range workers {
+		send(t, l.Addr(), []byte("concurrent"))
+	}
+	waitFor(t, "configured datagrams read", func() bool { return l.Stats().Datagrams == workers })
+	for range workers {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			close(release)
+			t.Fatal("configured workers did not enter Decode concurrently")
+		}
+	}
+	close(release)
+	waitFor(t, "configured datagrams decoded", func() bool { return dec.count() == workers })
+}
+
+func TestNewListener_InvalidSizingFallsBackToSafeDefaults(t *testing.T) {
+	l := NewListener(ListenerConfig{Workers: -1, QueueSize: -1}, &fakeDecoder{}, nil, nil)
+
+	if l.cfg.Workers != defaultWorkers {
+		t.Fatalf("invalid worker count = %d, want safe default %d", l.cfg.Workers, defaultWorkers)
+	}
+	if got := cap(l.work); got != defaultQueueSize {
+		t.Fatalf("invalid queue depth = %d, want safe default %d", got, defaultQueueSize)
+	}
 }
 
 func newTestListener(t *testing.T, cfg ListenerConfig, dec decoder, handle func(*Datagram, netip.Addr)) *Listener {

@@ -1,9 +1,10 @@
 {
   "metrics": 1048,
-  "panels": 926,
-  "tabs": 56,
+  "panels": 928,
+  "tabs": 57,
   "tab_names": [
     "Overview",
+    "Config",
     "System & Resources",
     "Memory & Storage",
     "Firmware & Backup",
@@ -60,9 +61,10 @@
     "Exporter Runtime",
     "Recording rules"
   ],
-  "top_level_tabs": 6,
+  "top_level_tabs": 7,
   "top_level_tab_names": [
     "Overview",
+    "Config",
     "System",
     "Network",
     "Security",
@@ -73,10 +75,11 @@
     {
       "uid": "opnsense-exporter",
       "title": "opnsense2otel",
-      "panels": 821,
-      "tabs": 48,
+      "panels": 823,
+      "tabs": 49,
       "tab_names": [
         "Overview",
+        "Config",
         "System & Resources",
         "Memory & Storage",
         "Firmware & Backup",

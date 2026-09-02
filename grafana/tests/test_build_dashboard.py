@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -13,6 +15,7 @@ from builder import Builder  # noqa: E402
 
 TOP_LEVEL_TITLES = [
     "Overview",
+    "Config",
     "System",
     "Network",
     "Security",
@@ -22,6 +25,7 @@ TOP_LEVEL_TITLES = [
 
 LEAF_TITLES = {
     "Overview",
+    "Config",
     "System & Resources",
     "Memory & Storage",
     "Firmware & Backup",
@@ -200,6 +204,32 @@ class DashboardHierarchyTest(unittest.TestCase):
                     [item["spec"]["variable"] for item in condition["items"]],
                     variables,
                 )
+
+
+class GeneratorOrderTest(unittest.TestCase):
+    """A fresh catalogue metric and its matching panel must build together."""
+
+    def test_gen_refreshes_catalogue_before_dashboard_and_stats_after(self):
+        just = shutil.which("just")
+        if just is None:
+            # CI and `just grafana-test` always reach this test through just
+            # itself, so the gate cannot silently skip where it matters. This
+            # only spares a developer running pytest directly.
+            self.skipTest("just is not on PATH")
+        result = subprocess.run(  # noqa: S603 - resolved absolute path, fixed argument vector
+            [just, "--dry-run", "gen"],
+            cwd=GRAFANA_DIR.parent,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(
+            (result.stdout + result.stderr).splitlines(),
+            ["just docs", "just dashboard", "just rules", "just docs", "just schemas"],
+            "just gen must refresh the catalogue before dashboard coverage and rerun "
+            "docs after dashboard/rule stats are generated",
+        )
 
 
 class OverviewSemanticsTest(unittest.TestCase):

@@ -1,0 +1,19 @@
+{
+  "endpoint": "backupDiff",
+  "method": "GET",
+  "path": "api/core/backup/diff",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "items"
+  ],
+  "fields": [
+    {
+      "path": "items",
+      "kind": "array"
+    },
+    {
+      "path": "items[]",
+      "kind": "string"
+    }
+  ]
+}

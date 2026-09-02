@@ -1263,8 +1263,30 @@
     ]
   },
   "loki": {
-    "total": 7,
+    "total": 9,
     "sentinels": [
+      {
+        "name": "has_config_snapshot_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"configstate\", opnsense_subsystem=\"config\"}, opnsense_source)",
+        "gates": [
+          "opnsense2otel > Config",
+          "opnsense2otel > Config > Firewall & NAT"
+        ]
+      },
+      {
+        "name": "has_configchange_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"configchange\"}, opnsense_source)",
+        "gates": [
+          "opnsense2otel > Security > Authentication & Audit",
+          "opnsense2otel > Security > Authentication & Audit > Configuration Revision Diffs"
+        ]
+      },
       {
         "name": "has_crowdsec_logs",
         "datasource": "loki",

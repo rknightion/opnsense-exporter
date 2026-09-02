@@ -294,6 +294,18 @@ ANNOTATIONS: list = [
             "body names the admin and their source address, which is why neither is a tag.",
     ),
     Annotation(
+        name="Config revision diff",
+        group="loki",
+        title="Configuration revision diff",
+        expr=loki_sel('opnsense_source="configchange"'),
+        color="blue",
+        tag_keys=("service_instance_id", "uri"),
+        why="Marks the retained configuration revision itself and links the graph step "
+            "to its API route while the record body carries the unified diff. User and "
+            "revision stay in structured metadata rather than annotation tags to avoid "
+            "putting operator identity or an unbounded revision key on every marker.",
+    ),
+    Annotation(
         name="Gateway alarm",
         group="loki",
         title="Gateway alarm",

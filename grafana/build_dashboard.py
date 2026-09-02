@@ -211,7 +211,7 @@ TAB_GROUPS = [
     # as a special case inside organize_tabs is what lets the health dashboard —
     # three tabs, no useful domain layer — reuse the same function and the same
     # strict leaf-assignment check (#431 step 3).
-    (None, ("Overview",)),
+    (None, ("Overview", "Config")),
     # Seven leaves were split into siblings in #619 — each split leaf is listed
     # immediately after its parent, so the leaf bar reads as related pairs. Sibling
     # leaves rather than a fourth grouping level: nesting a leaf's layout as another
@@ -281,6 +281,7 @@ HEALTH_TAB_GROUPS = [
 # tab itself is conditional. Reuse each module's presence variables here; lists
 # form an OR group for features with multiple implementations or datasources.
 OPTIONAL_TAB_PRESENCE = {
+    "Config": "has_config_snapshot_logs",
     "Aliases": "has_alias",
     "DNS - Unbound": "has_unbound",
     # A leaf split off an optional one in #619 inherits its parent's presence, and
@@ -318,7 +319,7 @@ OPTIONAL_TAB_PRESENCE = {
     "Tor": "has_tor",
     "Siproxd": "has_siproxd",
     "Authentication & Audit": ["has_log_events_sshd", "has_log_events_audit",
-                               "has_log_events_radius"],
+                               "has_configchange_logs", "has_log_events_radius"],
     "Flow Volume": "has_flow_volume",
     "Flow Pipeline": "has_flow",
     "Zenarmor": ["has_zenarmor_metrics", "has_zenarmor_logs"],
@@ -1755,11 +1756,12 @@ LOG_SOURCE_EXEMPT = {
             "a stream no record can ever carry.",
 }
 
-_GO_REGISTERS = re.compile(r"\bRegister(?:Push)?Source\(")
+_GO_REGISTERS = re.compile(r"(?m)^\s*(?:[A-Za-z_]\w*\.)?Register(?:Push)?Source\s*\(")
 _GO_NAME_FN = re.compile(r"func\s*\([^)]*\)\s*Name\(\)\s*string\s*\{\s*return\s+([^\s}]+)\s*\}")
 _GO_EXTRA_FN = re.compile(
     r"func\s*\([^)]*\)\s*ExtraSourceNames\(\)\s*\[\]string\s*\{\s*return\s+\[\]string\{([^}]*)\}")
 _GO_STRING_LIT = re.compile(r'"([a-z0-9_]+)"')
+_GO_CONST = re.compile(r'(?m)^\s*(?:const\s+)?([A-Za-z_]\w*)\s*=\s*"([a-z0-9_]+)"')
 
 
 def registered_log_sources() -> set:
@@ -1773,8 +1775,8 @@ def registered_log_sources() -> set:
     non-drifting origin.
 
     The extraction is narrow on purpose — a source registers itself with
-    `RegisterSource`/`RegisterPushSource` from an `init()` in its own file, and
-    declares its name in the same file, either as a string literal in `Name()` or via
+    `RegisterSource`/`RegisterPushSource` from an `init()` in its package, and
+    declares its name in that package, either as a string literal in `Name()` or via
     a package const. Names reached only through a `Record.Source` override come from
     the `ExtraSourceNames()` declaration the pipeline already requires for its
     per-source metric pre-initialisation (internal/logship/source.go:69-75).
@@ -1786,32 +1788,32 @@ def registered_log_sources() -> set:
     """
     names, registering = set(), []
     for root, _, files in os.walk(LOGSHIP_DIR):
+        package_files = []
         for fname in sorted(files):
             if not fname.endswith(".go") or fname.endswith("_test.go"):
                 continue
             path = os.path.join(root, fname)
             with open(path) as f:
-                text = f.read()
-            if not _GO_REGISTERS.search(text):
-                continue
-            # source.go/push.go define the Register* functions themselves; they hold
-            # no source of their own.
-            consts = dict(re.findall(r'^const\s+(\w+)\s*=\s*"([a-z0-9_]+)"', text, re.M))
-            found = set()
-            for token in _GO_NAME_FN.findall(text):
-                if token.startswith('"'):
-                    found.add(token.strip('"'))
-                elif token in consts:
-                    found.add(consts[token])
-            for literal_list in _GO_EXTRA_FN.findall(text):
-                found |= set(_GO_STRING_LIT.findall(literal_list))
-            if found:
-                registering.append(path)
-                names |= found
+                package_files.append((path, f.read()))
+        if not package_files or not any(_GO_REGISTERS.search(text) for _, text in package_files):
+            continue
+        package_text = "\n".join(text for _, text in package_files)
+        consts = dict(_GO_CONST.findall(package_text))
+        found = set()
+        for token in _GO_NAME_FN.findall(package_text):
+            if token.startswith('"'):
+                found.add(token.strip('"'))
+            elif token in consts:
+                found.add(consts[token])
+        for literal_list in _GO_EXTRA_FN.findall(package_text):
+            found |= set(_GO_STRING_LIT.findall(literal_list))
+        if found:
+            registering.append(root)
+            names |= found
     if len(registering) < 5 or len(names) < 6:
         raise RuntimeError(
             "registered_log_sources() extracted "
-            f"{sorted(names)} from {len(registering)} file(s) under {LOGSHIP_DIR}; "
+            f"{sorted(names)} from {len(registering)} package(s) under {LOGSHIP_DIR}; "
             "that is fewer than the pipeline is known to have, so the Go-side shape "
             "the regexes match has changed. FIX THE EXTRACTION — do not lower this "
             "guard, or the log-coverage gate silently becomes a no-op.")
@@ -2028,7 +2030,7 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
 # appears in exactly one list: building it onto both dashboards would produce two
 # copies of the same tab that drift independently.
 MAIN_TAB_MODULES = [
-    "system", "kernel_memory", "interfaces", "firewall", "auth_audit", "alias", "gateways",
+    "system", "config", "kernel_memory", "interfaces", "firewall", "auth_audit", "alias", "gateways",
     "dns_unbound", "dhcp", "vpn", "tailscale", "netbird", "routing", "protocols",
     "ntp", "certificates", "clamav", "services_cron", "syslog", "qfeeds", "netflow",
     "carp", "haproxy", "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",

@@ -237,6 +237,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"unboundInsecureDomains":        "api/unbound/diagnostics/listinsecure",
 		"unboundSearchQueries":          "api/unbound/overview/search_queries",
 		"backupHistory":                 "api/core/backup/backups/this",
+		"backupDiff":                    "api/core/backup/diff",
 		"snapshotsSearch":               "api/core/snapshots/search",
 		"snapshotsIsSupported":          "api/core/snapshots/is_supported",
 		"clamavVersion":                 "api/clamav/service/version",

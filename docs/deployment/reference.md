@@ -850,6 +850,14 @@ services:
       # one number instead of this record cap silently binding first at a fraction of
       # the byte budget.
       # OPN2OTEL_LOGS_BUFFER_SIZE: "65536"
+      # Ship compact per-rule firewall and NAT configuration snapshots to Loki. Off by
+      # default; requires --logs.enabled. Snapshots contain firewall policy and
+      # network-topology detail, are deduplicated by content hash, and repeat as a 6h
+      # heartbeat.
+      # OPN2OTEL_LOGS_CONFIG_SNAPSHOT_FIREWALL_ENABLED: "false"
+      # Enable config-revision diff events from OPNsense configuration history. Off by
+      # default; requires --logs.enabled and works independently of the syslog receiver.
+      # OPN2OTEL_LOGS_CONFIGCHANGE_ENABLED: "false"
       # Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and
       # ships to Loki via OTLP). Off by default. Independent of --otlp.enabled (which
       # gates metrics).
@@ -881,6 +889,9 @@ services:
       # Base interval between event polls per source (floor 5s). Sources may raise their
       # own floor.
       # OPN2OTEL_LOGS_POLL_INTERVAL: "10s"
+      # Ship the exporter's own slog records through the OTLP logs sink as well as
+      # stderr. Off by default; requires --logs.enabled and --logs.sink=otlp.
+      # OPN2OTEL_LOGS_SELF_ENABLED: "false"
       # Maximum number of resource partitions within one batch that the sink exports
       # concurrently. Each partition is a separate synchronous wire request, so a batch
       # of N partitions previously cost N sequential round-trips. 1 restores the old
@@ -942,10 +953,18 @@ services:
       # port already in use is a startup error rather than a receiver that is silently
       # never there.
       # OPN2OTEL_FLOW_NETFLOW_LISTEN: ":2055"
+      # Maximum number of NetFlow datagrams buffered between the socket reader and
+      # decoder workers. A full queue drops and counts the datagram rather than blocking
+      # the reader. 0 uses the built-in default of 1024.
+      # OPN2OTEL_FLOW_NETFLOW_QUEUE_SIZE: "1024"
       # Requested kernel receive-buffer size for the NetFlow UDP listener, in bytes. The
       # operating system may clamp this value; on Linux raise net.core.rmem_max when the
       # startup warning reports a smaller effective buffer. 0 uses the built-in default.
       # OPN2OTEL_FLOW_NETFLOW_UDP_RECEIVE_BUFFER_BYTES: "4194304"
+      # Number of concurrent NetFlow datagram decoder workers. More workers can increase
+      # decode throughput, but delivery order is not preserved. 0 uses the built-in
+      # default of 4.
+      # OPN2OTEL_FLOW_NETFLOW_WORKERS: "4"
 
       # ==========================================================================
       # Flow: rollups and correlation

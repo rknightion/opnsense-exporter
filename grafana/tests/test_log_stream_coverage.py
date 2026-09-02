@@ -27,8 +27,8 @@ never notice.
 The factory name is not always the source value. `internal/logship/flowlog` registers
 ONE push source whose `Name()` is `"flow"`, and no record it ships ever carries that
 value — every one gets an explicit `Record.Source` override of `netflow` or `merged`
-(flowlog.go:96,134 resolved through internal/flow/record.go:27-38). So 6 registered
-factories produce 7 shipped streams, and a gate keyed on `Name()` alone would be
+(flowlog.go:96,134 resolved through internal/flow/record.go:27-38). The registered
+factories can produce more shipped streams than factory names, so a gate keyed on `Name()` alone would be
 wrong twice at once: demanding a panel for a stream that cannot exist, and letting
 the two that do exist go unpanelled without complaint.
 """
@@ -50,6 +50,7 @@ LOG_SHIPPING_DOC = REPO / "docs" / "log-shipping.md"
 # decide whether the new stream needs a panel; do not simply update the set.
 EXPECTED_SOURCES = {
     "syslog", "unbound", "ids", "crowdsec", "zenarmor", "netflow", "merged",
+    "configchange", "configstate",
 }
 
 

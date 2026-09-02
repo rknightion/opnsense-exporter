@@ -33,7 +33,7 @@ const envelopeShapeKey = "<envelope>"
 // build, and so does listing a value nothing rejects with. Never add a value that
 // comes off the wire — these must stay code-defined and closed.
 var (
-	// RejectReasons: peer/oversized/conn_limit/tls_timeout/tls_auth_failed/
+	// RejectReasons: peer/oversized/queue_full/conn_limit/tls_timeout/tls_auth_failed/
 	// tls_deadline_error are the listener's (listener.go), filtered is the
 	// program/severity filter and sampled is --logs.syslog.sample (source.go).
 	//
@@ -50,7 +50,7 @@ var (
 	// the handshake failing, which is a distinct (and previously invisible) failure
 	// mode from the handshake itself.
 	RejectReasons = []string{
-		"peer", "oversized", "filtered", "sampled",
+		"peer", "oversized", "queue_full", "filtered", "sampled",
 		"conn_limit", "tls_timeout", "tls_auth_failed", "tls_deadline_error",
 	}
 	// ParseStages: an unparseable line still ships with its raw bytes, so the only
@@ -213,7 +213,8 @@ func (s *source) Run(ctx context.Context, emit func(logship.Record)) error {
 	return nil
 }
 
-// handle is invoked per received line, on the listener's read goroutine.
+// handle is invoked per received line. UDP calls arrive from the listener's worker
+// pool; TCP and TLS calls arrive from their connection goroutines.
 func (s *source) handle(line []byte, peer netip.Addr) {
 	emit := s.emit
 	if emit == nil {

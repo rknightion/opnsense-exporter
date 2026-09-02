@@ -1,0 +1,242 @@
+package logship
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+)
+
+type selfLogHandlerSink struct {
+	mu      sync.Mutex
+	entries []Entry
+	err     error
+	tries   int
+}
+
+func (s *selfLogHandlerSink) Emit(_ context.Context, batch []Entry) SinkResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tries++
+	if s.err != nil {
+		return retryResult(batch, s.err)
+	}
+	s.entries = append(s.entries, batch...)
+	return ackedResult(batch)
+}
+
+func (s *selfLogHandlerSink) Shutdown(context.Context) error { return nil }
+
+func (s *selfLogHandlerSink) got() []Entry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Entry(nil), s.entries...)
+}
+
+func (s *selfLogHandlerSink) attempts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tries
+}
+
+func TestSelfLogHandlerConvertsRecordForTheOTLPPipeline(t *testing.T) {
+	var stderr slog.Handler = slog.NewTextHandler(io.Discard, nil)
+	h := NewSelfLogHandler(stderr)
+	var got []Entry
+	h.Bind(func(e Entry) bool {
+		got = append(got, e)
+		return true
+	})
+
+	log := slog.New(h).With("component", "test")
+	log.Warn("sink is unhealthy", "attempt", 2, "when", time.Unix(42, 123).UTC())
+
+	if len(got) != 1 {
+		t.Fatalf("got %d self-log entries, want 1", len(got))
+	}
+	e := got[0]
+	if e.Source != SelfLogSource {
+		t.Fatalf("source = %q, want %q", e.Source, SelfLogSource)
+	}
+	if e.Record.Timestamp.IsZero() {
+		t.Fatal("self-log timestamp is zero")
+	}
+	if e.Record.Body != "sink is unhealthy" {
+		t.Fatalf("body = %q, want sink is unhealthy", e.Record.Body)
+	}
+	if e.Record.Severity != SeverityWarn {
+		t.Fatalf("severity = %v, want warn", e.Record.Severity)
+	}
+	if got := e.Record.Attributes[AttrSubsystem]; got != SelfLogSubsystem {
+		t.Fatalf("subsystem = %q, want %q", got, SelfLogSubsystem)
+	}
+	if got := e.Record.Attributes["component"]; got != "test" {
+		t.Fatalf("component = %q, want test", got)
+	}
+	if got := e.Record.Attributes["attempt"]; got != "2" {
+		t.Fatalf("attempt = %q, want 2", got)
+	}
+	if got := e.Record.Attributes["when"]; got == "" {
+		t.Fatal("time attribute was lost")
+	}
+}
+
+func TestSelfLogHandlerPreservesGroupsAndRecordAttributePrecedence(t *testing.T) {
+	h := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	var got []Entry
+	h.Bind(func(e Entry) bool {
+		got = append(got, e)
+		return true
+	})
+
+	slog.New(h).
+		With("component", "bound", "top", "bound").
+		WithGroup("request").
+		With("bound", "group-bound").
+		Info("handled", "component", "record", "top", "record", "id", 42)
+
+	if len(got) != 1 {
+		t.Fatalf("got %d self-log entries, want 1", len(got))
+	}
+	attrs := got[0].Record.Attributes
+	for key, want := range map[string]string{
+		"component":         "bound",
+		"top":               "bound",
+		"request.bound":     "group-bound",
+		"request.component": "record",
+		"request.top":       "record",
+		"request.id":        "42",
+	} {
+		if got := attrs[key]; got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestSelfLogHandlerUsesTheExistingOTLPSinkResource(t *testing.T) {
+	exp := &fakeExporter{}
+	sink := newTestSink(exp)
+	h := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	h.Bind(func(e Entry) bool {
+		res := sink.Emit(context.Background(), []Entry{e})
+		return len(res.Acked) == 1
+	})
+
+	slog.New(h).Error("collector failed", "endpoint", "healthCheck")
+	records := exp.exported()
+	if len(records) != 1 {
+		t.Fatalf("exported %d records, want 1", len(records))
+	}
+	attrs := resourceAttrs(records[0])
+	for key, want := range map[string]string{
+		"service.name":        "opnsense2otel",
+		"service.version":     "v1.2.3",
+		"service.instance.id": "opnsense",
+		attrSource:            SelfLogSource,
+		AttrSubsystem:         SelfLogSubsystem,
+	} {
+		if got := attrs[key]; got != want {
+			t.Errorf("resource %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// TestSelfLogHandlerDeliversConcurrentRecords pins the property a shared
+// re-entrancy flag used to break: the exporter logs from many goroutines at
+// once (65 collector pollers plus the push receivers), and a record emitted
+// while another goroutine is inside the enqueue callback must still be
+// delivered. A process-wide "forwarding" boolean cannot tell re-entry from
+// concurrency, so it dropped those records silently and without accounting.
+//
+// The callback parks every submission at a barrier until all of them have
+// arrived, which makes the overlap deterministic rather than a race the test
+// might lose: under the old shared guard only the first submission reached the
+// callback at all, so the barrier times out and the count assertion fails.
+func TestSelfLogHandlerDeliversConcurrentRecords(t *testing.T) {
+	const goroutines = 8
+
+	var mu sync.Mutex
+	var arrived int
+	var delivered int
+	barrier := make(chan struct{})
+
+	h := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	h.Bind(func(Entry) bool {
+		mu.Lock()
+		arrived++
+		if arrived == goroutines {
+			close(barrier)
+		}
+		mu.Unlock()
+
+		select {
+		case <-barrier:
+		case <-time.After(2 * time.Second):
+		}
+
+		mu.Lock()
+		delivered++
+		mu.Unlock()
+		return true
+	})
+	logger := slog.New(h)
+
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			logger.Error("concurrent self log", "goroutine", id)
+		}(i)
+	}
+	wg.Wait()
+
+	mu.Lock()
+	got := delivered
+	mu.Unlock()
+	if got != goroutines {
+		t.Fatalf("self-log callback received %d records, want %d", got, goroutines)
+	}
+}
+
+func TestSelfLogDiagnosticLoggerCannotReenterSink(t *testing.T) {
+	var calls int
+	h := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	h.Bind(func(Entry) bool {
+		calls++
+		return true
+	})
+
+	h.DiagnosticLogger().Error("sink export failed", "err", errors.New("endpoint down"))
+
+	if calls != 0 {
+		t.Fatalf("diagnostic logger entered self-log callback %d times, want 0", calls)
+	}
+}
+
+func TestStartRejectsSelfLogsWithStdout(t *testing.T) {
+	withRegistry(t)
+	cfg := &options.LogsConfig{
+		Sink:         "stdout",
+		PollInterval: 5 * time.Second,
+		BufferSize:   1,
+		BatchMax:     1,
+	}
+	_, err := Start(
+		context.Background(), cfg, nil, Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))},
+		"v", "instance", prometheus.NewRegistry(), NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err == nil {
+		t.Fatal("Start accepted self-log forwarding with stdout sink")
+	}
+	if !strings.Contains(err.Error(), "--logs.sink=otlp") {
+		t.Fatalf("Start error = %v, want sink dependency", err)
+	}
+}

@@ -75,6 +75,18 @@ after the upgrade is an ACL grant issue; no exporter compatibility switch is nee
 [security matrix](security.md#generated-collector-to-acl-matrix) records the same
 cross-release difference for `authGroups`.
 
+### Unbound query-log blocklist identity
+
+The opt-in Unbound query-log source also spans two response shapes. Legacy
+`search_queries` rows carry the backend blocklist short code, so the exporter
+ships it as `blocklist` in the JSON body and Loki structured metadata. OPNsense
+26.7 adds `category` and replaces that code with a configured display value; the
+original code is not present and cannot be recovered. For that shape the
+exporter omits `blocklist` from both places rather than inventing a stable-looking
+display-valued identity. Downstream consumers must allow this attribute to be
+absent on 26.7; use the [Unbound log-shipping contract](log-shipping.md#unbound-per-query-dns-log)
+for the record-level details.
+
 Several other fields disappeared from OPNsense payloads in the same window without any metric
 impact, because the exporter never exposed them: the mbuf pool's `mbuf-max`, `percentage` and
 `mbuf-and-cluster` keys, and the per-counter `rate` values in the pf state-table and

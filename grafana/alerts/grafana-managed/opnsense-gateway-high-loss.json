@@ -26,7 +26,7 @@
       "description": "Gateway {{ $labels.name }} packet loss > 20% for 10m (current {{ $values.A.Value | printf \"%.1f\" }}%).",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensegatewayhighloss",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "221"
+      "__panelId__": "223"
     },
     "expressions": {
       "A": {
