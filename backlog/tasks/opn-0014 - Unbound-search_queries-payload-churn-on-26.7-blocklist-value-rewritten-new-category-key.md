@@ -3,11 +3,11 @@ id: OPN-0014
 title: >-
   Unbound search_queries payload churn on 26.7: blocklist value rewritten, new
   category key
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-09-02 07:01'
+updated_date: '2026-09-02 15:53'
 labels: []
 milestone: m-0
 dependencies: []
@@ -24,14 +24,14 @@ Upstream `Unbound/Api/OverviewController.php` (26.7 series) now always overwrite
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Confirmed whether any shipped label/attribute carries the raw blocklist value; if so it stays stable across generations
+- [x] #1 Confirmed whether any shipped label/attribute carries the raw blocklist value; if so it stays stable across generations
 - [x] #2 category pre-classified in canary exemptions so the daily canary stays quiet
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -48,6 +48,8 @@ Wave 2 L10: complete the stable Unbound response-generation contract together wi
 Source inspection proves no Prometheus label carries blocklist, but the Unbound log source ships the API row blocklist value in its JSON body and Loki structured metadata. OPNsense 26.7 rewrites that value to the configured display value, so AC1 is not satisfied by the current pass-through contract. Added the narrow rows[].category knownExtraPaths opportunity exemption and validated both known-extra-path tests, just schemas, and just check. CodeRabbit was skipped because the landed repository change is a declarative JSON compatibility ledger plus tracker records. Follow-up OPN-0055 owns the stable identity contract.
 
 Wave 2 implemented payload-shape detection using exact `category` key presence rather than lexical value inference; focused tests, schema checks, full indexed `just check`, and L13 review passed. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Preserved in `codex/wip-wave2-coderabbit-blocked.patch`; resume by applying it, rerunning the gate, and obtaining a completed CodeRabbit review.
+
+Landed on main in `a482f637`. AC1 confirmed: no Prometheus label or attribute carries the raw blocklist value. Exact `category` presence, not a version sniff, distinguishes the 26.7 response generation from the legacy one. The declarative canary exemption from the earlier partial close remains valid. AC1 was coupled to the OPN-0055 implementation, which landed in the same commit.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

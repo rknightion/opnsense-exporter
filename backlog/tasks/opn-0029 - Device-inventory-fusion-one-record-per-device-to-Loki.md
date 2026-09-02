@@ -1,10 +1,10 @@
 ---
 id: OPN-0029
 title: 'Device inventory fusion: one record per device to Loki'
-status: Parked
+status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 07:02'
+updated_date: '2026-09-02 15:54'
 labels: []
 milestone: m-1
 dependencies:
@@ -37,4 +37,6 @@ Fuse ARP + NDP + DHCP leases + hostdiscovery + lldpd (all already fetched; `inte
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 2 did not start this dependent because OPN-0028 could not land through the required CodeRabbit gate. Resume only after applying `codex/wip-wave2-coderabbit-blocked.patch`, obtaining a completed review, landing OPN-0028, and confirming its frozen configstate record and flag contract.
+
+Unblocked 2026-09-02: the OPN-0028 configstate framework and its frozen record/flag contract landed on main in `a482f637`. This task was parked only on that dependency.
 <!-- SECTION:NOTES:END -->

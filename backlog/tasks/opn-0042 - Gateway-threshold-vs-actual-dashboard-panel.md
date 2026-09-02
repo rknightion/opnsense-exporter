@@ -1,10 +1,10 @@
 ---
 id: OPN-0042
 title: Gateway threshold-vs-actual dashboard panel
-status: Parked
+status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
-updated_date: '2026-09-02 07:02'
+updated_date: '2026-09-02 15:54'
 labels: []
 milestone: m-4
 dependencies:
@@ -35,4 +35,6 @@ No panel shows gateway loss/RTT against the alert's own thresholds (`grafana/ale
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 2 did not start dashboard-module work because OPN-0056 could not land through the required CodeRabbit gate. Resume after applying the preserved patch, obtaining a completed review, and landing OPN-0056 first; edit `grafana/tabs/` modules and regenerate JSON through `just dashboard`.
+
+Unblocked 2026-09-02: OPN-0056 landed on main in `a482f637`. Edit `grafana/tabs/` modules only and regenerate JSON through `just dashboard`; never hand-edit `dashboard.json`.
 <!-- SECTION:NOTES:END -->

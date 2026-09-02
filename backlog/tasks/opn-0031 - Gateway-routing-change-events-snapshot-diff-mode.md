@@ -1,10 +1,10 @@
 ---
 id: OPN-0031
 title: Gateway/routing change events (snapshot diff mode)
-status: Parked
+status: To Do
 assignee: []
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 07:02'
+updated_date: '2026-09-02 15:54'
 labels: []
 milestone: m-1
 dependencies:
@@ -35,4 +35,6 @@ Diff successive `routingTable`/`gatewaysStatus` snapshots to emit default-route-
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 2 did not start this dependent because OPN-0028 could not land through the required CodeRabbit gate. Resume only after applying `codex/wip-wave2-coderabbit-blocked.patch`, obtaining a completed review, landing OPN-0028, and confirming its frozen configstate record and flag contract.
+
+Unblocked 2026-09-02: OPN-0028 landed on main in `a482f637`, so its state and cursor contract is now available. This task was parked only on that dependency.
 <!-- SECTION:NOTES:END -->

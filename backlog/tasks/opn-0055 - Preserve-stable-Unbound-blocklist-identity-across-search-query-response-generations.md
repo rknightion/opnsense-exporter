@@ -3,11 +3,11 @@ id: OPN-0055
 title: >-
   Preserve stable Unbound blocklist identity across search-query response
   generations
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-02 02:13'
-updated_date: '2026-09-02 07:01'
+updated_date: '2026-09-02 15:53'
 labels:
   - needs-triage
 dependencies: []
@@ -24,15 +24,15 @@ The Unbound search-query log source ships the API row blocklist value as a JSON 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Search-query records expose a stable blocklist identity across the legacy short-code response and the 26.7 display-value response, or explicitly omit the unstable identity when it cannot be recovered
-- [ ] #2 Regression coverage pins both supported response generations and the chosen log-record attribute contract
-- [ ] #3 Documentation names any compatibility limitation that downstream Loki consumers must account for
+- [x] #1 Search-query records expose a stable blocklist identity across the legacy short-code response and the 26.7 display-value response, or explicitly omit the unstable identity when it cannot be recovered
+- [x] #2 Regression coverage pins both supported response generations and the chosen log-record attribute contract
+- [x] #3 Documentation names any compatibility limitation that downstream Loki consumers must account for
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -47,4 +47,6 @@ Wave 2 L10: implement the frozen omit-when-unrecoverable blocklist identity cont
 Decision, Rob 2026-09-02: take AC1's second branch - explicitly OMIT the blocklist identity when the legacy short code cannot be recovered, and document the limitation. Do not introduce a new display-valued attribute: inventing a stable-looking identity the 26.7 response does not guarantee is recurring defect class 1 (modelling a payload shape upstream cannot produce), and downstream would consume it as though it were stable.
 
 Wave 2 implemented frozen D6: legacy short-code identity is retained, while 26.7 rows proven by `category` presence omit unrecoverable blocklist identity from body and metadata. Focused tests, full indexed `just check`, and L13 review passed. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Preserved in `codex/wip-wave2-coderabbit-blocked.patch`; resume by applying it, rerunning the gate, and obtaining a completed CodeRabbit review.
+
+Landed on main in `a482f637`. Legacy short-code identity is retained. Rows proven 26.7-shaped by exact `category` presence omit the unrecoverable identity from both the JSON body and the structured metadata rather than inventing a substitute, per frozen decision D6. Regression coverage pins both supported response generations. `docs/compatibility.md` names the limitation downstream Loki consumers must account for.
 <!-- SECTION:NOTES:END -->

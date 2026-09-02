@@ -3,10 +3,10 @@ id: OPN-0043
 title: >-
   Dashboard polish: cert-expiry colour thresholds + DHCP leases-nearing-expiry
   view
-status: Parked
+status: To Do
 assignee: []
 created_date: '2026-08-30 09:10'
-updated_date: '2026-09-02 07:02'
+updated_date: '2026-09-02 15:54'
 labels: []
 milestone: m-4
 dependencies: []
@@ -36,4 +36,6 @@ Colour thresholds on Certificate Expiry days-left (`grafana/tabs/certificates.py
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 2 did not start this lower-priority dashboard polish because OPN-0056 could not land through the required CodeRabbit gate. Resume after OPN-0056 lands; author only in `grafana/tabs/` and regenerate the dashboard artifacts.
+
+Unblocked 2026-09-02: OPN-0056 landed on main in `a482f637`. Author the certificate colour thresholds and the DHCP leases-nearing-expiry view in the tab modules, then regenerate.
 <!-- SECTION:NOTES:END -->

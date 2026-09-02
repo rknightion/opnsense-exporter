@@ -3,11 +3,11 @@ id: OPN-0028
 title: >-
   Config-state snapshots to Loki: per-entity JSON, opt-in per family, 6h
   heartbeat
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 07:01'
+updated_date: '2026-09-02 15:53'
 labels: []
 milestone: m-1
 dependencies: []
@@ -24,16 +24,16 @@ DECIDED 2026-08-30 (Rob): every family opt-in via its own flag, default off; shi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Snapshot framework: hash-dedupe + 6h heartbeat, per-entity records with snapshot.id/seq attributes
-- [ ] #2 Each family behind its own default-off flag; identity-bearing families documented as such
-- [ ] #3 Config dashboard tab renders at least the firewall-rules family as an ordered table
-- [ ] #4 Loki line-size cap respected by construction; gates clean
+- [x] #1 Snapshot framework: hash-dedupe + 6h heartbeat, per-entity records with snapshot.id/seq attributes
+- [x] #2 Each family behind its own default-off flag; identity-bearing families documented as such
+- [x] #3 Config dashboard tab renders at least the firewall-rules family as an ordered table
+- [x] #4 Loki line-size cap respected by construction; gates clean
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -74,4 +74,12 @@ Wave 1 staged WIP implements the frozen configstate snapshot framework, options,
 Decision, Rob 2026-09-02: keep the reversible in-range batch/entity table. Do NOT reshape the backend record or the label contract to make latest-complete-batch selection expressible in dashboard-only LogQL - that is a display concern buying a permanent data-contract cost, and the current table is truthful about what it shows. Revisit only if an operator hits the ambiguity in practice.
 
 Wave 2 applied the preserved patch cleanly, retained the frozen in-range batch/entity contract, re-derived current main/dashboard/docs wiring, and fixed the L13-discovered camelCase secret-redaction gap with a failing-then-passing nested regression. Full indexed `just check` and fresh L13 review passed. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Both `codex/wip-opn-0028-config-state-snapshots.patch` and `codex/wip-wave2-coderabbit-blocked.patch` are retained. Resume by applying the combined patch, rerunning the gate, and obtaining a completed CodeRabbit review.
+
+Landed on main in `a482f637`. Snapshot framework, per-family default-off flags, ordered firewall-rules Config tab and bounded JSON all as reviewed in wave 2, including the L13 camelCase secret-redaction fix.
+
+CHANGED AT LANDING: `sensitiveConfigSnapshotKey` is now the exported `opnsense.SensitiveConfigKey`, shared with the OPN-0027 config-diff path so the two redaction vocabularies cannot drift apart again. The vocabulary also gained `passphrase`, `privkey`, `sharedkey` (which covers pre-shared-key and preshared_key), `authkey` and `credential` as substrings, plus an exact-match set for OPNsense element names too short to match safely as substrings: `prv` (the private half of a certificate), `psk` and `pass`. Over-matching is cheap here; under-matching ships a credential.
+
+Also at landing: the httptest handler in `opnsense/config_snapshot_test.go` reported an unexpected path with `t.Fatalf`, which calls `FailNow` off the test goroutine where it is undefined. It now uses `t.Errorf` and answers the request with 404.
+
+Live Loki delivery was not exercised.
 <!-- SECTION:NOTES:END -->
