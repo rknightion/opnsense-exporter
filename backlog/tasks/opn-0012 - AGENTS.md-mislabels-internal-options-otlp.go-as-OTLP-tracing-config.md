@@ -1,10 +1,11 @@
 ---
 id: OPN-0012
 title: AGENTS.md mislabels internal/options/otlp.go as OTLP-tracing config
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-02 01:29'
 labels: []
 milestone: m-0
 dependencies: []
@@ -30,3 +31,9 @@ ordinal: 110
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 1 execution: correct the sole false tracing claim in the repository architecture guide to OTLP metrics push; verify no documentation claims the exporter emits traces; run generated-doc validation and the integrated gate. This is documentation-only, so validate rather than add a test and skip CodeRabbit.
+<!-- SECTION:PLAN:END -->
