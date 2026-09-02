@@ -1,10 +1,10 @@
 ---
 id: OPN-0038
 title: DNS-domain enrichment for filterlog records
-status: To Do
+status: Parked
 assignee: []
 created_date: '2026-08-30 09:09'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-02 07:02'
 labels: []
 milestone: m-4
 dependencies: []
@@ -30,3 +30,9 @@ ordinal: 505
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 2 did not start this lane because OPN-0056 could not land through the required CodeRabbit gate. Resume after OPN-0056 lands, then explicitly bound expected DNS-domain cardinality before implementation; do not add an unbounded per-domain Loki stream label.
+<!-- SECTION:NOTES:END -->

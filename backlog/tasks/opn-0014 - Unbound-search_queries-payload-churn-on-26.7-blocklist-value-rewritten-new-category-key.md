@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-08-30 08:30'
-updated_date: '2026-09-02 02:15'
+updated_date: '2026-09-02 07:01'
 labels: []
 milestone: m-0
 dependencies: []
@@ -38,12 +38,16 @@ Upstream `Unbound/Api/OverviewController.php` (26.7 series) now always overwrite
 
 <!-- SECTION:PLAN:BEGIN -->
 Wave 1 execution: trace the unbound search_queries response through decoding and metric emission to determine whether raw blocklist is shipped; verify the 26.7 upstream category addition; add the narrow root-owned canary opportunity exemption only if it matches the response schema; run focused canary/schema checks and the integrated gate. Declarative ledger changes are validated rather than tested unless existing regression coverage has a clear extension point.
+
+Wave 2 L10: complete the stable Unbound response-generation contract together with OPN-0055 using the frozen omit-when-unrecoverable decision and regression coverage.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Source inspection proves no Prometheus label carries blocklist, but the Unbound log source ships the API row blocklist value in its JSON body and Loki structured metadata. OPNsense 26.7 rewrites that value to the configured display value, so AC1 is not satisfied by the current pass-through contract. Added the narrow rows[].category knownExtraPaths opportunity exemption and validated both known-extra-path tests, just schemas, and just check. CodeRabbit was skipped because the landed repository change is a declarative JSON compatibility ledger plus tracker records. Follow-up OPN-0055 owns the stable identity contract.
+
+Wave 2 implemented payload-shape detection using exact `category` key presence rather than lexical value inference; focused tests, schema checks, full indexed `just check`, and L13 review passed. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Preserved in `codex/wip-wave2-coderabbit-blocked.patch`; resume by applying it, rerunning the gate, and obtaining a completed CodeRabbit review.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -1,10 +1,10 @@
 ---
 id: OPN-0044
 title: Deep-link hot firewall rules to the OPNsense UI from dashboard tables
-status: To Do
+status: Parked
 assignee: []
 created_date: '2026-08-30 09:10'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-02 07:02'
 labels: []
 milestone: m-4
 dependencies: []
@@ -29,3 +29,9 @@ From the top-20 firewall rule tables (`grafana/tabs/firewall.py:310-379`), link 
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 2 did not start this lower-priority dashboard polish because OPN-0056 could not land through the required CodeRabbit gate. Resume after OPN-0056 lands; author only in `grafana/tabs/` and regenerate the dashboard artifacts.
+<!-- SECTION:NOTES:END -->

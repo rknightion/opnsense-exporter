@@ -5,7 +5,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 07:01'
 labels:
   - first-wave
 milestone: m-0
@@ -39,10 +39,14 @@ Top-ranked candidate of the 2026-08-30 research (all three lanes). Trigger off t
 
 <!-- SECTION:PLAN:BEGIN -->
 Wave 1 plan: map the existing backup-history and OTLP source seams; write failing tests for exactly-once revision emission, unescaping, truncation and cursor restart semantics; implement the config-change source within the lane-owned files; return exact root wiring/dashboard edits and run focused tests.
+
+Wave 2 L2: apply the preserved per-lane patch, review it against current acceptance criteria and moved main, rerun focused tests, then return root-owned wiring needed for integration.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP implements config revision diff events with persisted cursor semantics, bounded/unescaped bodies, dashboard annotations, and context-cancellable fetches; focused tests and integrated just check passed. Post-correction L14 rechecked cancellation and found no remaining issue. Not landed because CodeRabbit failed twice before analysis. Resume: obtain a complete CodeRabbit review, fix critical/major findings, commit this task explicitly, integrate current origin/main, rerun just check, push, verify exact-SHA CI, then prove Loki delivery against a deployed instance.
+
+Wave 2 applied the preserved patch cleanly, fixed endpoint-label cardinality, re-derived current endpoint/schema/ACL/canary/dashboard/docs wiring, and passed focused tests plus the full indexed `just check`. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Both `codex/wip-opn-0027-config-revision-events.patch` and the reviewed combined `codex/wip-wave2-coderabbit-blocked.patch` are retained. Resume by applying the combined patch, rerunning the gate, and obtaining a completed CodeRabbit review.
 <!-- SECTION:NOTES:END -->

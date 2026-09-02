@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 05:17'
+updated_date: '2026-09-02 07:01'
 labels: []
 milestone: m-1
 dependencies: []
@@ -62,6 +62,8 @@ Dedupe/heartbeat contract: canonicalise each family as the stable entity-id-orde
 Line bound: encoded Body must be <=196608 bytes. If a family entity would exceed that bound, emit one valid v1 envelope for that entity with entity=null, truncated=true, original_bytes and content_sha256 fields, plus snapshot.truncated=true metadata. Never byte-slice JSON and never create a second stream label. Family implementations should split naturally repeated data into stable entities before this fallback.
 
 Reachability: the Config dashboard queries {opnsense_source="configstate",opnsense_subsystem="config"} | json and orders the firewall table by snapshot.seq. Framework tests must prove changed/unchanged/6h heartbeat behavior, persistence round-trip, stable ordering, shared snapshot id, 1..N sequence, valid bounded JSON and the oversize fallback.
+
+Wave 2 L3: apply the preserved per-lane patch, review the frozen config-state contract against current main, rerun focused tests, then return root-owned wiring needed for integration.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,4 +72,6 @@ Reachability: the Config dashboard queries {opnsense_source="configstate",opnsen
 Wave 1 staged WIP implements the frozen configstate snapshot framework, options, firewall family, persistence/dedupe/heartbeat/bounds, and Config dashboard reachability. Focused tests, Grafana coverage, and integrated just check passed; L14 found no remaining issue. The dashboard table deliberately shows distinct in-range batch/entity rows because current opaque batch IDs and labels cannot select only the dynamically latest batch in LogQL. Not landed because CodeRabbit failed twice before analysis. Resume: obtain a complete review, commit explicitly, integrate current origin/main, rerun gates, push, verify exact-SHA CI, then decide whether latest-batch-only selection warrants a backend or label-contract change.
 
 Decision, Rob 2026-09-02: keep the reversible in-range batch/entity table. Do NOT reshape the backend record or the label contract to make latest-complete-batch selection expressible in dashboard-only LogQL - that is a display concern buying a permanent data-contract cost, and the current table is truthful about what it shows. Revisit only if an operator hits the ambiguity in practice.
+
+Wave 2 applied the preserved patch cleanly, retained the frozen in-range batch/entity contract, re-derived current main/dashboard/docs wiring, and fixed the L13-discovered camelCase secret-redaction gap with a failing-then-passing nested regression. Full indexed `just check` and fresh L13 review passed. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Both `codex/wip-opn-0028-config-state-snapshots.patch` and `codex/wip-wave2-coderabbit-blocked.patch` are retained. Resume by applying the combined patch, rerunning the gate, and obtaining a completed CodeRabbit review.
 <!-- SECTION:NOTES:END -->

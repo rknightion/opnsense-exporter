@@ -1,10 +1,11 @@
 ---
 id: OPN-0056
 title: Correct `just gen` dependency order for new catalogue metrics
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-09-02 03:37'
-updated_date: '2026-09-02 05:18'
+updated_date: '2026-09-02 07:01'
 labels:
   - needs-triage
 dependencies: []
@@ -32,8 +33,16 @@ The aggregate generator currently runs dashboard generation before documentation
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 2 L1: inspect the aggregate generator dependency graph, add regression coverage for a fresh catalogue metric plus dashboard panel, correct the dependency order, and run focused justfile validation.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Decision, Rob 2026-09-02: fix this BEFORE the next metric-bearing task. It already cost wave 1 a detour on OPN-0034, and every collector in the M3/M4 train adds catalogue metrics, so the train would hit it repeatedly.
+
+Wave 2 implementation and regression are complete and `just gen` plus the full indexed `just check` passed. Landing is blocked solely by the hard CodeRabbit gate: both permitted reviews failed during connection with `WebSocket closed` and emitted no complete event. Preserved in `codex/wip-wave2-coderabbit-blocked.patch`. Resume by applying that patch on current main, rerunning `just check`, obtaining one completed CodeRabbit review, then commit OPN-0056 first.
 <!-- SECTION:NOTES:END -->

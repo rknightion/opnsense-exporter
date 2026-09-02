@@ -5,7 +5,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-01 23:42'
+updated_date: '2026-09-02 07:01'
 labels:
   - first-wave
 milestone: m-0
@@ -37,10 +37,14 @@ ordinal: 105
 
 <!-- SECTION:PLAN:BEGIN -->
 Wave 1 plan: benchmark the current UDP listener with the existing harness, add a failing overload test, introduce a bounded datagram queue and workers with counted drops, document ordering semantics, and report before/after from the same harness.
+
+Wave 2 L4: apply the preserved per-lane patch, review queue, worker, shutdown, ordering and drop-accounting semantics against current main, then rerun focused concurrency tests.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 1 staged WIP decouples syslog UDP reads through a bounded worker queue with counted drops and shutdown coverage; targeted concurrency tests and integrated just check passed. Post-correction L14 found no remaining issue. Not landed because CodeRabbit failed before analysis twice. Resume: obtain a complete review, fix critical/major findings, commit explicitly, integrate current origin/main, rerun just check, push, verify exact-SHA CI, then run sustained live UDP overload if operational throughput proof is required.
+
+Wave 2 applied the preserved worker-pool patch cleanly and passed focused race tests plus the full indexed `just check`; L13 found no lifecycle or shutdown defect. Landing is blocked solely by two CodeRabbit connection failures with no complete event. Both `codex/wip-opn-0035-syslog-worker-pool.patch` and `codex/wip-wave2-coderabbit-blocked.patch` are retained. Resume by applying the combined patch, rerunning the gate, and obtaining a completed CodeRabbit review.
 <!-- SECTION:NOTES:END -->
