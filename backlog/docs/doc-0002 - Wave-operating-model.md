@@ -3,7 +3,7 @@ id: doc-0002
 title: Wave operating model
 type: guide
 created_date: '2026-08-14 14:04'
-updated_date: '2026-09-01 21:39'
+updated_date: '2026-09-02 15:56'
 ---
 This document carries **only what is specific to opnsense2otel**. The campaign model itself — run
 modes, the routing contract, authority and the thread pool, child lane briefs, external-contract
@@ -43,7 +43,7 @@ just gen        # only if a generated artifact changed; commit the diff
 ```
 
 `just check` is the whole bare-toolchain gate and it is **not** the old five-command list. It runs
-`fmt-check lint test fuzz-smoke check-public-ips testbed-test canary-test grafana-test gen-check vuln`,
+`fmt-check lint test metric-lint fuzz-smoke check-public-ips testbed-test canary-test grafana-test gen-check vuln`,
 so the two conditional additions a lane used to have to remember — `grafana-test` when touching
 `grafana/`, `testbed-test` / `canary-test` when touching `scripts/testbed/` or `scripts/canary/` —
 are already inside it. There is nothing conditional left for a lane to add.
@@ -57,6 +57,43 @@ The heavy CI-only gates — race-detector matrix, docker build, helm-in-kind, de
 cross-compilation — are not a lane's job. `just ci` adds the subset that needs Docker or
 cross-compilation locally. Do not skip a gate by claiming it is CI-only; say the change is untested
 against it and let CI answer.
+
+### CodeRabbit: review the source, not the generated tree
+
+**A whole-wave review does not fail, it disconnects.** Past about 100 files the CLI drops the
+socket during the connect phase and emits
+`{"type":"error","errorType":"connection","message":"Connection failed: WebSocket closed"}` with no
+`complete` event. It never reaches analysis, so there is nothing to triage and nothing to retry
+usefully — a second attempt fails identically. This is not a service outage and not an auth problem:
+`coderabbit doctor` passes all nine checks while it happens, and a one-file review against the same
+service, account and repository completes normally in the same minute.
+
+Wave 2 read two of those as a hard gate failure and parked seven finished, gated, reviewed lanes.
+The whole loss was avoidable.
+
+**Split the review by what the review policy already covers.** Generated artifacts are outside the
+gate anyway — `grafana/dashboard*.json`, `grafana/sentinel-contract.json`, `grafana/runbooks.md`,
+`grafana/tabs/AUTHORING.md`, `grafana/alerts/grafana-managed/`, `opnsense/testdata/schemas/`,
+`docs/`, `README.md`. On a wave-sized change those are most of the bytes and none of the branching:
+in wave 2 they were 4,957 of 8,180 changed lines, `dashboard.json` alone 4,642. Reviewing the 48
+source files completed and found six findings, two of them major.
+
+Do it in a scratch worktree so the real checkout is never disturbed:
+
+```bash
+git worktree add -f --detach /tmp/cr-src origin/main
+cd /tmp/cr-src && git apply <the wave patch>
+# restore generated paths to base: checkout the tracked ones, rm the new ones
+git add -A && coderabbit review --agent --base main
+```
+
+If the source slice is itself too large, split it again by package. Every changed source file must
+appear in some completed review; record which review covered which files.
+
+**A slice has one cost, and it is predictable:** a finding raised against a file you excluded is a
+false positive, because the reviewer is reading a tree where that file was never updated. Wave 2's
+`log-shipping.md` source-table finding was exactly this. Check any docs- or generated-file finding
+against the real tree before acting on it.
 
 ## Exclusive resources — serialise these, never fan out across them
 
