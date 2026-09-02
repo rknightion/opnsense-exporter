@@ -77,6 +77,29 @@ func (h *countingHandler) lastAttrs() map[string]string {
 	return h.attr[len(h.attr)-1]
 }
 
+func (h *countingHandler) countWithAttr(key string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	count := 0
+	for _, attrs := range h.attr {
+		if _, ok := attrs[key]; ok {
+			count++
+		}
+	}
+	return count
+}
+
+func (h *countingHandler) lastAttrsWithAttr(key string) map[string]string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := len(h.attr) - 1; i >= 0; i-- {
+		if _, ok := h.attr[i][key]; ok {
+			return h.attr[i]
+		}
+	}
+	return nil
+}
+
 // noticingDecoder returns a datagram carrying whatever notices the test wants, or an
 // error. The listener's capture decisions are about what the decoder REPORTED, not
 // about wire bytes, so a fake keeps the two concerns apart. The decode workers read
@@ -239,9 +262,9 @@ func TestListener_UnidentifiedIsLoggedWithCaptureOff(t *testing.T) {
 	go l.Serve()
 
 	send(t, l.Addr(), []byte{0, 9, 1, 2})
-	waitFor(t, "the log line", func() bool { return h.count() == 1 })
+	waitFor(t, "the log line", func() bool { return h.countWithAttr("unidentified") == 1 })
 
-	attrs := h.lastAttrs()
+	attrs := h.lastAttrsWithAttr("unidentified")
 	if got := attrs["unidentified"]; !strings.Contains(got, "unknown_field") || !strings.Contains(got, "61") {
 		t.Fatalf("log line did not name what was not understood: %v", attrs)
 	}
@@ -268,7 +291,7 @@ func TestListener_RepeatedNoticeIsRateLimited(t *testing.T) {
 	waitFor(t, "the datagrams to be decoded", func() bool { return l.Stats().Datagrams == 20 })
 	time.Sleep(30 * time.Millisecond)
 
-	if got := h.count(); got != 1 {
+	if got := h.countWithAttr("unidentified"); got != 1 {
 		t.Fatalf("%d log lines for 20 identical notices, want 1", got)
 	}
 }
@@ -352,9 +375,9 @@ func TestListener_LogDoesNotSuggestACaptureThatIsAlreadyRunning(t *testing.T) {
 	go l.Serve()
 
 	send(t, l.Addr(), []byte{0, 9, 1, 2})
-	waitFor(t, "the log line", func() bool { return h.count() == 1 })
+	waitFor(t, "the log line", func() bool { return h.countWithAttr("unidentified") == 1 })
 
-	if got := h.lastAttrs()["capture"]; got != "all" {
+	if got := h.lastAttrsWithAttr("unidentified")["capture"]; got != "all" {
 		t.Fatalf("capture attr = %q, want the running mode %q", got, "all")
 	}
 }
