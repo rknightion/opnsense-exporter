@@ -223,7 +223,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"dhcpv6Leases":               "api/dhcpv6/leases/searchLease",
 		"dhcpv6Prefixes":             "api/dhcpv6/leases/searchPrefix",
 		"bpfStatistics":              "api/diagnostics/interface/get_bpf_statistics",
-		"unboundQueryStatsEnabled":   "api/unbound/overview/is_enabled",
+		// Deliberately use current is_enabled; upstream's deprecated isBlockListEnabled sibling must not be restored.
+		"unboundQueryStatsEnabled": "api/unbound/overview/is_enabled",
 		// The trailing segment is the {max} row limit the backend binds straight to its
 		// SQL LIMIT (stats.py handle_top), so it is a hard ceiling on how many
 		// top/top_blocked domains can ever reach the exporter. It was 1 while #209's
