@@ -115,13 +115,39 @@ func TestHasyncCollector_Update_Configured(t *testing.T) {
 	}
 }
 
-// TestHasyncCollector_Update_Unconfigured asserts that an unconfigured/
-// unreachable peer (error envelope) results in 0 metrics — the collector
-// is completely silent (it is opt-in for this exact reason).
-func TestHasyncCollector_Update_Unconfigured(t *testing.T) {
+// TestHasyncCollector_Update_ConfiguredUnreachable asserts that a configured
+// peer which cannot be reached emits remote_reachable=0. The error envelope
+// is distinct from the response:false shape used by an unconfigured box.
+func TestHasyncCollector_Update_ConfiguredUnreachable(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/core/hasync_status/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"error","message":"unable to connect to peer"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &hasyncCollector{subsystem: HasyncSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 1 {
+		t.Fatalf("expected 1 metric for configured but unreachable peer, got %d", len(metrics))
+	}
+	if !strings.Contains(metrics[0].Desc().String(), "hasync_remote_reachable") {
+		t.Fatalf("expected remote_reachable metric, got %s", metrics[0].Desc())
+	}
+	if value := getMetricValue(metrics[0]); value != 0 {
+		t.Errorf("remote_reachable: got %v, want 0", value)
+	}
+}
+
+// TestHasyncCollector_Update_Unconfigured asserts that a single-node box's
+// response:false shape remains completely silent.
+func TestHasyncCollector_Update_Unconfigured(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/core/hasync_status/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":false}`))
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()

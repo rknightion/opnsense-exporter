@@ -523,10 +523,6 @@ var Exemptions = map[string]string{
 		"currently indistinguishable from an empty result — a real gap, but a log/metric " +
 		"decision rather than a dropped payload dimension. Worth a follow-up, not a silent " +
 		"drop.",
-	// opnsense/hasync.go:38  json:"status"
-	"opnsense.hasyncVersionResponse.Status": "configd/MVC envelope status string. The client's failure signal is the transport " +
-		"result and the decode itself, never this field; decoded so the live-box schema " +
-		"canary keeps validating the envelope's shape.",
 	// opnsense/hostdiscovery.go:23  json:"ether_address"
 	"opnsense.hostDiscoveryRow.EtherAddress": "Per-host identity on an inventory row. The collector exports bounded interface x " +
 		"source group counts; a MAC/IP label would be one series per host with no aggregate " +

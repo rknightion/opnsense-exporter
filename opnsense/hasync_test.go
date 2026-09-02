@@ -90,6 +90,9 @@ func TestFetchHasyncStatus_Configured(t *testing.T) {
 	if !data.Reachable {
 		t.Fatal("expected Reachable=true for configured fixture")
 	}
+	if !data.Configured {
+		t.Fatal("expected Configured=true for configured fixture")
+	}
 	if data.RemoteVersion != "26.7.1_1" {
 		t.Errorf("RemoteVersion: got %q, want %q", data.RemoteVersion, "26.7.1_1")
 	}
@@ -193,8 +196,9 @@ func TestFetchHasyncStatus_VersionMatch(t *testing.T) {
 	}
 }
 
-// TestFetchHasyncStatus_Unconfigured validates the error-envelope path:
-// {"status":"error","message":"..."} → Reachable=false, nil error.
+// TestFetchHasyncStatus_ConfiguredUnreachable validates the error-envelope
+// path for a configured peer that cannot be reached:
+// {"status":"error","message":"..."} → Configured=true, Reachable=false.
 //
 // LIVE-CAPTURED 2026-07-28 (#460) from a box with hasync CONFIGURED and the
 // peer's bridge link dropped — the body below is what the endpoint actually
@@ -203,7 +207,7 @@ func TestFetchHasyncStatus_VersionMatch(t *testing.T) {
 // the success path echoes ['response' => $payload] with neither key, which is
 // why the hasyncVersion missingOK exemption stays even now that a real peer
 // exists.
-func TestFetchHasyncStatus_Unconfigured(t *testing.T) {
+func TestFetchHasyncStatus_ConfiguredUnreachable(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"error","message":"fetch error. remote host down? (Connection timed out after 60009 milliseconds)"}`))
 	})
@@ -211,7 +215,10 @@ func TestFetchHasyncStatus_Unconfigured(t *testing.T) {
 
 	data, err := client.FetchHasyncStatus()
 	if err != nil {
-		t.Fatalf("expected nil error for unconfigured/unreachable, got: %v", err)
+		t.Fatalf("expected nil error for configured but unreachable peer, got: %v", err)
+	}
+	if !data.Configured {
+		t.Error("expected Configured=true for error envelope")
 	}
 	if data.Reachable {
 		t.Error("expected Reachable=false for error envelope")
@@ -247,6 +254,9 @@ func TestFetchHasyncStatus_ResponseString(t *testing.T) {
 	if data.Reachable {
 		t.Error("expected Reachable=false when response is a bare string")
 	}
+	if !data.Configured {
+		t.Error("expected Configured=true when response contains a peer error string")
+	}
 	if data.RemoteVersion != "" || data.LocalVersion != "" {
 		t.Errorf("expected empty versions, got remote=%q local=%q", data.RemoteVersion, data.LocalVersion)
 	}
@@ -266,6 +276,9 @@ func TestFetchHasyncStatus_NullBody(t *testing.T) {
 	}
 	if data.Reachable {
 		t.Error("expected Reachable=false for null body")
+	}
+	if data.Configured {
+		t.Error("expected Configured=false for null body")
 	}
 }
 
@@ -287,6 +300,9 @@ func TestFetchHasyncStatus_ResponseFalse(t *testing.T) {
 	}
 	if data.Reachable {
 		t.Error("expected Reachable=false for single-node {\"response\": false}")
+	}
+	if data.Configured {
+		t.Error("expected Configured=false for single-node {\"response\": false}")
 	}
 }
 

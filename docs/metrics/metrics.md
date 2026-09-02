@@ -492,7 +492,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Enable Flag |
 |-------------|------|--------|-------------|-------------|
-| opnsense_hasync_remote_reachable | Gauge | --- | Whether the HA sync remote peer is reachable (1 = reachable, 0 = unreachable/unconfigured) | --exporter.enable-hasync |
+| opnsense_hasync_remote_reachable | Gauge | --- | Whether the HA sync remote peer is reachable (1 = reachable, 0 = configured but unreachable; absent when HA is unconfigured) | --exporter.enable-hasync |
 | opnsense_hasync_remote_version_match | Gauge | --- | Whether the remote peer firmware version matches the local version (1 = match, 0 = mismatch) | --exporter.enable-hasync |
 | opnsense_hasync_remote_version_info | Gauge | remote_version, local_version | HA sync firmware version information (value is always 1; see labels) | --exporter.enable-hasync |
 | opnsense_hasync_remote_services_total | Gauge | --- | Total number of services in the cached remote HA peer service list | --exporter.enable-hasync |

@@ -13,9 +13,9 @@ import (
 // XML-RPC call to the configured HA peer — real per-poll network cost — so
 // the collector is opt-in (exporter.enable-hasync, default off, decision D6).
 //
-// When HA is unconfigured or the peer is unreachable the version endpoint
-// returns an error envelope; the collector is completely silent in that case
-// so single-node boxes are not polluted with 0-valued HA metrics.
+// When HA is unconfigured the version endpoint returns response:false and the
+// collector stays silent. A configured but unreachable peer returns an error
+// envelope and emits remote_reachable=0.
 type hasyncCollector struct {
 	log *slog.Logger
 
@@ -43,7 +43,7 @@ func (c *hasyncCollector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.log.Debug("Registering collector", "collector", c.Name())
 
 	c.remoteReachable = buildPrometheusDesc(c.subsystem, "remote_reachable",
-		"Whether the HA sync remote peer is reachable (1 = reachable, 0 = unreachable/unconfigured)", nil)
+		"Whether the HA sync remote peer is reachable (1 = reachable, 0 = configured but unreachable; absent when HA is unconfigured)", nil)
 	c.remoteVersionMatch = buildPrometheusDesc(c.subsystem, "remote_version_match",
 		"Whether the remote peer firmware version matches the local version (1 = match, 0 = mismatch)", nil)
 	c.remoteVersionInfo = buildPrometheusDesc(c.subsystem, "remote_version_info",
@@ -74,10 +74,15 @@ func (c *hasyncCollector) Update(_ context.Context, client *opnsense.Client, ch 
 		return err
 	}
 
-	// Unconfigured peer or unreachable: stay completely silent.
-	// The collector is opt-in (D6) precisely to avoid polluting single-node
-	// dashboards with 0-valued HA metrics on every scrape.
+	// An unconfigured box returns response:false and remains silent. A
+	// configured outage is represented by the status/error envelope and must
+	// retain the remote_reachable series with value 0.
+	if !data.Configured {
+		return nil
+	}
 	if !data.Reachable {
+		ch <- prometheus.MustNewConstMetric(c.remoteReachable, prometheus.GaugeValue,
+			0, c.instance)
 		return nil
 	}
 

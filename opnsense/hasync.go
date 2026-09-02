@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
 )
@@ -11,19 +12,22 @@ import (
 //
 //	{"response": {"firmware": {"version": "<remote>", "_my_version": "<local>"}, ...}}
 //
-// Unconfigured / unreachable (exception path in HasyncStatusController.php):
+// Configured but unreachable (exception path in HasyncStatusController.php):
 //
 //	{"status": "error", "message": "..."} — no "response" key.
 //
-// Single-node / HA-unconfigured (the overwhelming majority of installs): the
-// controller returns a bare boolean rather than an object:
+// Unconfigured (xmlrpc_execute returns false when synchronizetoip is empty):
 //
 //	{"response": false}
 //
-// Here "response" decodes as the raw bytes `false`, which is non-empty and not
-// "null", so it falls through to the object unmarshal below; a JSON boolean
-// cannot decode into hasyncVersionObj, so it lands in the undecodable-response
-// fallback and is (correctly) reported as Reachable=false with a nil error.
+// On a single-node / HA-unconfigured install (the overwhelming majority of
+// boxes), that boolean is nested in the response envelope:
+//
+//	{"response": false}
+//
+// Here "response" decodes as the raw bytes `false`; FetchHasyncStatus recognizes
+// that exact shape as Configured=false rather than treating it as a malformed
+// response from a configured peer.
 //
 // May also be literal JSON null.
 //
@@ -81,8 +85,14 @@ type HasyncService struct {
 
 // HasyncStatus is the normalised result of FetchHasyncStatus.
 type HasyncStatus struct {
+	// Configured is true when the HA sync target is configured. The
+	// hasync_status/version envelope distinguishes this from a single-node
+	// box: xmlrpc_execute returns false when synchronizetoip is empty, while a
+	// configured target that cannot be reached is caught and returned as a
+	// status/error envelope.
+	Configured bool
 	// Reachable is true when the version endpoint returned a valid "response"
-	// object. When false all other fields are zero/empty.
+	// object. When false all version and service fields are zero/empty.
 	Reachable bool
 	// RemoteVersion is the remote peer's firmware version string
 	// (firmware.version in the XML-RPC response).
@@ -100,9 +110,12 @@ type HasyncStatus struct {
 // FetchHasyncStatus fetches HA sync status by calling two core endpoints:
 //
 //  1. api/core/hasync_status/version — XML-RPC firmware version comparison.
-//     Returns {Reachable:false}, nil when the response is the error envelope
-//     (unconfigured peer, network timeout, XML-RPC exception) so the opt-in
-//     collector stays completely silent on single-node boxes.
+//     Returns {Configured:false, Reachable:false}, nil for a response:false
+//     envelope when the HA target is unconfigured, and
+//     {Configured:true, Reachable:false}, nil for a status/error envelope when
+//     it is configured but unreachable. Both are returned as data with nil
+//     error so the opt-in collector can keep single-node boxes silent while
+//     exposing a configured outage.
 //
 //  2. api/core/hasync_status/services — bootgrid of cached remote service
 //     states. Errors here are tolerated (warn-log, Services left nil) so a
@@ -122,26 +135,35 @@ func (c *Client) FetchHasyncStatus() (HasyncStatus, *APICallError) {
 		return HasyncStatus{}, err
 	}
 
-	// An empty/null "response" field means unconfigured or unreachable.
-	// json.RawMessage is nil or "null" in these cases.
-	if len(rawVersion.Response) == 0 || string(rawVersion.Response) == "null" {
-		return HasyncStatus{Reachable: false}, nil
+	// xmlrpc_execute returns false only when synchronizetoip is empty. A
+	// configured target that fails the XML-RPC call is caught by
+	// ha_xmlrpc_exec.php and returned as a status/error envelope with no
+	// response key. Keep those cases distinct for the collector.
+	response := bytes.TrimSpace(rawVersion.Response)
+	configured := len(response) > 0 && !bytes.Equal(response, []byte("false")) &&
+		!bytes.Equal(response, []byte("null"))
+	if len(response) == 0 {
+		configured = rawVersion.Status.String() != ""
+	}
+	if !configured {
+		return HasyncStatus{Configured: false}, nil
 	}
 
 	var versionObj hasyncVersionObj
 	if err := json.Unmarshal(rawVersion.Response, &versionObj); err != nil {
 		// Undecodable "response" — treat as unreachable.
-		return HasyncStatus{Reachable: false}, nil
+		return HasyncStatus{Configured: true, Reachable: false}, nil
 	}
 
 	remote := string(versionObj.Firmware.Version)
 	local := string(versionObj.Firmware.MyVersion)
 	if remote == "" {
 		// Response object present but no firmware.version — treat as unreachable.
-		return HasyncStatus{Reachable: false}, nil
+		return HasyncStatus{Configured: true, Reachable: false}, nil
 	}
 
 	result := HasyncStatus{
+		Configured:    true,
 		Reachable:     true,
 		RemoteVersion: remote,
 		LocalVersion:  local,
