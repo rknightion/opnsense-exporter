@@ -23457,7 +23457,7 @@
         "spec": {
           "id": 224,
           "title": "Gateway RTT",
-          "description": "Average RTT and RTT standard deviation (RTTd) in milliseconds.",
+          "description": "Average RTT and RTT standard deviation (RTTd) in milliseconds, overlaid with each gateway's configured high-latency threshold.",
           "links": [
             {
               "title": "Interface counters for this window",
@@ -23514,6 +23514,32 @@
                         "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_gateways_rttd_milliseconds{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "B",
                         "legendFormat": "{{name}} stddev",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "C",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_gateways_rtt_high_milliseconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "C",
+                        "legendFormat": "{{name}} high threshold",
                         "instant": false,
                         "range": true
                       }
@@ -23826,7 +23852,7 @@
         "spec": {
           "id": 227,
           "title": "Packet Loss %",
-          "description": "Current packet loss percentage per gateway.",
+          "description": "Current packet loss percentage per gateway, overlaid with its configured high-loss threshold. The OPNsenseGatewayHighLoss alert currently uses a fixed 20% threshold, so the configured series is diagnostic context and may differ from the alert boundary.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -23852,6 +23878,32 @@
                         "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_gateways_loss_percentage{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "{{name}} loss",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_gateways_loss_high_percentage{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "B",
+                        "legendFormat": "{{name}} high threshold",
                         "instant": false,
                         "range": true
                       }

@@ -38,9 +38,10 @@ def build(b: Builder):
         [
             (sel("opnsense_gateways_rtt_milliseconds"), "{{name}} RTT"),
             (sel("opnsense_gateways_rttd_milliseconds"), "{{name}} stddev"),
+            (sel("opnsense_gateways_rtt_high_milliseconds"), "{{name}} high threshold"),
         ],
         unit="ms", w=12, h=8,
-        desc="Average RTT and RTT standard deviation (RTTd) in milliseconds.",
+        desc="Average RTT and RTT standard deviation (RTTd) in milliseconds, overlaid with each gateway's configured high-latency threshold.",
     )
     rtt_thresholds = b.table(
         "RTT Thresholds",
@@ -76,9 +77,12 @@ def build(b: Builder):
     # ---- Row 2: Packet Loss -----------------------------------------------
     loss = b.ts(
         "Packet Loss %",
-        [(sel("opnsense_gateways_loss_percentage"), "{{name}} loss")],
+        [
+            (sel("opnsense_gateways_loss_percentage"), "{{name}} loss"),
+            (sel("opnsense_gateways_loss_high_percentage"), "{{name}} high threshold"),
+        ],
         unit="percent", w=12, h=8,
-        desc="Current packet loss percentage per gateway.",
+        desc="Current packet loss percentage per gateway, overlaid with its configured high-loss threshold. The OPNsenseGatewayHighLoss alert currently uses a fixed 20% threshold, so the configured series is diagnostic context and may differ from the alert boundary.",
     )
     loss_thresholds = b.table(
         "Loss Thresholds",
