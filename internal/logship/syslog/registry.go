@@ -2,6 +2,7 @@ package syslog
 
 import (
 	"net/netip"
+	"sort"
 	"sync"
 
 	"github.com/rknightion/opnsense2otel/v4/internal/logship"
@@ -292,6 +293,32 @@ var subsystems = map[string]string{
 	"squid":           "proxy",
 	"miniupnpd":       "upnp",
 	"unbound-control": "dns",
+}
+
+// Subsystems is the CLOSED label vocabulary returned by subsystemFor. It is
+// derived from the exact-program table and the three dynamic-prefix families,
+// rather than maintained as a second list that can drift. The empty value is
+// intentional: catch-all programs such as opnsense do not have a truthful
+// coarse subsystem, but parser coverage for one of those programs still needs
+// a bounded bucket for the unparsed counter (#0037).
+var Subsystems = buildSubsystemVocabulary()
+
+func buildSubsystemVocabulary() []string {
+	values := map[string]struct{}{"": {}}
+	for _, subsystem := range subsystems {
+		values[subsystem] = struct{}{}
+	}
+	// Exercise the dynamic routes so a future change to one of their fallback
+	// values is reflected in the vocabulary without another parallel list.
+	for _, program := range []string{"openvpn_dynamic", "kea-dynamic", "wg-dynamic"} {
+		values[subsystemFor(program)] = struct{}{}
+	}
+	out := make([]string, 0, len(values))
+	for subsystem := range values {
+		out = append(out, subsystem)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // subsystemFor maps a program to its subsystem. OpenVPN instances arrive as

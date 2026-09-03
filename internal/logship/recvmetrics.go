@@ -28,6 +28,7 @@ import (
 type ReceiverMetrics struct {
 	parseErrors *prometheus.CounterVec
 	rejected    *prometheus.CounterVec
+	unparsed    *prometheus.CounterVec
 	source      string
 }
 
@@ -50,6 +51,10 @@ type ReceiverVocab struct {
 	Reasons []string
 	// Stages are the logs_parse_errors_total{stage=...} values this receiver produces.
 	Stages []string
+	// Subsystems are the logs_unparsed_total{subsystem=...} values this receiver
+	// produces. The values must come from a receiver's closed, code-defined
+	// vocabulary; they must never be copied from the wire.
+	Subsystems []string
 }
 
 // NewReceiverMetrics returns a handle bound to source, registering the shared vecs
@@ -67,6 +72,10 @@ func NewReceiverMetrics(reg prometheus.Registerer, source string, vocab Receiver
 			Namespace: ns, Name: "logs_rejected_total",
 			Help: "Total receiver input rejected before parsing, by source and reason.",
 		}, []string{"source", "reason"}),
+		unparsed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: ns, Name: "logs_unparsed_total",
+			Help: "Total records whose registered parser did not produce a structured record, by source and subsystem.",
+		}, []string{"source", "subsystem"}),
 	}
 	if reg == nil {
 		return m
@@ -77,11 +86,15 @@ func NewReceiverMetrics(reg prometheus.Registerer, source string, vocab Receiver
 	// into a collector that never reaches /metrics.
 	m.parseErrors = registerOrExisting(reg, m.parseErrors)
 	m.rejected = registerOrExisting(reg, m.rejected)
+	m.unparsed = registerOrExisting(reg, m.unparsed)
 	for _, reason := range vocab.Reasons {
 		m.rejected.WithLabelValues(source, reason)
 	}
 	for _, stage := range vocab.Stages {
 		m.parseErrors.WithLabelValues(source, stage)
+	}
+	for _, subsystem := range vocab.Subsystems {
+		m.unparsed.WithLabelValues(source, subsystem)
 	}
 	return m
 }
@@ -118,4 +131,14 @@ func (m *ReceiverMetrics) Reject(reason string) {
 		return
 	}
 	m.rejected.WithLabelValues(m.source, reason).Inc()
+}
+
+// Unparsed counts one record whose registered parser was selected but did not
+// understand the record body. An unknown program is generic traffic and must
+// not call this method.
+func (m *ReceiverMetrics) Unparsed(subsystem string) {
+	if m == nil || m.unparsed == nil {
+		return
+	}
+	m.unparsed.WithLabelValues(m.source, subsystem).Inc()
 }

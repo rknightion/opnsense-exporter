@@ -16,7 +16,7 @@ library's own collectors rather than from this codebase, they carry no
 `opnsense_instance` label, and they are charted from the Exporter Runtime row behind
 the `has_go_runtime` sentinel.
 
-Total: 57 self-metrics.
+Total: 58 self-metrics.
 
 | Metric | Type | Declared in |
 | --- | --- | --- |
@@ -60,6 +60,7 @@ Total: 57 self-metrics.
 | opnsense_exporter_logs_shipped_total | Counter | `internal/logship` |
 | opnsense_exporter_logs_syslog_conn_slots_in_use | Gauge | `internal/logship/syslog` |
 | opnsense_exporter_logs_syslog_conn_slots_limit | Gauge | `internal/logship/syslog` |
+| opnsense_exporter_logs_unparsed_total | Counter | `internal/logship` |
 | opnsense_exporter_logs_zenarmor_bulk_bytes_total | Counter | `internal/logship/zenarmor` |
 | opnsense_exporter_logs_zenarmor_bulk_requests_total | Counter | `internal/logship/zenarmor` |
 | opnsense_exporter_logs_zenarmor_excluded_total | Counter | `internal/logship/zenarmor` |

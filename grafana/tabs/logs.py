@@ -136,6 +136,16 @@ def build(b: Builder):
              "records are NOT dropped -- they ship with their raw body -- so this counts fidelity "
              "lost, not data lost.",
     )
+    unparsed = b.ts(
+        "Parser Coverage Gaps (rate)",
+        [(f'sum {grp("source", "subsystem")} (rate({sel("opnsense_exporter_logs_unparsed_total")}[{RATE}]))',
+          "{{source}} / {{subsystem}}")],
+        unit="ops",
+        desc="opnsense_exporter_logs_unparsed_total: records dispatched to a registered syslog "
+             "parser whose body no longer matched a known shape, by source and bounded subsystem. "
+             "Unknown programs are ordinary generic traffic and are not counted. A rising value "
+             "means parser coverage has eroded; the raw records still ship.",
+    )
     rejected = b.ts(
         "Input Rejected (rate)",
         [(f'sum {grp("source", "reason")} (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
@@ -256,7 +266,7 @@ def build(b: Builder):
         b.row("Throughput", [shipped, dropped], present="has_logs"),
         b.row("Queue & Errors", [queue_len, queue_bytes, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [received_lag, exported_lag, possible_gaps], present="has_logs"),
-        b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
+        b.row("Receivers", [parse_errors, unparsed, rejected, resource_capped], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale, enrich_seam], present="has_logs"),
         b.row("Debug Capture", [debug_captured, debug_dropped], present="has_debug_capture"),
         # #523: the derived-metric budget. It belongs to this pipeline — these are the

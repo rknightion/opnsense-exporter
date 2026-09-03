@@ -225,6 +225,7 @@ func logMetricDispositions() map[string]string {
 		"opnsense_exporter_logs_possible_gap_total":                    "dashboard",
 		"opnsense_exporter_logs_resource_capped_total":                 "dashboard",
 		"opnsense_exporter_logs_parse_errors_total":                    "dashboard",
+		"opnsense_exporter_logs_unparsed_total":                        "dashboard",
 		"opnsense_exporter_logs_rejected_total":                        "dashboard",
 		"opnsense_exporter_logs_enrich_misses_total":                   "dashboard",
 		"opnsense_exporter_logs_enrich_refresh_errors_total":           "dashboard",

@@ -97,6 +97,8 @@ type source struct {
 	// sink receives derived-metric observations (#258). Never nil: a NopMetricSink is
 	// substituted when metric derivation is disabled (log_events collector off).
 	sink logship.MetricSink
+	// unparsed records parser-coverage misses under the bounded subsystem vocabulary.
+	unparsed func(subsystem string)
 	// sample drops high-volume raw lines after their metrics are derived.
 	sample bool
 	// sampledAttr stamps sampled="true" on shipped lines while sample is on.
@@ -152,8 +154,9 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		cache: cache,
 		miss:  d.Miss,
 		m: logship.NewReceiverMetrics(d.Registerer, sourceName, logship.ReceiverVocab{
-			Reasons: RejectReasons,
-			Stages:  ParseStages,
+			Reasons:    RejectReasons,
+			Stages:     ParseStages,
+			Subsystems: Subsystems,
 		}),
 		filter:      NewFilter(cfg.IncludePrograms, cfg.ExcludePrograms, cfg.MinSeverity, cfg.HasMinSeverity),
 		log:         d.Logger,
@@ -161,6 +164,7 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		sample:      cfg.Sample,
 		sampledAttr: cfg.SampledAttr,
 	}
+	s.unparsed = func(subsystem string) { observeUnparsed(s.m, subsystem) }
 	// The shared sink arrives via Deps; it is used only when this receiver opted in.
 	if cfg.DebugCapture {
 		s.cap = d.DebugCapture
@@ -271,6 +275,7 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 		s.m.Reject("filtered")
 		return
 	}
+	_, parserDispatched := parserFor(env.Program)
 	rec, parsed := buildRecord(env, s.cache.Load(), s.miss)
 	if !parsed && s.cap != nil {
 		// A line whose program has no parser, or whose parser could not match it: exactly
@@ -294,6 +299,13 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 				"message":   env.Message,
 				"raw":       string(line),
 			})
+	}
+	if !parsed && parserDispatched {
+		if s.unparsed != nil {
+			s.unparsed(subsystemFor(env.Program))
+		} else {
+			observeUnparsed(s.m, subsystemFor(env.Program))
+		}
 	}
 
 	// Derive Prometheus counters from the parsed record (#258). counted reports

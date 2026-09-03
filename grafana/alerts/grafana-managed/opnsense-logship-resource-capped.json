@@ -26,7 +26,7 @@
       "description": "Records were shipped with their opnsense.* resource labels dropped in the last 15m, so label-scoped queries against them silently under-report.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenselogshipresourcecapped",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "12"
+      "__panelId__": "13"
     },
     "expressions": {
       "A": {

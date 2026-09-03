@@ -50,6 +50,23 @@ func TestReceiverMetricsSecondHandleSharesTheCollector(t *testing.T) {
 	}
 }
 
+func TestReceiverMetricsUnparsedIsSharedAndSourceLabelled(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	a := NewReceiverMetrics(reg, "syslog", ReceiverVocab{Subsystems: []string{"", "firewall"}})
+	b := NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{Subsystems: []string{"vpn"}})
+
+	if a.unparsed != b.unparsed {
+		t.Fatal("handles hold different unparsed collectors; the second registration did not reuse the first")
+	}
+	a.Unparsed("firewall")
+	b.Unparsed("vpn")
+	b.Unparsed("vpn")
+
+	s := gatherSeries(t, reg)
+	mustHave(t, s, `opnsense_exporter_logs_unparsed_total{source="syslog",subsystem="firewall"}`, 1)
+	mustHave(t, s, `opnsense_exporter_logs_unparsed_total{source="zenarmor",subsystem="vpn"}`, 2)
+}
+
 func TestReceiverMetricsRejectIsSourceLabelled(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{})
@@ -114,4 +131,15 @@ func TestReceiverMetricsSecondHandlePreInitialisesOnSharedCollector(t *testing.T
 	mustBeZero(t, s, `opnsense_exporter_logs_rejected_total{reason="auth",source="zenarmor"}`)
 	mustBeZero(t, s, `opnsense_exporter_logs_parse_errors_total{source="syslog",stage="envelope"}`)
 	mustBeZero(t, s, `opnsense_exporter_logs_parse_errors_total{source="zenarmor",stage="bulk"}`)
+}
+
+func TestReceiverMetricsPreInitialisesUnparsedVocabularyToZero(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	NewReceiverMetrics(reg, "syslog", ReceiverVocab{Subsystems: []string{"", "firewall", "vpn"}})
+
+	s := gatherSeries(t, reg)
+	mustBeZero(t, s, `opnsense_exporter_logs_unparsed_total{source="syslog",subsystem=""}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_unparsed_total{source="syslog",subsystem="firewall"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_unparsed_total{source="syslog",subsystem="vpn"}`)
+	mustBeAbsent(t, s, `opnsense_exporter_logs_unparsed_total{source="syslog",subsystem="plugins"}`)
 }

@@ -741,6 +741,12 @@ labels are listed exactly below; `source`, `reason`, `stage`, `table`, `receiver
   parse. Its closed stages are syslog `envelope` and Zenarmor `bulk` / `document`.
   These are **not** dropped: they ship with their raw body, so this counts fidelity
   lost, not data lost.
+- `opnsense_exporter_logs_unparsed_total{source,subsystem}` - lines dispatched to
+  a registered syslog parser whose body no longer matched a known shape. The
+  subsystem value comes from the receiver's bounded code vocabulary (including an
+  intentional empty value for catch-all programs); unknown programs are ordinary
+  generic traffic and are not counted. The record still ships, so a rising rate is
+  parser-coverage erosion rather than data loss.
 - `opnsense_exporter_logs_rejected_total{source,reason}` - receiver input refused
   before shipping. Closed syslog reasons are `peer`, `oversized`, `filtered`,
   `sampled`, `conn_limit`, `tls_timeout`, `tls_auth_failed`, `tls_deadline_error`,
