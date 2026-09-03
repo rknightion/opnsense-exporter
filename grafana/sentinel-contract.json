@@ -1275,7 +1275,8 @@
         "gates": [
           "opnsense2otel > Config",
           "opnsense2otel > Config > Device Inventory",
-          "opnsense2otel > Config > Firewall & NAT"
+          "opnsense2otel > Config > Firewall & NAT",
+          "opnsense2otel > Config > Security Posture"
         ]
       },
       {

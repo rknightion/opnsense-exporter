@@ -356,8 +356,13 @@ that cursor across restarts. This source is independent of the syslog receiver.
 Configuration snapshots are default-off and enabled per family. The firewall family,
 `--logs.config-snapshot.firewall.enabled`, emits compact `configstate` JSON records
 for firewall and NAT entities. `--logs.config-snapshot.devices.enabled` adds a fused
-device inventory from ARP, NDP, DHCP, hostdiscovery and LLDP. A content hash suppresses
-unchanged batches; both families repeat after a six-hour heartbeat. Records share an opaque `snapshot.id` and
+device inventory from ARP, NDP, DHCP, hostdiscovery and LLDP. The independent
+`--logs.config-snapshot.security-posture.enabled` family carries OPNsense's firmware
+update verdict, pending package versions, certificate-expiry roll-up and API-key owners;
+it deliberately excludes listening-socket detail because the current API proves active
+socket counts, not listener state. A content hash suppresses unchanged batches; the
+firewall and device families repeat after a six-hour heartbeat, while security posture
+repeats weekly. Records share an opaque `snapshot.id` and
 carry ordered `snapshot.seq`, `snapshot.total`, `snapshot.family`, `snapshot.reason`,
 and `snapshot.entity_id` metadata. Bodies remain valid JSON under the 192 KiB bound:
 an oversized entity becomes a bounded envelope with `truncated=true`, its original

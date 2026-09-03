@@ -16,6 +16,7 @@ func init() {
 			deps,
 			options.LogsConfigSnapshotFirewallEnabled(),
 			options.LogsConfigSnapshotDevicesEnabled(),
+			options.LogsConfigSnapshotSecurityPostureEnabled(),
 		)
 		if len(providers) == 0 {
 			return nil, nil
@@ -24,8 +25,8 @@ func init() {
 	})
 }
 
-func enabledProviders(deps logship.Deps, firewall, devices bool) []Provider {
-	providers := make([]Provider, 0, 2)
+func enabledProviders(deps logship.Deps, firewall, devices, securityPosture bool) []Provider {
+	providers := make([]Provider, 0, 3)
 	if firewall {
 		providers = append(providers, firewallProvider{
 			client: opnsenseFirewallSnapshotFetcher{client: deps.Client},
@@ -33,6 +34,12 @@ func enabledProviders(deps logship.Deps, firewall, devices bool) []Provider {
 	}
 	if devices {
 		providers = append(providers, newDeviceInventoryProvider(deps.Client))
+	}
+	if securityPosture {
+		providers = append(providers, securityPostureProvider{
+			client: opnsenseSecurityPostureFetcher{client: deps.Client},
+			now:    nowUTC,
+		})
 	}
 	return providers
 }

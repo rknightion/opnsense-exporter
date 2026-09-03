@@ -26,7 +26,7 @@
       "description": "A netisr queue watermark is above 90% of its configured limit AND is still rising. This is the leading indicator - it fires before drops start.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensenetisrqueuenearlimit",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "405"
+      "__panelId__": "406"
     },
     "expressions": {
       "A": {

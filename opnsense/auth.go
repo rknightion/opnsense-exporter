@@ -3,6 +3,7 @@ package opnsense
 import (
 	"encoding/json"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -87,14 +88,33 @@ type authUserSearchResponse struct {
 	Rows []authUserRow `json:"rows"`
 }
 
-// authAPIKeySearchResponse mirrors api/auth/user/search_api_key — deliberately
-// as narrowly as possible. Each real row carries "username", "key" (the public
-// half of an API key/secret pair) and "id"; none of it is needed for an
-// aggregate count, so rows are decoded as bare struct{} — json.Unmarshal counts
-// the array elements without ever binding a single field out of any row, which
-// means the key material and usernames never reach a Go struct field at all.
+// authAPIKeySearchResponse mirrors api/auth/user/search_api_key for the
+// aggregate metrics path. Rows remain empty structs so usernames and key
+// material never enter that collector's decoded value.
 type authAPIKeySearchResponse struct {
 	Rows []struct{} `json:"rows"`
+}
+
+// authAPIKeyOwnerSearchResponse is used only by the separately opt-in posture
+// snapshot. It retains username and deliberately excludes key and id, leaving
+// credential material outside the decoded value.
+type authAPIKeyOwnerSearchResponse struct {
+	Rows []authAPIKeyOwnerRow `json:"rows"`
+}
+
+type authAPIKeyOwnerRow struct {
+	Username string `json:"username"`
+}
+
+func (r *authAPIKeyOwnerRow) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Username string `json:"username"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	r.Username = wire.Username
+	return nil
 }
 
 // authGroupSearchResponse mirrors api/auth/group/search. Only the row count is
@@ -246,6 +266,45 @@ func (c *Client) FetchAuthAPIKeyCount() (int, *APICallError) {
 		return 0, err
 	}
 	return len(resp.Rows), nil
+}
+
+// APIKeyOwner is one local account with one or more configured API keys. It
+// deliberately carries only the owner and aggregate count: neither API-key
+// half nor its id is useful for posture drift and neither is safe to ship.
+type APIKeyOwner struct {
+	Owner string
+	Count int
+}
+
+// FetchAuthAPIKeyOwners returns a stable aggregate of configured API keys by
+// local owner. The upstream endpoint is core, GET and config-driven; callers
+// that need only the total should continue to use FetchAuthAPIKeyCount.
+func (c *Client) FetchAuthAPIKeyOwners() ([]APIKeyOwner, *APICallError) {
+	var resp authAPIKeyOwnerSearchResponse
+
+	url, ok := c.endpoints["authAPIKeys"]
+	if !ok {
+		return nil, &APICallError{
+			Endpoint:   "authAPIKeys",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int, len(resp.Rows))
+	for _, row := range resp.Rows {
+		counts[row.Username]++
+	}
+	owners := make([]APIKeyOwner, 0, len(counts))
+	for owner, count := range counts {
+		owners = append(owners, APIKeyOwner{Owner: owner, Count: count})
+	}
+	sort.Slice(owners, func(i, j int) bool { return owners[i].Owner < owners[j].Owner })
+	return owners, nil
 }
 
 // FetchAuthGroupCount returns the total number of local auth groups

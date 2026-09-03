@@ -432,7 +432,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
-| `has_config_snapshot_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Config; opnsense2otel > Config > Device Inventory; opnsense2otel > Config > Firewall & NAT | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="configstate", opnsense_subsystem="config"}, opnsense_source)` |
+| `has_config_snapshot_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Config; opnsense2otel > Config > Device Inventory; opnsense2otel > Config > Firewall & NAT; opnsense2otel > Config > Security Posture | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="configstate", opnsense_subsystem="config"}, opnsense_source)` |
 | `has_configchange_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > Authentication & Audit; opnsense2otel > Security > Authentication & Audit > Configuration Revision Diffs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="configchange"}, opnsense_source)` |
 | `has_crowdsec_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > CrowdSec > Alert & Decision Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="crowdsec"}, opnsense_source)` |
 | `has_flow_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > Flow Volume > Flow Record Drilldown | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source=~"netflow\|merged"}, opnsense_source)` |

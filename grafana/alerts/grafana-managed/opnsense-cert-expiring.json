@@ -26,7 +26,7 @@
       "description": "Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 14 days.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensecertificateexpiringsoon",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "473"
+      "__panelId__": "474"
     },
     "expressions": {
       "A": {

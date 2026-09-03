@@ -3,6 +3,7 @@ package opnsense
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -224,6 +225,29 @@ func TestFetchAuthAPIKeyCount_Empty(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("expected count=0, got %d", count)
+	}
+}
+
+func TestFetchAuthAPIKeyOwners_AggregatesWithoutDecodingKeyMaterial(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{"rows":[
+			{"username":"ops","key":"must-not-enter-a-go-field","id":"id-a"},
+			{"username":"auditor","key":"must-not-enter-a-go-field","id":"id-b"},
+			{"username":"ops","key":"must-not-enter-a-go-field","id":"id-c"}
+		]}`))
+	})
+	defer server.Close()
+
+	owners, err := client.FetchAuthAPIKeyOwners()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []APIKeyOwner{{Owner: "auditor", Count: 1}, {Owner: "ops", Count: 2}}
+	if !reflect.DeepEqual(owners, want) {
+		t.Errorf("owners = %#v, want %#v", owners, want)
 	}
 }
 

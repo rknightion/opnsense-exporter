@@ -990,6 +990,11 @@ settings:
   # are deduplicated by content hash, and repeat as a 6h heartbeat.
   # logs.config-snapshot.firewall.enabled: false
   #
+  # Ship a compact firmware, certificate-expiry and API-key-owner security-posture snapshot
+  # to Loki. Off by default; requires --logs.enabled. Snapshots are deduplicated by content
+  # hash and repeat as a 7d heartbeat.
+  # logs.config-snapshot.security-posture.enabled: false
+  #
   # Enable config-revision diff events from OPNsense configuration history. Off by default;
   # requires --logs.enabled and works independently of the syslog receiver.
   # logs.configchange.enabled: false

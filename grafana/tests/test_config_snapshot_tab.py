@@ -47,7 +47,7 @@ class ConfigSnapshotTabTest(unittest.TestCase):
             [{"displayName": "Total", "desc": False}],
         )
 
-    def test_device_view_uses_the_closed_configstate_stream_shape(self):
+    def test_device_and_posture_views_use_the_closed_configstate_stream_shape(self):
         builder = Builder()
         config.build(builder)
         panels = {
@@ -60,3 +60,7 @@ class ConfigSnapshotTabTest(unittest.TestCase):
         self.assertIn('snapshot_family="device_inventory"', device_query)
         self.assertIn('label_format device=', device_query)
         self.assertIn('.entity_hostname', device_query)
+
+        posture_query = panels["Security Posture Snapshots"]["spec"]["data"]["spec"]["queries"][0]["spec"]["query"]["spec"]["expr"]
+        self.assertIn('opnsense_source="configstate"', posture_query)
+        self.assertIn('snapshot_family="security_posture"', posture_query)

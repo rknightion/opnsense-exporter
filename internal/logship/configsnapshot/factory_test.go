@@ -19,18 +19,18 @@ func (f *blockingFirewallSnapshotFetcher) FetchFirewallConfigSnapshots(ctx conte
 }
 
 func TestEnabledProvidersComposesIndependentSnapshotFamilies(t *testing.T) {
-	providers := enabledProviders(logship.Deps{}, true, true)
-	if len(providers) != 2 {
-		t.Fatalf("enabledProviders returned %d providers, want 2", len(providers))
+	providers := enabledProviders(logship.Deps{}, true, true, true)
+	if len(providers) != 3 {
+		t.Fatalf("enabledProviders returned %d providers, want 3", len(providers))
 	}
-	want := []string{"firewall", "device_inventory"}
+	want := []string{"firewall", "device_inventory", "security_posture"}
 	for i, provider := range providers {
 		if got := provider.Family(); got != want[i] {
 			t.Errorf("provider %d family = %q, want %q", i, got, want[i])
 		}
 	}
 
-	if got := enabledProviders(logship.Deps{}, false, false); len(got) != 0 {
+	if got := enabledProviders(logship.Deps{}, false, false, false); len(got) != 0 {
 		t.Fatalf("disabled providers = %d, want 0", len(got))
 	}
 }

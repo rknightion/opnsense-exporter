@@ -9,6 +9,7 @@ from builder import Builder, loki_grp, loki_sel
 CONFIG_STREAM = loki_sel('opnsense_source="configstate", opnsense_subsystem="config"')
 FIREWALL_SNAPSHOTS = f'{CONFIG_STREAM} | snapshot_family="firewall" | json'
 DEVICE_SNAPSHOTS = f'{CONFIG_STREAM} | snapshot_family="device_inventory" | json'
+SECURITY_POSTURE = f'{CONFIG_STREAM} | snapshot_family="security_posture" | json'
 
 
 def firewall_snapshot_table(b: Builder) -> str:
@@ -64,7 +65,19 @@ def build(b: Builder):
             "records contain device addresses and hostnames."
         ),
     )
+    posture = b.logs(
+        "Security Posture Snapshots",
+        SECURITY_POSTURE,
+        desc=(
+            "The latest default-off security-posture records: OPNsense's update verdict and "
+            "pending packages, certificate-expiry roll-up and API-key owners. Unchanged posture "
+            "repeats only on its deliberate seven-day heartbeat. Listening-socket detail is not "
+            "claimed because the current API exposes active-socket counts, not listener state."
+        ),
+        w=24,
+    )
     b.tab("Config", [
         b.row("Firewall & NAT", [firewall], present="has_config_snapshot_logs", collapse=True),
         b.row("Device Inventory", [devices], present="has_config_snapshot_logs", collapse=True),
+        b.row("Security Posture", [posture], present="has_config_snapshot_logs", collapse=True),
     ], present="has_config_snapshot_logs")

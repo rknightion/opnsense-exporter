@@ -861,6 +861,10 @@ services:
       # network-topology detail, are deduplicated by content hash, and repeat as a 6h
       # heartbeat.
       # OPN2OTEL_LOGS_CONFIG_SNAPSHOT_FIREWALL_ENABLED: "false"
+      # Ship a compact firmware, certificate-expiry and API-key-owner security-posture
+      # snapshot to Loki. Off by default; requires --logs.enabled. Snapshots are
+      # deduplicated by content hash and repeat as a 7d heartbeat.
+      # OPN2OTEL_LOGS_CONFIG_SNAPSHOT_SECURITY_POSTURE_ENABLED: "false"
       # Enable config-revision diff events from OPNsense configuration history. Off by
       # default; requires --logs.enabled and works independently of the syslog receiver.
       # OPN2OTEL_LOGS_CONFIGCHANGE_ENABLED: "false"
