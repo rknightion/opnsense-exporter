@@ -375,6 +375,9 @@ services:
       # OPN2OTEL_DISABLE_UNBOUND: "false"
       # Disable the scraping of Wireguard service
       # OPN2OTEL_DISABLE_WIREGUARD: "false"
+      # Disable the scraping of ZeroTier network membership, status and assigned-address
+      # metrics (silent when the os-zerotier plugin is absent)
+      # OPN2OTEL_DISABLE_ZEROTIER: "false"
 
       # ==========================================================================
       # Operator console

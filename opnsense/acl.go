@@ -1173,6 +1173,22 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-vpn-netbird", Name: "VPN: NetBird", Origin: "security/netbird", Pattern: "api/netbird/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"zerotierNetworkInfo": {
+		Consumer:  "zerotier",
+		Component: "net/zerotier",
+		Status:    ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{
+			{Key: "page-vpn-zerotier", Name: "VPN: Zerotier", Origin: "net/zerotier", Pattern: "api/zerotier/*", Scope: ACLScopeWildcard},
+		},
+	},
+	"zerotierNetworks": {
+		Consumer:  "zerotier",
+		Component: "net/zerotier",
+		Status:    ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{
+			{Key: "page-vpn-zerotier", Name: "VPN: Zerotier", Origin: "net/zerotier", Pattern: "api/zerotier/*", Scope: ACLScopeWildcard},
+		},
+	},
 	"netflowCacheStats": {
 		Consumer:  "netflow",
 		Component: "core",

@@ -402,6 +402,53 @@ func TestProbeOneParameterizedCaptivePortalVouchersSkip(t *testing.T) {
 	}
 }
 
+func TestProbeOneParameterizedZeroTierNetworkInfo(t *testing.T) {
+	var gotPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/zerotier/network/search", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":1,"rows":[{"uuid":"network uuid","networkId":"8056c2e21c000001"}]}`))
+	})
+	mux.HandleFunc("/api/zerotier/network/info/network%20uuid", func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		_, _ = w.Write([]byte(`{"title":"Information","message":"8056c2e21c000001 mesh 12:34:56:78:9a:bc OK PRIVATE zt0 -"}`))
+	})
+	p := newTestProber(t, mux)
+	s := opnsense.EndpointSchema{
+		Endpoint:     "zerotierNetworkInfo",
+		Method:       "GET",
+		Path:         "api/zerotier/network/info",
+		TopLevelKind: opnsense.KindObject,
+	}
+	res := p.probeOne(s, opnsense.SchemaExemption{})
+	if res.ProbeErr != "" || res.SkippedParam {
+		t.Fatalf("zerotierNetworkInfo probe failed: %+v", res)
+	}
+	if gotPath != "/api/zerotier/network/info/network%20uuid" {
+		t.Errorf("zerotierNetworkInfo requested path = %q", gotPath)
+	}
+}
+
+func TestProbeOneParameterizedZeroTierNetworkInfoSkip(t *testing.T) {
+	var bareHit bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/zerotier/network/search", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":0,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/zerotier/network/info", func(w http.ResponseWriter, r *http.Request) {
+		bareHit = true
+		http.NotFound(w, r)
+	})
+	p := newTestProber(t, mux)
+	s := opnsense.EndpointSchema{Endpoint: "zerotierNetworkInfo", Method: "GET", Path: "api/zerotier/network/info", TopLevelKind: opnsense.KindObject}
+	res := p.probeOne(s, opnsense.SchemaExemption{})
+	if !res.SkippedParam || res.ProbeErr != "" {
+		t.Errorf("expected SkippedParam for zerotierNetworkInfo, got %+v", res)
+	}
+	if bareHit {
+		t.Error("the bare zerotierNetworkInfo route must never be requested")
+	}
+}
+
 func TestProbeOneExemptionSuppressesMissing(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/test/renamed", func(w http.ResponseWriter, _ *http.Request) {

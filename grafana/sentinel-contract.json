@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 115,
+    "total": 116,
     "by_scope": {
-      "collector": 108,
+      "collector": 109,
       "self_labeled": 5,
       "target_join": 2,
       "global": 0
@@ -1273,6 +1273,16 @@
         "gates": [
           "opnsense2otel > Security > Zenarmor",
           "opnsense2otel > Security > Zenarmor > Overview"
+        ]
+      },
+      {
+        "name": "has_zerotier",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_zerotier_networks_configured{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel > VPN & remote access > VPN > ZeroTier"
         ]
       }
     ]

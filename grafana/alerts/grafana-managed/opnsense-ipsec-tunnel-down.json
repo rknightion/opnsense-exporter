@@ -26,7 +26,7 @@
       "description": "IPsec phase1 tunnel {{ $labels.name }} ({{ $labels.description }}) has reported status 0 (down; connected=1) for 10m. Catches a tunnel dropping while the daemon itself keeps running, which opnsense-service-down misses.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseipsectunneldown",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "352"
+      "__panelId__": "356"
     },
     "expressions": {
       "A": {

@@ -1206,6 +1206,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithNetbirdPeerDetails())
 		logger.Info("netbird per-peer details enabled")
 	}
+	if !collectorsSwitches.ZeroTier {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutZeroTierCollector())
+		logger.Info("zerotier collector disabled")
+	}
 	if !collectorsSwitches.Auth {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutAuthCollector())
 		logger.Info("auth collector disabled")

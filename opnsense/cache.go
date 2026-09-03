@@ -279,7 +279,7 @@ func NegativeCacheable404Endpoints() []EndpointName {
 		"quaggaBfdNeighbors", "quaggaBfdSummary", "quaggaBgpRoute4", "quaggaBgpRoute6",
 		"quaggaBgpSummary", "quaggaOspfOverview", "relaydStatusSum",
 		"siproxdRegistrations", "tailscaleStatus", "torCircuits", "torHiddenServices",
-		"torStreams", "trafficShaperStatistics",
+		"torStreams", "trafficShaperStatistics", "zerotierNetworks",
 
 		// FRR (quagga) session/interface detail (#197/#198) and opt-in
 		// route/LSDB volume gauges (#199). All ten are plain GETs on the
@@ -316,7 +316,9 @@ func NegativeCacheable404Endpoints() []EndpointName {
 // installed" rather than "this route vanished upstream". It is the SEMANTIC set,
 // and a superset of NegativeCacheable404Endpoints.
 //
-// The two differ by exactly one entry today, and the reason is worth keeping (#495).
+// Parameterized data routes can belong only to this semantic set when their real
+// request path does not match the registered base path used as the cache key.
+// vnstatGetJsonData and zerotierNetworkInfo are the two current cases.
 // vnstatGetJsonData is unambiguously plugin-gated - it is an os-vnstat route and
 // 404s precisely when os-vnstat is absent - but it cannot be negative-cached,
 // because the cache keys on the registered query-less path while every real request
@@ -330,7 +332,7 @@ func NegativeCacheable404Endpoints() []EndpointName {
 // wants NegativeCacheable404Endpoints instead. TestPluginGatedIncludesVnstatGetJsonData
 // enforces that cacheable stays a subset of this.
 func PluginGatedEndpoints() []EndpointName {
-	return append(NegativeCacheable404Endpoints(), "vnstatGetJsonData")
+	return append(NegativeCacheable404Endpoints(), "vnstatGetJsonData", "zerotierNetworkInfo")
 }
 
 // CacheEntryView is a read-only snapshot of one held response-cache entry,

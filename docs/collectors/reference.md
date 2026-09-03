@@ -73,4 +73,5 @@ This page provides a summary of all collectors in opnsense2otel.
 | Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPN2OTEL_ENABLE_VNSTAT |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPN2OTEL_DISABLE_WIREGUARD |
 | ZFS Boot Environments | snapshots | 3 | Enabled | --exporter.disable-snapshots | OPN2OTEL_DISABLE_SNAPSHOTS |
+| ZeroTier | zerotier | 4 | Enabled | --exporter.disable-zerotier | OPN2OTEL_DISABLE_ZEROTIER |
 

@@ -86,6 +86,7 @@ const (
 	HardwareSubsystem          = "hardware"
 	VnstatSubsystem            = "vnstat"
 	NetbirdSubsystem           = "netbird"
+	ZeroTierSubsystem          = "zerotier"
 	TorSubsystem               = "tor"
 	AuthSubsystem              = "auth"
 	HostDiscoverySubsystem     = "hostdiscovery"
@@ -176,6 +177,7 @@ var SubsystemDisplayNames = map[string]string{
 	HardwareSubsystem:            "Hardware",
 	VnstatSubsystem:              "Vnstat Traffic Accounting",
 	NetbirdSubsystem:             "NetBird",
+	ZeroTierSubsystem:            "ZeroTier",
 	TorSubsystem:                 "Tor",
 	AuthSubsystem:                "Local Auth",
 	HostDiscoverySubsystem:       "Host Discovery",
@@ -887,6 +889,11 @@ func WithoutVnstatCollector() Option {
 // removes the netbird collector from the list of collectors
 func WithoutNetbirdCollector() Option {
 	return withoutCollectorInstance(NetbirdSubsystem)
+}
+
+// WithoutZeroTierCollector removes the ZeroTier collector.
+func WithoutZeroTierCollector() Option {
+	return withoutCollectorInstance(ZeroTierSubsystem)
 }
 
 // WithoutTorCollector Option

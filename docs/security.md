@@ -225,6 +225,8 @@ Status is **known**, **plugin-dependent**, or **unknown**. Unknown is an audited
 | Vnstat Traffic Accounting | opt-in (`--exporter.enable-vnstat`) | plugin-gated | `vnstatInterfaceList`<br>`GET api/vnstat/service/interface_list` | `plugin-dependent` | Services: Vnstat (`page-services-vnstat`) | wildcard; may include writes | -- |
 | Wireguard | default-on (`--exporter.disable-wireguard` disables) | -- | `wireguardClients`<br>`GET api/wireguard/service/show` | `known` | VPN: WireGuard: Configuration (`page-wireguard-config`); VPN: WireGuard: Status (`page-wireguard-diagnostics`) | wildcard; may include writes | -- |
 | Wireguard | default-on (`--exporter.disable-wireguard` disables) | plugin-gated | `wireguardServiceStatus`<br>`GET api/wireguard/service/status` | `known` | VPN: WireGuard: Configuration (`page-wireguard-config`); VPN: WireGuard: Status (`page-wireguard-diagnostics`) | wildcard; may include writes | -- |
+| ZeroTier | default-on (`--exporter.disable-zerotier` disables) | plugin-gated | `zerotierNetworkInfo`<br>`GET api/zerotier/network/info` | `plugin-dependent` | VPN: Zerotier (`page-vpn-zerotier`) | wildcard; may include writes | -- |
+| ZeroTier | default-on (`--exporter.disable-zerotier` disables) | plugin-gated | `zerotierNetworks`<br>`GET api/zerotier/network/search` | `plugin-dependent` | VPN: Zerotier (`page-vpn-zerotier`) | wildcard; may include writes | -- |
 <!-- docgen:end:acl-matrix -->
 
 ### 401 and 403 remediation

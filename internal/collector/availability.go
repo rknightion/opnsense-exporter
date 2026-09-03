@@ -89,6 +89,7 @@ var featureAvailabilityProbes = []AvailabilityProbe{
 	{Feature: UnboundDNSSubsystem, Endpoint: "unboundServiceStatus"},
 	{Feature: VnstatSubsystem, Endpoint: "vnstatInterfaceList"},
 	{Feature: WireguardSubsystem, Endpoint: "wireguardServiceStatus"},
+	{Feature: ZeroTierSubsystem, Endpoint: "zerotierNetworks"},
 }
 
 // FeatureEnabledFunc reports whether the collector switch for a probed

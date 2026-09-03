@@ -568,6 +568,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-unbound` | `OPN2OTEL_DISABLE_UNBOUND` | Unbound DNS | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPN2OTEL_DISABLE_WIREGUARD` | Wireguard | Disable the scraping of Wireguard service |
 | `--exporter.disable-snapshots` | `OPN2OTEL_DISABLE_SNAPSHOTS` | ZFS Boot Environments | Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS) |
+| `--exporter.disable-zerotier` | `OPN2OTEL_DISABLE_ZEROTIER` | ZeroTier | Disable the scraping of ZeroTier network membership, status and assigned-address metrics (silent when the os-zerotier plugin is absent) |
 <!-- docgen:end:flags-collectors-default-on -->
 
 !!! info "Always-on collectors"
@@ -704,6 +705,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-trafficshaper` | `OPN2OTEL_DISABLE_TRAFFICSHAPER` | `false` | Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured) |
 | `--exporter.disable-unbound` | `OPN2OTEL_DISABLE_UNBOUND` | `false` | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPN2OTEL_DISABLE_WIREGUARD` | `false` | Disable the scraping of Wireguard service |
+| `--exporter.disable-zerotier` | `OPN2OTEL_DISABLE_ZEROTIER` | `false` | Disable the scraping of ZeroTier network membership, status and assigned-address metrics (silent when the os-zerotier plugin is absent) |
 | `--exporter.enable-alias-details` | `OPN2OTEL_ENABLE_ALIAS_DETAILS` | `false` | Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table) |
 | `--exporter.enable-all-available` | `OPN2OTEL_ENABLE_ALL_AVAILABLE` | `false` | Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. A collector whose PLUGIN the startup availability probe finds absent is left off, so this enables what the box can actually serve; anything gated on cost or cardinality rather than a plugin is enabled regardless. If the firewall cannot be reached at startup the probe falls open and everything is enabled. NOTE: because availability is resolved once at startup, a plugin installed LATER does not self-activate under this flag until the next restart. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off; an explicit --exporter.enable-<x>=false always wins over this blanket switch. |
 | `--exporter.enable-arp-details` | `OPN2OTEL_ENABLE_ARP_DETAILS` | `false` | Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted. |

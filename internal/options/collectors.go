@@ -345,6 +345,10 @@ var (
 		"exporter.disable-netbird",
 		"Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent)",
 	).Envar("OPN2OTEL_DISABLE_NETBIRD").Default("false").Bool()
+	zeroTierCollectorDisabled = kingpin.Flag(
+		"exporter.disable-zerotier",
+		"Disable the scraping of ZeroTier network membership, status and assigned-address metrics (silent when the os-zerotier plugin is absent)",
+	).Envar("OPN2OTEL_DISABLE_ZEROTIER").Default("false").Bool()
 	netbirdDetailsEnabled = kingpin.Flag(
 		"exporter.enable-netbird-details",
 		"Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN labels)",
@@ -514,6 +518,7 @@ type CollectorsDisableSwitch struct {
 	Vnstat                 bool
 	Netbird                bool
 	NetbirdDetails         bool
+	ZeroTier               bool
 	Siproxd                bool
 	ArpDetails             bool
 	NdpDetails             bool
@@ -615,6 +620,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Vnstat:                 *vnstatEnabled,
 		Netbird:                !*netbirdCollectorDisabled,
 		NetbirdDetails:         *netbirdDetailsEnabled,
+		ZeroTier:               !*zeroTierCollectorDisabled,
 		Auth:                   !*authCollectorDisabled,
 		HostDiscovery:          !*hostdiscoveryCollectorDisabled,
 		Relayd:                 !*relaydCollectorDisabled,
@@ -731,6 +737,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat", Reason: "each scheduled poll does one interface_list call plus one get_json_data call per interface vnstat tracks"},
 	{Flag: "exporter.disable-netbird", Subsystem: "netbird"},
 	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true, Reason: "per-peer cardinality; peer FQDN labels"},
+	{Flag: "exporter.disable-zerotier", Subsystem: "zerotier"},
 	{Flag: "exporter.disable-auth", Subsystem: "auth"},
 	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},
 	{Flag: "exporter.disable-relayd", Subsystem: "relayd"},

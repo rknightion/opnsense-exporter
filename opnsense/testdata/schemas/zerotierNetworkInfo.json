@@ -1,0 +1,20 @@
+{
+  "endpoint": "zerotierNetworkInfo",
+  "method": "GET",
+  "path": "api/zerotier/network/info",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "message",
+    "title"
+  ],
+  "fields": [
+    {
+      "path": "message",
+      "kind": "string"
+    },
+    {
+      "path": "title",
+      "kind": "string"
+    }
+  ]
+}

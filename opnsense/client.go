@@ -262,6 +262,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"vnstatGetJsonData":             "api/vnstat/service/get_json_data",
 		"netbirdStatus":                 "api/netbird/status/status",
 		"netbirdServiceStatus":          "api/netbird/service/status",
+		"zerotierNetworks":              "api/zerotier/network/search",
+		"zerotierNetworkInfo":           "api/zerotier/network/info",
 		"torCircuits":                   "api/tor/service/circuits",
 		"torStreams":                    "api/tor/service/streams",
 		"torHiddenServices":             "api/tor/service/get_hidden_services",

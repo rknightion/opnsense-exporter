@@ -1,5 +1,5 @@
 """
-VPN tab — covers all WireGuard, OpenVPN, and IPsec metrics.
+VPN tab — covers all WireGuard, OpenVPN, ZeroTier, and IPsec metrics.
 
 No tab-level gate (the tab always shows if VPN collectors are enabled).
 Rows gate individually by feature presence.
@@ -38,6 +38,7 @@ def build(b: Builder):
     b.sentinel("has_ipsec_tunnels", metric="opnsense_ipsec_phase1_status")
     b.sentinel("has_ipsec_pools", metric="opnsense_ipsec_pool_size")
     b.sentinel("has_ipsec_sad", metric="opnsense_ipsec_sad_entries")
+    b.sentinel("has_zerotier", metric="opnsense_zerotier_networks_configured")
 
     # ================================================================
     # Row 1: VPN Services (always visible)
@@ -133,6 +134,42 @@ def build(b: Builder):
             "Maximum seconds since any peer's last handshake, per firewall. "
             "WireGuard re-keys every ~180 s; red > 180 s suggests a stale peer."
         ),
+    )
+
+    # ================================================================
+    # ZeroTier
+    # ================================================================
+    zerotier_total = b.stat(
+        "ZeroTier Networks",
+        sel("opnsense_zerotier_networks_configured"),
+        unit="short", w=4, h=8,
+        desc="Number of networks configured in the OPNsense ZeroTier plugin.",
+    )
+    zerotier_enabled = b.statetimeline(
+        "ZeroTier Network Enabled",
+        [(sel("opnsense_zerotier_network_enabled"), "{{network_id}}")],
+        {"0": ("Disabled", "red"), "1": ("Enabled", "green")},
+        w=8, h=8,
+        desc="Configured enable state for each ZeroTier network.",
+    )
+    zerotier_status = b.table(
+        "ZeroTier Network Status",
+        [sel("opnsense_zerotier_network_status")],
+        w=6, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"network_id": "Network ID", "status": "Status", "Value": "Observed"},
+        sort_by="Network ID",
+        desc=("Current daemon status for each configured network. The status label "
+              "uses ZeroTier's bounded status vocabulary; value 1 means observed."),
+    )
+    zerotier_addresses = b.table(
+        "ZeroTier Assigned Addresses",
+        [sel("opnsense_zerotier_network_assigned_addresses")],
+        w=6, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"network_id": "Network ID", "Value": "Addresses"},
+        sort_by="Network ID",
+        desc="Number of addresses assigned to this node on each ZeroTier network.",
     )
 
     # ================================================================
@@ -546,6 +583,9 @@ def build(b: Builder):
               [wg_peer_state, wg_rx, wg_tx,
                wg_handshake_table, wg_handshake_age],
               present="has_wireguard_peers"),
+        b.row("ZeroTier",
+              [zerotier_total, zerotier_enabled, zerotier_status, zerotier_addresses],
+              present="has_zerotier"),
         b.row("OpenVPN",
               [ovpn_sessions_total, ovpn_sessions_by_instance,
                ovpn_instances, ovpn_utilization, ovpn_sessions,

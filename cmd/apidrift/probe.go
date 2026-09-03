@@ -238,6 +238,35 @@ var getPathParamResolvers = map[string]func(p *prober) ([]string, error){
 		}
 		return []string{provider, group}, nil
 	},
+	"zerotierNetworkInfo": func(p *prober) ([]string, error) {
+		uuid, err := p.firstZeroTierNetworkUUID()
+		if err != nil || uuid == "" {
+			return nil, err
+		}
+		return []string{uuid}, nil
+	},
+}
+
+// firstZeroTierNetworkUUID resolves the plugin's internal configuration UUID,
+// which infoAction requires as its positional path parameter. An installed but
+// unconfigured plugin is valid box state and leaves the info schema unprobed.
+func (p *prober) firstZeroTierNetworkUUID() (string, error) {
+	raw, _, err := p.probeSource("zerotierNetworks")
+	if err != nil {
+		return "", err
+	}
+	var search struct {
+		Rows []struct {
+			UUID string `json:"uuid"`
+		} `json:"rows"`
+	}
+	if err := json.Unmarshal(raw, &search); err != nil {
+		return "", fmt.Errorf("decode zerotierNetworks: %w", err)
+	}
+	if len(search.Rows) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(search.Rows[0].UUID), nil
 }
 
 // firstCaptivePortalVoucherProvider fetches the first (in practice, almost

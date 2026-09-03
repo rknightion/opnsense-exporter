@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1018
-- **Gauges:** 664
+- **Total metrics:** 1022
+- **Gauges:** 668
 - **Counters:** 354
 
 ## General
@@ -1368,4 +1368,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_snapshots_supported | Gauge | --- | Whether the root filesystem supports ZFS boot environments (1 = ZFS/bectl, 0 = e.g. UFS). | --exporter.disable-snapshots |
 | opnsense_snapshots_total | Gauge | --- | Number of ZFS boot environments currently present. | --exporter.disable-snapshots |
 | opnsense_snapshots_active_created_timestamp_seconds | Gauge | --- | Unix timestamp when the currently active boot environment (active flag containing \"N\") was created. Absent when no boot environment is marked active (e.g. unsupported filesystem). | --exporter.disable-snapshots |
+
+## ZeroTier
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_zerotier_networks_configured | Gauge | --- | Total number of configured ZeroTier networks returned by the plugin network search endpoint | --exporter.disable-zerotier |
+| opnsense_zerotier_network_enabled | Gauge | network_id | Whether a configured ZeroTier network is enabled (1 = enabled, 0 = disabled) | --exporter.disable-zerotier |
+| opnsense_zerotier_network_status | Gauge | network_id, status | Current ZeroTier status for a configured network (value is always 1; status is the closed ZeroTier status vocabulary or unknown) | --exporter.disable-zerotier |
+| opnsense_zerotier_network_assigned_addresses | Gauge | network_id | Number of ZeroTier addresses assigned to this node on the network | --exporter.disable-zerotier |
 

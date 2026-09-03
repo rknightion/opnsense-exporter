@@ -1474,4 +1474,13 @@ var Exemptions = map[string]string{
 	"opnsense.wireguardClientsResponse.Total": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
 		"so the live-box schema canary keeps validating the envelope's shape.",
+	// opnsense/zerotier.go:33  json:"title"
+	"opnsense.zerotierNetworkInfoResponse.Title": "Localized presentation heading returned alongside the runtime message. The collector " +
+		"parses the message body; title carries no additional bounded operational state.",
+	// opnsense/zerotier.go:24  json:"current"
+	"opnsense.zerotierNetworkSearchResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
+		"and uses total plus the decoded rows, so page state is not part of the metric contract.",
+	// opnsense/zerotier.go:23  json:"rowCount"
+	"opnsense.zerotierNetworkSearchResponse.RowCount": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
+		"and uses total plus the decoded rows, so page state is not part of the metric contract.",
 }

@@ -309,7 +309,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing to run just.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 115 total (collector 108 / self_labeled 5 / target_join 2 / global 0)
+### Prometheus sentinels — 116 total (collector 109 / self_labeled 5 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -428,6 +428,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_wireguard_ifaces` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > VPN > WireGuard Interfaces | `label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_wireguard_peers` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > VPN > WireGuard Peers | `label_values(opnsense_wireguard_peer_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_zenarmor_metrics` | `collector` | existence (series presence) | opnsense2otel > Security > Zenarmor; opnsense2otel > Security > Zenarmor > Overview | `label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_zerotier` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > VPN > ZeroTier | `label_values(opnsense_zerotier_networks_configured{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 
 ### Loki sentinels — 10 total (scope: `stream_selector`)
 

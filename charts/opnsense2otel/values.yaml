@@ -468,6 +468,10 @@ settings:
   #
   # Disable the scraping of Wireguard service
   # exporter.disable-wireguard: false
+  #
+  # Disable the scraping of ZeroTier network membership, status and assigned-address metrics
+  # (silent when the os-zerotier plugin is absent)
+  # exporter.disable-zerotier: false
 
   # ---- Operator console ----
   # The web UI served at /. Reads a passive snapshot of the last scrape; it never gathers on

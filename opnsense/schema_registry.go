@@ -481,6 +481,8 @@ var schemaRegistry = map[EndpointName]any{
 	"ndpTable":             []ndpEntry{},
 	"netbirdServiceStatus": serviceStatusResponse{},
 	"netbirdStatus":        netbirdStatusObject{},
+	"zerotierNetworkInfo":  zerotierNetworkInfoResponse{},
+	"zerotierNetworks":     zerotierNetworkSearchResponse{},
 	// The plain map, not the tolerant netflowCacheEntryMap the client actually
 	// decodes into (#499): the tolerant alias carries a custom UnmarshalJSON, so
 	// walkType would stop at KindAny and every consumed field (*.Pkts, *.if,

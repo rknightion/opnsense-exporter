@@ -1,6 +1,6 @@
 ---
 title: opnsense2otel
-description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 1018 metrics across 67 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
+description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 1022 metrics across 68 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Prometheus and OpenTelemetry metrics for OPNsense firewalls**
 
-A Prometheus exporter that polls OPNsense REST APIs and exposes 1018 metrics across 67 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 1022 metrics across 68 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
 
 <div class="hero-badges" markdown>
 
@@ -61,7 +61,7 @@ Metrics are then at `http://localhost:8080/metrics`, and the operator console at
 
     ---
 
-    Browse all 1018 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 1022 Prometheus metrics with types, labels, and PromQL examples.
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 
@@ -69,7 +69,7 @@ Metrics are then at `http://localhost:8080/metrics`, and the operator console at
 
     ---
 
-    67 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
+    68 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
 
     [:octicons-arrow-right-24: Collectors](collectors/index.md)
 
@@ -97,7 +97,7 @@ opnsense2otel targets OPNsense specifically, covering the firewall, its plugin e
 
 Key highlights:
 
-- **67 collectors** covering every major OPNsense subsystem
+- **68 collectors** covering every major OPNsense subsystem
 - **Independent background polling** with snapshot replay for fast, API-free scrapes
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail

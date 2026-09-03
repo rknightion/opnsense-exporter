@@ -92,7 +92,7 @@ Then follow the receiver-specific checklist:
 ## Data is stale or collector polls are slow
 
 Prometheus scrapes replay an in-memory snapshot; they do not fan out to OPNsense.
-With ~67 collectors polling on independent schedules, use the per-collector clocks
+With ~68 collectors polling on independent schedules, use the per-collector clocks
 to isolate stale data or a background collector missing its schedule:
 
 - Check `opnsense_exporter_collector_snapshot_timestamp_seconds` and
