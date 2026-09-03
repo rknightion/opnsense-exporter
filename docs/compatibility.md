@@ -56,6 +56,17 @@ Unbound's core totals - `opnsense_unbound_dns_queries_total`, `opnsense_unbound_
 `opnsense_unbound_dns_cache_miss_total`, the `recursion_time_*` and `request_list_*` series and
 `opnsense_unbound_dns_uptime_seconds` - are not part of the extended block and are unaffected.
 
+### Metrics introduced with OPNsense 26.7 APIs
+
+Two collector families use core API endpoints that OPNsense first added in 26.7. On 26.1 and
+earlier, the exporter treats the endpoint's 404 as feature absence and emits no series from that
+family; the rest of the scrape remains healthy.
+
+| Metric | Behaviour before 26.7 |
+| --- | --- |
+| `opnsense_gateway_groups_member` | Not emitted. The gateway-group settings endpoint does not exist. Existing per-gateway status metrics remain available. |
+| `opnsense_firewall_migration_legacy_rules`<br>`opnsense_firewall_migration_legacy_outbound_nat_rules` | Not emitted. The firewall migration-count endpoints do not exist; absence is not reported as zero migration debt. |
+
 ### API-key permissions after the 26.7 ACL merge
 
 OPNsense 26.7 consolidates the local user-management ACL entries. In 26.1,
