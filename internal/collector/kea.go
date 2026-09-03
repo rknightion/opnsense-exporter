@@ -20,6 +20,7 @@ type keaCollector struct {
 	dhcp4LeasesByState *prometheus.Desc
 	dhcp4LeaseInfo     *prometheus.Desc
 	dhcp4PoolStats     *prometheus.Desc
+	dhcp4Reservations  *prometheus.Desc
 
 	dhcp6LeasesTotal   *prometheus.Desc
 	dhcp6LeasesByIface *prometheus.Desc
@@ -29,6 +30,7 @@ type keaCollector struct {
 	dhcp6LeasesByType  *prometheus.Desc
 	dhcp6LeaseInfo     *prometheus.Desc
 	dhcp6PoolStats     *prometheus.Desc
+	dhcp6Reservations  *prometheus.Desc
 
 	serviceRunning *prometheus.Desc
 	dhcp4PoolSize  *prometheus.Desc
@@ -89,6 +91,10 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 			"other DHCPv4 lease metrics in this collector, not a replacement for any of them.",
 		[]string{"pool_state"},
 	)
+	c.dhcp4Reservations = buildPrometheusDesc(c.subsystem, "dhcp4_reservations_configured",
+		"Number of configured Kea DHCPv4 reservations in this subnet, including reservations with no current lease",
+		[]string{"subnet"},
+	)
 
 	// DHCPv6 metrics
 	c.dhcp6LeasesTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_total",
@@ -133,6 +139,10 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 			"other DHCPv6 lease metrics in this collector, not a replacement for any of them.",
 		[]string{"pool_state"},
 	)
+	c.dhcp6Reservations = buildPrometheusDesc(c.subsystem, "dhcp6_reservations_configured",
+		"Number of configured Kea DHCPv6 reservations in this subnet, including reservations with no current lease",
+		[]string{"subnet"},
+	)
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
 		"Whether the Kea DHCP service is running (1 = running, 0 = stopped/disabled)",
@@ -172,6 +182,7 @@ func (c *keaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp4LeasesByState
 	ch <- c.dhcp4LeaseInfo
 	ch <- c.dhcp4PoolStats
+	ch <- c.dhcp4Reservations
 
 	ch <- c.dhcp6LeasesTotal
 	ch <- c.dhcp6LeasesByIface
@@ -181,6 +192,7 @@ func (c *keaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp6LeasesByType
 	ch <- c.dhcp6LeaseInfo
 	ch <- c.dhcp6PoolStats
+	ch <- c.dhcp6Reservations
 
 	ch <- c.serviceRunning
 	ch <- c.dhcp4PoolSize
@@ -272,6 +284,28 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 	for subnet, used := range opnsense.KeaPoolUsedBySubnet(v6Data.Leases, subnets6) {
 		ch <- prometheus.MustNewConstMetric(c.dhcp6PoolUsed, prometheus.GaugeValue,
 			float64(used), subnet, c.instance)
+	}
+
+	// Reservation inventory is configuration-derived, not lease-derived: a
+	// reservation never claimed by a client has no lease row at all. Each
+	// reservation row refers to its configured subnet by UUID; the client
+	// resolves that relation against the searchSubnet results before emitting
+	// the bounded subnet label.
+	if reservations4, rErr := client.FetchKeaReservations4(); rErr != nil {
+		if firstErr == nil {
+			firstErr = rErr
+		}
+		c.log.Error("failed to fetch Kea DHCPv4 reservations", "err", rErr)
+	} else {
+		c.emitReservationMetrics(ch, c.dhcp4Reservations, reservations4, subnets4)
+	}
+	if reservations6, rErr := client.FetchKeaReservations6(); rErr != nil {
+		if firstErr == nil {
+			firstErr = rErr
+		}
+		c.log.Error("failed to fetch Kea DHCPv6 reservations", "err", rErr)
+	} else {
+		c.emitReservationMetrics(ch, c.dhcp6Reservations, reservations6, subnets6)
 	}
 
 	// DHCPv6 prefix-delegation pool capacity.
@@ -429,5 +463,16 @@ func (c *keaCollector) emitLeaseMetrics(
 				labelValues...,
 			)
 		}
+	}
+}
+
+func (c *keaCollector) emitReservationMetrics(
+	ch chan<- prometheus.Metric,
+	desc *prometheus.Desc,
+	reservations []opnsense.KeaReservation,
+	subnets []opnsense.KeaSubnet,
+) {
+	for subnet, count := range opnsense.KeaReservationCountsBySubnet(reservations, subnets) {
+		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, float64(count), subnet, c.instance)
 	}
 }

@@ -1,0 +1,27 @@
+{
+  "endpoint": "keaReservations6",
+  "method": "GET",
+  "path": "api/kea/dhcpv6/searchReservation",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].%subnet",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].subnet",
+      "kind": "string"
+    }
+  ]
+}

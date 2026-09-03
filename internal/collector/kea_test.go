@@ -12,6 +12,7 @@ import (
 func keaTestMux(t *testing.T, v4Response, v6Response string) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(v4Response))
 	})
@@ -32,6 +33,14 @@ func keaTestMux(t *testing.T, v4Response, v6Response string) *http.ServeMux {
 		w.Write([]byte(`{"status":"running"}`))
 	})
 	return mux
+}
+
+func registerEmptyKeaReservationHandlers(mux *http.ServeMux) {
+	empty := func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	}
+	mux.HandleFunc("/api/kea/dhcpv4/searchReservation", empty)
+	mux.HandleFunc("/api/kea/dhcpv6/searchReservation", empty)
 }
 
 func TestKeaCollector_Update(t *testing.T) {
@@ -299,6 +308,7 @@ func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
 	// Build mux manually (not via keaTestMux) so we can set service status to
 	// "stopped" — all emitted metric values should be zero.
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(keaDisabledResponse))
 	})
@@ -352,6 +362,7 @@ func TestKeaCollector_Name(t *testing.T) {
 
 func TestKeaCollector_PoolAndService(t *testing.T) {
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
 	})
@@ -411,6 +422,7 @@ func TestKeaCollector_PoolUsed_MatchesLeaseAddress(t *testing.T) {
 	// A configured subnet with one matching v4 lease and one out-of-range
 	// lease: pool_used must count only the matching address.
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total":2,"rowCount":2,"current":1,"rows":[
 			{"address":"10.0.0.150","hwaddr":"aa:bb:cc:dd:ee:01","hostname":"h1","expire":1,"if_descr":"LAN","is_reserved":"0"},
@@ -458,6 +470,7 @@ func TestKeaCollector_PoolUsed_MatchesLeaseAddress(t *testing.T) {
 
 func TestKeaCollector_PdPoolCapacity(t *testing.T) {
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
 	})
@@ -507,6 +520,7 @@ func TestKeaCollector_PdPoolCapacity_UUIDJoinMiss_FallsBackToDisplay(t *testing.
 	// OPNsense's own "%subnet" display string ("<if-key> <cidr>"), never drop
 	// the series.
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
 	})
@@ -559,6 +573,7 @@ func TestKeaCollector_PdPoolCapacity_UUIDJoinMiss_FallsBackToDisplay(t *testing.
 // (fd09:172:16:9::/64), not the raw uuid or the %subnet fallback.
 func TestKeaCollector_PdPoolCapacity_RealDevBoxCapture(t *testing.T) {
 	mux := http.NewServeMux()
+	registerEmptyKeaReservationHandlers(mux)
 	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
 	})

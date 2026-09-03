@@ -138,6 +138,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"systemActivity":             "api/diagnostics/activity/get_activity",
 		"keaLeases4":                 "api/kea/leases4/search",
 		"keaLeases6":                 "api/kea/leases6/search",
+		"keaReservations4":           "api/kea/dhcpv4/searchReservation",
+		"keaReservations6":           "api/kea/dhcpv6/searchReservation",
 		"unboundServiceStatus":       "api/unbound/service/status",
 		"dnsmasqServiceStatus":       "api/dnsmasq/service/status",
 		"ipsecServiceStatus":         "api/ipsec/service/status",

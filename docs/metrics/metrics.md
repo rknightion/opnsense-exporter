@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1008
-- **Gauges:** 655
+- **Total metrics:** 1010
+- **Gauges:** 657
 - **Counters:** 353
 
 ## General
@@ -704,6 +704,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_kea_dhcp4_leases_by_state | Gauge | state | Number of Kea DHCPv4 leases per lease state (active, declined, expired-reclaimed) | --exporter.disable-kea |
 | opnsense_kea_dhcp4_lease_info | Gauge | address, hostname, hwaddr, interface, vendor, valid_lifetime, client_id | Per-lease DHCPv4 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. | --exporter.disable-kea |
 | opnsense_kea_dhcp4_lease_pool_stats | Gauge | pool_state | Kea's own DHCPv4 lease pool accounting (the response's top-level `stats` object, computed over the FULL lease population), by pool_state (active/inactive/total). Authoritative and never truncated by bootgrid pagination, unlike a row-derived count -- a complement to the other DHCPv4 lease metrics in this collector, not a replacement for any of them. | --exporter.disable-kea |
+| opnsense_kea_dhcp4_reservations_configured | Gauge | subnet | Number of configured Kea DHCPv4 reservations in this subnet, including reservations with no current lease | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_total | Counter | --- | Total number of Kea DHCPv6 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_by_interface | Gauge | interface | Number of Kea DHCPv6 leases per interface | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_reserved_total | Counter | --- | Total number of reserved (static) Kea DHCPv6 leases | --exporter.disable-kea |
@@ -712,6 +713,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_kea_dhcp6_leases_by_type | Gauge | type | Number of Kea DHCPv6 leases per lease type (IA_NA address lease vs IA_PD prefix delegation) | --exporter.disable-kea |
 | opnsense_kea_dhcp6_lease_info | Gauge | address, hostname, hwaddr, interface, vendor, valid_lifetime, prefix_len | Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. prefix_len is the delegated prefix's block size (e.g. 56 for a /56) for an IA_PD (prefix-delegation) lease; for an IA_NA (address) lease it carries Kea's fixed 128 (a single address has no delegated block). | --exporter.disable-kea |
 | opnsense_kea_dhcp6_lease_pool_stats | Gauge | pool_state | Kea's own DHCPv6 lease pool accounting (the response's top-level `stats` object, computed over the FULL lease population), by pool_state (active/inactive/total). Authoritative and never truncated by bootgrid pagination, unlike a row-derived count -- a complement to the other DHCPv6 lease metrics in this collector, not a replacement for any of them. | --exporter.disable-kea |
+| opnsense_kea_dhcp6_reservations_configured | Gauge | subnet | Number of configured Kea DHCPv6 reservations in this subnet, including reservations with no current lease | --exporter.disable-kea |
 | opnsense_kea_service_running | Gauge | --- | Whether the Kea DHCP service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-kea |
 | opnsense_kea_dhcp4_pool_size | Gauge | subnet, interface | Number of addresses in the configured Kea DHCPv4 pools for this subnet | --exporter.disable-kea |
 | opnsense_kea_dhcp6_pool_size | Gauge | subnet, interface | Number of addresses in the configured Kea DHCPv6 pools for this subnet | --exporter.disable-kea |

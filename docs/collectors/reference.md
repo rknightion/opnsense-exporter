@@ -39,7 +39,7 @@ This page provides a summary of all collectors in opnsense2otel.
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPN2OTEL_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPN2OTEL_DISABLE_DHCPV6 |
 | Interfaces | interfaces | 39 | Enabled | --exporter.disable-interfaces | OPN2OTEL_DISABLE_INTERFACES |
-| Kea DHCP | kea | 21 | Enabled | --exporter.disable-kea | OPN2OTEL_DISABLE_KEA |
+| Kea DHCP | kea | 23 | Enabled | --exporter.disable-kea | OPN2OTEL_DISABLE_KEA |
 | Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPN2OTEL_DISABLE_KERNEL_MEMORY |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPN2OTEL_DISABLE_LLDPD |
 | Local Auth | auth | 9 | Enabled | --exporter.disable-auth | OPN2OTEL_DISABLE_AUTH |

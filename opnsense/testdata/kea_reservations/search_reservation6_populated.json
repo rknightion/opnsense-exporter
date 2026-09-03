@@ -1,0 +1,1 @@
+{"rows":[{"subnet":"v6-subnet-a","%subnet":"LAN fd23::/64"},{"subnet":"v6-subnet-b","%subnet":"IOT fd24::/64"}],"rowCount":2,"total":2,"current":1}

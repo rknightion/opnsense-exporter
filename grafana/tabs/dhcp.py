@@ -293,6 +293,17 @@ def build(b: Builder):
             "single interface hosts several Kea subnets."
         ),
     )
+    kea_reservations = b.bargauge(
+        "Configured Kea Reservations by Subnet",
+        [(sel("opnsense_kea_dhcp4_reservations_configured"), "v4 {{subnet}}"),
+         (sel("opnsense_kea_dhcp6_reservations_configured"), "v6 {{subnet}}")],
+        unit="short", w=12, h=4, orient="horizontal",
+        desc=(
+            "Complete configured reservation inventory from Kea's DHCPv4 and DHCPv6 "
+            "searchReservation endpoints. Unlike lease-row reserved counts, this includes "
+            "reservations no client has claimed. No reservation identity is emitted."
+        ),
+    )
 
     # ================================================================
     # KEA — Row 4: Kea DHCPv4 lease detail table
@@ -512,6 +523,9 @@ def build(b: Builder):
                kea4_by_state, kea6_by_state, kea6_by_type, kea_pool_stats,
                kea_svc, kea4_pool, kea6_pool, kea_util,
                kea4_pool_used, kea6_pool_used, kea_subnet_util],
+              present="has_kea"),
+        b.row("Kea Reservation Inventory",
+              [kea_reservations],
               present="has_kea"),
         b.row("Kea DHCPv4 Lease Details",
               [kea4_lease_table],

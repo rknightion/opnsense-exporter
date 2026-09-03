@@ -245,7 +245,7 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
         when #587 added the top-resolved and top-blocked domain leaderboards; 43 -> 44
         when #579 added the jumbo mbuf pool utilization bargauge; 44 -> 45 when #583
         added the per-plugin size bargauge."""
-        self.assertEqual(len(_bargauge_panels(self.builder)), 45)
+        self.assertEqual(len(_bargauge_panels(self.builder)), 46)
 
     def test_neutral_bytes_panel_has_no_severity_boundary(self):
         panel = self._panel("eve Log File Sizes")

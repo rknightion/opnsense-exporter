@@ -1014,6 +1014,22 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-dhcp-kea-v6", Name: "Services: DHCP: Kea(v6)", Origin: "core", Pattern: "api/kea/leases6/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"keaReservations4": {
+		Consumer:  "kea",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Privileges: []ACLPrivilege{
+			{Key: "page-dhcp-kea-v4", Name: "Services: DHCP: Kea(v4)", Origin: "core", Pattern: "api/kea/dhcpv4/*", Scope: ACLScopeWildcard},
+		},
+	},
+	"keaReservations6": {
+		Consumer:  "kea",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Privileges: []ACLPrivilege{
+			{Key: "page-dhcp-kea-v6", Name: "Services: DHCP: Kea(v6)", Origin: "core", Pattern: "api/kea/dhcpv6/*", Scope: ACLScopeWildcard},
+		},
+	},
 	"keaPdPools6": {
 		Consumer:  "kea",
 		Component: "core",

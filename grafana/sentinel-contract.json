@@ -544,7 +544,8 @@
         "query": "label_values(opnsense_kea_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > DHCP",
-          "opnsense2otel > Network > DHCP > Kea DHCP"
+          "opnsense2otel > Network > DHCP > Kea DHCP",
+          "opnsense2otel > Network > DHCP > Kea Reservation Inventory"
         ]
       },
       {
