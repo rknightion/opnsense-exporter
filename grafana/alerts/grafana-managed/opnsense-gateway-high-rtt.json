@@ -26,7 +26,7 @@
       "description": "Gateway {{ $labels.name }} mean RTT has exceeded its configured high-latency threshold for 10m.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensegatewayhighrtt",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "223"
+      "__panelId__": "224"
     },
     "expressions": {
       "A": {

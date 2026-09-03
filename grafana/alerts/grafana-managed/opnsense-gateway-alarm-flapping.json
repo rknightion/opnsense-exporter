@@ -26,7 +26,7 @@
       "description": "dpinger emitted three or more alarm_started transitions for gateway {{ $labels.gateway }} in 15m, sustained for 15m. This is transition evidence from syslog, not an assertion that the gateway is currently down; check OPNsenseGatewayDown and the Gateway Status panel for current state.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensegatewayalarmflapping",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "222"
+      "__panelId__": "223"
     },
     "expressions": {
       "A": {

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/rknightion/opnsense2otel/v4/internal/flow"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
@@ -87,12 +88,13 @@ func init() {
 // holding finished records. Nothing on this path may ever make a network call — see
 // enrich.Refresher.NoteMiss, which is deliberately non-blocking for exactly this reason.
 type source struct {
-	l      *Listener
-	cache  *enrich.Cache
-	miss   func(table string)
-	m      *logship.ReceiverMetrics
-	filter *Filter
-	log    *slog.Logger
+	l        *Listener
+	cache    *enrich.Cache
+	dnsCache *flow.DNSCache
+	miss     func(table string)
+	m        *logship.ReceiverMetrics
+	filter   *Filter
+	log      *slog.Logger
 
 	// sink receives derived-metric observations (#258). Never nil: a NopMetricSink is
 	// substituted when metric derivation is disabled (log_events collector off).
@@ -151,8 +153,9 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		sink = logship.NopMetricSink{}
 	}
 	s := &source{
-		cache: cache,
-		miss:  d.Miss,
+		cache:    cache,
+		dnsCache: d.FlowDNSCache,
+		miss:     d.Miss,
 		m: logship.NewReceiverMetrics(d.Registerer, sourceName, logship.ReceiverVocab{
 			Reasons:    RejectReasons,
 			Stages:     ParseStages,
@@ -305,6 +308,15 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 			s.unparsed(subsystemFor(env.Program))
 		} else {
 			observeUnparsed(s.m, subsystemFor(env.Program))
+		}
+	}
+
+	// filterlog has no domain in its wire row. The shared flow DNS answer cache
+	// already joins the same (client, answer) pair for NetFlow and Zenarmor; read it
+	// here as well, without a resolver fallback or any other I/O (#0038).
+	if parsed && env.Program == "filterlog" {
+		if domain := enrichFilterlogDomain(&rec, s.dnsCache, now); domain != "" {
+			observeFilterlogDomain(s.sink, domain)
 		}
 	}
 

@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +23,18 @@ import (
 // receiver is constructed separately — a shared package-level value is the seam
 // that lets both reach the same totals without one package importing the other.
 var LogEvents = newLogEventStore()
+
+// Filterlog domain observations are bounded independently of
+// --logs.max-metric-keys. The metric contract is the top 50 domains by observed
+// volume plus one aggregate for everything else; the larger candidate bound
+// keeps the in-memory ranking state bounded without evicting entries from the
+// shared DNS cache. A domain that arrives after the candidate bound is folded
+// into the same `other` output bucket.
+const (
+	maxFilterlogDomainMetricSeries = 50
+	maxFilterlogDomainCandidates   = 4096
+	filterlogDomainOther           = "other"
+)
 
 // Label tuples. Each is the full label set for one derived metric family.
 // Deliberately no IP, port, SID, MAC, hostname, username or free-text rule
@@ -353,6 +366,7 @@ const (
 	logEventObserveDHCP6AllocFail
 	logEventObserveZenarmor
 	logEventObserveZenarmorDevice
+	logEventObserveFilterlogDomain
 	logEventSetMaxKeys
 	logEventSetClock
 	logEventTakeSnapshot
@@ -401,6 +415,7 @@ type logEventSnapshot struct {
 	dhcp6AllocFail []keyed[dhcp6AllocFailKey]
 	zen            []keyed[zenKey]
 	zenDevs        []inventoryEntry[string, zenDeviceAttrs]
+	filterlogDom   []keyed[string]
 	sat            []familySaturation
 	dropped        uint64
 }
@@ -456,6 +471,11 @@ type LogEventStore struct {
 	dhcp6AllocFail   *cappedCounter[dhcp6AllocFailKey]
 	zen              *cappedCounter[zenKey]
 	zenDevs          *boundedInventory[string, zenDeviceAttrs]
+	// filterlogDomains retains a bounded heavy-hitter candidate set. Evicted and
+	// reserved domains are folded into the `other` metric series at snapshot
+	// time, so a novel domain can never grow process memory without limit and no
+	// observation is dropped from the aggregate.
+	filterlogDomains *filterlogDomainCounter
 	// now is the inventory clock, a test seam. Production stores leave it nil and
 	// fall back to time.Now.
 	now func() time.Time
@@ -467,33 +487,34 @@ func newLogEventStore() *LogEventStore {
 
 func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEventStore {
 	s := &LogEventStore{
-		commands:       make(chan logEventCommand, capacity),
-		stop:           make(chan struct{}),
-		done:           make(chan struct{}),
-		beforeSnapshot: beforeSnapshot,
-		fw:             newCappedCounter[fwKey](defaultMaxLogEventKeys),
-		ha:             newCappedCounter[haKey](defaultMaxLogEventKeys),
-		ssh:            newCappedCounter[sshKey](defaultMaxLogEventKeys),
-		dhcp:           newCappedCounter[dhcpKey](defaultMaxLogEventKeys),
-		audit:          newCappedCounter[auditKey](defaultMaxLogEventKeys),
-		ids:            newCappedCounter[idsKey](defaultMaxLogEventKeys),
-		gateway:        newCappedCounter[gatewayKey](defaultMaxLogEventKeys),
-		radius:         newCappedCounter[radiusKey](defaultMaxLogEventKeys),
-		vpn:            newCappedCounter[vpnKey](defaultMaxLogEventKeys),
-		carp:           newCappedCounter[carpKey](defaultMaxLogEventKeys),
-		upnp:           newCappedCounter[upnpKey](defaultMaxLogEventKeys),
-		netmap:         newCappedCounter[netmapKey](defaultMaxLogEventKeys),
-		arp:            newCappedCounter[arpKey](defaultMaxLogEventKeys),
-		dhcpCli:        newCappedCounter[dhcpClientKey](defaultMaxLogEventKeys),
-		dhcpScr:        newCappedCounter[dhcpClientScriptKey](defaultMaxLogEventKeys),
-		dhcpLease:      newCappedGauge[dhcpClientLeaseKey, dhcpClientLeaseValue](defaultMaxLogEventKeys),
-		dhcp6cMsg:      newCappedCounter[dhcp6cMessageKey](defaultMaxLogEventKeys),
-		dhcp6cEvt:      newCappedCounter[dhcp6cEventKey](defaultMaxLogEventKeys),
-		dhcp6cPrefix:   newCappedGauge[dhcp6cPrefixKey, dhcp6cPrefixValue](defaultMaxLogEventKeys),
-		dhcp6cAddr:     newCappedGauge[dhcp6cAddressKey, dhcp6cAddressValue](defaultMaxLogEventKeys),
-		dhcp6AllocFail: newCappedCounter[dhcp6AllocFailKey](defaultMaxLogEventKeys),
-		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
-		zenDevs:        newBoundedInventory[string, zenDeviceAttrs](maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceName),
+		commands:         make(chan logEventCommand, capacity),
+		stop:             make(chan struct{}),
+		done:             make(chan struct{}),
+		beforeSnapshot:   beforeSnapshot,
+		fw:               newCappedCounter[fwKey](defaultMaxLogEventKeys),
+		ha:               newCappedCounter[haKey](defaultMaxLogEventKeys),
+		ssh:              newCappedCounter[sshKey](defaultMaxLogEventKeys),
+		dhcp:             newCappedCounter[dhcpKey](defaultMaxLogEventKeys),
+		audit:            newCappedCounter[auditKey](defaultMaxLogEventKeys),
+		ids:              newCappedCounter[idsKey](defaultMaxLogEventKeys),
+		gateway:          newCappedCounter[gatewayKey](defaultMaxLogEventKeys),
+		radius:           newCappedCounter[radiusKey](defaultMaxLogEventKeys),
+		vpn:              newCappedCounter[vpnKey](defaultMaxLogEventKeys),
+		carp:             newCappedCounter[carpKey](defaultMaxLogEventKeys),
+		upnp:             newCappedCounter[upnpKey](defaultMaxLogEventKeys),
+		netmap:           newCappedCounter[netmapKey](defaultMaxLogEventKeys),
+		arp:              newCappedCounter[arpKey](defaultMaxLogEventKeys),
+		dhcpCli:          newCappedCounter[dhcpClientKey](defaultMaxLogEventKeys),
+		dhcpScr:          newCappedCounter[dhcpClientScriptKey](defaultMaxLogEventKeys),
+		dhcpLease:        newCappedGauge[dhcpClientLeaseKey, dhcpClientLeaseValue](defaultMaxLogEventKeys),
+		dhcp6cMsg:        newCappedCounter[dhcp6cMessageKey](defaultMaxLogEventKeys),
+		dhcp6cEvt:        newCappedCounter[dhcp6cEventKey](defaultMaxLogEventKeys),
+		dhcp6cPrefix:     newCappedGauge[dhcp6cPrefixKey, dhcp6cPrefixValue](defaultMaxLogEventKeys),
+		dhcp6cAddr:       newCappedGauge[dhcp6cAddressKey, dhcp6cAddressValue](defaultMaxLogEventKeys),
+		dhcp6AllocFail:   newCappedCounter[dhcp6AllocFailKey](defaultMaxLogEventKeys),
+		zen:              newCappedCounter[zenKey](defaultMaxLogEventKeys),
+		zenDevs:          newBoundedInventory[string, zenDeviceAttrs](maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceName),
+		filterlogDomains: newFilterlogDomainCounter(maxFilterlogDomainCandidates),
 	}
 	go s.run()
 	return s
@@ -704,6 +725,18 @@ func (s *LogEventStore) ObserveZenarmorDevice(name, category, iface string) bool
 	return s.observe(logEventCommand{kind: logEventObserveZenarmorDevice, values: [7]string{name, category, iface}})
 }
 
+// ObserveFilterlogDomain records one filterlog cache-hit domain observation.
+// Unlike the other derived families, its output is ranked: the collector emits
+// the top 50 domains and folds every remaining domain into `domain="other"`.
+// The candidate map is bounded independently of that output cap, so an
+// attacker-controlled DNS name cannot grow process memory without limit.
+func (s *LogEventStore) ObserveFilterlogDomain(domain string) bool {
+	if domain == "" {
+		return false
+	}
+	return s.observe(logEventCommand{kind: logEventObserveFilterlogDomain, values: [7]string{domain}})
+}
+
 // clock reads the inventory clock. It is only ever called from the map-owning
 // goroutine, so the seam needs no synchronisation.
 func (s *LogEventStore) clock() time.Time {
@@ -784,6 +817,8 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventObserveZenarmorDevice:
 		s.zenDevs.seen(v[0], zenDeviceAttrs{category: v[1], iface: v[2]}, s.clock())
+	case logEventObserveFilterlogDomain:
+		s.filterlogDomains.inc(v[0])
 	case logEventSetMaxKeys:
 		s.fw.setMax(cmd.maxKeys)
 		s.ha.setMax(cmd.maxKeys)
@@ -875,6 +910,10 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
+	// Domain observations are cumulative, but unlike the ordinary families they
+	// are ranked at emission time. Keep the bounded candidate counts intact and
+	// copy the top 50 plus the folded remainder into the immutable scrape snapshot.
+	snap.filterlogDom = topFilterlogDomains(s.filterlogDomains)
 	// The inventory is NOT drained: it is current state, not a cumulative total, so
 	// live() prunes what has expired and leaves the rest in place for the next scrape.
 	snap.zenDevs = s.zenDevs.live(s.clock())
@@ -942,19 +981,20 @@ type logEventsCollector struct {
 	subsystem string
 	instance  string
 
-	firewall    *prometheus.Desc
-	haproxy     *prometheus.Desc
-	sshd        *prometheus.Desc
-	dhcp        *prometheus.Desc
-	audit       *prometheus.Desc
-	ids         *prometheus.Desc
-	gateway     *prometheus.Desc
-	radius      *prometheus.Desc
-	vpn         *prometheus.Desc
-	carp        *prometheus.Desc
-	upnp        *prometheus.Desc
-	zenarmor    *prometheus.Desc
-	zenarmorDev *prometheus.Desc
+	firewall        *prometheus.Desc
+	filterlogDomain *prometheus.Desc
+	haproxy         *prometheus.Desc
+	sshd            *prometheus.Desc
+	dhcp            *prometheus.Desc
+	audit           *prometheus.Desc
+	ids             *prometheus.Desc
+	gateway         *prometheus.Desc
+	radius          *prometheus.Desc
+	vpn             *prometheus.Desc
+	carp            *prometheus.Desc
+	upnp            *prometheus.Desc
+	zenarmor        *prometheus.Desc
+	zenarmorDev     *prometheus.Desc
 
 	netmapRingFull *prometheus.Desc
 	arpMoves       *prometheus.Desc
@@ -997,6 +1037,10 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"Counts every line including passes; the raw pass lines may be sampled away (--logs.syslog.sample) "+
 			"while this counter still counts them.",
 		[]string{"action", "interface", "rule_id", "rule_name", "scope"},
+	)
+	c.filterlogDomain = buildPrometheusDesc(c.subsystem, "filterlog_domain_total",
+		"Filterlog events with a resolved destination domain, by domain. The metric exposes the top 50 domains by observed volume and folds every other domain into domain=other; the domain is never a Loki stream label.",
+		[]string{"domain"},
 	)
 	c.haproxy = buildPrometheusDesc(c.subsystem, "haproxy_total",
 		"HAProxy events derived from received syslog, by event, backend, server, state and HTTP status class.",
@@ -1348,6 +1392,7 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 
 func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.firewall
+	ch <- c.filterlogDomain
 	ch <- c.haproxy
 	ch <- c.sshd
 	ch <- c.dhcp
@@ -1413,6 +1458,50 @@ func drainFamily[K comparable](family string, c *cappedCounter[K]) ([]keyed[K], 
 	return out, familySaturation{family: family, capped: overflow, keys: float64(len(m))}
 }
 
+// topFilterlogDomains returns the metric-facing view of the bounded domain
+// candidates. The source map may contain more than the 50 visible series; all
+// non-selected counts, including evicted candidates and reserved/invalid
+// domains, are folded into one `other` series. Sorting by descending count and
+// then domain gives ties a deterministic winner, which keeps successive
+// scrapes stable.
+func topFilterlogDomains(c *filterlogDomainCounter) []keyed[string] {
+	if c == nil {
+		return nil
+	}
+	m, total := c.snapshot()
+	points := make([]keyed[string], 0, len(m))
+	selected := 0.0
+	for domain, count := range m {
+		points = append(points, keyed[string]{k: domain, v: count})
+	}
+	sort.Slice(points, func(i, j int) bool {
+		if points[i].v != points[j].v {
+			return points[i].v > points[j].v
+		}
+		return points[i].k < points[j].k
+	})
+	if len(points) > maxFilterlogDomainMetricSeries {
+		for _, point := range points[:maxFilterlogDomainMetricSeries] {
+			selected += point.v
+		}
+		points = points[:maxFilterlogDomainMetricSeries]
+	} else {
+		for _, point := range points {
+			selected += point.v
+		}
+	}
+	// The folded remainder is monotonic even though membership moves: a domain
+	// enters the top set only by displacing one whose count is no larger than its
+	// own, so total-sum(top) cannot fall. Candidate replacement likewise moves a
+	// retained count into the remainder. That invariant is what makes CounterValue
+	// correct for both named domains and `other`.
+	other := total - selected
+	if other > 0 {
+		points = append(points, keyed[string]{k: filterlogDomainOther, v: other})
+	}
+	return points
+}
+
 // copyGaugeFamily is drainFamily for a cappedGauge. It reports its saturation through
 // the SAME familySaturation shape, so a capped gauge family shows up on the existing
 // opnsense_log_events_cardinality_capped_total alert with no special case.
@@ -1447,6 +1536,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range snap.fw {
 		ch <- prometheus.MustNewConstMetric(c.firewall, prometheus.CounterValue, p.v,
 			p.k.action, p.k.iface, p.k.ruleID, p.k.ruleName, p.k.scope, c.instance)
+	}
+	for _, p := range snap.filterlogDom {
+		ch <- prometheus.MustNewConstMetric(c.filterlogDomain, prometheus.CounterValue, p.v,
+			p.k, c.instance)
 	}
 	for _, p := range snap.ha {
 		ch <- prometheus.MustNewConstMetric(c.haproxy, prometheus.CounterValue, p.v,

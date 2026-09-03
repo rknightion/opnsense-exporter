@@ -11,9 +11,9 @@ through a bounded in-memory queue, and an emitter ships batches to the configure
 sink. It is independent of OTLP metrics export (`--otlp.enabled`): metrics
 and logs are gated by separate flags and neither turns the other on.
 
-High-cardinality event data (IP addresses, ports, Suricata SIDs, domains) is
-shipped as log **body** and Loki **structured metadata** - never as a metric and
-never as a Loki label. The only labels are the resource identity, plus `opnsense.source`
+High-cardinality event data (IP addresses, ports, Suricata SIDs, and raw domain
+values) is shipped as log **body** and Loki **structured metadata** - never as a
+Loki label. The only labels are the resource identity, plus `opnsense.source`
 and `opnsense.subsystem` if you promote them (see [Loki label model](#loki-label-model)).
 
 The pipeline is implemented in
@@ -93,6 +93,7 @@ can resolve what Alloy, Vector or rsyslog structurally cannot:
 | `src.mac` / `dst.mac` | the ARP and NDP tables |
 | `src.scope` / `dst.scope` | `self`, `local` or `remote`, from the firewall's own subnets |
 | `src.service` / `dst.service` | a compiled-in well-known-port table |
+| `dst.domain` | the shared flow DNS answer cache, keyed by filterlog's source and destination addresses |
 
 The rule description matters more than it looks. A filterlog rule id is *either* a
 rule UUID (for rules you wrote) *or* a content hash (for the auto-generated ones -
@@ -800,6 +801,10 @@ charted in the **Derived Metric Budget** row of the health dashboard's Log Shipp
 tab, with the closed reason `handoff_full`. The rest of that collector's counters are
 firewall data, so they sit on the operational dashboard beside the subsystem each one
 describes (filterlog events on Firewall & PF, tunnel lifecycle on VPN, and so on).
+The filterlog-derived `opnsense_log_events_filterlog_domain_total{domain}` counter
+is intentionally bounded to the top 50 resolved domains by volume; every other
+domain is folded into `domain="other"`. The domain remains structured log metadata,
+not a Loki stream label.
 
 ### Why the syslog capture keeps one example per shape
 

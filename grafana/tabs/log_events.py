@@ -61,7 +61,18 @@ def firewall_row(b: Builder):
              "name and interface. rule_name is the rule's description used as its name; rule_id is "
              "the stable OPNsense rule id. Free-text is never a metric label beyond these bounded values.",
     )
-    return b.row("Firewall Events (log-derived)", [fw_action, fw_rule],
+    fw_domains = b.ts(
+        "Firewall Events by Resolved Destination Domain (rate)",
+        [(f'sum {grp("domain")} (rate({sel("opnsense_log_events_filterlog_domain_total")}[{RATE}]))',
+          "{{domain}}")],
+        unit="ops",
+        desc="opnsense_log_events_filterlog_domain_total: filterlog events per second for "
+             "records whose destination address was resolved by the shared DNS answer cache. "
+             "The metric retains the top 50 domains by volume and folds every other domain "
+             "into domain=other; the domain remains structured log metadata rather than a "
+             "Loki stream label.",
+    )
+    return b.row("Firewall Events (log-derived)", [fw_action, fw_rule, fw_domains],
                  present="has_log_events_firewall")
 
 
