@@ -26,7 +26,7 @@
       "description": "Nothing has created or refreshed the WAN IPv6 address lease on {{ $labels.interface }} for over two hours. The lease is still valid, so nothing has broken yet - this is the leading indicator that fires while there is still time to act, ahead of OPNsenseDHCP6AddressExpiring.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6addressnotrefreshing",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "329"
+      "__panelId__": "330"
     },
     "expressions": {
       "A": {

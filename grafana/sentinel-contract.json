@@ -254,7 +254,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > Dnsmasq Lease Details"
+          "opnsense2otel > Network > DHCP > Dnsmasq Lease Details",
+          "opnsense2otel > Network > DHCP > Leases Nearing Expiry"
         ]
       },
       {
@@ -555,7 +556,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > Kea DHCPv4 Lease Details"
+          "opnsense2otel > Network > DHCP > Kea DHCPv4 Lease Details",
+          "opnsense2otel > Network > DHCP > Leases Nearing Expiry"
         ]
       },
       {
@@ -565,7 +567,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "opnsense2otel > Network > DHCP > Kea DHCPv6 Lease Details"
+          "opnsense2otel > Network > DHCP > Kea DHCPv6 Lease Details",
+          "opnsense2otel > Network > DHCP > Leases Nearing Expiry"
         ]
       },
       {

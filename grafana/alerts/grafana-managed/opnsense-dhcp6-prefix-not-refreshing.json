@@ -26,7 +26,7 @@
       "description": "Nothing has created or refreshed the delegated prefix on {{ $labels.interface }} for over two hours. The prefix is still valid, so nothing has broken yet - this is the leading indicator that fires while there is still time to act, ahead of OPNsenseDHCP6PrefixExpiring.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6prefixnotrefreshing",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "328"
+      "__panelId__": "329"
     },
     "expressions": {
       "A": {

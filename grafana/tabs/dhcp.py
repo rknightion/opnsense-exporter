@@ -17,6 +17,7 @@ Rows:
     4. Kea DHCPv4 details    — gated has_kea4_details: kea_dhcp4_lease_info table
     5. Kea DHCPv6 details    — gated has_kea6_details: kea_dhcp6_lease_info table
     5b. Kea DHCPv6 PD pools  — gated has_kea_pd_pools: prefix-delegation pool capacity (#208)
+    5c. Leases nearing expiry — combined dnsmasq/Kea view, gated on detail metrics
   ISC DHCPv4:
     6. ISC DHCPv4 summary    — gated has_dhcpv4_isc: leases totals + by_iface
     7. ISC DHCPv4 details    — gated has_dhcpv4_details: dhcpv4_lease_info table
@@ -502,6 +503,49 @@ def build(b: Builder):
         ),
     )
 
+    # Lease-info values are absolute expiry timestamps in seconds, not counters.
+    # Normalize the backend label before unioning the vectors so operators can see
+    # which detail collector supplied each row. ISC lease_info is deliberately not
+    # included: its value is always 1 and carries no expiry timestamp.
+    lease_days_by_backend = [
+        f'label_replace(({sel("opnsense_dnsmasq_lease_info")} - time()) / 86400, '
+        '"backend", "dnsmasq", "address", ".*")',
+        f'label_replace(({sel("opnsense_kea_dhcp4_lease_info")} - time()) / 86400, '
+        '"backend", "kea4", "address", ".*")',
+        f'label_replace(({sel("opnsense_kea_dhcp6_lease_info")} - time()) / 86400, '
+        '"backend", "kea6", "address", ".*")',
+    ]
+    lease_days = " or ".join(lease_days_by_backend)
+    lease_near_expiry_expr = f"(({lease_days}) >= 0) and (({lease_days}) < 1)"
+    leases_near_expiry = b.table(
+        "Leases Nearing Expiry (<24h)",
+        [lease_near_expiry_expr],
+        w=24, h=10,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "address": "IP Address",
+            "hostname": "Hostname",
+            "hwaddr": "MAC / DUID",
+            "interface": "Interface",
+            "device": "Device",
+            "vendor": "Vendor",
+            "valid_lifetime": "Valid Lifetime (s)",
+            "client_id": "Client ID",
+            "prefix_len": "Prefix Length",
+            "backend": "Backend",
+            "Value": "Days Left",
+            "opnsense_instance": "Instance",
+        },
+        unit_overrides={"Days Left": "d"},
+        sort_by="Days Left", sort_desc=False,
+        desc=(
+            "Upcoming dnsmasq and Kea leases with 0 to under 1 day remaining, "
+            "sorted soonest first. The backend label identifies which detail "
+            "collector supplied the row. Only emitted when the corresponding "
+            "detail metrics are enabled."
+        ),
+    )
+
     # ================================================================
     # Tab assembly
     # ================================================================
@@ -533,6 +577,9 @@ def build(b: Builder):
         b.row("Kea DHCPv6 Lease Details",
               [kea6_lease_table],
               present="has_kea6_details"),
+        b.row("Leases Nearing Expiry",
+              [leases_near_expiry],
+              present=["has_dnsmasq_details", "has_kea4_details", "has_kea6_details"]),
         b.row("Kea DHCPv6 Prefix Delegation",
               [kea6_pd_pool],
               present="has_kea_pd_pools"),

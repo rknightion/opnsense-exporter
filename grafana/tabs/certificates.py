@@ -31,27 +31,35 @@ def build(b: Builder):
     # Row 1: Certificates
     # =====================================================================
 
-    # Days-to-expiry table: (valid_to - now) / 86400, sorted ascending
-    cert_expiry = b.table(
+    # Days-to-expiry timeseries: (valid_to - now) / 86400, with expired
+    # certificates kept visible so they cannot be mistaken for missing data.
+    # The title is stable because alert panel links resolve it by name.
+    cert_expiry = b.ts(
         "Certificate Expiry (days left)",
-        [f"({sel('opnsense_certificate_valid_to_seconds')} - time()) / 86400"],
+        [(f"({sel('opnsense_certificate_valid_to_seconds')} - time()) / 86400",
+          "{{commonname}} - {{description}} ({{opnsense_instance}})")],
         w=24, h=10,
-        excludes=["__name__", "job", "instance"],
-        renames={
-            "description": "Description",
-            "commonname": "Common Name",
-            "cert_type": "Type",
-            "in_use": "In Use",
-            "Value": "Days Left",
-            "opnsense_instance": "Instance",
-        },
-        unit_overrides={"Days Left": "d"},
-        sort_by="Days Left",
-        sort_desc=False,
+        unit="d", min0=False,
+        overrides=[{
+            "matcher": {"id": "byRegexp", "options": ".*"},
+            "properties": [
+                {"id": "color", "value": {"mode": "thresholds"}},
+                {"id": "thresholds", "value": {
+                    "mode": "absolute",
+                    "steps": [
+                        {"color": "dark-red", "value": None},
+                        {"color": "red", "value": 0},
+                        {"color": "orange", "value": 3},
+                        {"color": "yellow", "value": 14},
+                        {"color": "green", "value": 30},
+                    ],
+                }},
+            ],
+        }],
         desc=(
             "Days remaining until each certificate expires "
-            "(sorted ascending — soonest expiry first). "
-            "Negative = already expired."
+            "(negative = already expired). Threshold colours distinguish expired, "
+            "0-3 days, 3-14 days, 14-30 days, and 30 days or more."
         ),
     )
 
