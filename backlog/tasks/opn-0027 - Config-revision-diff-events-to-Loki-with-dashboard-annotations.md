@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 15:53'
+updated_date: '2026-09-03 19:36'
 labels:
   - first-wave
 milestone: m-0
@@ -57,4 +57,6 @@ SECURITY FIX APPLIED AT LANDING, not present in the wave 2 preserved patch: the 
 Found by CodeRabbit at severity major. Regression coverage: `TestRedactConfigChangeDiff_RemovesCredentials` (password, camelCase apiKey, kebab pre-shared-key, snake_case radius_secret, short `prv` and `privkey` elements), `_RedactsWrappedValues`, `_KeepsNonSensitiveContent`, `_HunkHeaderBoundsOverRedaction`, and `TestConfigChangeRecord_RedactsBeforeTruncation` which was verified to fail with the credential present when the redaction call is removed.
 
 Live Loki delivery was not exercised.
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->

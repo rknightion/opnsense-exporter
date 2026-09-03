@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:10'
-updated_date: '2026-09-02 15:53'
+updated_date: '2026-09-03 19:36'
 labels: []
 milestone: m-1
 dependencies: []
@@ -51,4 +51,6 @@ CHANGED AT LANDING, and it changes how AC2 is satisfied: the wave 2 implementati
 The flag is removed. Recursion is prevented structurally instead, which it already was: `pipeline.go:109` constructs the pipeline with `DiagnosticLogger`, a one-way path that bypasses this handler entirely, and `TestSelfLogDiagnosticLoggerCannotReenterSink` pins that. The remaining requirement is a contract, documented at `Bind`: the enqueue callback must not log through this handler. `TestSelfLogHandlerSinkFailureRecursionIsBounded` was removed because it asserted the behaviour of a callback that deliberately violates that contract; it is replaced by the concurrency test, which was verified to fail 1-of-8 against the old guard.
 
 Found by CodeRabbit at severity major. Live OTLP delivery was not exercised.
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->

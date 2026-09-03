@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-03 06:53'
+updated_date: '2026-09-03 19:36'
 labels: []
 milestone: m-1
 dependencies:
@@ -49,6 +49,8 @@ Wave 2 did not start this dependent because OPN-0028 could not land through the 
 Unblocked 2026-09-02: OPN-0028 landed on main in `a482f637`, so its state and cursor contract is now available. This task was parked only on that dependency.
 
 Wave 3 implementation complete. The default-off routingchange source establishes a no-emission baseline, compares effective default routes and gateway state, ignores dpinger-only status changes, and emits one redacted before/after record after a one-minute cooldown with intermediate flaps coalesced into bounded suppression detail. Stateful cursor data round-trips. Focused race/options and Config/source-coverage tests passed; just gen registered 10/10 log sources with 1050/1050 metric coverage; full just check passed with 427 Grafana tests. CodeRabbit phase1-logship-options and phase1-grafana slices completed with no unresolved critical/major findings.
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

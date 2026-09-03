@@ -1,11 +1,11 @@
 ---
 id: OPN-0061
 title: Fix Grafana GitSync verifier after repository ownership move
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-03 20:51'
-updated_date: '2026-09-03 20:59'
+updated_date: '2026-09-03 21:03'
 labels: []
 dependencies: []
 priority: high
@@ -23,7 +23,7 @@ The dashboard sync has failed since the GitSync hub moved from the user account 
 <!-- AC:BEGIN -->
 - [x] #1 The verifier locates the same GitSync repository URL that the workflow checks out and pushes
 - [x] #2 A focused regression test fails for the stale owner URL and passes for the corrected canonical URL
-- [ ] #3 The Grafana sync workflow completes and verifies both live dashboards after the fix is pushed
+- [x] #3 The Grafana sync workflow completes and verifies both live dashboards after the fix is pushed
 - [x] #4 just check and a completed CodeRabbit review pass
 <!-- AC:END -->
 
@@ -45,4 +45,12 @@ Add a focused unit test around repository selection, centralize or correct the c
 Wave 4 lane-zero diagnosis: run 33804484167 failed because find_repository searched for the old rknightion URL while the same workflow checked out and pushed the m7kni repository. gh release list confirms v1.18.1 is still the latest shared-workflow release, but grafana-sync is a local workflow and this failure is unrelated to a reusable pin.
 
 Test-first evidence: before correcting the URL, both focused tests failed against the stale rknightion owner. After correction, python3 -m unittest scripts/verify_gitsync_test.py -q passed 2/2. Two source-only CodeRabbit passes completed with zero findings across justfile, scripts/verify-gitsync.py, and scripts/verify_gitsync_test.py. just gen completed with no generated drift; full just check passed, including 427 Grafana tests and no called vulnerabilities. Live workflow verification remains pending the pushed commit.
+
+Live acceptance evidence: grafana-sync run 33805731939 completed success at source SHA 47abc590. GitSync reached the pushed revision with state=success after 20s, then the verifier reported both opnsense-exporter and opnsense-exporter-health matched and all dashboards verified live. The rules job reported 80 resources pushed with 0 errors.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Corrected the local Grafana GitSync verifier to use the same organisation-owned repository as the workflow and added a regression test tying the verifier URL to the workflow checkout. Verified by two completed zero-finding CodeRabbit passes, just gen, full just check, and grafana-sync run 33805731939, which confirmed both dashboards live.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -4,7 +4,7 @@ title: DNS-domain enrichment for filterlog records
 status: Done
 assignee: []
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-03 07:06'
+updated_date: '2026-09-03 19:36'
 labels: []
 milestone: m-4
 dependencies: []
@@ -54,6 +54,8 @@ FROZEN CARDINALITY CONTRACT, owner decision 2026-09-02. This was the open questi
 4. Cache-read only on the hot path, as AC2 already requires. The cap is applied where the metric is built, not by evicting from the shared DNS cache.
 
 Implemented cache-read-only dst.domain enrichment for parsed filterlog records using the existing shared flow DNS cache. Cache hits feed a bounded heavy-hitter store: 4,096 in-memory candidates, exactly the top 50 emitted domain series, and one lossless other aggregate; late heavy hitters remain admissible and the aggregate remains monotonic. Domain stays record structured metadata and never enters stream shaping or the existing firewall metric labels. Added dashboard and generated docs/artifacts. Verification: focused race tests passed for cache hit/miss, unchanged stream-shaping attributes, 51-series bound, reserved other folding, late-heavy-hitter admission, and rank-change monotonicity. just gen completed with 1,052/1,052 dashboard metric coverage and 179 schemas; just check passed, including 427 Grafana tests, fuzz legs, PromQL/manifest/generated-file validation, public-IP scan, and govulncheck. CodeRabbit source coverage: phase1-opnsense-collector covered internal/collector files and completed with zero findings after the top-N monotonicity fix; phase1-logship-options covered internal/logship files and completed with the documented docs/dashboard-exclusion false positive; phase1-grafana covered grafana/tabs/log_events.py and completed with zero findings after fixes.
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

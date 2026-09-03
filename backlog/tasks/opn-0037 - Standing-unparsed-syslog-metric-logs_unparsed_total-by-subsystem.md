@@ -4,7 +4,7 @@ title: Standing unparsed-syslog metric (logs_unparsed_total by subsystem)
 status: Done
 assignee: []
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-03 06:59'
+updated_date: '2026-09-03 19:36'
 labels: []
 milestone: m-4
 dependencies: []
@@ -45,6 +45,8 @@ Wave 2 did not start this metric-bearing lane because OPN-0056 could not land th
 Unblocked 2026-09-02: OPN-0056 landed on main in `a482f637`, so a new catalogue metric and its dashboard panel now build together in one `just gen`. Add the metric and its dashboard coverage in the same change.
 
 Implemented shared opnsense_exporter_logs_unparsed_total{source,subsystem} registration and zero-initialisation from the closed syslog subsystem vocabulary. The source increments only when a registered parser declines a body; unknown programs continue as ordinary generic traffic. Added focused regression tests, operator documentation, dashboard coverage, and generated artifacts. Verification: targeted internal/logship race tests passed; just gen completed with 1051/1051 metric coverage and 179 schemas; just check passed, including 427 Grafana tests, fuzz legs, generated-file checks, manifest validation, PromQL validation, public-IP scan, and govulncheck. CodeRabbit source coverage was completed in phase1-logship-options (one false-positive major about intentionally excluded docs/dashboard, disproved by the integrated tree and green gates) and phase1-grafana (review_completed, zero findings after fixes).
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-03 06:46'
+updated_date: '2026-09-03 19:36'
 labels: []
 milestone: m-1
 dependencies:
@@ -51,6 +51,8 @@ Wave 2 did not start this dependent because OPN-0028 could not land through the 
 Unblocked 2026-09-02: the OPN-0028 configstate framework and its frozen record/flag contract landed on main in `a482f637`. This task was parked only on that dependency.
 
 Wave 3 implementation complete. The device-inventory provider fuses ARP, NDP, DHCP, host-discovery, and LLDP observations into stable MAC-first identities with bounded unambiguous IP fallback, sorted fields, first/last-seen and OUI vendor data, and shared SensitiveConfigKey redaction. Snapshot cursor changes are committed only after every provider succeeds, so a failed later provider cannot consume the one-time new_device marker. The default-off flag is OPN2OTEL_LOGS_CONFIG_SNAPSHOT_DEVICES_ENABLED. Focused race/API/options and 29 Grafana annotation/config tests passed; just gen completed with 1050/1050 dashboard metric coverage and just check passed with 427 Grafana tests. CodeRabbit slices phase1-opnsense-collector, phase1-logship-options, and phase1-grafana completed; all actionable major findings were resolved.
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

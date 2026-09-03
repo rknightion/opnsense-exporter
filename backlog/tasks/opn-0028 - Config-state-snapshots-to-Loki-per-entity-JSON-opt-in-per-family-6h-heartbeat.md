@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-02 15:53'
+updated_date: '2026-09-03 19:36'
 labels: []
 milestone: m-1
 dependencies: []
@@ -82,4 +82,6 @@ CHANGED AT LANDING: `sensitiveConfigSnapshotKey` is now the exported `opnsense.S
 Also at landing: the httptest handler in `opnsense/config_snapshot_test.go` reported an unexpected path with `t.Fatalf`, which calls `FailNow` off the test goroutine where it is undefined. It now uses `t.Errorf` and answers the request with 404.
 
 Live Loki delivery was not exercised.
+
+Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 <!-- SECTION:NOTES:END -->
