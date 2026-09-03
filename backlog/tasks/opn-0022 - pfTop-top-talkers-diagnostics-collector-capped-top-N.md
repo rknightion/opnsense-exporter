@@ -1,10 +1,11 @@
 ---
 id: OPN-0022
 title: 'pfTop / top-talkers diagnostics collector, capped top-N'
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-30 09:08'
-updated_date: '2026-08-30 09:35'
+updated_date: '2026-09-03 09:37'
 labels: []
 milestone: m-3
 dependencies: []
@@ -31,3 +32,9 @@ DECIDED 2026-08-30: build, opt-in, capped top-N (Rob). `api/diagnostics/firewall
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 3 park: the current task does not freeze the exact top-N ranking key, tie-breaking, state/talker merge behavior, or overflow aggregation semantics. Resume by recording those bounded-cardinality semantics on this task first; then implement the default-off pfTop diagnostics collector and document its overlap with the NetFlow receiver. Existing internal/flow/toptalkers.go is not the requested API collector.
+<!-- SECTION:NOTES:END -->
