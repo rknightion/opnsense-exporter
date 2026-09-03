@@ -1,6 +1,6 @@
 {
-  "metrics": 1052,
-  "panels": 935,
+  "metrics": 1053,
+  "panels": 936,
   "tabs": 57,
   "tab_names": [
     "Overview",
@@ -75,7 +75,7 @@
     {
       "uid": "opnsense-exporter",
       "title": "opnsense2otel",
-      "panels": 829,
+      "panels": 830,
       "tabs": 49,
       "tab_names": [
         "Overview",

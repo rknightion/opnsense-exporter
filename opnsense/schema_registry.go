@@ -366,6 +366,7 @@ var schemaRegistry = map[EndpointName]any{
 	"firmware":       firmwareStatusResponse{},
 	"firmwareInfo":   firmwareInfoResponse{},
 	"gatewaysStatus": gatewayConfigurationResponse{},
+	"gatewayGroups":  gatewayGroupSearchResponse{},
 	// The counters payload is a heterogeneous array by construction, so the
 	// element kind stays KindAny while the 38 consumed CSV columns beneath it
 	// are described and checked (#589). queryStats.php's showStat() only

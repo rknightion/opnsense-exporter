@@ -1,0 +1,142 @@
+{
+  "endpoint": "gatewayGroups",
+  "method": "GET",
+  "path": "api/routing/group_settings/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].%item",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].%item2",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].%item3",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].%item4",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].%item5",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].gateways.*",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].gateways.*[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].gateways.*[].address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].delay",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].label",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].loss",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].monitor",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].status_translated",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateways.*[].stddev",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].item",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].item2",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].item3",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].item4",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].item5",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].poolopts",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].trigger",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

@@ -29,6 +29,7 @@ const instanceLabelName = "opnsense_instance"
 const (
 	ArpTableSubsystem      = "arp_table"
 	GatewaysSubsystem      = "gateways"
+	GatewayGroupsSubsystem = "gateway_groups"
 	CronTableSubsystem     = "cron"
 	WireguardSubsystem     = "wireguard"
 	IPsecSubsystem         = "ipsec"
@@ -117,6 +118,7 @@ const (
 var SubsystemDisplayNames = map[string]string{
 	ArpTableSubsystem:            "ARP Table",
 	GatewaysSubsystem:            "Gateways",
+	GatewayGroupsSubsystem:       "Gateway Groups",
 	CronTableSubsystem:           "Cron",
 	WireguardSubsystem:           "Wireguard",
 	IPsecSubsystem:               "IPsec",
@@ -715,6 +717,11 @@ func WithoutDynDNSCollector() Option {
 // removes the gateways collector from the list of collectors
 func WithoutGatewaysCollector() Option {
 	return withoutCollectorInstance(GatewaysSubsystem)
+}
+
+// WithoutGatewayGroupsCollector removes the gateway-groups collector.
+func WithoutGatewayGroupsCollector() Option {
+	return withoutCollectorInstance(GatewayGroupsSubsystem)
 }
 
 // WithoutSyslogCollector Option

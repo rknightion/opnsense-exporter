@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1011
-- **Gauges:** 657
+- **Total metrics:** 1012
+- **Gauges:** 658
 - **Counters:** 354
 
 ## General
@@ -464,6 +464,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_ifindex_map_age_seconds | Gauge | --- | Age of the ifIndex map. ng_netflow's indices are positional over ifinfo output, so adding or removing ANY interface renumbers everything and silently remaps historical series. A map that stops being refreshed is therefore a correctness problem, not a staleness nuisance. | --exporter.disable-flow |
 | opnsense_flow_ifindex_source_disagreements | Gauge | reason | Cross-checks that failed on the derived ifIndex enumeration. reason=\"stated_index\" counts devices where the ifIndex the API states differs from the position the enumeration put them at, which means an interface was removed and every index above it shifted down. reason=\"unlisted_device\" counts interfaces the box reports that the enumeration does not contain at all, so they can never be resolved from an ifIndex. Either one non-zero means the labels on every NetFlow series are suspect - the derivation was measurably wrong this way for months (#361). | --exporter.disable-flow |
 | opnsense_flow_ifindex_unmapped_total | Counter | --- | ifIndex lookups that resolved to no interface. These records are still counted, with an EMPTY interface label - a wrong interface name is worse than a missing one. A rising rate after a network change means the enumeration shifted and --flow.netflow.ifindex-map needs setting. | --exporter.disable-flow |
+
+## Gateway Groups
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_gateway_groups_member | Gauge | group, tier, name, address, gateway_address | Gateway group membership (1) by failover group, tier, gateway name, monitor address and configured gateway address. The name and address labels join this family to the existing gateway status metrics. | --exporter.disable-gateway-groups |
 
 ## Gateways
 

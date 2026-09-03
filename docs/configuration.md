@@ -530,6 +530,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-firewall-rules` | `OPN2OTEL_DISABLE_FIREWALL_RULES` | Firewall Rules | Disable the scraping of firewall rule statistics |
 | `--exporter.disable-firmware` | `OPN2OTEL_DISABLE_FIRMWARE` | Firmware | Disable the scraping of the firmware metrics |
 | `--exporter.disable-flow` | `OPN2OTEL_DISABLE_FLOW` | Flow Volume | Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source - today the Zenarmor receiver - is enabled and feeding it. |
+| `--exporter.disable-gateway-groups` | `OPN2OTEL_DISABLE_GATEWAY_GROUPS` | Gateway Groups | Disable gateway failover-group membership metrics (silent on pre-26.7 OPNsense) |
 | `--exporter.disable-gateways` | `OPN2OTEL_DISABLE_GATEWAYS` | Gateways | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
 | `--exporter.disable-haproxy` | `OPN2OTEL_DISABLE_HAPROXY` | HAProxy | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-hardware` | `OPN2OTEL_DISABLE_HARDWARE` | Hardware | Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed. |
@@ -666,6 +667,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-firmware` | `OPN2OTEL_DISABLE_FIRMWARE` | `false` | Disable the scraping of the firmware metrics |
 | `--exporter.disable-flow` | `OPN2OTEL_DISABLE_FLOW` | `false` | Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source - today the Zenarmor receiver - is enabled and feeding it. |
 | `--exporter.disable-frr` | `OPN2OTEL_DISABLE_FRR` | `false` | Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent) |
+| `--exporter.disable-gateway-groups` | `OPN2OTEL_DISABLE_GATEWAY_GROUPS` | `false` | Disable gateway failover-group membership metrics (silent on pre-26.7 OPNsense) |
 | `--exporter.disable-gateways` | `OPN2OTEL_DISABLE_GATEWAYS` | `false` | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
 | `--exporter.disable-haproxy` | `OPN2OTEL_DISABLE_HAPROXY` | `false` | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-hardware` | `OPN2OTEL_DISABLE_HARDWARE` | `false` | Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed. |

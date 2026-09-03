@@ -209,6 +209,10 @@ var (
 		"exporter.disable-gateways",
 		"Disable the scraping of gateway status metrics (RTT, packet loss, gateway state)",
 	).Envar("OPN2OTEL_DISABLE_GATEWAYS").Default("false").Bool()
+	gatewayGroupsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-gateway-groups",
+		"Disable gateway failover-group membership metrics (silent on pre-26.7 OPNsense)",
+	).Envar("OPN2OTEL_DISABLE_GATEWAY_GROUPS").Default("false").Bool()
 	syslogCollectorDisabled = kingpin.Flag(
 		"exporter.disable-syslog",
 		"Disable the scraping of syslog-ng statistics",
@@ -478,6 +482,7 @@ type CollectorsDisableSwitch struct {
 	Tor                    bool
 	DynDNS                 bool
 	Gateways               bool
+	GatewayGroups          bool
 	Syslog                 bool
 	QFeeds                 bool
 	Tailscale              bool
@@ -572,6 +577,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Tor:                    *torEnabled,
 		DynDNS:                 !*dyndnsCollectorDisabled,
 		Gateways:               !*gatewaysCollectorDisabled,
+		GatewayGroups:          !*gatewayGroupsCollectorDisabled,
 		Syslog:                 !*syslogCollectorDisabled,
 		QFeeds:                 !*qfeedsCollectorDisabled,
 		Tailscale:              !*tailscaleCollectorDisabled,
@@ -686,6 +692,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-tor", Subsystem: "tor", Reason: "each scheduled poll does two extra configd execs to query the Tor control port"},
 	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
 	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
+	{Flag: "exporter.disable-gateway-groups", Subsystem: "gateway_groups"},
 	{Flag: "exporter.disable-syslog", Subsystem: "syslog"},
 	{Flag: "exporter.disable-qfeeds", Subsystem: "qfeeds"},
 	{Flag: "exporter.disable-tailscale", Subsystem: "tailscale"},

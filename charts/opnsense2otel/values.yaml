@@ -338,6 +338,9 @@ settings:
   # is absent)
   # exporter.disable-frr: false
   #
+  # Disable gateway failover-group membership metrics (silent on pre-26.7 OPNsense)
+  # exporter.disable-gateway-groups: false
+  #
   # Disable the scraping of gateway status metrics (RTT, packet loss, gateway state)
   # exporter.disable-gateways: false
   #

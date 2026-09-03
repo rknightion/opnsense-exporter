@@ -239,16 +239,17 @@ var collectorTiers = map[string]time.Duration{
 	// GET every five minutes rather than one per scrape.
 	KernelMemorySubsystem: IntervalSlow,
 	// cold (15m)
-	FirmwareSubsystem:     IntervalCold,
-	CertificatesSubsystem: IntervalCold,
-	ACMESubsystem:         IntervalCold,
-	SMARTSubsystem:        IntervalCold,
-	CronTableSubsystem:    IntervalCold,
-	SnapshotsSubsystem:    IntervalCold,
-	VnstatSubsystem:       IntervalCold,
-	AuthSubsystem:         IntervalCold,
-	BackupSubsystem:       IntervalCold,
-	ClamAVSubsystem:       IntervalCold,
+	GatewayGroupsSubsystem: IntervalCold,
+	FirmwareSubsystem:      IntervalCold,
+	CertificatesSubsystem:  IntervalCold,
+	ACMESubsystem:          IntervalCold,
+	SMARTSubsystem:         IntervalCold,
+	CronTableSubsystem:     IntervalCold,
+	SnapshotsSubsystem:     IntervalCold,
+	VnstatSubsystem:        IntervalCold,
+	AuthSubsystem:          IntervalCold,
+	BackupSubsystem:        IntervalCold,
+	ClamAVSubsystem:        IntervalCold,
 }
 
 // IntervalCollector is an optional interface a CollectorInstance may implement to

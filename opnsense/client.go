@@ -107,6 +107,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"openVPNInstances":           "api/openvpn/instances/search",
 		"openVPNSessions":            "api/openvpn/service/search_sessions",
 		"gatewaysStatus":             "api/routing/settings/searchGateway",
+		"gatewayGroups":              "api/routing/group_settings/search",
 		"unboundDNSStatus":           "api/unbound/diagnostics/stats",
 		"cronJobs":                   "api/cron/settings/searchJobs",
 		"wireguardClients":           "api/wireguard/service/show",

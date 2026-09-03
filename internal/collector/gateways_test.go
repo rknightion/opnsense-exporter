@@ -149,12 +149,32 @@ func TestGatewaysCollector_Update_Disabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Disabled gateway: 1 info + 5 new unconditional (force_down, virtual, dynamic,
-	// monitor_killstates, monitor_killstates_priority) + 1 priority + 1 threshold
-	// parse-error counter = 8 (no monitor or monitoring metrics, no status).
-	expectedCount := 8
+	// Disabled gateway: 1 info + 5 unconditional configuration metrics
+	// (force_down, virtual, dynamic, monitor_killstates,
+	// monitor_killstates_priority) + 1 priority + 1 status + 1 threshold
+	// parse-error counter = 9. The status address is the same "~" sentinel the
+	// gateway-group API emits, so membership stays joinable for disabled rows.
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	var foundStatus bool
+	for _, metric := range metrics {
+		if !hasFqName(metric, "opnsense_gateways_status") {
+			continue
+		}
+		foundStatus = true
+		labels := getMetricLabels(metric)
+		if labels["name"] != "WAN_GW_DISABLED" || labels["address"] != "~" {
+			t.Errorf("disabled status labels = %+v, want name WAN_GW_DISABLED and address ~", labels)
+		}
+		if got := getMetricValue(metric); got != 0 {
+			t.Errorf("disabled gateway status = %v, want 0 (Offline)", got)
+		}
+	}
+	if !foundStatus {
+		t.Fatal("disabled gateway has no joinable opnsense_gateways_status series")
 	}
 }
 

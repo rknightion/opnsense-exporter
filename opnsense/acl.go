@@ -797,6 +797,14 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-system-gateways", Name: "System: Gateways", Origin: "core", Pattern: "api/routing/settings/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"gatewayGroups": {
+		Consumer:  "gateway_groups",
+		Component: "core",
+		Status:    ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{
+			{Key: "page-system-gateways", Name: "System: Gateways", Origin: "core", Pattern: "api/routing/group_settings/*", Scope: ACLScopeWildcard},
+		},
+	},
 	"haproxyCounters": {
 		Consumer:  "haproxy",
 		Component: "net/haproxy",

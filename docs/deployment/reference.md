@@ -269,6 +269,8 @@ services:
       # Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the
       # os-frr plugin is absent)
       # OPN2OTEL_DISABLE_FRR: "false"
+      # Disable gateway failover-group membership metrics (silent on pre-26.7 OPNsense)
+      # OPN2OTEL_DISABLE_GATEWAY_GROUPS: "false"
       # Disable the scraping of gateway status metrics (RTT, packet loss, gateway state)
       # OPN2OTEL_DISABLE_GATEWAYS: "false"
       # Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is

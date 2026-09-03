@@ -4,11 +4,20 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
+
+func gatewayStatusAddress(monitor string) string {
+	monitor = strings.TrimSpace(monitor)
+	if monitor == "" {
+		return "~"
+	}
+	return monitor
+}
 
 type gatewaysCollector struct {
 	log                  *slog.Logger
@@ -334,6 +343,19 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 			c.instance,
 		)
 
+		// Status exists independently of the enabled switch. Emit it for disabled
+		// gateways too so gateway-group membership can join on (name,address);
+		// both upstream surfaces use "~" when no monitor address exists.
+		ch <- prometheus.MustNewConstMetric(
+			c.status,
+			prometheus.GaugeValue,
+			float64(v.Status),
+			v.Name,
+			gatewayStatusAddress(v.Monitor),
+			strconv.FormatBool(v.DefaultGateway),
+			c.instance,
+		)
+
 		if v.Enabled {
 			ch <- prometheus.MustNewConstMetric(
 				c.monitor,
@@ -343,20 +365,6 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 				strconv.FormatBool(v.MonitorEnabled),
 				strconv.FormatBool(v.MonitorNoRoute),
 				v.Monitor,
-				c.instance,
-			)
-			// The API reports a real status independent of monitoring, so emit
-			// it for every enabled gateway — not only monitor-enabled ones.
-			// Otherwise a default gateway with monitoring disabled (a common
-			// PPPoE/DHCPv6-PD pattern) has no opnsense_gateways_status series at
-			// all, and the OPNsenseGatewayDown alert can never fire for it (#77).
-			ch <- prometheus.MustNewConstMetric(
-				c.status,
-				prometheus.GaugeValue,
-				float64(v.Status),
-				v.Name,
-				v.Monitor,
-				strconv.FormatBool(v.DefaultGateway),
 				c.instance,
 			)
 			if v.MonitorEnabled {

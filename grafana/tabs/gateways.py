@@ -53,7 +53,8 @@ def build(b: Builder):
         excludes=["Value", "__name__", "job", "instance"],
         renames={
             "name": "Gateway",
-            "address": "Address",
+            "address": "Monitor Address",
+            "gateway_address": "Gateway Address",
             "Value #A": "RTT Low (ms)",
             "Value #B": "RTT High (ms)",
         },
@@ -198,6 +199,21 @@ def build(b: Builder):
         desc="ICMP probe timing configuration per gateway.",
     )
 
+    gateway_groups = b.table(
+        "Gateway Group Membership",
+        [sel("opnsense_gateway_groups_member")],
+        w=24, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "group": "Group",
+            "tier": "Tier",
+            "name": "Gateway",
+            "address": "Address",
+        },
+        sort_by="Group",
+        desc="Configured gateway failover-group membership. Join name/address to gateway status metrics; absent on pre-26.7 OPNsense.",
+    )
+
     # ---- drilldowns (#419) ------------------------------------------------
     # A gateway name is not a dashboard variable, so there is no field link to make
     # here: the useful jump is sideways, to the place that says WHY a gateway changed
@@ -221,5 +237,6 @@ def build(b: Builder):
         b.row("Latency", [rtt, rtt_thresholds, threshold_parse_errors]),
         b.row("Packet Loss", [loss, loss_thresholds]),
         b.row("Gateway Inventory", [gw_info, monitor_info, flags]),
+        b.row("Gateway Groups", [gateway_groups]),
         b.row("Probe Config", [probe_cfg]),
     ])
