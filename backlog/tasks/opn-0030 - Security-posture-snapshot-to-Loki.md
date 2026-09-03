@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:09'
-updated_date: '2026-09-03 20:41'
+updated_date: '2026-09-03 21:01'
 labels: []
 milestone: m-1
 dependencies:
@@ -58,12 +58,12 @@ PARKED RESUME BOUNDARY: obtain released upstream controller/source or a redacted
 Wave 4 OPN-0060 live-proof disposition: NOT PROVEN. The testbed became ready, but its API credentials were unavailable to the mandated local process and exist only in the protected CI environment; CI was forbidden as a substitute. No exporter delivery run, Loki query, or on-wire result occurred for this source. Resume through OPN-0060 after an authorised local testbed credential launcher exists.
 
 Wave 4 completed the parked listening-socket remainder from released upstream source: the socket-statistics response carries listen-queue-sizes only for accept-queue listeners, with Internet listeners restricted to wildcard-remotes and UNIX-domain listeners counted by section. The provider now emits the bounded aggregate. Focused race tests passed, the integrated just gen reported 82 collectors and 1,046 metrics, and the full just check passed including 427 Grafana tests. Two source-only CodeRabbit passes completed with zero findings. Live Loki delivery remains explicitly unproven under OPN-0060 because no authorised local testbed API credential source existed.
+
+Pre-close review found the operator docs and Config dashboard still denied listener coverage after the Wave 4 implementation. Corrected both to document the bounded listening_sockets aggregate and its listen-queue-derived semantics, then regenerated the dashboard. CodeRabbit was skipped for this documentation/declarative dashboard correction; the 427-test Grafana suite passed and generation covered 1087/1087 catalogue metrics plus 10/10 log sources.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Partial implementation landed: weekly, default-off security posture snapshots now cover firmware/package state, certificate expiry, and API-key owners with redaction and a dashboard view. Listening-socket posture remains unproven and is the sole parked remainder. Resume from released source or a redacted capture proving listener fields and semantics; exact commit SHA is recorded in the wave report.
-
-Wave 4 completed the weekly default-off security-posture snapshot by adding the released-source-derived listening-socket aggregate. Verified with focused race tests, two completed zero-finding CodeRabbit passes, just gen, and the full just check; live backend delivery remains tracked separately by OPN-0060.
+Completed the weekly default-off security-posture snapshot: firmware and package state, certificate expiry, API-key owners, and a released-source-derived bounded listening-socket aggregate, with recursive redaction and a Config dashboard view. Verified with focused race tests, two completed zero-finding source CodeRabbit passes, generation gates, and the full repository check. Live backend delivery remains explicitly unproven under OPN-0060.
 <!-- SECTION:FINAL_SUMMARY:END -->

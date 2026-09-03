@@ -76,9 +76,9 @@ def build(b: Builder):
         SECURITY_POSTURE,
         desc=(
             "The latest default-off security-posture records: OPNsense's update verdict and "
-            "pending packages, certificate-expiry roll-up and API-key owners. Unchanged posture "
-            "repeats only on its deliberate seven-day heartbeat. Listening-socket detail is not "
-            "claimed because the current API exposes active-socket counts, not listener state."
+            "pending packages, certificate-expiry roll-up, API-key owners and the bounded "
+            "listening-socket aggregate derived from Internet and UNIX-domain accept queues. "
+            "Unchanged posture repeats only on its deliberate seven-day heartbeat."
         ),
         w=24,
     )
