@@ -1,0 +1,15 @@
+{
+  "endpoint": "nodeExporterServiceStatus",
+  "method": "GET",
+  "path": "api/nodeexporter/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

@@ -78,10 +78,10 @@ production for a while; this is not a general green light for SSE ingestion.
 
 Recorded so the same collector idea does not get proposed twice.
 
-- **A "watched plugin services" collector** fanning out to per-plugin `service/status` endpoints.
-  Every relevant plugin already registers in `api/core/service/search`, which the exporter exports
-  as `opnsense_services_status{name}`. The one plugin that does not register there (os-beats, which
-  ships no `plugins.inc.d` file) is too thin on its own to justify a dedicated collector.
+- **A single umbrella "watched plugin services" collector** remains rejected. OPN-0023 superseded
+  the old assumption that core service search was sufficient: each selected agent-family plugin now
+  has its own independently disableable collector and plugin-absence contract. That preserves
+  ownership and makes os-beats observable without folding unrelated plugins into one subsystem.
 - **`hostdiscovery/service/search`** silently falls back to ARP+NDP (`source: "arp-ndp"`) when the
   discovery daemon is off. Any future consumer of this data must stay source-aware rather than
   assuming active discovery is always what produced a row.

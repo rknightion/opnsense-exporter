@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1022
-- **Gauges:** 668
+- **Total metrics:** 1035
+- **Gauges:** 681
 - **Counters:** 354
 
 ## General
@@ -109,6 +109,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_bpf_direction_dropped_packets_total | Counter | process, interface, direction | Cumulative packets dropped by BPF listeners for this process/interface/direction — the consumer could not read the buffer fast enough, so the capture is incomplete. Per-direction breakdown of bpf_dropped_packets_total.  | --exporter.disable-bpf |
 | opnsense_bpf_direction_matched_packets_total | Counter | process, interface, direction | Cumulative packets matched by the BPF filter for this process/interface/direction. Per-direction breakdown of bpf_matched_packets_total.  | --exporter.disable-bpf |
 
+## Beats
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_beats_service_running | Gauge | --- | Whether the Beats service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-beats |
+
 ## CARP
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -190,6 +196,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_clamav_signatures | Gauge | --- | Total number of ClamAV virus signatures loaded across all databases (0 both when freshclam has never run and when the field is unavailable) | --exporter.disable-clamav |
 | opnsense_clamav_signature_db_version | Gauge | db | Version number of a ClamAV signature database (increments on every freshclam update), by database | --exporter.disable-clamav |
 | opnsense_clamav_signature_db_built_timestamp_seconds | Gauge | db | Unix timestamp of when a ClamAV signature database was built, from the freshclam build metadata, by database. Absent when the build-date fragment could not be parsed. | --exporter.disable-clamav |
+
+## Collectd
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_collectd_service_running | Gauge | --- | Whether the collectd service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-collectd |
 
 ## Config Backup
 
@@ -860,12 +872,24 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_monit_system_swap_percent | Gauge | name, type | System swap usage percent for a monit system check | --exporter.disable-monit |
 | opnsense_monit_system_cpu_percent | Gauge | name, type, mode | System CPU usage percent by mode for a monit system check | --exporter.disable-monit |
 
+## Munin Node
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_munin_node_service_running | Gauge | --- | Whether the Munin Node service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-munin-node |
+
 ## NDP
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_ndp_entries_total | Gauge | --- | Total number of NDP table entries (low-cardinality aggregate, always emitted) | --exporter.disable-ndp |
 | opnsense_ndp_entries | Gauge | ip, mac, interface_description, type, manufacturer, device | One series per NDP neighbour entry (value is always 1). Only emitted when --exporter.enable-ndp-details is set (high, churning cardinality from IPv6 privacy addresses). `manufacturer` is the OUI lookup for the MAC and is the label that identifies a device. `device` is the raw kernel device and `interface_description` the assigned name; they diverge on VLAN children and bridges, and only `device` joins against the interfaces metrics. `type` reads empty on OPNsense 26.1, which sends no type key on this endpoint. | --exporter.disable-ndp |
+
+## NRPE
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_nrpe_service_running | Gauge | --- | Whether the NRPE service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-nrpe |
 
 ## NTP
 
@@ -903,6 +927,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_nut_status_charging | Gauge | --- | 1 when battery is charging (CHRG flag in ups.status) | --exporter.disable-nut |
 | opnsense_nut_status_replace_battery | Gauge | --- | 1 when battery replacement is recommended (RB flag in ups.status) | --exporter.disable-nut |
 
+## Net-SNMP
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_net_snmp_service_running | Gauge | --- | Whether the Net-SNMP service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-net-snmp |
+
 ## NetBird
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -938,6 +968,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_netflow_capture_last_record_seconds | Gauge | interface | Seconds since this exporter last received a NetFlow record attributed to this interface. A RAW AGE, not a verdict: a guest VLAN can be legitimately silent for hours, so the threshold is the operator's to choose - compare against capture_active_timeout_seconds. Interfaces that have produced NO record since the exporter started are ABSENT here rather than reported as a large age, because every interface is silent at startup and a number there would make a fresh boot look like a box-wide outage; \"never seen\" and \"seen, then stopped\" are different states. IMPORTANT: a fresh age proves the interface is being NAMED, not that its own capture hook is alive - ng_netflow fills one side of each flow from a FIB lookup, so records captured elsewhere name it too. For per-hook liveness use opnsense_netflow_cache_packets_total, which is the box's own per-node view. | --exporter.enable-netflow |
 | opnsense_netflow_capture_active_timeout_seconds | Gauge | --- | The box's configured ACTIVE flow timeout: how long a long-running flow sits in the cache before ng_netflow exports it anyway. Exported so a \"this interface has gone quiet\" threshold is derived from what the firewall actually applies rather than guessed - an interface cannot be judged silent until well past this. | --exporter.enable-netflow |
 | opnsense_netflow_capture_inactive_timeout_seconds | Gauge | --- | The box's configured INACTIVE flow timeout: how long an idle flow waits before export. The floor on how quickly any interface can be observed to have stopped. | --exporter.enable-netflow |
+
+## Netdata
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_netdata_service_running | Gauge | --- | Whether the netdata service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-netdata |
 
 ## Network Diagnostics
 
@@ -1012,6 +1048,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_nginx_config_load_timestamp_seconds | Gauge | --- | Unix timestamp of the last nginx config (re)load, as reported by the vts module | --exporter.disable-nginx |
 | opnsense_nginx_bans | Gauge | --- | Current number of active autoblock bans | --exporter.disable-nginx |
 | opnsense_nginx_ban_last_timestamp_seconds | Gauge | --- | Unix timestamp of the most recent autoblock ban | --exporter.disable-nginx |
+
+## Node Exporter
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_node_exporter_service_running | Gauge | --- | Whether the node_exporter service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-node-exporter |
 
 ## OpenVPN
 
@@ -1124,6 +1166,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_protocol_tcp_pmtud_blackhole_events_total | Counter | event | Total TCP path-MTU-discovery blackhole detection events, by kind. A PMTUD blackhole is a path that silently drops oversized packets without returning the ICMP \"fragmentation needed\" that would let TCP shrink its MSS — the classic cause of \"some sites load, some hang\", and invisible from outside the box. \"activated\" = the kernel suspected a blackhole and dropped MSS; \"activated_min_mss\" = it fell all the way back to the minimum MSS, so the path is badly broken and throughput will suffer; \"failed\" = shrinking the MSS did not fix it. Any sustained rise warrants investigating MTU on the upstream path. | --exporter.disable-protocol |
 | opnsense_protocol_tcp_signature_total | Counter | result | Total TCP-MD5 (RFC 2385) signature outcomes, by result. In practice TCP-MD5 authenticates BGP sessions, so on a box with no MD5-authenticated peer every result is permanently zero and that is correct, not a fault. \"good\" is the healthy denominator — its rate falling to zero is how an authenticated peer going quiet shows up. \"bad\" means a wrong or rotated key (or spoofing); \"make_failed\" is a local failure to generate a signature, i.e. a missing key in the kernel keytable; \"not_expected\" and \"not_provided\" are the two halves of an asymmetric configuration, where one side is signing and the other is not. | --exporter.disable-protocol |
 
+## Puppet Agent
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_puppet_agent_service_running | Gauge | --- | Whether the Puppet Agent service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-puppet-agent |
+
 ## Q-Feeds
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -1141,6 +1189,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_qfeeds_addresses_blocked | Gauge | --- | Total current addresses blocked across all Q-Feeds feeds | --exporter.disable-qfeeds |
 | opnsense_qfeeds_license_info | Gauge | license | Q-Feeds license information (value is always 1; see labels) | --exporter.disable-qfeeds |
 | opnsense_qfeeds_license_expiry_timestamp_seconds | Gauge | --- | Unix timestamp of the Q-Feeds license expiry | --exporter.disable-qfeeds |
+
+## QEMU Guest Agent
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_qemu_guest_agent_service_running | Gauge | --- | Whether the QEMU Guest Agent service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-qemu-guest-agent |
 
 ## Relayd Load Balancer
 
@@ -1240,6 +1294,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_tailscale_peer_last_handshake_timestamp_seconds | Gauge | peer | Unix timestamp of the last WireGuard handshake with this peer from this node. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 | opnsense_tailscale_reauth_required | Gauge | --- | Whether tailscaled is parked waiting for an interactive login (1 = it is holding an auth URL). The tunnel stays down until a human completes the login - no restart or retry clears it. Distinct from backend_running, which reads 0 for this and every other reason. The auth URL itself is a credential and is never exported, in a label or anywhere else. | --exporter.disable-tailscale |
 | opnsense_tailscale_key_expiry_timestamp_seconds | Gauge | --- | Unix timestamp at which THIS node's own Tailscale key expires. When it does the tunnel dies with no other warning, so this is the direct analogue of a certificate expiry gauge. Not emitted at all when the node key does not expire - upstream omits the field entirely then, and a 0 would read as \"expired in 1970\" and page forever on a healthy node. Self only: peer key expiry is fleet inventory covered by tailscale2otel. | --exporter.disable-tailscale |
+
+## Telegraf
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_telegraf_service_running | Gauge | --- | Whether the telegraf service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-telegraf |
 
 ## Temperature
 
@@ -1349,6 +1409,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_vnstat_current_day_bytes | Gauge | interface, direction | Bytes recorded by vnstat so far today (gauge; resets to 0 at local midnight in vnstat's own bookkeeping) | --exporter.enable-vnstat |
 | opnsense_vnstat_current_month_bytes | Gauge | interface, direction | Bytes recorded by vnstat so far this month (gauge; resets monthly) | --exporter.enable-vnstat |
 
+## Wazuh Agent
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_wazuh_agent_service_running | Gauge | --- | Whether the Wazuh Agent service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-wazuh-agent |
+
 ## Wireguard
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -1368,6 +1434,18 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_snapshots_supported | Gauge | --- | Whether the root filesystem supports ZFS boot environments (1 = ZFS/bectl, 0 = e.g. UFS). | --exporter.disable-snapshots |
 | opnsense_snapshots_total | Gauge | --- | Number of ZFS boot environments currently present. | --exporter.disable-snapshots |
 | opnsense_snapshots_active_created_timestamp_seconds | Gauge | --- | Unix timestamp when the currently active boot environment (active flag containing \"N\") was created. Absent when no boot environment is marked active (e.g. unsupported filesystem). | --exporter.disable-snapshots |
+
+## Zabbix Agent
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_zabbix_agent_service_running | Gauge | --- | Whether the Zabbix Agent service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-zabbix-agent |
+
+## Zabbix Proxy
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_zabbix_proxy_service_running | Gauge | --- | Whether the Zabbix Proxy service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-zabbix-proxy |
 
 ## ZeroTier
 

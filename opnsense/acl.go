@@ -1173,6 +1173,58 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-vpn-netbird", Name: "VPN: NetBird", Origin: "security/netbird", Pattern: "api/netbird/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"beatsServiceStatus": {
+		Consumer: "beats", Component: "sysutils/beats", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-beats", Name: "Services: Beats", Origin: "sysutils/beats", Pattern: "api/beats/*", Scope: ACLScopeWildcard}},
+	},
+	"collectdServiceStatus": {
+		Consumer: "collectd", Component: "net-mgmt/collectd", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-collectd", Name: "Services: Collectd", Origin: "net-mgmt/collectd", Pattern: "api/collectd/*", Scope: ACLScopeWildcard}},
+	},
+	"muninNodeServiceStatus": {
+		Consumer: "munin_node", Component: "sysutils/munin-node", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-muninnode", Name: "Services: Munin-Node", Origin: "sysutils/munin-node", Pattern: "api/muninnode/*", Scope: ACLScopeWildcard}},
+	},
+	"netSnmpServiceStatus": {
+		Consumer: "net_snmp", Component: "net-mgmt/net-snmp", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-netsnmp", Name: "Services: Net-SNMP", Origin: "net-mgmt/net-snmp", Pattern: "api/netsnmp/*", Scope: ACLScopeWildcard}},
+	},
+	"netdataServiceStatus": {
+		Consumer: "netdata", Component: "net-mgmt/netdata", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-netdata", Name: "Services: Netdata", Origin: "net-mgmt/netdata", Pattern: "api/netdata/*", Scope: ACLScopeWildcard}},
+	},
+	"nodeExporterServiceStatus": {
+		Consumer: "node_exporter", Component: "sysutils/node_exporter", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-nodeexporter", Name: "Services: Prometheus Exporter", Origin: "sysutils/node_exporter", Pattern: "api/nodeexporter/*", Scope: ACLScopeWildcard}},
+	},
+	"nrpeServiceStatus": {
+		Consumer: "nrpe", Component: "net-mgmt/nrpe", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-nrpe-config", Name: "Services: NRPE", Origin: "net-mgmt/nrpe", Pattern: "api/nrpe/*", Scope: ACLScopeWildcard}},
+	},
+	"puppetAgentServiceStatus": {
+		Consumer: "puppet_agent", Component: "sysutils/puppet-agent", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-user-puppetagent", Name: "Services: Puppet Agent", Origin: "sysutils/puppet-agent", Pattern: "api/puppetagent/*", Scope: ACLScopeWildcard}},
+	},
+	"qemuGuestAgentServiceStatus": {
+		Consumer: "qemu_guest_agent", Component: "emulators/qemu-guest-agent", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-qemuguestagent", Name: "Services: QEMU Guest Agent", Origin: "emulators/qemu-guest-agent", Pattern: "api/qemuguestagent/*", Scope: ACLScopeWildcard}},
+	},
+	"telegrafServiceStatus": {
+		Consumer: "telegraf", Component: "net-mgmt/telegraf", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-telegraf", Name: "Services: Telegraf", Origin: "net-mgmt/telegraf", Pattern: "api/telegraf/*", Scope: ACLScopeWildcard}},
+	},
+	"wazuhAgentServiceStatus": {
+		Consumer: "wazuh_agent", Component: "security/wazuh-agent", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-wazuh_agent", Name: "Services: Wazuh Agent", Origin: "security/wazuh-agent", Pattern: "api/wazuh_agent/*", Scope: ACLScopeWildcard}},
+	},
+	"zabbixAgentServiceStatus": {
+		Consumer: "zabbix_agent", Component: "net-mgmt/zabbix-agent", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-zabbixagent", Name: "Services: Zabbix Agent", Origin: "net-mgmt/zabbix-agent", Pattern: "api/zabbixagent/*", Scope: ACLScopeWildcard}},
+	},
+	"zabbixProxyServiceStatus": {
+		Consumer: "zabbix_proxy", Component: "net-mgmt/zabbix-proxy", Status: ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{{Key: "page-services-zabbixproxy", Name: "Services: Zabbix Proxy", Origin: "net-mgmt/zabbix-proxy", Pattern: "api/zabbixproxy/*", Scope: ACLScopeWildcard}},
+	},
 	"zerotierNetworkInfo": {
 		Consumer:  "zerotier",
 		Component: "net/zerotier",

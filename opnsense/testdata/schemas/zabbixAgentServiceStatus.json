@@ -1,0 +1,15 @@
+{
+  "endpoint": "zabbixAgentServiceStatus",
+  "method": "GET",
+  "path": "api/zabbixagent/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 """
 Services, Cron & DynDNS tab for the opnsense2otel dashboard.
 
-Covers all metrics across three rows:
+Covers all metrics across four rows:
 
   Row 1 — Services (always visible):
     • services_status statetimeline + table
@@ -11,7 +11,9 @@ Covers all metrics across three rows:
   Row 2 — Cron (always visible):
     • cron_job_status table (ENABLED mapping on value)
 
-  Row 3 — DynDNS (gated has_dyndns):
+  Row 3 — Agent plugin services: one status panel per independently optional plugin
+
+  Row 4 — DynDNS (gated has_dyndns):
     • dyndns_accounts_total stat (RAW)
     • dyndns_account_enabled table (ENABLED)
     • dyndns_account_last_update_timestamp_seconds table (dateTimeAsIso)
@@ -112,6 +114,52 @@ def build(b: Builder):
     )
 
     # =====================================================================
+    # Row 3: independently optional agent-family plugin services
+    # =====================================================================
+    agent_plugin_services = [
+        b.stat("Beats", sel("opnsense_beats_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Beats plugin service is running."),
+        b.stat("Collectd", sel("opnsense_collectd_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional collectd plugin service is running."),
+        b.stat("Munin Node", sel("opnsense_munin_node_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Munin Node plugin service is running."),
+        b.stat("Net-SNMP", sel("opnsense_net_snmp_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Net-SNMP plugin service is running."),
+        b.stat("Netdata", sel("opnsense_netdata_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Netdata plugin service is running."),
+        b.stat("Node Exporter", sel("opnsense_node_exporter_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional node_exporter plugin service is running."),
+        b.stat("NRPE", sel("opnsense_nrpe_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional NRPE plugin service is running."),
+        b.stat("Puppet Agent", sel("opnsense_puppet_agent_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Puppet Agent plugin service is running."),
+        b.stat("QEMU Guest Agent", sel("opnsense_qemu_guest_agent_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional QEMU Guest Agent plugin service is running."),
+        b.stat("Telegraf", sel("opnsense_telegraf_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Telegraf plugin service is running."),
+        b.stat("Wazuh Agent", sel("opnsense_wazuh_agent_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Wazuh Agent plugin service is running."),
+        b.stat("Zabbix Agent", sel("opnsense_zabbix_agent_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Zabbix Agent plugin service is running."),
+        b.stat("Zabbix Proxy", sel("opnsense_zabbix_proxy_service_running"), mappings=RUNSTOP,
+               color_mode="background", w=4, h=4,
+               desc="Whether the optional Zabbix Proxy plugin service is running."),
+    ]
+    row_agent_plugins = b.autogrid_row("Agent Plugin Services", agent_plugin_services)
+
+    # =====================================================================
     # Row 3: DynDNS (gated)
     # =====================================================================
 
@@ -202,5 +250,5 @@ def build(b: Builder):
     # =====================================================================
     b.tab(
         "Services, Cron & DynDNS",
-        [row_services, row_cron, row_dyndns],
+        [row_services, row_cron, row_agent_plugins, row_dyndns],
     )

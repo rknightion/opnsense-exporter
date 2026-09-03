@@ -86,6 +86,19 @@ const (
 	HardwareSubsystem          = "hardware"
 	VnstatSubsystem            = "vnstat"
 	NetbirdSubsystem           = "netbird"
+	BeatsSubsystem             = "beats"
+	CollectdSubsystem          = "collectd"
+	MuninNodeSubsystem         = "munin_node"
+	NetSNMPSubsystem           = "net_snmp"
+	NetdataSubsystem           = "netdata"
+	NodeExporterSubsystem      = "node_exporter"
+	NRPESubsystem              = "nrpe"
+	PuppetAgentSubsystem       = "puppet_agent"
+	QemuGuestAgentSubsystem    = "qemu_guest_agent"
+	TelegrafSubsystem          = "telegraf"
+	WazuhAgentSubsystem        = "wazuh_agent"
+	ZabbixAgentSubsystem       = "zabbix_agent"
+	ZabbixProxySubsystem       = "zabbix_proxy"
 	ZeroTierSubsystem          = "zerotier"
 	TorSubsystem               = "tor"
 	AuthSubsystem              = "auth"
@@ -177,6 +190,19 @@ var SubsystemDisplayNames = map[string]string{
 	HardwareSubsystem:            "Hardware",
 	VnstatSubsystem:              "Vnstat Traffic Accounting",
 	NetbirdSubsystem:             "NetBird",
+	BeatsSubsystem:               "Beats",
+	CollectdSubsystem:            "Collectd",
+	MuninNodeSubsystem:           "Munin Node",
+	NetSNMPSubsystem:             "Net-SNMP",
+	NetdataSubsystem:             "Netdata",
+	NodeExporterSubsystem:        "Node Exporter",
+	NRPESubsystem:                "NRPE",
+	PuppetAgentSubsystem:         "Puppet Agent",
+	QemuGuestAgentSubsystem:      "QEMU Guest Agent",
+	TelegrafSubsystem:            "Telegraf",
+	WazuhAgentSubsystem:          "Wazuh Agent",
+	ZabbixAgentSubsystem:         "Zabbix Agent",
+	ZabbixProxySubsystem:         "Zabbix Proxy",
 	ZeroTierSubsystem:            "ZeroTier",
 	TorSubsystem:                 "Tor",
 	AuthSubsystem:                "Local Auth",
@@ -890,6 +916,47 @@ func WithoutVnstatCollector() Option {
 func WithoutNetbirdCollector() Option {
 	return withoutCollectorInstance(NetbirdSubsystem)
 }
+
+// WithoutBeatsCollector removes the Beats collector.
+func WithoutBeatsCollector() Option { return withoutCollectorInstance(BeatsSubsystem) }
+
+// WithoutCollectdCollector removes the collectd collector.
+func WithoutCollectdCollector() Option { return withoutCollectorInstance(CollectdSubsystem) }
+
+// WithoutMuninNodeCollector removes the Munin Node collector.
+func WithoutMuninNodeCollector() Option { return withoutCollectorInstance(MuninNodeSubsystem) }
+
+// WithoutNetSNMPCollector removes the Net-SNMP collector.
+func WithoutNetSNMPCollector() Option { return withoutCollectorInstance(NetSNMPSubsystem) }
+
+// WithoutNetdataCollector removes the Netdata collector.
+func WithoutNetdataCollector() Option { return withoutCollectorInstance(NetdataSubsystem) }
+
+// WithoutNodeExporterCollector removes the node_exporter collector.
+func WithoutNodeExporterCollector() Option { return withoutCollectorInstance(NodeExporterSubsystem) }
+
+// WithoutNRPECollector removes the NRPE collector.
+func WithoutNRPECollector() Option { return withoutCollectorInstance(NRPESubsystem) }
+
+// WithoutPuppetAgentCollector removes the Puppet Agent collector.
+func WithoutPuppetAgentCollector() Option { return withoutCollectorInstance(PuppetAgentSubsystem) }
+
+// WithoutQemuGuestAgentCollector removes the QEMU Guest Agent collector.
+func WithoutQemuGuestAgentCollector() Option {
+	return withoutCollectorInstance(QemuGuestAgentSubsystem)
+}
+
+// WithoutTelegrafCollector removes the Telegraf collector.
+func WithoutTelegrafCollector() Option { return withoutCollectorInstance(TelegrafSubsystem) }
+
+// WithoutWazuhAgentCollector removes the Wazuh Agent collector.
+func WithoutWazuhAgentCollector() Option { return withoutCollectorInstance(WazuhAgentSubsystem) }
+
+// WithoutZabbixAgentCollector removes the Zabbix Agent collector.
+func WithoutZabbixAgentCollector() Option { return withoutCollectorInstance(ZabbixAgentSubsystem) }
+
+// WithoutZabbixProxyCollector removes the Zabbix Proxy collector.
+func WithoutZabbixProxyCollector() Option { return withoutCollectorInstance(ZabbixProxySubsystem) }
 
 // WithoutZeroTierCollector removes the ZeroTier collector.
 func WithoutZeroTierCollector() Option {

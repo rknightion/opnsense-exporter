@@ -1,5 +1,5 @@
 title: Collectors
-description: Documentation for all 68 opnsense2otel collectors covering firewall, network, system, and service subsystems
+description: Documentation for all 81 opnsense2otel collectors covering firewall, network, system, and service subsystems
 
 tags:
   - collectors

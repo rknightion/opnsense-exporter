@@ -1,0 +1,15 @@
+{
+  "endpoint": "muninNodeServiceStatus",
+  "method": "GET",
+  "path": "api/muninnode/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

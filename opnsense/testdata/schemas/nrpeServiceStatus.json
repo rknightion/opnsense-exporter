@@ -1,0 +1,15 @@
+{
+  "endpoint": "nrpeServiceStatus",
+  "method": "GET",
+  "path": "api/nrpe/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

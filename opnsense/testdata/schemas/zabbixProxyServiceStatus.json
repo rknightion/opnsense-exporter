@@ -1,0 +1,15 @@
+{
+  "endpoint": "zabbixProxyServiceStatus",
+  "method": "GET",
+  "path": "api/zabbixproxy/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

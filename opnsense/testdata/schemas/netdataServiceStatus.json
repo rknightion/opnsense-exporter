@@ -1,0 +1,15 @@
+{
+  "endpoint": "netdataServiceStatus",
+  "method": "GET",
+  "path": "api/netdata/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

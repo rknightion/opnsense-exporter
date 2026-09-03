@@ -1,0 +1,15 @@
+{
+  "endpoint": "puppetAgentServiceStatus",
+  "method": "GET",
+  "path": "api/puppetagent/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

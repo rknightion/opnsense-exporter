@@ -264,6 +264,10 @@ settings:
   # timestamp/count/size)
   # exporter.disable-backup: false
   #
+  # Disable the scraping of the Beats plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-beats: false
+  #
   # Disable the scraping of BPF listener statistics
   # exporter.disable-bpf: false
   #
@@ -284,6 +288,10 @@ settings:
   # Disable the scraping of ClamAV engine version and signature database freshness metrics
   # (silent when the os-clamav plugin is absent)
   # exporter.disable-clamav: false
+  #
+  # Disable the scraping of the collectd plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-collectd: false
   #
   # Disable CPU metrics. These come from a long-lived Server-Sent Events connection to
   # api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one stream open
@@ -395,12 +403,24 @@ settings:
   # Disable the scraping of Monit service check status (silent when Monit is not running)
   # exporter.disable-monit: false
   #
+  # Disable the scraping of the Munin Node plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-munin-node: false
+  #
   # Disable the scraping of the NDP (IPv6 neighbor discovery) table
   # exporter.disable-ndp: false
+  #
+  # Disable the scraping of the Net-SNMP plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-net-snmp: false
   #
   # Disable the scraping of NetBird management/signal connectivity, relay and peer metrics
   # (silent when the os-netbird plugin is absent)
   # exporter.disable-netbird: false
+  #
+  # Disable the scraping of the Netdata plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-netdata: false
   #
   # Disable the per-workstream netisr series, keeping only the per-protocol aggregates and
   # derived summaries. On by default: the per-CPU dimension is the diagnosis for a netisr
@@ -411,6 +431,14 @@ settings:
   #
   # Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent)
   # exporter.disable-nginx: false
+  #
+  # Disable the scraping of the node_exporter plugin service status (silent when the plugin
+  # is absent)
+  # exporter.disable-node-exporter: false
+  #
+  # Disable the scraping of the NRPE plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-nrpe: false
   #
   # Disable the scraping of NTP peer metrics
   # exporter.disable-ntp: false
@@ -426,6 +454,14 @@ settings:
   #
   # Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters)
   # exporter.disable-protocol: false
+  #
+  # Disable the scraping of the Puppet Agent plugin service status (silent when the plugin
+  # is absent)
+  # exporter.disable-puppet-agent: false
+  #
+  # Disable the scraping of the QEMU Guest Agent plugin service status (silent when the
+  # plugin is absent)
+  # exporter.disable-qemu-guest-agent: false
   #
   # Disable the scraping of Q-Feeds threat intelligence statistics (silent when the
   # os-q-feeds-connector plugin is absent)
@@ -456,6 +492,10 @@ settings:
   # plugin is absent; complementary to tailscale2otel)
   # exporter.disable-tailscale: false
   #
+  # Disable the scraping of the Telegraf plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-telegraf: false
+  #
   # Disable the scraping of temperature metrics
   # exporter.disable-temperature: false
   #
@@ -466,8 +506,20 @@ settings:
   # Disable the scraping of Unbound service
   # exporter.disable-unbound: false
   #
+  # Disable the scraping of the Wazuh Agent plugin service status (silent when the plugin is
+  # absent)
+  # exporter.disable-wazuh-agent: false
+  #
   # Disable the scraping of Wireguard service
   # exporter.disable-wireguard: false
+  #
+  # Disable the scraping of the Zabbix Agent plugin service status (silent when the plugin
+  # is absent)
+  # exporter.disable-zabbix-agent: false
+  #
+  # Disable the scraping of the Zabbix Proxy plugin service status (silent when the plugin
+  # is absent)
+  # exporter.disable-zabbix-proxy: false
   #
   # Disable the scraping of ZeroTier network membership, status and assigned-address metrics
   # (silent when the os-zerotier plugin is absent)

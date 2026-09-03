@@ -11,12 +11,14 @@ This page provides a summary of all collectors in opnsense2otel.
 | ARP Table | arp_table | 2 | Enabled | --exporter.disable-arp-table | OPN2OTEL_DISABLE_ARP_TABLE |
 | Activity | activity | 14 | Enabled | --exporter.disable-activity | OPN2OTEL_DISABLE_ACTIVITY |
 | BPF Statistics | bpf | 10 | Enabled | --exporter.disable-bpf | OPN2OTEL_DISABLE_BPF |
+| Beats | beats | 1 | Enabled | --exporter.disable-beats | OPN2OTEL_DISABLE_BEATS |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPN2OTEL_DISABLE_CARP |
 | CPU | cpu | 6 | Enabled | --exporter.disable-cpu | OPN2OTEL_DISABLE_CPU |
 | Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPN2OTEL_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 8 | Enabled | --exporter.disable-certificates | OPN2OTEL_DISABLE_CERTIFICATES |
 | Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPN2OTEL_DISABLE_CHRONY |
 | ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPN2OTEL_DISABLE_CLAMAV |
+| Collectd | collectd | 1 | Enabled | --exporter.disable-collectd | OPN2OTEL_DISABLE_COLLECTD |
 | Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPN2OTEL_DISABLE_BACKUP |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPN2OTEL_DISABLE_CRON_TABLE |
 | CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPN2OTEL_DISABLE_CROWDSEC |
@@ -48,17 +50,24 @@ This page provides a summary of all collectors in opnsense2otel.
 | Log-derived Events | log_events | 32 | Enabled | --exporter.disable-log-events | OPN2OTEL_DISABLE_LOG_EVENTS |
 | Mbuf | mbuf | 20 | Enabled | --exporter.disable-mbuf | OPN2OTEL_DISABLE_MBUF |
 | Monit | monit | 17 | Enabled | --exporter.disable-monit | OPN2OTEL_DISABLE_MONIT |
+| Munin Node | munin_node | 1 | Enabled | --exporter.disable-munin-node | OPN2OTEL_DISABLE_MUNIN_NODE |
 | NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPN2OTEL_DISABLE_NDP |
+| NRPE | nrpe | 1 | Enabled | --exporter.disable-nrpe | OPN2OTEL_DISABLE_NRPE |
 | NTP | ntp | 11 | Enabled | --exporter.disable-ntp | OPN2OTEL_DISABLE_NTP |
 | NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPN2OTEL_DISABLE_NUT |
+| Net-SNMP | net_snmp | 1 | Enabled | --exporter.disable-net-snmp | OPN2OTEL_DISABLE_NET_SNMP |
 | NetBird | netbird | 15 | Enabled | --exporter.disable-netbird | OPN2OTEL_DISABLE_NETBIRD |
 | NetFlow | netflow | 11 | Disabled | --exporter.enable-netflow | OPN2OTEL_ENABLE_NETFLOW |
+| Netdata | netdata | 1 | Enabled | --exporter.disable-netdata | OPN2OTEL_DISABLE_NETDATA |
 | Network Diagnostics | network_diag | 29 | Disabled | --exporter.enable-network-diagnostics | OPN2OTEL_ENABLE_NETWORK_DIAGNOSTICS |
 | Nginx | nginx | 35 | Enabled | --exporter.disable-nginx | OPN2OTEL_DISABLE_NGINX |
+| Node Exporter | node_exporter | 1 | Enabled | --exporter.disable-node-exporter | OPN2OTEL_DISABLE_NODE_EXPORTER |
 | OpenVPN | openvpn | 10 | Enabled | --exporter.disable-openvpn | OPN2OTEL_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPN2OTEL_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 77 | Enabled | --exporter.disable-protocol | OPN2OTEL_DISABLE_PROTOCOL |
+| Puppet Agent | puppet_agent | 1 | Enabled | --exporter.disable-puppet-agent | OPN2OTEL_DISABLE_PUPPET_AGENT |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPN2OTEL_DISABLE_QFEEDS |
+| QEMU Guest Agent | qemu_guest_agent | 1 | Enabled | --exporter.disable-qemu-guest-agent | OPN2OTEL_DISABLE_QEMU_GUEST_AGENT |
 | Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPN2OTEL_DISABLE_RELAYD |
 | SMART Disk Health | smart | 19 | Disabled | --exporter.enable-smart | OPN2OTEL_ENABLE_SMART |
 | Services | services | 3 | Enabled | --exporter.disable-services | OPN2OTEL_DISABLE_SERVICES |
@@ -66,12 +75,16 @@ This page provides a summary of all collectors in opnsense2otel.
 | Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPN2OTEL_DISABLE_SYSLOG |
 | System | system | 13 | Enabled | --exporter.disable-system | OPN2OTEL_DISABLE_SYSTEM |
 | Tailscale | tailscale | 13 | Enabled | --exporter.disable-tailscale | OPN2OTEL_DISABLE_TAILSCALE |
+| Telegraf | telegraf | 1 | Enabled | --exporter.disable-telegraf | OPN2OTEL_DISABLE_TELEGRAF |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPN2OTEL_DISABLE_TEMPERATURE |
 | Tor | tor | 6 | Disabled | --exporter.enable-tor | OPN2OTEL_ENABLE_TOR |
 | Traffic Shaper | trafficshaper | 22 | Enabled | --exporter.disable-trafficshaper | OPN2OTEL_DISABLE_TRAFFICSHAPER |
 | Unbound DNS | unbound_dns | 51 | Enabled | --exporter.disable-unbound | OPN2OTEL_DISABLE_UNBOUND |
 | Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPN2OTEL_ENABLE_VNSTAT |
+| Wazuh Agent | wazuh_agent | 1 | Enabled | --exporter.disable-wazuh-agent | OPN2OTEL_DISABLE_WAZUH_AGENT |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPN2OTEL_DISABLE_WIREGUARD |
 | ZFS Boot Environments | snapshots | 3 | Enabled | --exporter.disable-snapshots | OPN2OTEL_DISABLE_SNAPSHOTS |
+| Zabbix Agent | zabbix_agent | 1 | Enabled | --exporter.disable-zabbix-agent | OPN2OTEL_DISABLE_ZABBIX_AGENT |
+| Zabbix Proxy | zabbix_proxy | 1 | Enabled | --exporter.disable-zabbix-proxy | OPN2OTEL_DISABLE_ZABBIX_PROXY |
 | ZeroTier | zerotier | 4 | Enabled | --exporter.disable-zerotier | OPN2OTEL_DISABLE_ZEROTIER |
 

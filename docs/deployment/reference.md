@@ -214,6 +214,9 @@ services:
       # Disable the scraping of config backup freshness metrics (last backup
       # timestamp/count/size)
       # OPN2OTEL_DISABLE_BACKUP: "false"
+      # Disable the scraping of the Beats plugin service status (silent when the plugin
+      # is absent)
+      # OPN2OTEL_DISABLE_BEATS: "false"
       # Disable the scraping of BPF listener statistics
       # OPN2OTEL_DISABLE_BPF: "false"
       # Disable the scraping of captive portal zone/session metrics (silent when no
@@ -229,6 +232,9 @@ services:
       # Disable the scraping of ClamAV engine version and signature database freshness
       # metrics (silent when the os-clamav plugin is absent)
       # OPN2OTEL_DISABLE_CLAMAV: "false"
+      # Disable the scraping of the collectd plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_COLLECTD: "false"
       # Disable CPU metrics. These come from a long-lived Server-Sent Events connection
       # to api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one
       # stream open and accumulates its 1-second samples into cumulative
@@ -317,11 +323,20 @@ services:
       # Disable the scraping of Monit service check status (silent when Monit is not
       # running)
       # OPN2OTEL_DISABLE_MONIT: "false"
+      # Disable the scraping of the Munin Node plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_MUNIN_NODE: "false"
       # Disable the scraping of the NDP (IPv6 neighbor discovery) table
       # OPN2OTEL_DISABLE_NDP: "false"
+      # Disable the scraping of the Net-SNMP plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_NET_SNMP: "false"
       # Disable the scraping of NetBird management/signal connectivity, relay and peer
       # metrics (silent when the os-netbird plugin is absent)
       # OPN2OTEL_DISABLE_NETBIRD: "false"
+      # Disable the scraping of the Netdata plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_NETDATA: "false"
       # Disable the per-workstream netisr series, keeping only the per-protocol
       # aggregates and derived summaries. On by default: the per-CPU dimension is the
       # diagnosis for a netisr drop - one saturated workstream beside eleven idle ones
@@ -332,6 +347,12 @@ services:
       # Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is
       # absent)
       # OPN2OTEL_DISABLE_NGINX: "false"
+      # Disable the scraping of the node_exporter plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_NODE_EXPORTER: "false"
+      # Disable the scraping of the NRPE plugin service status (silent when the plugin
+      # is absent)
+      # OPN2OTEL_DISABLE_NRPE: "false"
       # Disable the scraping of NTP peer metrics
       # OPN2OTEL_DISABLE_NTP: "false"
       # Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is
@@ -345,6 +366,12 @@ services:
       # Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync
       # counters)
       # OPN2OTEL_DISABLE_PROTOCOL: "false"
+      # Disable the scraping of the Puppet Agent plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_PUPPET_AGENT: "false"
+      # Disable the scraping of the QEMU Guest Agent plugin service status (silent when
+      # the plugin is absent)
+      # OPN2OTEL_DISABLE_QEMU_GUEST_AGENT: "false"
       # Disable the scraping of Q-Feeds threat intelligence statistics (silent when the
       # os-q-feeds-connector plugin is absent)
       # OPN2OTEL_DISABLE_QFEEDS: "false"
@@ -366,6 +393,9 @@ services:
       # Disable the scraping of Tailscale node-local metrics (silent when the
       # os-tailscale plugin is absent; complementary to tailscale2otel)
       # OPN2OTEL_DISABLE_TAILSCALE: "false"
+      # Disable the scraping of the Telegraf plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_TELEGRAF: "false"
       # Disable the scraping of temperature metrics
       # OPN2OTEL_DISABLE_TEMPERATURE: "false"
       # Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when
@@ -373,8 +403,17 @@ services:
       # OPN2OTEL_DISABLE_TRAFFICSHAPER: "false"
       # Disable the scraping of Unbound service
       # OPN2OTEL_DISABLE_UNBOUND: "false"
+      # Disable the scraping of the Wazuh Agent plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_WAZUH_AGENT: "false"
       # Disable the scraping of Wireguard service
       # OPN2OTEL_DISABLE_WIREGUARD: "false"
+      # Disable the scraping of the Zabbix Agent plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_ZABBIX_AGENT: "false"
+      # Disable the scraping of the Zabbix Proxy plugin service status (silent when the
+      # plugin is absent)
+      # OPN2OTEL_DISABLE_ZABBIX_PROXY: "false"
       # Disable the scraping of ZeroTier network membership, status and assigned-address
       # metrics (silent when the os-zerotier plugin is absent)
       # OPN2OTEL_DISABLE_ZEROTIER: "false"

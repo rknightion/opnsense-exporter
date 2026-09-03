@@ -1,0 +1,15 @@
+{
+  "endpoint": "beatsServiceStatus",
+  "method": "GET",
+  "path": "api/beats/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "endpoint": "wazuhAgentServiceStatus",
+  "method": "GET",
+  "path": "api/wazuh_agent/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

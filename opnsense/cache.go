@@ -259,12 +259,17 @@ func NegativeCacheable404Endpoints() []EndpointName {
 	return []EndpointName{
 		// Per-plugin service status. The 200 body ({"status":"running"}) is live
 		// state and is never cached — only the 404 is.
-		"apcupsdServiceStatus", "captivePortalServiceStatus", "chronyServiceStatus",
-		"crowdsecServiceStatus", "dnsmasqServiceStatus", "dyndnsServiceStatus",
+		"apcupsdServiceStatus", "beatsServiceStatus", "captivePortalServiceStatus",
+		"chronyServiceStatus", "collectdServiceStatus", "crowdsecServiceStatus",
+		"dnsmasqServiceStatus", "dyndnsServiceStatus",
 		"haproxyServiceStatus", "ipsecServiceStatus", "keaServiceStatus",
-		"monitServiceStatus", "nginxServiceStatus", "nutServiceStatus",
-		"quaggaServiceStatus", "syslogServiceStatus", "tailscaleServiceStatus",
-		"unboundServiceStatus", "wireguardServiceStatus", "netbirdServiceStatus",
+		"monitServiceStatus", "muninNodeServiceStatus", "netSnmpServiceStatus",
+		"netbirdServiceStatus", "netdataServiceStatus", "nginxServiceStatus",
+		"nodeExporterServiceStatus", "nrpeServiceStatus", "nutServiceStatus",
+		"puppetAgentServiceStatus", "qemuGuestAgentServiceStatus", "quaggaServiceStatus",
+		"syslogServiceStatus", "tailscaleServiceStatus", "telegrafServiceStatus",
+		"unboundServiceStatus", "wazuhAgentServiceStatus", "wireguardServiceStatus",
+		"zabbixAgentServiceStatus", "zabbixProxyServiceStatus",
 
 		// Plugin data endpoints (GET). Kept alphabetical and unique —
 		// TestPluginGatedEndpoints_HasNoDuplicates enforces the uniqueness, because a

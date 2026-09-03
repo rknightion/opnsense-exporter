@@ -1,0 +1,15 @@
+{
+  "endpoint": "collectdServiceStatus",
+  "method": "GET",
+  "path": "api/collectd/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

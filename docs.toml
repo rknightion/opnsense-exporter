@@ -4,7 +4,7 @@
 
 [site]
 name = "opnsense2otel"
-description = "Prometheus and OpenTelemetry exporter for OPNsense firewalls: 1022 metrics across 68 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping"
+description = "Prometheus and OpenTelemetry exporter for OPNsense firewalls: 1035 metrics across 81 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping"
 author = "Rob Knight"
 keywords = [
     "opnsense",

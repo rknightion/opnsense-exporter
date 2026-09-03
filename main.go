@@ -1206,6 +1206,58 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithNetbirdPeerDetails())
 		logger.Info("netbird per-peer details enabled")
 	}
+	if !collectorsSwitches.Beats {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutBeatsCollector())
+		logger.Info("beats collector disabled")
+	}
+	if !collectorsSwitches.Collectd {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCollectdCollector())
+		logger.Info("collectd collector disabled")
+	}
+	if !collectorsSwitches.MuninNode {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutMuninNodeCollector())
+		logger.Info("munin-node collector disabled")
+	}
+	if !collectorsSwitches.NetSNMP {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetSNMPCollector())
+		logger.Info("net-snmp collector disabled")
+	}
+	if !collectorsSwitches.Netdata {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetdataCollector())
+		logger.Info("netdata collector disabled")
+	}
+	if !collectorsSwitches.NodeExporter {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNodeExporterCollector())
+		logger.Info("node-exporter collector disabled")
+	}
+	if !collectorsSwitches.NRPE {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNRPECollector())
+		logger.Info("nrpe collector disabled")
+	}
+	if !collectorsSwitches.PuppetAgent {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutPuppetAgentCollector())
+		logger.Info("puppet-agent collector disabled")
+	}
+	if !collectorsSwitches.QemuGuestAgent {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutQemuGuestAgentCollector())
+		logger.Info("qemu-guest-agent collector disabled")
+	}
+	if !collectorsSwitches.Telegraf {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutTelegrafCollector())
+		logger.Info("telegraf collector disabled")
+	}
+	if !collectorsSwitches.WazuhAgent {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutWazuhAgentCollector())
+		logger.Info("wazuh-agent collector disabled")
+	}
+	if !collectorsSwitches.ZabbixAgent {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutZabbixAgentCollector())
+		logger.Info("zabbix-agent collector disabled")
+	}
+	if !collectorsSwitches.ZabbixProxy {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutZabbixProxyCollector())
+		logger.Info("zabbix-proxy collector disabled")
+	}
 	if !collectorsSwitches.ZeroTier {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutZeroTierCollector())
 		logger.Info("zerotier collector disabled")

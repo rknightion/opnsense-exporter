@@ -1,0 +1,15 @@
+{
+  "endpoint": "netSnmpServiceStatus",
+  "method": "GET",
+  "path": "api/netsnmp/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

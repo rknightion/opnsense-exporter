@@ -512,12 +512,14 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-arp-table` | `OPN2OTEL_DISABLE_ARP_TABLE` | ARP Table | Disable the scraping of the ARP table |
 | `--exporter.disable-activity` | `OPN2OTEL_DISABLE_ACTIVITY` | Activity | Disable the scraping of system activity metrics (CPU percentages, thread counts) |
 | `--exporter.disable-bpf` | `OPN2OTEL_DISABLE_BPF` | BPF Statistics | Disable the scraping of BPF listener statistics |
+| `--exporter.disable-beats` | `OPN2OTEL_DISABLE_BEATS` | Beats | Disable the scraping of the Beats plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-carp` | `OPN2OTEL_DISABLE_CARP` | CARP | Disable the scraping of CARP/VIP status metrics |
 | `--exporter.disable-cpu` | `OPN2OTEL_DISABLE_CPU` | CPU | Disable CPU metrics. These come from a long-lived Server-Sent Events connection to api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one stream open and accumulates its 1-second samples into cumulative cpu_seconds_total{mode} counters. Disabling this closes that connection and leaves the firewall with no CPU utilisation series at all. |
 | `--exporter.disable-captiveportal` | `OPN2OTEL_DISABLE_CAPTIVEPORTAL` | Captive Portal | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-certificates` | `OPN2OTEL_DISABLE_CERTIFICATES` | Certificates | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-chrony` | `OPN2OTEL_DISABLE_CHRONY` | Chrony | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
 | `--exporter.disable-clamav` | `OPN2OTEL_DISABLE_CLAMAV` | ClamAV | Disable the scraping of ClamAV engine version and signature database freshness metrics (silent when the os-clamav plugin is absent) |
+| `--exporter.disable-collectd` | `OPN2OTEL_DISABLE_COLLECTD` | Collectd | Disable the scraping of the collectd plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-backup` | `OPN2OTEL_DISABLE_BACKUP` | Config Backup | Disable the scraping of config backup freshness metrics (last backup timestamp/count/size) |
 | `--exporter.disable-cron-table` | `OPN2OTEL_DISABLE_CRON_TABLE` | Cron | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPN2OTEL_DISABLE_CROWDSEC` | CrowdSec | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
@@ -548,26 +550,37 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-log-events` | `OPN2OTEL_DISABLE_LOG_EVENTS` | Log-derived Events | Disable the log_events collector (Prometheus counters derived from received syslog lines: firewall/haproxy/sshd/dhcp/audit/ids event totals). Silent until the syslog receiver is enabled and feeding it. |
 | `--exporter.disable-mbuf` | `OPN2OTEL_DISABLE_MBUF` | Mbuf | Disable the scraping of mbuf statistics |
 | `--exporter.disable-monit` | `OPN2OTEL_DISABLE_MONIT` | Monit | Disable the scraping of Monit service check status (silent when Monit is not running) |
+| `--exporter.disable-munin-node` | `OPN2OTEL_DISABLE_MUNIN_NODE` | Munin Node | Disable the scraping of the Munin Node plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-ndp` | `OPN2OTEL_DISABLE_NDP` | NDP | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
+| `--exporter.disable-nrpe` | `OPN2OTEL_DISABLE_NRPE` | NRPE | Disable the scraping of the NRPE plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-ntp` | `OPN2OTEL_DISABLE_NTP` | NTP | Disable the scraping of NTP peer metrics |
 | `--exporter.disable-nut` | `OPN2OTEL_DISABLE_NUT` | NUT UPS | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
+| `--exporter.disable-net-snmp` | `OPN2OTEL_DISABLE_NET_SNMP` | Net-SNMP | Disable the scraping of the Net-SNMP plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-netbird` | `OPN2OTEL_DISABLE_NETBIRD` | NetBird | Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent) |
+| `--exporter.disable-netdata` | `OPN2OTEL_DISABLE_NETDATA` | Netdata | Disable the scraping of the Netdata plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-nginx` | `OPN2OTEL_DISABLE_NGINX` | Nginx | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
+| `--exporter.disable-node-exporter` | `OPN2OTEL_DISABLE_NODE_EXPORTER` | Node Exporter | Disable the scraping of the node_exporter plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-openvpn` | `OPN2OTEL_DISABLE_OPENVPN` | OpenVPN | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPN2OTEL_DISABLE_PF_STATS` | PF Statistics | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-protocol` | `OPN2OTEL_DISABLE_PROTOCOL` | Protocol Statistics | Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters) |
+| `--exporter.disable-puppet-agent` | `OPN2OTEL_DISABLE_PUPPET_AGENT` | Puppet Agent | Disable the scraping of the Puppet Agent plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-qfeeds` | `OPN2OTEL_DISABLE_QFEEDS` | Q-Feeds | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
+| `--exporter.disable-qemu-guest-agent` | `OPN2OTEL_DISABLE_QEMU_GUEST_AGENT` | QEMU Guest Agent | Disable the scraping of the QEMU Guest Agent plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-relayd` | `OPN2OTEL_DISABLE_RELAYD` | Relayd Load Balancer | Disable the scraping of relayd virtual server/table/host health (silent when the os-relayd plugin is absent) |
 | `--exporter.disable-services` | `OPN2OTEL_DISABLE_SERVICES` | Services | Disable the services collector (per-service running state) |
 | `--exporter.disable-siproxd` | `OPN2OTEL_DISABLE_SIPROXD` | Siproxd | Disable the scraping of the siproxd active SIP registration count (silent when the os-siproxd plugin is absent) |
 | `--exporter.disable-syslog` | `OPN2OTEL_DISABLE_SYSLOG` | Syslog | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPN2OTEL_DISABLE_SYSTEM` | System | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPN2OTEL_DISABLE_TAILSCALE` | Tailscale | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
+| `--exporter.disable-telegraf` | `OPN2OTEL_DISABLE_TELEGRAF` | Telegraf | Disable the scraping of the Telegraf plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-temperature` | `OPN2OTEL_DISABLE_TEMPERATURE` | Temperature | Disable the scraping of temperature metrics |
 | `--exporter.disable-trafficshaper` | `OPN2OTEL_DISABLE_TRAFFICSHAPER` | Traffic Shaper | Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured) |
 | `--exporter.disable-unbound` | `OPN2OTEL_DISABLE_UNBOUND` | Unbound DNS | Disable the scraping of Unbound service |
+| `--exporter.disable-wazuh-agent` | `OPN2OTEL_DISABLE_WAZUH_AGENT` | Wazuh Agent | Disable the scraping of the Wazuh Agent plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-wireguard` | `OPN2OTEL_DISABLE_WIREGUARD` | Wireguard | Disable the scraping of Wireguard service |
 | `--exporter.disable-snapshots` | `OPN2OTEL_DISABLE_SNAPSHOTS` | ZFS Boot Environments | Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS) |
+| `--exporter.disable-zabbix-agent` | `OPN2OTEL_DISABLE_ZABBIX_AGENT` | Zabbix Agent | Disable the scraping of the Zabbix Agent plugin service status (silent when the plugin is absent) |
+| `--exporter.disable-zabbix-proxy` | `OPN2OTEL_DISABLE_ZABBIX_PROXY` | Zabbix Proxy | Disable the scraping of the Zabbix Proxy plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-zerotier` | `OPN2OTEL_DISABLE_ZEROTIER` | ZeroTier | Disable the scraping of ZeroTier network membership, status and assigned-address metrics (silent when the os-zerotier plugin is absent) |
 <!-- docgen:end:flags-collectors-default-on -->
 
@@ -650,12 +663,14 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-arp-table` | `OPN2OTEL_DISABLE_ARP_TABLE` | `false` | Disable the scraping of the ARP table |
 | `--exporter.disable-auth` | `OPN2OTEL_DISABLE_AUTH` | `false` | Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only - no per-user data) |
 | `--exporter.disable-backup` | `OPN2OTEL_DISABLE_BACKUP` | `false` | Disable the scraping of config backup freshness metrics (last backup timestamp/count/size) |
+| `--exporter.disable-beats` | `OPN2OTEL_DISABLE_BEATS` | `false` | Disable the scraping of the Beats plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-bpf` | `OPN2OTEL_DISABLE_BPF` | `false` | Disable the scraping of BPF listener statistics |
 | `--exporter.disable-captiveportal` | `OPN2OTEL_DISABLE_CAPTIVEPORTAL` | `false` | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-carp` | `OPN2OTEL_DISABLE_CARP` | `false` | Disable the scraping of CARP/VIP status metrics |
 | `--exporter.disable-certificates` | `OPN2OTEL_DISABLE_CERTIFICATES` | `false` | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-chrony` | `OPN2OTEL_DISABLE_CHRONY` | `false` | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
 | `--exporter.disable-clamav` | `OPN2OTEL_DISABLE_CLAMAV` | `false` | Disable the scraping of ClamAV engine version and signature database freshness metrics (silent when the os-clamav plugin is absent) |
+| `--exporter.disable-collectd` | `OPN2OTEL_DISABLE_COLLECTD` | `false` | Disable the scraping of the collectd plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-cpu` | `OPN2OTEL_DISABLE_CPU` | `false` | Disable CPU metrics. These come from a long-lived Server-Sent Events connection to api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one stream open and accumulates its 1-second samples into cumulative cpu_seconds_total{mode} counters. Disabling this closes that connection and leaves the firewall with no CPU utilisation series at all. |
 | `--exporter.disable-cron-table` | `OPN2OTEL_DISABLE_CRON_TABLE` | `false` | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPN2OTEL_DISABLE_CROWDSEC` | `false` | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
@@ -684,15 +699,22 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-log-events` | `OPN2OTEL_DISABLE_LOG_EVENTS` | `false` | Disable the log_events collector (Prometheus counters derived from received syslog lines: firewall/haproxy/sshd/dhcp/audit/ids event totals). Silent until the syslog receiver is enabled and feeding it. |
 | `--exporter.disable-mbuf` | `OPN2OTEL_DISABLE_MBUF` | `false` | Disable the scraping of mbuf statistics |
 | `--exporter.disable-monit` | `OPN2OTEL_DISABLE_MONIT` | `false` | Disable the scraping of Monit service check status (silent when Monit is not running) |
+| `--exporter.disable-munin-node` | `OPN2OTEL_DISABLE_MUNIN_NODE` | `false` | Disable the scraping of the Munin Node plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-ndp` | `OPN2OTEL_DISABLE_NDP` | `false` | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
+| `--exporter.disable-net-snmp` | `OPN2OTEL_DISABLE_NET_SNMP` | `false` | Disable the scraping of the Net-SNMP plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-netbird` | `OPN2OTEL_DISABLE_NETBIRD` | `false` | Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent) |
+| `--exporter.disable-netdata` | `OPN2OTEL_DISABLE_NETDATA` | `false` | Disable the scraping of the Netdata plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-netisr-percpu` | `OPN2OTEL_DISABLE_NETISR_PERCPU` | `false` | Disable the per-workstream netisr series, keeping only the per-protocol aggregates and derived summaries. On by default: the per-CPU dimension is the diagnosis for a netisr drop - one saturated workstream beside eleven idle ones is a CPU-affinity problem, and collapsed to protocol alone it is indistinguishable from uniform overload, which has the opposite remedy. Costs roughly 7 series per protocol per CPU. |
 | `--exporter.disable-nginx` | `OPN2OTEL_DISABLE_NGINX` | `false` | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
+| `--exporter.disable-node-exporter` | `OPN2OTEL_DISABLE_NODE_EXPORTER` | `false` | Disable the scraping of the node_exporter plugin service status (silent when the plugin is absent) |
+| `--exporter.disable-nrpe` | `OPN2OTEL_DISABLE_NRPE` | `false` | Disable the scraping of the NRPE plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-ntp` | `OPN2OTEL_DISABLE_NTP` | `false` | Disable the scraping of NTP peer metrics |
 | `--exporter.disable-nut` | `OPN2OTEL_DISABLE_NUT` | `false` | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
 | `--exporter.disable-openvpn` | `OPN2OTEL_DISABLE_OPENVPN` | `false` | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPN2OTEL_DISABLE_PF_STATS` | `false` | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-protocol` | `OPN2OTEL_DISABLE_PROTOCOL` | `false` | Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters) |
+| `--exporter.disable-puppet-agent` | `OPN2OTEL_DISABLE_PUPPET_AGENT` | `false` | Disable the scraping of the Puppet Agent plugin service status (silent when the plugin is absent) |
+| `--exporter.disable-qemu-guest-agent` | `OPN2OTEL_DISABLE_QEMU_GUEST_AGENT` | `false` | Disable the scraping of the QEMU Guest Agent plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-qfeeds` | `OPN2OTEL_DISABLE_QFEEDS` | `false` | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
 | `--exporter.disable-relayd` | `OPN2OTEL_DISABLE_RELAYD` | `false` | Disable the scraping of relayd virtual server/table/host health (silent when the os-relayd plugin is absent) |
 | `--exporter.disable-services` | `OPN2OTEL_DISABLE_SERVICES` | `false` | Disable the services collector (per-service running state) |
@@ -701,10 +723,14 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-syslog` | `OPN2OTEL_DISABLE_SYSLOG` | `false` | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPN2OTEL_DISABLE_SYSTEM` | `false` | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPN2OTEL_DISABLE_TAILSCALE` | `false` | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
+| `--exporter.disable-telegraf` | `OPN2OTEL_DISABLE_TELEGRAF` | `false` | Disable the scraping of the Telegraf plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-temperature` | `OPN2OTEL_DISABLE_TEMPERATURE` | `false` | Disable the scraping of temperature metrics |
 | `--exporter.disable-trafficshaper` | `OPN2OTEL_DISABLE_TRAFFICSHAPER` | `false` | Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured) |
 | `--exporter.disable-unbound` | `OPN2OTEL_DISABLE_UNBOUND` | `false` | Disable the scraping of Unbound service |
+| `--exporter.disable-wazuh-agent` | `OPN2OTEL_DISABLE_WAZUH_AGENT` | `false` | Disable the scraping of the Wazuh Agent plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-wireguard` | `OPN2OTEL_DISABLE_WIREGUARD` | `false` | Disable the scraping of Wireguard service |
+| `--exporter.disable-zabbix-agent` | `OPN2OTEL_DISABLE_ZABBIX_AGENT` | `false` | Disable the scraping of the Zabbix Agent plugin service status (silent when the plugin is absent) |
+| `--exporter.disable-zabbix-proxy` | `OPN2OTEL_DISABLE_ZABBIX_PROXY` | `false` | Disable the scraping of the Zabbix Proxy plugin service status (silent when the plugin is absent) |
 | `--exporter.disable-zerotier` | `OPN2OTEL_DISABLE_ZEROTIER` | `false` | Disable the scraping of ZeroTier network membership, status and assigned-address metrics (silent when the os-zerotier plugin is absent) |
 | `--exporter.enable-alias-details` | `OPN2OTEL_ENABLE_ALIAS_DETAILS` | `false` | Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table) |
 | `--exporter.enable-all-available` | `OPN2OTEL_ENABLE_ALL_AVAILABLE` | `false` | Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. A collector whose PLUGIN the startup availability probe finds absent is left off, so this enables what the box can actually serve; anything gated on cost or cardinality rather than a plugin is enabled regardless. If the firewall cannot be reached at startup the probe falls open and everything is enabled. NOTE: because availability is resolved once at startup, a plugin installed LATER does not self-activate under this flag until the next restart. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off; an explicit --exporter.enable-<x>=false always wins over this blanket switch. |

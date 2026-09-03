@@ -1,0 +1,15 @@
+{
+  "endpoint": "telegrafServiceStatus",
+  "method": "GET",
+  "path": "api/telegraf/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

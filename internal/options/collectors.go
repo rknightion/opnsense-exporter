@@ -345,7 +345,20 @@ var (
 		"exporter.disable-netbird",
 		"Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent)",
 	).Envar("OPN2OTEL_DISABLE_NETBIRD").Default("false").Bool()
-	zeroTierCollectorDisabled = kingpin.Flag(
+	beatsCollectorDisabled          = kingpin.Flag("exporter.disable-beats", "Disable the scraping of the Beats plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_BEATS").Default("false").Bool()
+	collectdCollectorDisabled       = kingpin.Flag("exporter.disable-collectd", "Disable the scraping of the collectd plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_COLLECTD").Default("false").Bool()
+	muninNodeCollectorDisabled      = kingpin.Flag("exporter.disable-munin-node", "Disable the scraping of the Munin Node plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_MUNIN_NODE").Default("false").Bool()
+	netSNMPCollectorDisabled        = kingpin.Flag("exporter.disable-net-snmp", "Disable the scraping of the Net-SNMP plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_NET_SNMP").Default("false").Bool()
+	netdataCollectorDisabled        = kingpin.Flag("exporter.disable-netdata", "Disable the scraping of the Netdata plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_NETDATA").Default("false").Bool()
+	nodeExporterCollectorDisabled   = kingpin.Flag("exporter.disable-node-exporter", "Disable the scraping of the node_exporter plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_NODE_EXPORTER").Default("false").Bool()
+	nrpeCollectorDisabled           = kingpin.Flag("exporter.disable-nrpe", "Disable the scraping of the NRPE plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_NRPE").Default("false").Bool()
+	puppetAgentCollectorDisabled    = kingpin.Flag("exporter.disable-puppet-agent", "Disable the scraping of the Puppet Agent plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_PUPPET_AGENT").Default("false").Bool()
+	qemuGuestAgentCollectorDisabled = kingpin.Flag("exporter.disable-qemu-guest-agent", "Disable the scraping of the QEMU Guest Agent plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_QEMU_GUEST_AGENT").Default("false").Bool()
+	telegrafCollectorDisabled       = kingpin.Flag("exporter.disable-telegraf", "Disable the scraping of the Telegraf plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_TELEGRAF").Default("false").Bool()
+	wazuhAgentCollectorDisabled     = kingpin.Flag("exporter.disable-wazuh-agent", "Disable the scraping of the Wazuh Agent plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_WAZUH_AGENT").Default("false").Bool()
+	zabbixAgentCollectorDisabled    = kingpin.Flag("exporter.disable-zabbix-agent", "Disable the scraping of the Zabbix Agent plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_ZABBIX_AGENT").Default("false").Bool()
+	zabbixProxyCollectorDisabled    = kingpin.Flag("exporter.disable-zabbix-proxy", "Disable the scraping of the Zabbix Proxy plugin service status (silent when the plugin is absent)").Envar("OPN2OTEL_DISABLE_ZABBIX_PROXY").Default("false").Bool()
+	zeroTierCollectorDisabled       = kingpin.Flag(
 		"exporter.disable-zerotier",
 		"Disable the scraping of ZeroTier network membership, status and assigned-address metrics (silent when the os-zerotier plugin is absent)",
 	).Envar("OPN2OTEL_DISABLE_ZEROTIER").Default("false").Bool()
@@ -518,6 +531,19 @@ type CollectorsDisableSwitch struct {
 	Vnstat                 bool
 	Netbird                bool
 	NetbirdDetails         bool
+	Beats                  bool
+	Collectd               bool
+	MuninNode              bool
+	NetSNMP                bool
+	Netdata                bool
+	NodeExporter           bool
+	NRPE                   bool
+	PuppetAgent            bool
+	QemuGuestAgent         bool
+	Telegraf               bool
+	WazuhAgent             bool
+	ZabbixAgent            bool
+	ZabbixProxy            bool
 	ZeroTier               bool
 	Siproxd                bool
 	ArpDetails             bool
@@ -620,6 +646,19 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Vnstat:                 *vnstatEnabled,
 		Netbird:                !*netbirdCollectorDisabled,
 		NetbirdDetails:         *netbirdDetailsEnabled,
+		Beats:                  !*beatsCollectorDisabled,
+		Collectd:               !*collectdCollectorDisabled,
+		MuninNode:              !*muninNodeCollectorDisabled,
+		NetSNMP:                !*netSNMPCollectorDisabled,
+		Netdata:                !*netdataCollectorDisabled,
+		NodeExporter:           !*nodeExporterCollectorDisabled,
+		NRPE:                   !*nrpeCollectorDisabled,
+		PuppetAgent:            !*puppetAgentCollectorDisabled,
+		QemuGuestAgent:         !*qemuGuestAgentCollectorDisabled,
+		Telegraf:               !*telegrafCollectorDisabled,
+		WazuhAgent:             !*wazuhAgentCollectorDisabled,
+		ZabbixAgent:            !*zabbixAgentCollectorDisabled,
+		ZabbixProxy:            !*zabbixProxyCollectorDisabled,
 		ZeroTier:               !*zeroTierCollectorDisabled,
 		Auth:                   !*authCollectorDisabled,
 		HostDiscovery:          !*hostdiscoveryCollectorDisabled,
@@ -737,6 +776,19 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat", Reason: "each scheduled poll does one interface_list call plus one get_json_data call per interface vnstat tracks"},
 	{Flag: "exporter.disable-netbird", Subsystem: "netbird"},
 	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true, Reason: "per-peer cardinality; peer FQDN labels"},
+	{Flag: "exporter.disable-beats", Subsystem: "beats"},
+	{Flag: "exporter.disable-collectd", Subsystem: "collectd"},
+	{Flag: "exporter.disable-munin-node", Subsystem: "munin_node"},
+	{Flag: "exporter.disable-net-snmp", Subsystem: "net_snmp"},
+	{Flag: "exporter.disable-netdata", Subsystem: "netdata"},
+	{Flag: "exporter.disable-node-exporter", Subsystem: "node_exporter"},
+	{Flag: "exporter.disable-nrpe", Subsystem: "nrpe"},
+	{Flag: "exporter.disable-puppet-agent", Subsystem: "puppet_agent"},
+	{Flag: "exporter.disable-qemu-guest-agent", Subsystem: "qemu_guest_agent"},
+	{Flag: "exporter.disable-telegraf", Subsystem: "telegraf"},
+	{Flag: "exporter.disable-wazuh-agent", Subsystem: "wazuh_agent"},
+	{Flag: "exporter.disable-zabbix-agent", Subsystem: "zabbix_agent"},
+	{Flag: "exporter.disable-zabbix-proxy", Subsystem: "zabbix_proxy"},
 	{Flag: "exporter.disable-zerotier", Subsystem: "zerotier"},
 	{Flag: "exporter.disable-auth", Subsystem: "auth"},
 	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},

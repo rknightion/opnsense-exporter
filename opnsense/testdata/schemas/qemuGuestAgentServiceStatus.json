@@ -1,0 +1,15 @@
+{
+  "endpoint": "qemuGuestAgentServiceStatus",
+  "method": "GET",
+  "path": "api/qemuguestagent/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}
