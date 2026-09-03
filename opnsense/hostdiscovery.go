@@ -39,7 +39,7 @@ type hostDiscoverySearchResponse struct {
 }
 
 // HostDiscoveryGroup is the aggregated host count for one interface+source
-// pair. This is deliberately the finest grain exposed: per-host MAC/IP/hostname
+// pair. This is deliberately the finest grain exposed as a metric: per-host MAC/IP/hostname
 // labels would be unbounded cardinality (#223), so only bounded
 // interface x source groups are counted. Source is folded in (rather than
 // dropped) so the "arp-ndp" fallback rows -- which duplicate the arp_table/ndp
@@ -64,9 +64,25 @@ type HostDiscoveryGroup struct {
 	RecentHosts int
 }
 
-// HostDiscoveryInventory holds the aggregated result of FetchHostDiscovery.
+// HostDiscoveryHost is one raw hostwatch row retained for non-metric consumers.
+// The collector uses Groups above and never emits these fields as labels, while
+// bounded snapshot families can use the identity, timestamps and OUI vendor to
+// fuse this persistent inventory with the volatile ARP/NDP/DHCP tables.
+type HostDiscoveryHost struct {
+	Source    string
+	Interface string
+	MAC       string
+	IP        string
+	Vendor    string
+	FirstSeen string
+	LastSeen  string
+}
+
+// HostDiscoveryInventory holds both the aggregate metric view and the raw,
+// per-host projection needed by bounded consumers such as device inventory.
 type HostDiscoveryInventory struct {
 	Groups []HostDiscoveryGroup
+	Hosts  []HostDiscoveryHost
 }
 
 // hostDiscoveryRecentWindow is the client-side recency threshold behind the
@@ -104,7 +120,8 @@ func organizationLabel(name *string) string {
 // toggle at runtime, whereas an OPNsense version cannot.
 //
 // Never emits per-host series: ether_address and ip_address are one value per
-// host, so they are decoded for schema fidelity and never surfaced as labels.
+// host, so they are decoded for schema fidelity and retained only in Hosts for
+// bounded non-metric consumers; they are never surfaced as labels here.
 //
 // organization_name is NOT in that category, and an earlier version of this
 // comment was wrong to lump it in as "unbounded cardinality". It is the OUI
@@ -143,6 +160,15 @@ func (c *Client) FetchHostDiscovery() (HostDiscoveryInventory, *APICallError) {
 
 	for _, row := range resp.Rows {
 		manufacturer := organizationLabel(row.OrganizationName)
+		data.Hosts = append(data.Hosts, HostDiscoveryHost{
+			Source:    row.Source,
+			Interface: row.InterfaceName,
+			MAC:       row.EtherAddress,
+			IP:        row.IPAddress,
+			Vendor:    manufacturer,
+			FirstSeen: row.FirstSeen,
+			LastSeen:  row.LastSeen,
+		})
 		k := groupKey{row.InterfaceName, row.Source, manufacturer}
 		i, ok := index[k]
 		if !ok {

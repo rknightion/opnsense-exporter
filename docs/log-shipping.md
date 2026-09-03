@@ -353,10 +353,11 @@ that cursor across restarts. This source is independent of the syslog receiver.
 
 ### Configuration snapshots (`configstate`)
 
-Configuration snapshots are default-off and enabled per family. The first family,
+Configuration snapshots are default-off and enabled per family. The firewall family,
 `--logs.config-snapshot.firewall.enabled`, emits compact `configstate` JSON records
-for firewall and NAT entities. A content hash suppresses unchanged batches; the full
-family repeats after a six-hour heartbeat. Records share an opaque `snapshot.id` and
+for firewall and NAT entities. `--logs.config-snapshot.devices.enabled` adds a fused
+device inventory from ARP, NDP, DHCP, hostdiscovery and LLDP. A content hash suppresses
+unchanged batches; both families repeat after a six-hour heartbeat. Records share an opaque `snapshot.id` and
 carry ordered `snapshot.seq`, `snapshot.total`, `snapshot.family`, `snapshot.reason`,
 and `snapshot.entity_id` metadata. Bodies remain valid JSON under the 192 KiB bound:
 an oversized entity becomes a bounded envelope with `truncated=true`, its original

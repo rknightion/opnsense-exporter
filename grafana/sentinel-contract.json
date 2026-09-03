@@ -1274,6 +1274,7 @@
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"configstate\", opnsense_subsystem=\"config\"}, opnsense_source)",
         "gates": [
           "opnsense2otel > Config",
+          "opnsense2otel > Config > Device Inventory",
           "opnsense2otel > Config > Firewall & NAT"
         ]
       },

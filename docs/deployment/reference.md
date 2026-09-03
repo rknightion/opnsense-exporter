@@ -850,6 +850,12 @@ services:
       # one number instead of this record cap silently binding first at a fraction of
       # the byte budget.
       # OPN2OTEL_LOGS_BUFFER_SIZE: "65536"
+      # Ship one deduplicated device-inventory record per observed network device to
+      # Loki. Records fuse ARP, NDP, DHCP, host-discovery and LLDP observations and
+      # carry MAC, IPs, hostname, interface, first/last-seen and OUI-vendor fields. Off
+      # by default; requires --logs.enabled. The family ships on content change and
+      # repeats on the configstate heartbeat.
+      # OPN2OTEL_LOGS_CONFIG_SNAPSHOT_DEVICES_ENABLED: "false"
       # Ship compact per-rule firewall and NAT configuration snapshots to Loki. Off by
       # default; requires --logs.enabled. Snapshots contain firewall policy and
       # network-topology detail, are deduplicated by content hash, and repeat as a 6h

@@ -12,11 +12,29 @@ import (
 
 func init() {
 	logship.RegisterSource(func(deps logship.Deps) (logship.Source, error) {
-		if !options.LogsConfigSnapshotFirewallEnabled() {
+		providers := enabledProviders(
+			deps,
+			options.LogsConfigSnapshotFirewallEnabled(),
+			options.LogsConfigSnapshotDevicesEnabled(),
+		)
+		if len(providers) == 0 {
 			return nil, nil
 		}
-		return newSource([]Provider{firewallProvider{client: opnsenseFirewallSnapshotFetcher{client: deps.Client}}}, nowUTC, uuid.NewString), nil
+		return newSource(providers, nowUTC, uuid.NewString), nil
 	})
+}
+
+func enabledProviders(deps logship.Deps, firewall, devices bool) []Provider {
+	providers := make([]Provider, 0, 2)
+	if firewall {
+		providers = append(providers, firewallProvider{
+			client: opnsenseFirewallSnapshotFetcher{client: deps.Client},
+		})
+	}
+	if devices {
+		providers = append(providers, newDeviceInventoryProvider(deps.Client))
+	}
+	return providers
 }
 
 func nowUTC() time.Time { return time.Now().UTC() }

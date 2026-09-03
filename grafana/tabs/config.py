@@ -8,6 +8,7 @@ from builder import Builder, loki_grp, loki_sel
 # exposes the v1 JSON envelope as table fields.
 CONFIG_STREAM = loki_sel('opnsense_source="configstate", opnsense_subsystem="config"')
 FIREWALL_SNAPSHOTS = f'{CONFIG_STREAM} | snapshot_family="firewall" | json'
+DEVICE_SNAPSHOTS = f'{CONFIG_STREAM} | snapshot_family="device_inventory" | json'
 
 
 def firewall_snapshot_table(b: Builder) -> str:
@@ -47,6 +48,23 @@ def build(b: Builder):
         label="opnsense_source",
     )
     firewall = firewall_snapshot_table(b)
+    devices = b.loki_table(
+        "Device Inventory Snapshots",
+        [f'topk {loki_grp()} (200, sum {loki_grp("device")} '
+         f'(last_over_time({DEVICE_SNAPSHOTS} '
+         '| label_format device="{{.entity_hostname}} / {{.entity_mac}} / {{.entity_ips}}" '
+         '| unwrap snapshot_seq [$__range])))'],
+        field_title="Hostname / MAC / IPs",
+        sort_by="Total",
+        sort_desc=False,
+        desc=(
+            "One row per device-inventory snapshot record, showing the bounded fused identity "
+            "projection from ARP, NDP, DHCP, hostdiscovery and LLDP. Total is the record's "
+            "snapshot sequence, not an event count. The family is default-off because these "
+            "records contain device addresses and hostnames."
+        ),
+    )
     b.tab("Config", [
         b.row("Firewall & NAT", [firewall], present="has_config_snapshot_logs", collapse=True),
+        b.row("Device Inventory", [devices], present="has_config_snapshot_logs", collapse=True),
     ], present="has_config_snapshot_logs")

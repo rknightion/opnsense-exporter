@@ -17,6 +17,26 @@ type fakeProvider struct {
 	err      error
 }
 
+type sequenceProvider struct {
+	family string
+	values [][]Entity
+	index  int
+}
+
+func (p *sequenceProvider) Family() string { return p.family }
+
+func (p *sequenceProvider) Snapshot(context.Context) ([]Entity, error) {
+	if len(p.values) == 0 {
+		return nil, nil
+	}
+	index := p.index
+	if index >= len(p.values) {
+		index = len(p.values) - 1
+	}
+	p.index++
+	return p.values[index], nil
+}
+
 func (p *fakeProvider) Family() string { return p.family }
 
 func (p *fakeProvider) Snapshot(context.Context) ([]Entity, error) {
@@ -76,6 +96,86 @@ func TestSourceChangeDedupHeartbeatAndStableBatchMetadata(t *testing.T) {
 		t.Fatalf("changed Poll emitted %d records, want 2", len(changed))
 	}
 	assertBatch(t, changed, "snapshot-3", "change", []string{"filter_rule:a", "filter_rule:b"})
+}
+
+func TestSourceIgnoresDeviceInventoryNewMarkerForContentHash(t *testing.T) {
+	provider := &sequenceProvider{
+		family: "device_inventory",
+		values: [][]Entity{
+			{{ID: "mac:aa:bb:cc:dd:ee:01", Value: DeviceInventoryRecord{
+				MAC: "aa:bb:cc:dd:ee:01", IPs: []string{"192.0.2.10"}, NewDevice: true,
+			}}},
+			{{ID: "mac:aa:bb:cc:dd:ee:01", Value: DeviceInventoryRecord{
+				MAC: "aa:bb:cc:dd:ee:01", IPs: []string{"192.0.2.10"}, NewDevice: false,
+			}}},
+		},
+	}
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	source := newSource([]Provider{provider}, func() time.Time { return now }, func() string { return "batch" })
+
+	first, err := source.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("first Poll: %v", err)
+	}
+	if len(first) != 1 {
+		t.Fatalf("first Poll emitted %d records, want 1", len(first))
+	}
+	var envelope struct {
+		Entity DeviceInventoryRecord `json:"entity"`
+	}
+	if err := json.Unmarshal([]byte(first[0].Body), &envelope); err != nil {
+		t.Fatalf("first body is invalid JSON: %v", err)
+	}
+	if !envelope.Entity.NewDevice {
+		t.Fatal("first body lost new_device=true marker")
+	}
+
+	second, err := source.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("second Poll: %v", err)
+	}
+	if len(second) != 0 {
+		t.Fatalf("second Poll emitted %d records for marker-only change, want 0", len(second))
+	}
+}
+
+func TestSourceDoesNotConsumeNewDeviceMarkerWhenLaterProviderFails(t *testing.T) {
+	device := newDeviceInventoryProviderWithFetcher(&fakeDeviceInventoryFetcher{
+		observations: []DeviceInventoryObservation{{
+			Source: "arp", MAC: "aa:bb:cc:dd:ee:01", IP: "192.0.2.10",
+		}},
+	})
+	later := &fakeProvider{family: "later", err: errors.New("later provider failed")}
+	source := newSource([]Provider{device, later}, time.Now, func() string { return "batch" })
+
+	if _, err := source.Poll(context.Background()); err == nil {
+		t.Fatal("first Poll succeeded despite later provider failure")
+	}
+	later.err = nil
+	later.entities = []Entity{{ID: "later", Value: map[string]any{"ok": true}}}
+	records, err := source.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("second Poll: %v", err)
+	}
+	var found bool
+	for _, record := range records {
+		if record.Attributes["snapshot.family"] != deviceInventoryFamily {
+			continue
+		}
+		found = true
+		var envelope struct {
+			Entity DeviceInventoryRecord `json:"entity"`
+		}
+		if err := json.Unmarshal([]byte(record.Body), &envelope); err != nil {
+			t.Fatalf("device body is invalid JSON: %v", err)
+		}
+		if !envelope.Entity.NewDevice {
+			t.Fatal("failed poll consumed the new_device marker")
+		}
+	}
+	if !found {
+		t.Fatal("successful retry emitted no device-inventory record")
+	}
 }
 
 func TestSourceStateRoundTripSuppressesUnchangedFamily(t *testing.T) {

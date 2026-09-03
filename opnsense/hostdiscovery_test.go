@@ -54,6 +54,14 @@ func TestFetchHostDiscovery_AggregatesByInterfaceAndRecency(t *testing.T) {
 	if len(data.Groups) != 5 {
 		t.Fatalf("expected 5 groups (LAN x3 manufacturers, WAN, TESTLAN), got %d: %+v", len(data.Groups), data.Groups)
 	}
+	if len(data.Hosts) != 5 {
+		t.Fatalf("expected 5 raw host rows for bounded consumers, got %d: %+v", len(data.Hosts), data.Hosts)
+	}
+	if got := data.Hosts[0]; got.Source != "discovery" || got.Interface != "LAN" ||
+		got.MAC != "bc:24:11:c1:d5:12" || got.IP != "10.0.0.114" ||
+		got.Vendor != "Proxmox Server Solutions GmbH" || got.FirstSeen == "" || got.LastSeen != recent {
+		t.Errorf("first raw host = %+v, want source/interface/identity/vendor/timestamps from wire row", got)
+	}
 
 	byKey := map[string]HostDiscoveryGroup{}
 	for _, g := range data.Groups {

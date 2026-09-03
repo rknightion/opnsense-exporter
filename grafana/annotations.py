@@ -306,6 +306,18 @@ ANNOTATIONS: list = [
             "putting operator identity or an unbounded revision key on every marker.",
     ),
     Annotation(
+        name="New device observed",
+        group="loki",
+        title="New device observed on the network",
+        expr=loki_sel('opnsense_source="configstate", opnsense_subsystem="config"')
+             + ' | snapshot_family="device_inventory" | json | entity_new_device="true"',
+        color="light-green",
+        tag_keys=("service_instance_id",),
+        why="Marks the first persisted device-inventory observation so a newly seen host can be "
+            "correlated with traffic and policy changes. Device identity, hostname and addresses "
+            "remain in structured metadata and the JSON body rather than annotation tags.",
+    ),
+    Annotation(
         name="Gateway alarm",
         group="loki",
         title="Gateway alarm",

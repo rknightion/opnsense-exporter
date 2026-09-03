@@ -523,18 +523,6 @@ var Exemptions = map[string]string{
 		"currently indistinguishable from an empty result — a real gap, but a log/metric " +
 		"decision rather than a dropped payload dimension. Worth a follow-up, not a silent " +
 		"drop.",
-	// opnsense/hostdiscovery.go:23  json:"ether_address"
-	"opnsense.hostDiscoveryRow.EtherAddress": "Per-host identity on an inventory row. The collector exports bounded interface x " +
-		"source group counts; a MAC/IP label would be one series per host with no aggregate " +
-		"behind it.",
-	// opnsense/hostdiscovery.go:26  json:"first_seen"
-	"opnsense.hostDiscoveryRow.FirstSeen": "Per-host identity on an inventory row. The collector exports bounded interface x " +
-		"source group counts; a MAC/IP label would be one series per host with no aggregate " +
-		"behind it.",
-	// opnsense/hostdiscovery.go:24  json:"ip_address"
-	"opnsense.hostDiscoveryRow.IPAddress": "Per-host identity on an inventory row. The collector exports bounded interface x " +
-		"source group counts; a MAC/IP label would be one series per host with no aggregate " +
-		"behind it.",
 	// opnsense/hostdiscovery.go:36  json:"current"
 	"opnsense.hostDiscoverySearchResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +

@@ -41,6 +41,13 @@ type Provider interface {
 	Snapshot(context.Context) ([]Entity, error)
 }
 
+// snapshotCommitter lets a provider defer observation-only cursor changes until
+// every provider and record body in the source poll has succeeded. Providers that
+// do not carry their own cursor need not implement it.
+type snapshotCommitter interface {
+	CommitSnapshot()
+}
+
 // heartbeatProvider is an optional future-family override. Most families use
 // the frozen six-hour cadence; the security-posture family has a separately
 // decided seven-day cadence without duplicating this framework.
@@ -138,6 +145,11 @@ func (s *source) Poll(ctx context.Context) ([]logship.Record, error) {
 		records = append(records, batch...)
 	}
 	s.families = nextFamilies
+	for _, provider := range s.providers {
+		if committer, ok := provider.(snapshotCommitter); ok {
+			committer.CommitSnapshot()
+		}
+	}
 	return records, nil
 }
 
@@ -158,7 +170,7 @@ func canonicalEntities(family string, entities []Entity) ([]Entity, []byte, erro
 		if i > 0 && ordered[i-1].ID == entity.ID {
 			return nil, nil, fmt.Errorf("%s snapshot contains duplicate entity id %q", family, entity.ID)
 		}
-		body, err := normalBody(family, entity)
+		body, err := canonicalBody(family, entity)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -167,6 +179,18 @@ func canonicalEntities(family string, entities []Entity) ([]Entity, []byte, erro
 		stream = append(stream, body...)
 	}
 	return ordered, stream, nil
+}
+
+// canonicalBody permits a family to mark emission-only fields that must not
+// turn a stable snapshot into a synthetic content change. The normal record
+// body remains untouched, so the field is still available to downstream
+// consumers on the first emitted entity.
+func canonicalBody(family string, entity Entity) ([]byte, error) {
+	value := entity.Value
+	if canonicalizer, ok := value.(interface{ snapshotCanonicalValue() any }); ok {
+		value = canonicalizer.snapshotCanonicalValue()
+	}
+	return normalBody(family, Entity{ID: entity.ID, Value: value})
 }
 
 type normalEnvelope struct {

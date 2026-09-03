@@ -414,6 +414,31 @@
           "builtIn": false,
           "enable": true,
           "hide": false,
+          "iconColor": "light-green",
+          "name": "New device observed",
+          "placement": "inControlsMenu",
+          "legacyOptions": {
+            "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_source=\"configstate\", opnsense_subsystem=\"config\"} | snapshot_family=\"device_inventory\" | json | entity_new_device=\"true\"",
+            "titleFormat": "New device observed on the network",
+            "tagKeys": "service_instance_id"
+          },
+          "query": {
+            "datasource": {
+              "name": "${loki_datasource}"
+            },
+            "group": "loki",
+            "kind": "DataQuery",
+            "spec": {},
+            "version": "v0"
+          }
+        }
+      },
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "builtIn": false,
+          "enable": true,
+          "hide": false,
           "iconColor": "red",
           "name": "Gateway alarm",
           "placement": "inControlsMenu",

@@ -16,10 +16,10 @@ type lldpdNeighborResponse struct {
 }
 
 // LLDPNeighbor is one parsed neighbor block from `lldpcli show neighbors`.
-// Only the fields used as metric labels are kept here; the raw text carries
-// more (ChassisID, SysDescr, MgmtIP, Capability, TTL, RID, Time) that are
-// deliberately not modelled — SysDescr and MgmtIP are free-text/unbounded and
-// are excluded from labels by design (#216).
+// The fields used as metric labels are kept alongside the chassis MAC and
+// management addresses, which are safe for bounded device-inventory records
+// but remain excluded from metric labels. SysDescr, Capability, TTL, RID and
+// Time stay deliberately unmodelled (#216).
 type LLDPNeighbor struct {
 	// Interface is the local interface device name (e.g. "ixl0"), taken from
 	// the "Interface:" line before the first comma. The line also carries an
@@ -35,6 +35,15 @@ type LLDPNeighbor struct {
 	PortID string
 	// PortDescr is the remote neighbor's PortDescr.
 	PortDescr string
+	// ChassisMAC is the remote chassis MAC when lldpcli reports a MAC chassis
+	// identifier. It is used to join LLDP with ARP/NDP and hostdiscovery; it is
+	// never emitted as a metric label by the LLDP collector.
+	ChassisMAC string
+	// MgmtIPs contains every management address reported by the neighbor. LLDP
+	// can emit more than one MgmtIP line (for example IPv4 and IPv6), so this is
+	// a slice rather than a single last-write-wins value. It is not a metric
+	// label.
+	MgmtIPs []string
 }
 
 // LLDPNeighbors holds the aggregated result of FetchLLDPNeighbors.
@@ -151,8 +160,17 @@ func parseLLDPBlock(lines []string) (LLDPNeighbor, bool) {
 			continue
 		}
 		switch key {
+		case "ChassisID":
+			// lldpcli's MAC form is "mac <address>". Other chassis-id
+			// forms (local, chassis-component, ...) are intentionally not
+			// guessed into a MAC.
+			if strings.HasPrefix(strings.ToLower(value), "mac ") {
+				n.ChassisMAC = strings.TrimSpace(value[len("mac "):])
+			}
 		case "SysName":
 			n.ChassisName = value
+		case "MgmtIP":
+			n.MgmtIPs = append(n.MgmtIPs, value)
 		case "PortID":
 			n.PortID = value
 		case "PortDescr":

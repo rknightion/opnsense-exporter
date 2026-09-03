@@ -24,7 +24,8 @@ const emptyLLDPFixture = `{"response":"-----------------------------------------
 // fields absent from the production capture: an Interface: line with
 // RID/Time ("0 day, 00:01:12"), a PortID of the "ifalias N" form, and
 // "Unknown TLVs:" blocks with "TLV: OUI: ..., SubType: N, Len: N ..." lines —
-// all of which the parser must simply ignore (they map to no known key).
+// the unknown block must simply be ignored (it maps to no known key), while
+// chassis MAC and management addresses are retained for bounded inventory.
 const devBoxLLDPFixture = `{"response":"-------------------------------------------------------------------------------\nLLDP neighbors:\n-------------------------------------------------------------------------------\nInterface:    vtnet0, alias: LAN (lan), via: LLDP, RID: 2, Time: 0 day, 00:01:12\n  Chassis:     \n    ChassisID:    mac bc:24:11:c1:d5:12\n    SysName:      opnsense-devel\n    SysDescr:      FreeBSD 15.1-RELEASE-p1 FreeBSD 15.1-RELEASE-p1 stable/26.7-n283669-9664a203d589 SMP amd64\n    MgmtIP:       10.0.0.114\n    MgmtIface:    1\n    MgmtIP:       fd6b:d9cd:7613:4c33:be24:11ff:fec1:d512\n    MgmtIface:    1\n    Capability:   Bridge, off\n    Capability:   Router, on\n    Capability:   Wlan, off\n    Capability:   Station, off\n  Port:        \n    PortID:       ifname vtnet1\n    PortDescr:    WAN (wan)\n    TTL:          120\n-------------------------------------------------------------------------------\nInterface:    vtnet0, alias: LAN (lan), via: LLDP, RID: 1, Time: 0 day, 00:00:42\n  Chassis:     \n    ChassisID:    mac cc:9c:3e:02:94:60\n    SysName:      odin\n    SysDescr:     Meraki MS250-24P Cloud Managed PoE Switch\n    MgmtIP:       10.0.100.10\n    Capability:   Bridge, on\n  Port:        \n    PortID:       ifalias 22\n    PortDescr:    Port 22\n    TTL:          120\n  Unknown TLVs:\n    TLV:          OUI: 00,80,C2, SubType: 6, Len: 2 00,64\n    TLV:          OUI: 00,18,0A, SubType: 1, Len: 4 00,AE,B4,A3\n-------------------------------------------------------------------------------\nInterface:    vtnet1, alias: WAN (wan), via: LLDP, RID: 2, Time: 0 day, 00:01:12\n  Chassis:     \n    ChassisID:    mac bc:24:11:c1:d5:12\n    SysName:      opnsense-devel\n    SysDescr:      FreeBSD 15.1-RELEASE-p1 FreeBSD 15.1-RELEASE-p1 stable/26.7-n283669-9664a203d589 SMP amd64\n    MgmtIP:       10.0.0.114\n    MgmtIface:    1\n    MgmtIP:       fd6b:d9cd:7613:4c33:be24:11ff:fec1:d512\n    MgmtIface:    1\n    Capability:   Bridge, off\n    Capability:   Router, on\n    Capability:   Wlan, off\n    Capability:   Station, off\n  Port:        \n    PortID:       ifname vtnet0\n    PortDescr:    LAN (lan)\n    TTL:          120\n-------------------------------------------------------------------------------\nInterface:    vtnet1, alias: WAN (wan), via: LLDP, RID: 1, Time: 0 day, 00:00:42\n  Chassis:     \n    ChassisID:    mac cc:9c:3e:02:94:60\n    SysName:      odin\n    SysDescr:     Meraki MS250-24P Cloud Managed PoE Switch\n    MgmtIP:       10.0.100.10\n    Capability:   Bridge, on\n  Port:        \n    PortID:       ifalias 22\n    PortDescr:    Port 22\n    TTL:          120\n  Unknown TLVs:\n    TLV:          OUI: 00,80,C2, SubType: 6, Len: 2 00,64\n    TLV:          OUI: 00,18,0A, SubType: 1, Len: 4 00,AE,B4,A3\n-------------------------------------------------------------------------------\n\n\n"}`
 
 func TestFetchLLDPNeighbors_Populated(t *testing.T) {
@@ -98,8 +99,9 @@ func TestFetchLLDPNeighbors_Populated(t *testing.T) {
 // TestFetchLLDPNeighbors_DevBoxCapture exercises a real dev-box capture that
 // carries fields the production capture does not: an Interface: line with
 // RID/Time, an "ifalias N" PortID, and "Unknown TLVs:" sub-blocks — none of
-// which are modelled fields, so the parser must ignore them without losing
-// the neighbor entry they belong to (#216).
+// which are metric fields, so the parser must ignore them without losing the
+// neighbor entry they belong to (#216). Chassis MAC and management addresses
+// are retained for bounded device inventory.
 func TestFetchLLDPNeighbors_DevBoxCapture(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
@@ -142,6 +144,12 @@ func TestFetchLLDPNeighbors_DevBoxCapture(t *testing.T) {
 	if meraki.PortID != "ifalias 22" || meraki.PortDescr != "Port 22" {
 		t.Errorf("unexpected 'odin' neighbor (Unknown TLVs lines must not corrupt parsing): %+v", *meraki)
 	}
+	if meraki.ChassisMAC != "cc:9c:3e:02:94:60" {
+		t.Errorf("meraki chassis MAC = %q, want cc:9c:3e:02:94:60", meraki.ChassisMAC)
+	}
+	if len(meraki.MgmtIPs) != 1 || meraki.MgmtIPs[0] != "10.0.100.10" {
+		t.Errorf("meraki management IPs = %v, want [10.0.100.10]", meraki.MgmtIPs)
+	}
 
 	var selfPeer *LLDPNeighbor
 	for i, n := range data.Neighbors {
@@ -154,6 +162,9 @@ func TestFetchLLDPNeighbors_DevBoxCapture(t *testing.T) {
 	}
 	if selfPeer.PortID != "ifname vtnet1" || selfPeer.PortDescr != "WAN (wan)" {
 		t.Errorf("unexpected 'opnsense-devel' neighbor: %+v", *selfPeer)
+	}
+	if selfPeer.ChassisMAC != "bc:24:11:c1:d5:12" || len(selfPeer.MgmtIPs) != 2 {
+		t.Errorf("self peer chassis identity = MAC %q, management IPs %v; want MAC and both addresses", selfPeer.ChassisMAC, selfPeer.MgmtIPs)
 	}
 }
 

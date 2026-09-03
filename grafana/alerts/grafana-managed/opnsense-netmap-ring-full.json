@@ -26,7 +26,7 @@
       "description": "The kernel has reported the netmap host TX ring full on {{ $labels.device }} continuously for 30m - at least one occurrence in every rolling 5m window for the full 30m - so Zenarmor's packet-capture datapath is persistently dropping traffic. An isolated burst during a traffic spike does not fire this. This counts OCCURRENCES, not packets: the kernel rate-limits the underlying log line to 2 per second, so the metric saturates under sustained load and the true drop volume is unbounded above whatever this shows.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensenetmapringfull",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "164"
+      "__panelId__": "165"
     },
     "expressions": {
       "A": {

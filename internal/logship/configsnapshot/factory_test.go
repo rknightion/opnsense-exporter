@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
@@ -15,6 +16,23 @@ func (f *blockingFirewallSnapshotFetcher) FetchFirewallConfigSnapshots(ctx conte
 	close(f.started)
 	<-ctx.Done()
 	return nil, &opnsense.APICallError{Message: ctx.Err().Error()}
+}
+
+func TestEnabledProvidersComposesIndependentSnapshotFamilies(t *testing.T) {
+	providers := enabledProviders(logship.Deps{}, true, true)
+	if len(providers) != 2 {
+		t.Fatalf("enabledProviders returned %d providers, want 2", len(providers))
+	}
+	want := []string{"firewall", "device_inventory"}
+	for i, provider := range providers {
+		if got := provider.Family(); got != want[i] {
+			t.Errorf("provider %d family = %q, want %q", i, got, want[i])
+		}
+	}
+
+	if got := enabledProviders(logship.Deps{}, false, false); len(got) != 0 {
+		t.Fatalf("disabled providers = %d, want 0", len(got))
+	}
 }
 
 func TestFirewallProvider_SnapshotHonorsCancellation(t *testing.T) {

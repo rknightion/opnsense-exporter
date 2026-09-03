@@ -234,6 +234,14 @@ class AnnotationEnvelopeTest(unittest.TestCase):
                 selector = expr.split("}")[0] + "}"
                 self.assertIn(LOKI_INSTANCE_SEL, selector)
 
+    def test_new_device_annotation_reads_the_nested_snapshot_entity(self):
+        entry = next(spec for spec in self.by_group("loki")
+                     if spec["name"] == "New device observed")
+        expr = entry["legacyOptions"]["expr"]
+        self.assertIn('snapshot_family="device_inventory"', expr)
+        self.assertIn('| json | entity_new_device="true"', expr)
+        self.assertNotIn("hostname", entry["legacyOptions"].get("tagKeys", ""))
+
     def test_value_as_time_queries_are_scaled_and_window_bounded(self):
         """`useValueForTime` places the marker at the sample's VALUE, so the value
         must be epoch milliseconds (epoch seconds land in 1970), and the query must

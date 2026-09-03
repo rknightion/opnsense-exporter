@@ -46,3 +46,17 @@ class ConfigSnapshotTabTest(unittest.TestCase):
             panel["spec"]["vizConfig"]["spec"]["options"]["sortBy"],
             [{"displayName": "Total", "desc": False}],
         )
+
+    def test_device_view_uses_the_closed_configstate_stream_shape(self):
+        builder = Builder()
+        config.build(builder)
+        panels = {
+            element["spec"]["title"]: element
+            for element in builder.elements.values()
+        }
+
+        device_query = panels["Device Inventory Snapshots"]["spec"]["data"]["spec"]["queries"][0]["spec"]["query"]["spec"]["expr"]
+        self.assertIn('opnsense_source="configstate"', device_query)
+        self.assertIn('snapshot_family="device_inventory"', device_query)
+        self.assertIn('label_format device=', device_query)
+        self.assertIn('.entity_hostname', device_query)
