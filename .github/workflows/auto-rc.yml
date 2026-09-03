@@ -30,10 +30,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rc:
-    # workflow_run fires for FAILED and cancelled runs too, so the conclusion
-    # check is what actually gates the RC on green CI.
+  shipped-change:
+    # workflow_run has no paths filter, so classify the exact commit that CI
+    # tested before calling the fleet-wide release workflow. Keep this a
+    # positive allowlist: new repository metadata stays release-neutral until
+    # it is deliberately identified as an input to a shipped artifact.
     if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    outputs:
+      shipped: ${{ steps.paths.outputs.shipped }}
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout the commit CI tested
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Classify changed paths
+        id: paths
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          changed_paths="${RUNNER_TEMP}/auto-rc-changed-paths"
+          if git cat-file -e "${HEAD_SHA}^" 2>/dev/null; then
+            # --no-renames preserves both sides of a move. Moving a shipped
+            # source path out of the allowlist must still cut an RC.
+            git diff --name-only --no-renames -z "${HEAD_SHA}^" "${HEAD_SHA}" > "${changed_paths}"
+          else
+            # A root commit has no parent. Treat every path it introduces as
+            # changed; this is also the fail-safe if the parent is unavailable.
+            git ls-tree --name-only -r -z "${HEAD_SHA}" > "${changed_paths}"
+          fi
+
+          shipped=false
+          while IFS= read -r -d '' path; do
+            case "${path}" in
+              *.go | go.mod | go.sum | vendor/* | grafana/* | charts/* | deploy/* | \
+                justfile | Dockerfile | .dockerignore | .goreleaser.yml | LICENSE | \
+                internal/webui/oui_data.txt | internal/webui/templates/* | \
+                scripts/notices.sh | scripts/notices.tsv.tmpl | \
+                .github/workflows/auto-rc.yml | .github/workflows/publish.yml | \
+                .github/workflows/release-please.yml)
+                shipped=true
+                echo "Shipped-artifact input changed: ${path}"
+                break
+                ;;
+            esac
+          done < "${changed_paths}"
+
+          echo "shipped=${shipped}" >> "${GITHUB_OUTPUT}"
+
+  rc:
+    # shipped-change itself runs only after green CI; this second gate prevents
+    # release-neutral commits from reaching the shared RC workflow.
+    needs: shipped-change
+    if: needs.shipped-change.outputs.shipped == 'true'
     permissions:
       contents: write      # create the RC tag and the GitHub prerelease
       pull-requests: read  # find the open release-please PR
