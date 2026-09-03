@@ -122,9 +122,8 @@ func TestWithFirewallRulesDetails(t *testing.T) {
 }
 
 func TestFirewallIsHealthy(t *testing.T) {
-	mk := func(legacy string, meta any) opnsense.HealthCheckResponse {
+	mk := func(meta any) opnsense.HealthCheckResponse {
 		var r opnsense.HealthCheckResponse
-		r.Firewall.Status = legacy
 		r.Metadata.Firewall.Status = meta
 		return r
 	}
@@ -135,19 +134,17 @@ func TestFirewallIsHealthy(t *testing.T) {
 		want bool
 	}{
 		// OPNsense 25.1+ healthy box: no Firewall entry at all (the original bug).
-		{"new format healthy (absent)", mk("", nil), true},
-		{"legacy OK", mk(opnsense.HealthCheckStatusOK, nil), true},
-		{"legacy error", mk("Error", nil), false},
+		{"new format healthy (absent)", mk(nil), true},
 		// Metadata status arrives as a JSON number via encoding/json -> float64.
-		{"metadata numeric OK", mk("", float64(opnsense.HealthCheckStatusOK_v25_1)), true},
-		{"metadata numeric not OK", mk("", float64(1)), false},
-		{"metadata string OK", mk("", "OK"), true},
-		{"metadata string empty", mk("", ""), true},
-		{"metadata string error", mk("", "Error"), false},
-		{"metadata string ERROR", mk("", "ERROR"), false},
+		{"metadata numeric OK", mk(float64(opnsense.HealthCheckStatusOK_v25_1)), true},
+		{"metadata numeric not OK", mk(float64(1)), false},
+		{"metadata string OK", mk("OK"), true},
+		{"metadata string empty", mk(""), true},
+		{"metadata string error", mk("Error"), false},
+		{"metadata string ERROR", mk("ERROR"), false},
 		// OPNsense 25.1+ can also report the numeric status as a string ("2").
-		{"metadata numeric string OK", mk("", "2"), true},
-		{"metadata numeric string not OK", mk("", "1"), false},
+		{"metadata numeric string OK", mk("2"), true},
+		{"metadata numeric string not OK", mk("1"), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -789,8 +786,6 @@ func TestCollectHealthMetrics_Reachable(t *testing.T) {
 		{"v26_1_firewall_error.json", 1, -1, 1, 0},
 		{"v25_1_ok.json", 1, 2, 1, 1},
 		{"v25_1_crash_error.json", 1, -1, 0, 1},
-		{"pre25_ok.json", 1, 2, 1, 1},
-		{"pre25_crash_error.json", 1, -1, 0, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.fixture, func(t *testing.T) {

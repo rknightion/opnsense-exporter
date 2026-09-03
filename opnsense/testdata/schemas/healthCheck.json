@@ -4,53 +4,10 @@
   "path": "api/core/system/status",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
-    "CrashReporter",
-    "Firewall",
-    "System",
     "metadata",
     "subsystems"
   ],
   "fields": [
-    {
-      "path": "CrashReporter",
-      "kind": "object"
-    },
-    {
-      "path": "CrashReporter.message",
-      "kind": "string"
-    },
-    {
-      "path": "CrashReporter.status",
-      "kind": "string"
-    },
-    {
-      "path": "CrashReporter.statusCode",
-      "kind": "number"
-    },
-    {
-      "path": "Firewall",
-      "kind": "object"
-    },
-    {
-      "path": "Firewall.message",
-      "kind": "string"
-    },
-    {
-      "path": "Firewall.status",
-      "kind": "string"
-    },
-    {
-      "path": "Firewall.statusCode",
-      "kind": "number"
-    },
-    {
-      "path": "System",
-      "kind": "object"
-    },
-    {
-      "path": "System.status",
-      "kind": "string"
-    },
     {
       "path": "metadata",
       "kind": "object"

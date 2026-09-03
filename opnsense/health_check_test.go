@@ -67,19 +67,6 @@ func TestHealthCheck_Success(t *testing.T) {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
 		w.Write([]byte(`{
-			"System": {
-				"status": "OK"
-			},
-			"CrashReporter": {
-				"message": "No crash reports found",
-				"status": "OK",
-				"statusCode": 2
-			},
-			"Firewall": {
-				"message": "Firewall is running",
-				"status": "OK",
-				"statusCode": 2
-			},
 			"metadata": {
 				"System": {
 					"status": 2
@@ -104,20 +91,6 @@ func TestHealthCheck_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Legacy fields
-	if resp.System.Status != "OK" {
-		t.Errorf("expected System.Status='OK', got %q", resp.System.Status)
-	}
-	if resp.CrashReporter.Status != "OK" {
-		t.Errorf("expected CrashReporter.Status='OK', got %q", resp.CrashReporter.Status)
-	}
-	if resp.CrashReporter.StatusCode != 2 {
-		t.Errorf("expected CrashReporter.StatusCode=2, got %d", resp.CrashReporter.StatusCode)
-	}
-	if resp.Firewall.Status != "OK" {
-		t.Errorf("expected Firewall.Status='OK', got %q", resp.Firewall.Status)
-	}
-
 	// Metadata fields (OPNsense >= 25.1)
 	// System status is an int (float64 from JSON)
 	if resp.GetMetadataSystemStatus() != 2 {
@@ -132,9 +105,6 @@ func TestHealthCheck_Success(t *testing.T) {
 func TestHealthCheck_StringMetadataStatus(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
-			"System": {"status": "OK"},
-			"CrashReporter": {"message": "", "status": "OK", "statusCode": 2},
-			"Firewall": {"message": "", "status": "OK", "statusCode": 2},
 			"metadata": {
 				"System": {"status": "2"},
 				"CrashReporter": {"message": "", "status": "OK", "statusCode": 2},

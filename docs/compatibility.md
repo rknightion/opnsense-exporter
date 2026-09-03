@@ -29,6 +29,13 @@ When a release drops out of the support window, the shims that carried its paylo
 pruned. That is a normal release change, not a breaking one, because by then no supported
 firewall sends the old shape.
 
+The pre-25.1 `healthCheck` response is no longer interpreted. The last release emitting the
+legacy shape was 24.7.12; upstream refactor `1fc5a6335` landed on 2024-12-12 and 25.1 carries
+the replacement. Boxes running 24.7.12 or older still report API reachability through
+`opnsense_up`, but the exporter no longer reads their legacy top-level `System`,
+`CrashReporter` and `Firewall` blocks, so the health-status metrics cannot be used to assess
+those boxes. Upgrade the firewall to 25.1 or newer to retain healthCheck interpretation.
+
 A shim also gets pruned when it turns out never to have been needed. Reading whichever field a
 firewall actually sends only works if both spellings are real, so each alternate field name is
 checked against upstream's own history before it is trusted, and one that no release ever emitted

@@ -54,20 +54,6 @@ var Exemptions = map[string]string{
 	"opnsense.EndpointSchema.Method": "Documentary field in a committed ledger/golden file, not an OPNsense response: it is " +
 		"round-tripped by json so a reviewer reading the JSON knows why an entry exists, and " +
 		"no code branches on the value.",
-	// opnsense/health_check.go:58  json:"message"
-	"opnsense.HealthCheckResponse.CrashReporter.Message": "Free-text health-check detail. The metric is the per-subsystem status; the message " +
-		"is prose that cannot become a bounded label.",
-	// opnsense/health_check.go:60  json:"statusCode"
-	"opnsense.HealthCheckResponse.CrashReporter.StatusCode": "Legacy pre-26.1 health-check shape, kept for the support window. The tolerant reader " +
-		"resolves the string status new-wins-else-legacy and the numeric statusCode is only " +
-		"consulted on the current shape, so the legacy copy stays unread.",
-	// opnsense/health_check.go:63  json:"message"
-	"opnsense.HealthCheckResponse.Firewall.Message": "Free-text health-check detail. The metric is the per-subsystem status; the message " +
-		"is prose that cannot become a bounded label.",
-	// opnsense/health_check.go:65  json:"statusCode"
-	"opnsense.HealthCheckResponse.Firewall.StatusCode": "Legacy pre-26.1 health-check shape, kept for the support window. The tolerant reader " +
-		"resolves the string status new-wins-else-legacy and the numeric statusCode is only " +
-		"consulted on the current shape, so the legacy copy stays unread.",
 	// opnsense/health_check.go:83  json:"message"
 	"opnsense.HealthCheckResponse.Metadata.CrashReporter.Message": "Free-text health-check detail. The metric is the per-subsystem status; the message " +
 		"is prose that cannot become a bounded label.",

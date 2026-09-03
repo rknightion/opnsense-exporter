@@ -58,9 +58,6 @@ func TestHealthCheckResponse_Shapes(t *testing.T) {
 		// OPNsense 25.1: numeric metadata.System.status, no subsystems map at all.
 		{"v25_1_ok.json", 2, true, true},
 		{"v25_1_crash_error.json", -1, false, true},
-		// OPNsense < 25.1: legacy top-level string statuses.
-		{"pre25_ok.json", 2, true, true},
-		{"pre25_crash_error.json", -1, false, true},
 	}
 
 	for _, tc := range cases {

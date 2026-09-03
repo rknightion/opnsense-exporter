@@ -1,5 +1,0 @@
-{
-  "System": { "status": "OK" },
-  "CrashReporter": { "message": "No crash reports found", "status": "OK", "statusCode": 0 },
-  "Firewall": { "message": "Firewall is running", "status": "OK", "statusCode": 0 }
-}

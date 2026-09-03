@@ -32,8 +32,8 @@ func (m *subsystemMap) UnmarshalJSON(data []byte) error {
 
 // HealthCheckSubsystem is one entry of the top-level "subsystems" map returned by
 // OPNsense >= 26.1, keyed by the subsystem short name (e.g. "crashreporter",
-// "firewall"). On 25.1 and earlier this map is absent and the per-subsystem detail
-// lives under the legacy top-level / metadata fields instead.
+// "firewall"). On 25.1 this map is absent and the per-subsystem detail lives under
+// the metadata fields instead.
 type HealthCheckSubsystem struct {
 	Message    string `json:"message"`
 	Status     string `json:"status"`
@@ -51,20 +51,7 @@ func (s HealthCheckSubsystem) isHealthy() bool {
 }
 
 type HealthCheckResponse struct {
-	System struct {
-		Status string `json:"status"`
-	} `json:"System"`
-	CrashReporter struct {
-		Message    string `json:"message"`
-		Status     string `json:"status"`
-		StatusCode int    `json:"statusCode"`
-	} `json:"CrashReporter"`
-	Firewall struct {
-		Message    string `json:"message"`
-		Status     string `json:"status"`
-		StatusCode int    `json:"statusCode"`
-	} `json:"Firewall"`
-	// OPNsense>25.1 has a different structure
+	// OPNsense >= 25.1 has a different structure.
 	// See https://github.com/rknightion/opnsense2otel/issues/48#issuecomment-2692494735
 	//
 	// NOTE: there is deliberately NO Subsystems field here. Upstream initialises
@@ -115,8 +102,7 @@ const (
 
 // systemStatusStringToCode maps OPNsense's SystemStatusCode enum name to its integer
 // value (see OPNsense System/SystemStatusCode.php). 26.1 reports the overall status
-// as one of these strings; legacy responses use the same names (mixed case), so the
-// lookup is case-insensitive.
+// as one of these strings, so the lookup is case-insensitive.
 func systemStatusStringToCode(s string) (int, bool) {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case "OK":
@@ -141,8 +127,6 @@ func systemStatusStringToCode(s string) (int, bool) {
 // box with nothing to report sends 2, and a box with something to report sends a
 // string. It is also a string when the ACL filter then hides every entry, which is why
 // "OK" can arrive alongside an empty subsystems map.
-//
-// A legacy top-level string status (pre-25.1) is the final fallback.
 func (h *HealthCheckResponse) GetMetadataSystemStatus() int {
 	switch v := h.Metadata.System.Status.(type) {
 	case int:
@@ -156,11 +140,6 @@ func (h *HealthCheckResponse) GetMetadataSystemStatus() int {
 		if code, ok := systemStatusStringToCode(v); ok {
 			return code
 		}
-	}
-	// Fall back to the legacy top-level string status (pre-25.1, and a healthy box's
-	// "OK" when metadata.system.status is absent).
-	if code, ok := systemStatusStringToCode(h.System.Status); ok {
-		return code
 	}
 	return 0
 }
@@ -180,17 +159,14 @@ func (h *HealthCheckResponse) GetMetadataFirewallStatus() int {
 	return 0
 }
 
-// subsystemHealthy resolves a single subsystem's health across every response shape:
-// the top-level "subsystems" map (25.1+), the legacy <25.1 top-level string status,
-// and the 25.1 metadata status (string or numeric). A subsystem is healthy unless
-// some present source reports a non-OK status; an absent/empty status is treated as
-// healthy because OPNsense omits healthy subsystems from the report (a perfectly
-// healthy 25.1+ box carries no per-subsystem entry at all).
-func (h *HealthCheckResponse) subsystemHealthy(name, legacyStatus string, metaStatus any) bool {
+// subsystemHealthy resolves a single subsystem's health across the supported response
+// shapes: the top-level "subsystems" map (26.1+) and the 25.1 metadata status (string
+// or numeric). A subsystem is healthy unless some present source reports a non-OK
+// status; an absent/empty status is treated as healthy because OPNsense omits healthy
+// subsystems from the report (a perfectly healthy supported box carries no
+// per-subsystem entry at all).
+func (h *HealthCheckResponse) subsystemHealthy(name string, metaStatus any) bool {
 	if entry, ok := h.Subsystems[name]; ok && !entry.isHealthy() {
-		return false
-	}
-	if legacyStatus != "" && legacyStatus != HealthCheckStatusOK {
 		return false
 	}
 	switch s := metaStatus.(type) {
@@ -233,8 +209,8 @@ func (s HealthCheckSubsystem) ResolvedStatusCode() int {
 // OPNsense's SystemStatus::collectStatus() omits every subsystem currently reporting OK,
 // so a present entry is always worth reporting; an absent key means that subsystem is
 // healthy (same convention as CrashReporterIsHealthy/FirewallIsHealthy). Returns nil
-// when no subsystem is reported: a box with nothing to say, or a pre-25.1 firewall that
-// has no such map at all.
+// when no subsystem is reported: a box with nothing to say, or a 25.1 firewall that has
+// no such map at all.
 //
 // It used to merge a second map from metadata.subsystems. That map does not exist on
 // any release — see the note on the Metadata field and #284 — so the union, its
@@ -250,17 +226,17 @@ func (h *HealthCheckResponse) AllSubsystems() map[string]HealthCheckSubsystem {
 }
 
 // CrashReporterIsHealthy reports whether the crash reporter subsystem is healthy
-// (no crash reports present), tolerating the 26.1 subsystems map and the legacy /
-// 25.1 metadata shapes.
+// (no crash reports present), tolerating the 26.1 subsystems map and the 25.1 metadata
+// shape.
 func (h *HealthCheckResponse) CrashReporterIsHealthy() bool {
-	return h.subsystemHealthy(SubsystemCrashReporter, h.CrashReporter.Status, h.Metadata.CrashReporter.Status)
+	return h.subsystemHealthy(SubsystemCrashReporter, h.Metadata.CrashReporter.Status)
 }
 
 // FirewallIsHealthy reports whether the firewall subsystem is healthy, tolerating the
-// 26.1 subsystems map and the legacy / 25.1 metadata shapes (the metadata firewall
-// status may arrive as a JSON number, a string, or be absent on a healthy box).
+// 26.1 subsystems map and the 25.1 metadata shape (the metadata firewall status may
+// arrive as a JSON number, a string, or be absent on a healthy box).
 func (h *HealthCheckResponse) FirewallIsHealthy() bool {
-	return h.subsystemHealthy(SubsystemFirewall, h.Firewall.Status, h.Metadata.Firewall.Status)
+	return h.subsystemHealthy(SubsystemFirewall, h.Metadata.Firewall.Status)
 }
 
 const (
