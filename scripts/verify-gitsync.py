@@ -48,7 +48,7 @@ import subprocess
 import sys
 import time
 
-GITSYNC_REPO_URL = "https://github.com/rknightion/gc-gitsync-m7kni"
+GITSYNC_REPO_URL = "https://github.com/m7kni/gc-gitsync-m7kni"
 
 
 def gcx(*argv: str) -> dict:

@@ -86,6 +86,12 @@ check-public-ips:
 metric-lint:
     go run ./cmd/metriclint
 
+# unit-test the Grafana GitSync verifier's repository and live-apply seams
+[group('check')]
+[no-exit-message]
+gitsync-test:
+    python3 -m unittest scripts/verify_gitsync_test.py -q
+
 # run the executable deployment contracts (Compose, systemd, k8s manifests, Helm chart)
 [group('infra')]
 [no-exit-message]
@@ -132,7 +138,7 @@ vuln: _tool-govulncheck
 # stay in workflows; the heavy local counterparts are collected by `just ci`.
 # run the bare-toolchain pre-commit gate
 [group('check')]
-check: fmt-check lint test metric-lint fuzz-smoke check-public-ips testbed-test canary-test grafana-test gen-check vuln
+check: fmt-check lint test metric-lint fuzz-smoke check-public-ips testbed-test canary-test gitsync-test grafana-test gen-check vuln
 
 # deployment-test needs a Docker daemon for the containerised systemd contracts.
 # snapshot needs cross-compilation for the release archive matrix.
