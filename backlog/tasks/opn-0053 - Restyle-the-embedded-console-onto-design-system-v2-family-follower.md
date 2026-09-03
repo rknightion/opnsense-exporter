@@ -1,9 +1,11 @@
 ---
 id: OPN-0053
 title: Restyle the embedded console onto design system v2 (family follower)
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-08-31 12:12'
+updated_date: '2026-09-03 09:37'
 labels:
   - design-system
 dependencies: []
@@ -32,3 +34,9 @@ Scope: Go html/template + inline CSS/vanilla JS + go:embed stays; no framework, 
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 - [ ] #3 just check green
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 3 park: resume only after tailscale2otel TSO-0103 lands the family design-system v2 standard. At resume, read its final shared token block and both committed specs, copy that block byte-for-byte, and treat design/console-v2 as reference rather than production-ready code. No implementation change was made in this wave.
+<!-- SECTION:NOTES:END -->
