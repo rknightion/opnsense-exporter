@@ -1,0 +1,20 @@
+{
+  "endpoint": "firewallMigrationOutbound",
+  "method": "GET",
+  "path": "api/firewall/migration/countOutbound",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "count",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "count",
+      "kind": "number"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

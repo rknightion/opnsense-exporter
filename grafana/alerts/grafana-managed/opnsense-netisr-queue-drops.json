@@ -26,7 +26,7 @@
       "description": "The FreeBSD network interrupt scheduler has been dropping packets on the {{ $labels.protocol }} queue for 10m. This is silent packet loss - it is invisible from the OPNsense UI and degrades the affected protocol without any other symptom. Must be a rate: the counter is cumulative since boot, so an absolute threshold would keep alerting forever on a box that dropped packets once a year ago.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensenetisrqueuedrops",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "414"
+      "__panelId__": "416"
     },
     "expressions": {
       "A": {

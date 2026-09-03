@@ -26,7 +26,7 @@
       "description": "More than 50 blocked IDS alerts held in the recent-alerts window for 5m. The threshold and --exporter.ids-alert-lookback window are deployment-specific \u2014 tune both per site. action is only ever allowed/blocked (no drop/reject).",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseidsalertspike",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "713"
+      "__panelId__": "715"
     },
     "expressions": {
       "A": {

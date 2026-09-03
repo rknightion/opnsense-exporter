@@ -26,6 +26,7 @@ This page provides a summary of all collectors in opnsense2otel.
 | Feature Availability | feature | 1 | Enabled | --exporter.disable-feature-availability | OPN2OTEL_DISABLE_FEATURE_AVAILABILITY |
 | Firewall | firewall | 26 | Enabled | --exporter.disable-firewall | OPN2OTEL_DISABLE_FIREWALL |
 | Firewall Aliases | alias | 8 | Enabled | --exporter.disable-alias | OPN2OTEL_DISABLE_ALIAS |
+| Firewall Migration Debt | firewall_migration | 2 | Enabled | --exporter.disable-firewall-migration | OPN2OTEL_DISABLE_FIREWALL_MIGRATION |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPN2OTEL_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 20 | Enabled | --exporter.disable-firmware | OPN2OTEL_DISABLE_FIRMWARE |
 | Flow Volume | flow | 67 | Enabled | --exporter.disable-flow | OPN2OTEL_DISABLE_FLOW |

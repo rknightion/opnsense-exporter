@@ -1,0 +1,20 @@
+{
+  "endpoint": "firewallMigrationRules",
+  "method": "GET",
+  "path": "api/firewall/migration/countRules",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "count",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "count",
+      "kind": "number"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

@@ -954,6 +954,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutGatewayGroupsCollector())
 		logger.Info("gateway groups collector disabled")
 	}
+	if !collectorsSwitches.FirewallMigration {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallMigrationCollector())
+		logger.Info("firewall migration collector disabled")
+	}
 	if collectorsSwitches.OpenVPNDetails {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithOpenVPNDetails())
 		logger.Info("openvpn per-session details enabled")

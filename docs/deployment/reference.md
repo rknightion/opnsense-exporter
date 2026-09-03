@@ -258,6 +258,9 @@ services:
       # OPN2OTEL_DISABLE_FEATURE_AVAILABILITY: "false"
       # Disable the scraping of the firewall (pf) metrics
       # OPN2OTEL_DISABLE_FIREWALL: "false"
+      # Disable firewall legacy-rule migration debt metrics (silent on pre-26.7
+      # OPNsense)
+      # OPN2OTEL_DISABLE_FIREWALL_MIGRATION: "false"
       # Disable the scraping of firewall rule statistics
       # OPN2OTEL_DISABLE_FIREWALL_RULES: "false"
       # Disable the scraping of the firmware metrics

@@ -805,6 +805,18 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-system-gateways", Name: "System: Gateways", Origin: "core", Pattern: "api/routing/group_settings/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"firewallMigrationRules": {
+		Consumer:  "firewall_migration",
+		Component: "core",
+		Status:    ACLStatusUnknown,
+		Note:      "no ACL pattern in either supported core release covers api/firewall/migration/countRules; only page-all is known to reach it.",
+	},
+	"firewallMigrationOutbound": {
+		Consumer:  "firewall_migration",
+		Component: "core",
+		Status:    ACLStatusUnknown,
+		Note:      "no ACL pattern in either supported core release covers api/firewall/migration/countOutbound; only page-all is known to reach it.",
+	},
 	"haproxyCounters": {
 		Consumer:  "haproxy",
 		Component: "net/haproxy",

@@ -26,7 +26,7 @@
       "description": "Four or more positive CARP demotion adjustments in 15m \u2014 this node keeps making itself less willing to be master. A single pfsync bulk transfer demotes and then promotes once and does NOT fire; this threshold sits above routine sync so it means churn. Common causes are repeated pfsync bulk transfers, a service disruption, or an interface flapping; the kernel states which on the shipped log record as carp.reason, with the signed adjustment in carp.demotion.delta and the resulting level in carp.demotion.total. Neither the cause nor those numbers is a metric label. Compare opnsense_carp_demotion for the current level, and note the matching promoted event when the demotion is released.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensecarpunexpecteddemotion",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "547"
+      "__panelId__": "549"
     },
     "expressions": {
       "A": {

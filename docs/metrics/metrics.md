@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1012
-- **Gauges:** 658
+- **Total metrics:** 1014
+- **Gauges:** 660
 - **Counters:** 354
 
 ## General
@@ -355,6 +355,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_alias_table_packets_total | Counter | table, direction, action | Packets matched against this alias table since last reset | --exporter.disable-alias |
 | opnsense_alias_table_bytes_total | Counter | table, direction, action | Bytes matched against this alias table since last reset | --exporter.disable-alias |
 | opnsense_alias_table_updated_timestamp_seconds | Gauge | table | Unix timestamp of the last time this alias table's persisted content was written - i.e. when a DNS- or URL-backed alias (a threat feed, say) last refreshed. A feed that silently stops refreshing is a security control failing open, and no other metric can see it: the table still holds its stale rows, so table_entries looks healthy. Only emitted for tables that HAVE persisted content; a static host/network alias has no refresh cycle and emits no series rather than a misleading epoch 0. Derived from the file mtime as a timezone-less local timestamp and read as UTC, so the absolute value can be off by the firewall's UTC offset - compare ages, not wall clocks. | --exporter.disable-alias |
+
+## Firewall Migration Debt
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_firewall_migration_legacy_rules | Gauge | --- | Number of legacy firewall rules that remain to be migrated to the MVC configuration. | --exporter.disable-firewall-migration |
+| opnsense_firewall_migration_legacy_outbound_nat_rules | Gauge | --- | Number of legacy outbound NAT rules that remain to be migrated to the MVC configuration. | --exporter.disable-firewall-migration |
 
 ## Firewall Rules
 

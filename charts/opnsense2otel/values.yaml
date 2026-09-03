@@ -323,6 +323,9 @@ settings:
   # Disable the scraping of the firewall (pf) metrics
   # exporter.disable-firewall: false
   #
+  # Disable firewall legacy-rule migration debt metrics (silent on pre-26.7 OPNsense)
+  # exporter.disable-firewall-migration: false
+  #
   # Disable the scraping of firewall rule statistics
   # exporter.disable-firewall-rules: false
   #

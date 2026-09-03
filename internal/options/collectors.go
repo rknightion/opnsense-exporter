@@ -213,6 +213,10 @@ var (
 		"exporter.disable-gateway-groups",
 		"Disable gateway failover-group membership metrics (silent on pre-26.7 OPNsense)",
 	).Envar("OPN2OTEL_DISABLE_GATEWAY_GROUPS").Default("false").Bool()
+	firewallMigrationCollectorDisabled = kingpin.Flag(
+		"exporter.disable-firewall-migration",
+		"Disable firewall legacy-rule migration debt metrics (silent on pre-26.7 OPNsense)",
+	).Envar("OPN2OTEL_DISABLE_FIREWALL_MIGRATION").Default("false").Bool()
 	syslogCollectorDisabled = kingpin.Flag(
 		"exporter.disable-syslog",
 		"Disable the scraping of syslog-ng statistics",
@@ -483,6 +487,7 @@ type CollectorsDisableSwitch struct {
 	DynDNS                 bool
 	Gateways               bool
 	GatewayGroups          bool
+	FirewallMigration      bool
 	Syslog                 bool
 	QFeeds                 bool
 	Tailscale              bool
@@ -578,6 +583,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		DynDNS:                 !*dyndnsCollectorDisabled,
 		Gateways:               !*gatewaysCollectorDisabled,
 		GatewayGroups:          !*gatewayGroupsCollectorDisabled,
+		FirewallMigration:      !*firewallMigrationCollectorDisabled,
 		Syslog:                 !*syslogCollectorDisabled,
 		QFeeds:                 !*qfeedsCollectorDisabled,
 		Tailscale:              !*tailscaleCollectorDisabled,
@@ -693,6 +699,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
 	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
 	{Flag: "exporter.disable-gateway-groups", Subsystem: "gateway_groups"},
+	{Flag: "exporter.disable-firewall-migration", Subsystem: "firewall_migration"},
 	{Flag: "exporter.disable-syslog", Subsystem: "syslog"},
 	{Flag: "exporter.disable-qfeeds", Subsystem: "qfeeds"},
 	{Flag: "exporter.disable-tailscale", Subsystem: "tailscale"},

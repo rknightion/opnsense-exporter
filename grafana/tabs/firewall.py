@@ -467,6 +467,25 @@ def build(b: Builder):
         desc="NAT rule counts by type and enabled state, one row per (type, enabled) pair.",
     )
 
+    migration_rules = b.stat(
+        "Legacy Firewall Rules",
+        sel("opnsense_firewall_migration_legacy_rules"),
+        unit="short", w=12, h=4,
+        desc=(
+            "Rules still waiting for OPNsense's 26.7 MVC migration. The panel is empty "
+            "on releases that do not expose the migration API."
+        ),
+    )
+    migration_outbound = b.stat(
+        "Legacy Outbound NAT Rules",
+        sel("opnsense_firewall_migration_legacy_outbound_nat_rules"),
+        unit="short", w=12, h=4,
+        desc=(
+            "Outbound NAT rules still waiting for OPNsense's 26.7 MVC migration. "
+            "Zero means the migration debt is clear; no data means the API is absent."
+        ),
+    )
+
     # ══════════════════════════════════════════════════════════════════════
     # Assemble tab
     # ══════════════════════════════════════════════════════════════════════
@@ -522,6 +541,7 @@ def build(b: Builder):
         b.row("NAT Rule Inventory (details flag)",
               [nat_rules, nat_rules_table],
               present="has_firewall_nat_counts"),
+        b.row("26.7 Migration Debt", [migration_rules, migration_outbound]),
         # #523: the filterlog and UPnP/NAT-PMP event rows used to sit on a separate
         # Log-derived Events tab under an Observability domain. They describe the same
         # subject as everything above — what pf did, and what state NAT is in — so they

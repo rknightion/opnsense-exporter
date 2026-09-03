@@ -527,6 +527,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-feature-availability` | `OPN2OTEL_DISABLE_FEATURE_AVAILABILITY` | Feature Availability | Disable the feature-availability collector (opnsense_feature_available; #517). It periodically probes the plugin-gated endpoints backing the opt-in SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable any that answer successfully but are not yet enabled. |
 | `--exporter.disable-firewall` | `OPN2OTEL_DISABLE_FIREWALL` | Firewall | Disable the scraping of the firewall (pf) metrics |
 | `--exporter.disable-alias` | `OPN2OTEL_DISABLE_ALIAS` | Firewall Aliases | Disable the scraping of firewall alias table sizes |
+| `--exporter.disable-firewall-migration` | `OPN2OTEL_DISABLE_FIREWALL_MIGRATION` | Firewall Migration Debt | Disable firewall legacy-rule migration debt metrics (silent on pre-26.7 OPNsense) |
 | `--exporter.disable-firewall-rules` | `OPN2OTEL_DISABLE_FIREWALL_RULES` | Firewall Rules | Disable the scraping of firewall rule statistics |
 | `--exporter.disable-firmware` | `OPN2OTEL_DISABLE_FIRMWARE` | Firmware | Disable the scraping of the firmware metrics |
 | `--exporter.disable-flow` | `OPN2OTEL_DISABLE_FLOW` | Flow Volume | Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source - today the Zenarmor receiver - is enabled and feeding it. |
@@ -663,6 +664,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-dyndns` | `OPN2OTEL_DISABLE_DYNDNS` | `false` | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
 | `--exporter.disable-feature-availability` | `OPN2OTEL_DISABLE_FEATURE_AVAILABILITY` | `false` | Disable the feature-availability collector (opnsense_feature_available; #517). It periodically probes the plugin-gated endpoints backing the opt-in SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable any that answer successfully but are not yet enabled. |
 | `--exporter.disable-firewall` | `OPN2OTEL_DISABLE_FIREWALL` | `false` | Disable the scraping of the firewall (pf) metrics |
+| `--exporter.disable-firewall-migration` | `OPN2OTEL_DISABLE_FIREWALL_MIGRATION` | `false` | Disable firewall legacy-rule migration debt metrics (silent on pre-26.7 OPNsense) |
 | `--exporter.disable-firewall-rules` | `OPN2OTEL_DISABLE_FIREWALL_RULES` | `false` | Disable the scraping of firewall rule statistics |
 | `--exporter.disable-firmware` | `OPN2OTEL_DISABLE_FIRMWARE` | `false` | Disable the scraping of the firmware metrics |
 | `--exporter.disable-flow` | `OPN2OTEL_DISABLE_FLOW` | `false` | Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source - today the Zenarmor receiver - is enabled and feeding it. |

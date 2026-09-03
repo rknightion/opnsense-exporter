@@ -362,11 +362,13 @@ var schemaRegistry = map[EndpointName]any{
 		Field:    "stats",
 		Inner:    map[string]firewallRuleStat{},
 	},
-	"firewallStats":  []firewallStatEntry{},
-	"firmware":       firmwareStatusResponse{},
-	"firmwareInfo":   firmwareInfoResponse{},
-	"gatewaysStatus": gatewayConfigurationResponse{},
-	"gatewayGroups":  gatewayGroupSearchResponse{},
+	"firewallStats":             []firewallStatEntry{},
+	"firmware":                  firmwareStatusResponse{},
+	"firmwareInfo":              firmwareInfoResponse{},
+	"gatewaysStatus":            gatewayConfigurationResponse{},
+	"gatewayGroups":             gatewayGroupSearchResponse{},
+	"firewallMigrationRules":    firewallMigrationCountResponse{},
+	"firewallMigrationOutbound": firewallMigrationCountResponse{},
 	// The counters payload is a heterogeneous array by construction, so the
 	// element kind stays KindAny while the 38 consumed CSV columns beneath it
 	// are described and checked (#589). queryStats.php's showStat() only
