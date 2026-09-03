@@ -151,12 +151,14 @@ func TestFetchSocketStatistics_Success(t *testing.T) {
 		w.Write([]byte(`{
 			"statistics": {
 				"Active Internet connections": {
+					"tcp4/[10.0.0.1:22-*:*]": {"listen-queue-sizes":"0/0/128"},
+					"tcp4/[10.0.0.1:22-10.0.0.4:4321]": {"listen-queue-sizes":"0/0/128"},
 					"tcp4/[10.0.0.1:80-10.0.0.2:1234]": {},
 					"tcp4/[10.0.0.1:443-10.0.0.3:5678]": {},
 					"udp4/[10.0.0.1:53-*:*]": {}
 				},
 				"Active UNIX domain sockets": {
-					"fffff8001d757280 - /var/run/log.sock": {},
+					"fffff8001d757280 - /var/run/log.sock": {"listen-queue-sizes":"0/0/64"},
 					"fffff80020f24000": {}
 				}
 			}
@@ -169,8 +171,8 @@ func TestFetchSocketStatistics_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if data.ByType["tcp4"] != 2 {
-		t.Errorf("tcp4 count = %d; want 2", data.ByType["tcp4"])
+	if data.ByType["tcp4"] != 4 {
+		t.Errorf("tcp4 count = %d; want 4", data.ByType["tcp4"])
 	}
 	if data.ByType["udp4"] != 1 {
 		t.Errorf("udp4 count = %d; want 1", data.ByType["udp4"])
@@ -180,6 +182,9 @@ func TestFetchSocketStatistics_Success(t *testing.T) {
 	}
 	if data.UnixTotal != 2 {
 		t.Errorf("UnixTotal = %d; want 2", data.UnixTotal)
+	}
+	if data.ListeningSockets != 2 {
+		t.Errorf("ListeningSockets = %d; want 2", data.ListeningSockets)
 	}
 }
 

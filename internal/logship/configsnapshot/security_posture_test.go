@@ -37,7 +37,8 @@ func TestSecurityPostureProvider_AggregatesFirmwareCertificatesAndOwners(t *test
 			{HasValidTo: true, ValidTo: float64(now.Add(31 * 24 * time.Hour).Unix())},
 			{HasValidTo: false},
 		}},
-		APIKeyOwners: []opnsense.APIKeyOwner{{Owner: "ops", Count: 2}, {Owner: "audit", Count: 1}},
+		APIKeyOwners:     []opnsense.APIKeyOwner{{Owner: "ops", Count: 2}, {Owner: "audit", Count: 1}},
+		ListeningSockets: 2,
 	}}
 	provider := securityPostureProvider{client: fetcher, now: func() time.Time { return now }}
 
@@ -60,6 +61,7 @@ func TestSecurityPostureProvider_AggregatesFirmwareCertificatesAndOwners(t *test
 		} `json:"firmware"`
 		CertificateExpiry securityPostureCertificateExpiry `json:"certificate_expiry"`
 		APIKeyOwners      []securityPostureAPIKeyOwner     `json:"key_owners"`
+		ListeningSockets  int                              `json:"listening_sockets"`
 	}
 	if err := json.Unmarshal(encoded, &got); err != nil {
 		t.Fatalf("unmarshal entity: %v", err)
@@ -75,6 +77,9 @@ func TestSecurityPostureProvider_AggregatesFirmwareCertificatesAndOwners(t *test
 	}
 	if len(got.APIKeyOwners) != 2 || got.APIKeyOwners[0].Owner != "audit" || got.APIKeyOwners[1].Count != 2 {
 		t.Errorf("API key owners = %#v, want owner-sorted aggregates", got.APIKeyOwners)
+	}
+	if got.ListeningSockets != 2 {
+		t.Errorf("listening sockets = %d, want 2", got.ListeningSockets)
 	}
 }
 

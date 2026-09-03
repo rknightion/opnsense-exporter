@@ -30,6 +30,12 @@ func TestFetchSecurityPosture_UsesExistingCoreEndpoints(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"rows":[{"username":"ops","key":"not-decoded","id":"not-decoded"}]}`))
 	})
+	mux.HandleFunc("/api/diagnostics/interface/get_socket_statistics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("socket statistics method = %s, want GET", r.Method)
+		}
+		_, _ = w.Write([]byte(`{"statistics":{"Active Internet connections":{"tcp4/[0.0.0.0:443-*:*]":{"listen-queue-sizes":"0/0/128"}}}}`))
+	})
 
 	got, err := client.FetchSecurityPosture()
 	if err != nil {
@@ -46,5 +52,8 @@ func TestFetchSecurityPosture_UsesExistingCoreEndpoints(t *testing.T) {
 	}
 	if want := []APIKeyOwner{{Owner: "ops", Count: 1}}; !reflect.DeepEqual(got.APIKeyOwners, want) {
 		t.Errorf("APIKeyOwners = %#v, want %#v", got.APIKeyOwners, want)
+	}
+	if got.ListeningSockets != 1 {
+		t.Errorf("ListeningSockets = %d, want 1", got.ListeningSockets)
 	}
 }

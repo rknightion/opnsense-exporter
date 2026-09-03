@@ -169,8 +169,9 @@ func (s NetisrProtocolStats) DropConcentrationRatio() float64 {
 
 // SocketCounts holds socket statistics grouped by type.
 type SocketCounts struct {
-	ByType    map[string]int
-	UnixTotal int
+	ByType           map[string]int
+	UnixTotal        int
+	ListeningSockets int
 }
 
 // --- route types ---
@@ -313,7 +314,10 @@ func (c *Client) FetchNetisrStatistics() (map[string]NetisrProtocolStats, *APICa
 // name: "Active Internet connections" (keys formatted "proto/[details]", e.g.
 // "tcp4/[...]") and "Active UNIX domain sockets" (keys are kernel addresses with
 // no proto prefix). We count Internet sockets by protocol prefix and Unix
-// sockets by section membership.
+// sockets by section membership. A socket carries listen-queue-sizes only when
+// OPNsense's sockstat enrichment matched it to netstat -anL output. FreeBSD
+// emits that output only for sockets with a non-zero accept queue limit, so the
+// marker is a listener signal rather than an active-connection count.
 func (c *Client) FetchSocketStatistics() (SocketCounts, *APICallError) {
 	// Each section is an object keyed by socket; decode lazily because OPNsense
 	// (PHP) serializes an empty section as [] rather than {}, which would fail a
@@ -339,25 +343,46 @@ func (c *Client) FetchSocketStatistics() (SocketCounts, *APICallError) {
 	}
 
 	for section, raw := range resp.Statistics {
-		var entries map[string]any
+		var entries map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &entries); err != nil {
 			// Empty section serialized as [] (or otherwise not an object) → skip.
 			continue
 		}
 		// Unix domain sockets have opaque address keys (no proto prefix), so
 		// they are identified by their section rather than by key shape.
-		if strings.Contains(section, "UNIX") {
-			data.ByType["unix"] += len(entries)
-			data.UnixTotal += len(entries)
-			continue
-		}
-		for key := range entries {
+		for key, entry := range entries {
+			if socketIsListener(section, key, entry) {
+				data.ListeningSockets++
+			}
+			if strings.Contains(section, "UNIX") {
+				data.ByType["unix"]++
+				data.UnixTotal++
+				continue
+			}
 			prefix, _, _ := strings.Cut(key, "/")
 			data.ByType[prefix]++
 		}
 	}
 
 	return data, nil
+}
+
+func socketIsListener(section, key string, raw json.RawMessage) bool {
+	var entry map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &entry); err != nil {
+		return false
+	}
+	if _, ok := entry["listen-queue-sizes"]; !ok {
+		return false
+	}
+	if strings.Contains(section, "UNIX") {
+		return true
+	}
+	// list_sockstat.py joins listen-queue data to sockstat rows by local
+	// endpoint alone, so an established TCP connection sharing a listener's
+	// local address and port inherits the same marker. The controller's map key
+	// retains the remote endpoint; only the wildcard remote is the listener.
+	return strings.HasSuffix(key, "-*:*]")
 }
 
 // FetchRouteStatistics retrieves the routing table from OPNsense and counts

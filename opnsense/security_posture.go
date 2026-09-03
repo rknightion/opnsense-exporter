@@ -3,12 +3,11 @@ package opnsense
 // SecurityPosture is the bounded data set used by the opt-in security-posture
 // configuration snapshot. It deliberately reuses existing core endpoint
 // readers, so enabling the snapshot adds no API-surface or schema contract.
-// Listening sockets are not included: the socket-statistics endpoint proves
-// active socket counts, but does not provide a stable listener state.
 type SecurityPosture struct {
-	Firmware     FirmwareStatus
-	Certificates CertificateStatus
-	APIKeyOwners []APIKeyOwner
+	Firmware         FirmwareStatus
+	Certificates     CertificateStatus
+	APIKeyOwners     []APIKeyOwner
+	ListeningSockets int
 }
 
 // FetchSecurityPosture fetches the core data needed to form one posture
@@ -27,9 +26,14 @@ func (c *Client) FetchSecurityPosture() (SecurityPosture, *APICallError) {
 	if err != nil {
 		return SecurityPosture{}, err
 	}
+	sockets, err := c.FetchSocketStatistics()
+	if err != nil {
+		return SecurityPosture{}, err
+	}
 	return SecurityPosture{
-		Firmware:     firmware,
-		Certificates: certificates,
-		APIKeyOwners: owners,
+		Firmware:         firmware,
+		Certificates:     certificates,
+		APIKeyOwners:     owners,
+		ListeningSockets: sockets.ListeningSockets,
 	}, nil
 }

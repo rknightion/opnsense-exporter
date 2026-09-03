@@ -21,9 +21,7 @@ func (f opnsenseSecurityPostureFetcher) FetchSecurityPosture(ctx context.Context
 }
 
 // securityPostureProvider turns the current security-relevant configuration
-// state into one bounded logical entity. It deliberately excludes listener
-// detail: the existing socket-statistics endpoint provides active-socket
-// counts, not a source-proven listener state.
+// state into one bounded logical entity.
 type securityPostureProvider struct {
 	client securityPostureFetcher
 	now    func() time.Time
@@ -57,7 +55,8 @@ func (p securityPostureProvider) Snapshot(ctx context.Context) ([]Entity, error)
 		"certificate_expiry": securityPostureCertificateExpirySummary(posture.Certificates, now().UTC()),
 		// The shared redactor correctly treats api_key as sensitive; use the
 		// enclosing posture schema to give this safe aggregate its meaning.
-		"key_owners": securityPostureAPIKeyOwners(posture.APIKeyOwners),
+		"key_owners":        securityPostureAPIKeyOwners(posture.APIKeyOwners),
+		"listening_sockets": posture.ListeningSockets,
 	}
 	// Keep this call immediately before Entity construction: configuration-shaped
 	// maps must be redacted before source.recordBody can consider truncation.
