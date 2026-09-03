@@ -3,9 +3,11 @@ id: OPN-0057
 title: >-
   Measure UDP receiver throughput: same-harness before/after for buffers and
   worker pool
-status: To Do
-assignee: []
+status: Parked
+assignee:
+  - '@codex'
 created_date: '2026-09-02 05:20'
+updated_date: '2026-09-03 09:37'
 labels:
   - needs-triage
 milestone: m-4
@@ -37,3 +39,9 @@ Deferred deliberately at wave 1 closeout (decision by Rob 2026-09-02): the clamp
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 3 park: resume with one controlled harness that applies identical offered UDP load and packet size before and after the buffer/worker-pool changes. Read back numeric effective SO_RCVBUF on deployed Linux and BSD, accounting for Linux doubling, and capture both socket drops and bounded worker-queue drops alongside throughput. Do not make a throughput claim until all four measurements are recorded here.
+<!-- SECTION:NOTES:END -->
