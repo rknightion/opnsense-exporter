@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 116,
+    "total": 117,
     "by_scope": {
-      "collector": 109,
+      "collector": 110,
       "self_labeled": 5,
       "target_join": 2,
       "global": 0
@@ -935,6 +935,16 @@
         "gates": [
           "opnsense2otel Health > Delivery > Metrics & OTLP > OTLP Delivery Health",
           "opnsense2otel Health > Overview > OTLP Delivery"
+        ]
+      },
+      {
+        "name": "has_pftop",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_pftop_cardinality_keys{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel > Security > Firewall & PF > pfTop API Fallback (sampled top 100)"
         ]
       },
       {

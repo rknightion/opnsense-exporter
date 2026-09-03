@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -244,6 +245,39 @@ var getPathParamResolvers = map[string]func(p *prober) ([]string, error){
 			return nil, err
 		}
 		return []string{uuid}, nil
+	},
+	"trafficTop": func(p *prober) ([]string, error) {
+		raw, _, err := p.probeSource("interfacesOverview")
+		if err != nil {
+			return nil, err
+		}
+		var overview struct {
+			Rows []struct {
+				Identifier string `json:"identifier"`
+				Enabled    bool   `json:"enabled"`
+			} `json:"rows"`
+		}
+		if err := json.Unmarshal(raw, &overview); err != nil {
+			return nil, fmt.Errorf("decode interfacesOverview: %w", err)
+		}
+		seen := make(map[string]struct{}, len(overview.Rows))
+		identifiers := make([]string, 0, len(overview.Rows))
+		for _, row := range overview.Rows {
+			identifier := strings.TrimSpace(row.Identifier)
+			if !row.Enabled || identifier == "" {
+				continue
+			}
+			if _, ok := seen[identifier]; ok {
+				continue
+			}
+			seen[identifier] = struct{}{}
+			identifiers = append(identifiers, identifier)
+		}
+		if len(identifiers) == 0 {
+			return nil, nil
+		}
+		sort.Strings(identifiers)
+		return []string{strings.Join(identifiers, ",")}, nil
 	},
 }
 

@@ -87,4 +87,5 @@ This page provides a summary of all collectors in opnsense2otel.
 | Zabbix Agent | zabbix_agent | 1 | Enabled | --exporter.disable-zabbix-agent | OPN2OTEL_DISABLE_ZABBIX_AGENT |
 | Zabbix Proxy | zabbix_proxy | 1 | Enabled | --exporter.disable-zabbix-proxy | OPN2OTEL_DISABLE_ZABBIX_PROXY |
 | ZeroTier | zerotier | 4 | Enabled | --exporter.disable-zerotier | OPN2OTEL_DISABLE_ZEROTIER |
+| pfTop Diagnostics | pftop | 11 | Disabled | --exporter.enable-pftop | OPN2OTEL_ENABLE_PFTOP |
 

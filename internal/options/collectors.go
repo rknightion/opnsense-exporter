@@ -159,6 +159,10 @@ var (
 		"exporter.enable-netflow",
 		"Enable the netflow collector (enabled status, service status, cache stats). Disabled by default.",
 	).Envar("OPN2OTEL_ENABLE_NETFLOW").Default("false").IsSetByUser(&netflowEnabledUserSet).Bool()
+	pftopEnabled = kingpin.Flag(
+		"exporter.enable-pftop",
+		"Enable the pfTop diagnostics collector (capped top-100 pf states and two-second traffic-top talkers). Disabled by default: the sampled API view can run an iftop shell-out for up to ten seconds per interface and overlaps the NetFlow receiver when that is enabled.",
+	).Envar("OPN2OTEL_ENABLE_PFTOP").Default("false").IsSetByUser(&pftopEnabledUserSet).Bool()
 	pfStatsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-pf-stats",
 		"Disable the scraping of PF statistics (state table, counters, memory limits, timeouts)",
@@ -446,6 +450,7 @@ var (
 	keaDetailsEnabledUserSet             bool
 	networkDiagnosticsEnabledUserSet     bool
 	netflowEnabledUserSet                bool
+	pftopEnabledUserSet                  bool
 	ndpDetailsEnabledUserSet             bool
 	dhcpv4DetailsEnabledUserSet          bool
 	smartEnabledUserSet                  bool
@@ -494,6 +499,7 @@ type CollectorsDisableSwitch struct {
 	NetworkDiagnostics     bool
 	NetisrPerCPU           bool
 	Netflow                bool
+	Pftop                  bool
 	PFStats                bool
 	NDP                    bool
 	Dhcpv4                 bool
@@ -604,6 +610,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		NetworkDiagnostics:     *networkDiagnosticsEnabled,
 		NetisrPerCPU:           !*netisrPerCPUDisabled,
 		Netflow:                *netflowEnabled,
+		Pftop:                  *pftopEnabled,
 		PFStats:                !*pfStatsCollectorDisabled,
 		NDP:                    !*ndpCollectorDisabled,
 		Dhcpv4:                 !*dhcpv4CollectorDisabled,
@@ -734,6 +741,7 @@ var CollectorFlags = []CollectorFlag{
 	// enableFlagBindings: --exporter.enable-all-available has nothing to turn on here.
 	{Flag: "exporter.disable-netisr-percpu", Subsystem: "network_diag", Detail: true},
 	{Flag: "exporter.enable-netflow", Subsystem: "netflow", Reason: "only relevant when NetFlow capture is configured on the firewall"},
+	{Flag: "exporter.enable-pftop", Subsystem: "pftop", Reason: "sampled iftop shell-out can run up to ten seconds per interface and overlaps the NetFlow receiver"},
 	{Flag: "exporter.disable-pf-stats", Subsystem: "pf_stats"},
 	{Flag: "exporter.disable-ndp", Subsystem: "ndp"},
 	{Flag: "exporter.disable-dhcpv4", Subsystem: "dhcpv4"},
@@ -829,6 +837,7 @@ var enableFlagBindings = []enableFlagBinding{
 	{"exporter.enable-kea-details", "OPN2OTEL_ENABLE_KEA_DETAILS", keaDetailsEnabled, &keaDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.KeaDetails = true }},
 	{"exporter.enable-network-diagnostics", "OPN2OTEL_ENABLE_NETWORK_DIAGNOSTICS", networkDiagnosticsEnabled, &networkDiagnosticsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.NetworkDiagnostics = true }},
 	{"exporter.enable-netflow", "OPN2OTEL_ENABLE_NETFLOW", netflowEnabled, &netflowEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Netflow = true }},
+	{"exporter.enable-pftop", "OPN2OTEL_ENABLE_PFTOP", pftopEnabled, &pftopEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Pftop = true }},
 	{"exporter.enable-dhcpv4-details", "OPN2OTEL_ENABLE_DHCPV4_DETAILS", dhcpv4DetailsEnabled, &dhcpv4DetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Dhcpv4Details = true }},
 	{"exporter.enable-smart", "OPN2OTEL_ENABLE_SMART", smartEnabled, &smartEnabledUserSet, func(s *CollectorsDisableSwitch) { s.SMART = true }},
 	{"exporter.enable-tor", "OPN2OTEL_ENABLE_TOR", torEnabled, &torEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Tor = true }},

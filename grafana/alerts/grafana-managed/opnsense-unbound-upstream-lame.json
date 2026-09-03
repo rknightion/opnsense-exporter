@@ -26,7 +26,7 @@
       "description": "Unbound has continuously marked upstream {{ $labels.ip }} lame for its {{ $labels.kind }} queries for 15m - a full infra-cache TTL (host-ttl, default 900s). Unbound stops querying a server it has marked lame, so that server's RTT/RTO series stay perfect while resolution through it is actually failing; this is the only signal that catches it. Only emitted with --exporter.enable-unbound-infra.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseunboundupstreamlame",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "259"
+      "__panelId__": "263"
     },
     "expressions": {
       "A": {

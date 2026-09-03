@@ -538,6 +538,13 @@
     ],
     "note": "GUI widget metadata on service-status responses; never consumed"
   },
+  "pfTop": {
+    "missingOK": [
+      "rows[].descr",
+      "rows[].label"
+    ],
+    "note": "BOX STATE: released OPNsense 26.7.3 FirewallController::queryPfTopAction adds label and descr only when a returned PF state's rule has a matching configured filter-rule label; unlabeled states legitimately omit both keys. The fields are decoded presentation metadata and never become metric labels. PRUNE TRIGGER: remove once the testbed reliably returns at least one state whose rule matches a configured label."
+  },
   "pfStatisticsByInterface": {
     "missingOK": [
       "interfaces.*.interface"

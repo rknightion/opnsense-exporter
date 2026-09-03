@@ -1,0 +1,102 @@
+{
+  "endpoint": "pfTop",
+  "method": "POST",
+  "path": "api/diagnostics/firewall/query_pf_top",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].age",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].avg",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].bytes",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].dir",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].dst_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].dst_port",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].expire",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].gw_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gw_port",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].label",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].pkts",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].proto",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].rule",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].src_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].src_port",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].state",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

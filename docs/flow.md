@@ -17,6 +17,20 @@ they are still filterable but cannot multiply series.
 The rollup, the NetFlow receiver and the flow correlator are implemented in
 [`internal/flow/` on GitHub](https://github.com/rknightion/opnsense2otel/tree/main/internal/flow).
 
+## API pfTop fallback
+
+`--exporter.enable-pftop` is a separate, default-off diagnostic fallback for boxes where the
+NetFlow receiver is not used. It polls the firewall's current pfTop state view and a two-second
+iftop sample on the slow tier, ranks separate state and talker boards deterministically, and
+retains at most 100 identities per board for five minutes. Named series plus the overflow gauges
+account for the fields in the successful endpoint response, but they do not prove completeness
+beyond that sampled response. The hard ceiling is 611 series per target.
+
+Prefer the NetFlow receiver for traffic accounting. pfTop state bytes are current per-state values
+and the traffic-top values are short rate samples; NetFlow is a packet-flow feed. Enabling both can
+observe overlapping traffic with incompatible units, so the exporter deliberately does not merge
+their data or present the API fallback as a second flow pipeline.
+
 ## Enabling it
 
 Flow rollups are **on by default** and cost nothing where no flow source is

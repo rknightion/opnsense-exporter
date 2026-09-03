@@ -163,6 +163,11 @@ services:
       # Enable per-session detail metrics for OpenVPN (exposes usernames and per-client
       # tunnel addresses)
       # OPN2OTEL_ENABLE_OPENVPN_DETAILS: "false"
+      # Enable the pfTop diagnostics collector (capped top-100 pf states and two-second
+      # traffic-top talkers). Disabled by default: the sampled API view can run an iftop
+      # shell-out for up to ten seconds per interface and overlaps the NetFlow receiver
+      # when that is enabled.
+      # OPN2OTEL_ENABLE_PFTOP: "false"
       # Enable the SMART disk health collector. Off by default: each scheduled poll does
       # a per-disk POST fanout that runs `smartctl -a` on the firewall (extra
       # API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is

@@ -449,6 +449,42 @@ func TestProbeOneParameterizedZeroTierNetworkInfoSkip(t *testing.T) {
 	}
 }
 
+func TestTrafficTopPathResolverUsesEnabledInterfaceIdentifiers(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"rows":[
+{"identifier":" opt1 ","enabled":true},
+{"identifier":"lan","enabled":true},
+{"identifier":"lan","enabled":true},
+{"identifier":"disabled","enabled":false},
+{"identifier":"","enabled":true}
+]}`))
+	})
+	p := newTestProber(t, mux)
+	segments, err := getPathParamResolvers["trafficTop"](p)
+	if err != nil {
+		t.Fatalf("resolve trafficTop path: %v", err)
+	}
+	if len(segments) != 1 || segments[0] != "lan,opt1" {
+		t.Fatalf("trafficTop path segments = %#v, want [lan,opt1]", segments)
+	}
+}
+
+func TestTrafficTopPathResolverSkipsWhenNoInterfacesAreEnabled(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"rows":[{"identifier":"lan","enabled":false}]}`))
+	})
+	p := newTestProber(t, mux)
+	segments, err := getPathParamResolvers["trafficTop"](p)
+	if err != nil {
+		t.Fatalf("resolve trafficTop path: %v", err)
+	}
+	if len(segments) != 0 {
+		t.Fatalf("trafficTop path segments = %#v, want none", segments)
+	}
+}
+
 func TestProbeOneExemptionSuppressesMissing(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/test/renamed", func(w http.ResponseWriter, _ *http.Request) {

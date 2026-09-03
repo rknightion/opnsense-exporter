@@ -71,6 +71,32 @@ var Exemptions = map[string]string{
 	// opnsense/health_check.go:38  json:"message"
 	"opnsense.HealthCheckSubsystem.Message": "Free-text health-check detail. isHealthy() reads status and statusCode; the message " +
 		"is prose that cannot become a bounded label.",
+	"opnsense.pfTopSearchResponse.Current":            "Bootgrid pagination metadata. FetchPFTop requests the complete result set and consumes the returned rows, so current page state does not affect the bounded local ranking.",
+	"opnsense.pfTopSearchResponse.RowCount":           "Bootgrid pagination metadata. FetchPFTop requests the complete result set and counts decoded rows locally, so the echoed row count is not collector data.",
+	"opnsense.pfTopSearchResponse.Total":              "Bootgrid pagination metadata. The collector ranks and accounts for every row actually returned; the envelope total is not a separate metric and must not be mistaken for firewall-wide completeness.",
+	"opnsense.pfTopStateRow.Age":                      "Per-state lifetime is not additive when duplicate state identities are folded, so it is decoded only to keep the live schema complete and is deliberately excluded from metrics.",
+	"opnsense.pfTopStateRow.Average":                  "The upstream average field is not additive when duplicate state identities are folded, so it is decoded for schema validation but deliberately excluded from metrics.",
+	"opnsense.pfTopStateRow.Description":              "Mutable rule-description presentation text is decoded for live schema validation but excluded from the bounded PF state identity and metric labels.",
+	"opnsense.pfTopStateRow.Expire":                   "Per-state expiry is not additive when duplicate state identities are folded, so it is decoded only to keep the live schema complete and is deliberately excluded from metrics.",
+	"opnsense.pfTopStateRow.Label":                    "Mutable rule-label presentation text is decoded for live schema validation but excluded from the bounded PF state identity and metric labels.",
+	"opnsense.trafficTopDetailRow.Address":            "Per-conversation traffic-top detail is presentation drill-down below the bounded host aggregate and would introduce a second unbounded identity, so the collector excludes it.",
+	"opnsense.trafficTopDetailRow.Cumulative":         "Human-formatted per-conversation cumulative traffic is presentation data below the bounded host aggregate and is deliberately excluded from metrics.",
+	"opnsense.trafficTopDetailRow.CumulativeBytes":    "The command starts a fresh iftop process for every request, so this per-conversation cumulative sample is not a monotonic counter and is deliberately excluded.",
+	"opnsense.trafficTopDetailRow.Rate":               "Human-formatted per-conversation rate duplicates rate_bits and is presentation-only data below the bounded host aggregate.",
+	"opnsense.trafficTopDetailRow.RateBits":           "Per-conversation traffic-top detail is presentation drill-down below the bounded host aggregate and would create an additional unbounded series family.",
+	"opnsense.trafficTopDetailRow.Tags":               "Per-conversation address classification is presentation metadata below the bounded host aggregate and is deliberately excluded from metric labels.",
+	"opnsense.trafficTopRecordRow.Cumulative":         "Human-formatted cumulative traffic duplicates the numeric sample and is presentation-only data that cannot become a metric label.",
+	"opnsense.trafficTopRecordRow.CumulativeBytes":    "The command starts a fresh iftop process for every request, so the returned cumulative sample is not a monotonic counter and is deliberately excluded.",
+	"opnsense.trafficTopRecordRow.CumulativeBytesIn":  "The command starts a fresh iftop process for every request, so the incoming cumulative sample is not a monotonic counter and is deliberately excluded.",
+	"opnsense.trafficTopRecordRow.CumulativeBytesOut": "The command starts a fresh iftop process for every request, so the outgoing cumulative sample is not a monotonic counter and is deliberately excluded.",
+	"opnsense.trafficTopRecordRow.CumulativeIn":       "Human-formatted incoming cumulative traffic duplicates the numeric sample and is presentation-only data.",
+	"opnsense.trafficTopRecordRow.CumulativeOut":      "Human-formatted outgoing cumulative traffic duplicates the numeric sample and is presentation-only data.",
+	"opnsense.trafficTopRecordRow.Details":            "Per-conversation drill-down is intentionally excluded because the collector exports one bounded host and interface identity rather than every conversation.",
+	"opnsense.trafficTopRecordRow.Rate":               "Human-formatted total rate duplicates rate_bits and is presentation-only data that cannot become a metric label.",
+	"opnsense.trafficTopRecordRow.RateIn":             "Human-formatted incoming rate duplicates rate_bits_in and is presentation-only data.",
+	"opnsense.trafficTopRecordRow.RateOut":            "Human-formatted outgoing rate duplicates rate_bits_out and is presentation-only data.",
+	"opnsense.trafficTopRecordRow.ReverseName":        "Reverse DNS is mutable presentation identity and would create label churn; the bounded board uses the source address as its stable identity.",
+	"opnsense.trafficTopRecordRow.Tags":               "Address classification tags are mutable presentation metadata and are deliberately excluded from the bounded talker labels.",
 	// opnsense/interfaces.go:30  json:"address length"
 	"opnsense.InterfaceDetails.AddressLength": "ifconfig link-layer geometry (address/header length, datalen). Constant per media " +
 		"type and of no operational interest; decoded so the canary validates the whole " +

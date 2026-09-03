@@ -1040,6 +1040,11 @@ func main() {
 	} else {
 		logger.Info("netflow collector enabled")
 	}
+	if !collectorsSwitches.Pftop {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutPftopCollector())
+	} else {
+		logger.Info("pftop collector enabled")
+	}
 	if !collectorsSwitches.PFStats {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutPFStatsCollector())
 		logger.Info("pf stats collector disabled")

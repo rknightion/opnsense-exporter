@@ -1,0 +1,124 @@
+{
+  "endpoint": "trafficTop",
+  "method": "GET",
+  "path": "api/diagnostics/traffic/top",
+  "topLevelKind": "object",
+  "fields": [
+    {
+      "path": "*",
+      "kind": "object"
+    },
+    {
+      "path": "*.records",
+      "kind": "array"
+    },
+    {
+      "path": "*.records[]",
+      "kind": "object"
+    },
+    {
+      "path": "*.records[].address",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].cumulative",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].cumulative_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].cumulative_bytes_in",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].cumulative_bytes_out",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].cumulative_in",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].cumulative_out",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].details",
+      "kind": "array"
+    },
+    {
+      "path": "*.records[].details[]",
+      "kind": "object"
+    },
+    {
+      "path": "*.records[].details[].address",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].details[].cumulative",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].details[].cumulative_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].details[].rate",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].details[].rate_bits",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].details[].tags",
+      "kind": "array"
+    },
+    {
+      "path": "*.records[].details[].tags[]",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].rate",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].rate_bits",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].rate_bits_in",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].rate_bits_out",
+      "kind": "number"
+    },
+    {
+      "path": "*.records[].rate_in",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].rate_out",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].rname",
+      "kind": "string"
+    },
+    {
+      "path": "*.records[].tags",
+      "kind": "array"
+    },
+    {
+      "path": "*.records[].tags[]",
+      "kind": "string"
+    },
+    {
+      "path": "*.status",
+      "kind": "string"
+    }
+  ]
+}

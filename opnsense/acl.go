@@ -1357,6 +1357,15 @@ var endpointACL = map[EndpointName]aclEntry{
 		Status:    ACLStatusUnknown,
 		Note:      "Lobby: Dashboard grants the exact route api/diagnostics/firewall/pf_states with no trailing wildcard; the exporter appends the /1 parameter, so the request URI matches no privilege except page-all.",
 	},
+	"pfTop": {
+		Consumer:  "pftop",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Note:      "The collector also calls interfacesOverview to resolve enabled interface identifiers; grant page-status-interfaces in addition to this endpoint's privilege.",
+		Privileges: []ACLPrivilege{
+			{Key: "page-diagnostics-system-pftop", Name: "Diagnostics: Firewall sessions", Origin: "core", Pattern: "api/diagnostics/firewall/query_pf_top", Scope: ACLScopeExact},
+		},
+	},
 	"pfStatisticsByInterface": {
 		Consumer:  "firewall",
 		Component: "core",
@@ -1756,6 +1765,15 @@ var endpointACL = map[EndpointName]aclEntry{
 		Privileges: []ACLPrivilege{
 			{Key: "page-diagnostics-limiter-info", Name: "Diagnostics: Shaper status", Origin: "core", Pattern: "api/trafficshaper/service/statistics/*", Scope: ACLScopeWildcard},
 			{Key: "page-firewall-trafficshaper", Name: "Firewall: Shaper", Origin: "core", Pattern: "api/trafficshaper/*", Scope: ACLScopeWildcard},
+		},
+	},
+	"trafficTop": {
+		Consumer:  "pftop",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Note:      "The collector resolves this path from interfacesOverview; grant page-status-interfaces in addition to this endpoint's privilege.",
+		Privileges: []ACLPrivilege{
+			{Key: "page-status-trafficgraph", Name: "Reporting: Traffic", Origin: "core", Pattern: "api/diagnostics/traffic/*", Scope: ACLScopeWildcard},
 		},
 	},
 	"unboundBlocklistPolicies": {

@@ -26,6 +26,7 @@ var captureRequests = map[EndpointName]CaptureRequest{
 	"cronJobs":              {ContentType: jsonContentType, Body: fetchCronPayload},
 	"firewallRules":         {ContentType: jsonContentType, Body: fetchFirewallRulesPayload},
 	"firewallStates":        {ContentType: jsonContentType, Body: fetchFirewallStatesPayload},
+	"pfTop":                 {ContentType: formContentType, Body: fetchPFTopPayload},
 	"openVPNInstances":      {ContentType: jsonContentType, Body: fetchOpenVPNPayload},
 	"captivePortalSessions": {ContentType: formContentType, Body: bootgridAllRows},
 	"crowdsecAlerts":        {ContentType: formContentType, Body: bootgridAllRows},

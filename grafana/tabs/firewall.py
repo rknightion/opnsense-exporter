@@ -26,6 +26,8 @@ def build(b: Builder):
     b.sentinel("has_firewall_rules", metric="opnsense_firewall_rule_rules_total")
     # ── Sentinel for the opt-in NAT rule inventory row (#221) ─────────────
     b.sentinel("has_firewall_nat_counts", metric="opnsense_firewall_nat_rules")
+    # Default-off API fallback; keep its sampled boards hidden unless enabled.
+    b.sentinel("has_pftop", metric="opnsense_pftop_cardinality_keys")
 
     # ══════════════════════════════════════════════════════════════════════
     # ROW 1 — Traffic pass/block packets (pps) by interface
@@ -292,7 +294,70 @@ def build(b: Builder):
     )
 
     # ══════════════════════════════════════════════════════════════════════
-    # ROW 7 — Firewall rules (top 20), gated on has_firewall_rules
+    # ROW 7 — opt-in pfTop API fallback
+    # ══════════════════════════════════════════════════════════════════════
+    pftop_states = b.table(
+        "pfTop State Board",
+        [
+            f'sort_desc({sel("opnsense_pftop_state_bytes")})',
+            sel("opnsense_pftop_state_packets"),
+            sel("opnsense_pftop_state_records"),
+        ],
+        excludes=["Time", "job", "instance"],
+        w=24, h=10,
+        desc=(
+            "The current deterministic top-100 PF state identities. Bytes and packets are "
+            "current per-state gauges, not process-lifetime counters; duplicate endpoint rows "
+            "are folded before ranking."
+        ),
+    )
+
+    pftop_talkers = b.table(
+        "pfTop Traffic-Sample Talkers",
+        [f'sort_desc({sel("opnsense_pftop_talker_rate_bits")})'],
+        excludes=["Time", "job", "instance"],
+        w=24, h=10,
+        desc=(
+            "The current deterministic top-100 host/interface identities from OPNsense's "
+            "two-second iftop sample, split into in, out and total directions. This sampled "
+            "diagnostic is not a replacement for NetFlow traffic accounting."
+        ),
+    )
+
+    pftop_overflow = b.table(
+        "pfTop Overflow Accounting",
+        [
+            sel("opnsense_pftop_state_overflow_bytes"),
+            sel("opnsense_pftop_state_overflow_packets"),
+            sel("opnsense_pftop_state_overflow_records"),
+            sel("opnsense_pftop_talker_overflow_rate_bits"),
+            sel("opnsense_pftop_talker_overflow_records"),
+        ],
+        excludes=["Time", "job", "instance"],
+        w=16, h=8,
+        desc=(
+            "Current-snapshot values outside the named top-100 boards or refused by the "
+            "five-minute identity inventories. Named values plus overflow account for the "
+            "successful endpoint response, not all firewall traffic."
+        ),
+    )
+
+    pftop_cardinality = b.table(
+        "pfTop Cardinality Guard",
+        [
+            sel("opnsense_pftop_cardinality_keys"),
+            sel("opnsense_pftop_cardinality_capped_total"),
+        ],
+        excludes=["Time", "job", "instance"],
+        w=8, h=8,
+        desc=(
+            "Live five-minute inventory keys and cumulative novel identities refused at the "
+            "100-key state or talker cap. The complete collector ceiling is 611 series per target."
+        ),
+    )
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ROW 8 — Firewall rules (top 20), gated on has_firewall_rules
     # ══════════════════════════════════════════════════════════════════════
     fw_rules_count = b.stat(
         "Firewall Rules Total",
@@ -529,6 +594,9 @@ def build(b: Builder):
               [pf_counters_ts, pf_counters_tbl, pf_limit_tbl]),
         b.row("PF Memory & Timeouts",
               [pf_memory, pf_timeouts]),
+        b.row("pfTop API Fallback (sampled top 100)",
+              [pftop_states, pftop_talkers, pftop_overflow, pftop_cardinality],
+              present="has_pftop"),
     ])
     b.tab("Firewall Rules & NAT", [
         b.row("Firewall Rules (top 20)",

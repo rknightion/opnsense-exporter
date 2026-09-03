@@ -56,6 +56,7 @@ const (
 	Dhcpv4Subsystem            = "dhcpv4"
 	NetworkDiagSubsystem       = "network_diag"
 	NetflowSubsystem           = "netflow"
+	PftopSubsystem             = "pftop"
 	PFStatsSubsystem           = "pf_stats"
 	NDPSubsystem               = "ndp"
 	ACMESubsystem              = "acme"
@@ -160,6 +161,7 @@ var SubsystemDisplayNames = map[string]string{
 	Dhcpv4Subsystem:              "ISC DHCPv4",
 	NetworkDiagSubsystem:         "Network Diagnostics",
 	NetflowSubsystem:             "NetFlow",
+	PftopSubsystem:               "pfTop Diagnostics",
 	PFStatsSubsystem:             "PF Statistics",
 	NDPSubsystem:                 "NDP",
 	ACMESubsystem:                "ACME Client",
@@ -705,6 +707,11 @@ func WithoutNetisrPerCPU() Option {
 // removes the netflow collector from the list of collectors
 func WithoutNetflowCollector() Option {
 	return withoutCollectorInstance(NetflowSubsystem)
+}
+
+// WithoutPftopCollector removes the opt-in pfTop diagnostics collector.
+func WithoutPftopCollector() Option {
+	return withoutCollectorInstance(PftopSubsystem)
 }
 
 // WithoutPFStatsCollector Option

@@ -309,7 +309,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing to run just.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 116 total (collector 109 / self_labeled 5 / target_join 2 / global 0)
+### Prometheus sentinels — 117 total (collector 110 / self_labeled 5 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -397,6 +397,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_nut` | `collector` | existence (series presence) | opnsense2otel > System > UPS; opnsense2otel > System > UPS > NUT (Network UPS Tools) | `label_values(opnsense_nut_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_openvpn` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access; opnsense2otel > VPN & remote access > VPN; opnsense2otel > VPN & remote access > VPN > OpenVPN | `label_values(opnsense_openvpn_instances{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_otlp` | `self_labeled` | existence (series presence) | opnsense2otel Health > Delivery > Metrics & OTLP > OTLP Delivery Health; opnsense2otel Health > Overview > OTLP Delivery | `label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_pftop` | `collector` | existence (series presence) | opnsense2otel > Security > Firewall & PF > pfTop API Fallback (sampled top 100) | `label_values(opnsense_pftop_cardinality_keys{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_process_fds` | `target_join` | existence (series presence) | opnsense2otel Health > Exporter Runtime > File Descriptors (process collector) | `query_result(process_open_fds{job=~"opnsense.*"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~"$opnsense_instance"}))` |
 | `has_qfeeds` | `collector` | existence (series presence) | opnsense2otel > Security > Q-Feeds; opnsense2otel > Security > Q-Feeds > Q-Feeds Activity; opnsense2otel > Security > Q-Feeds > Q-Feeds Overview | `label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_recording_flow` | `collector` | existence (series presence) | opnsense2otel Health > Recording rules > Flow Volume | `label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |

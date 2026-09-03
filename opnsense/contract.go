@@ -40,6 +40,7 @@ var postEndpoints = map[EndpointName]struct{}{
 	"idsQueryAlerts":          {},
 	"idsSearchInstalledRules": {},
 	"unboundSearchQueries":    {},
+	"pfTop":                   {},
 }
 
 // ContractManifest returns the endpoint name→{path, method} contract derived

@@ -183,6 +183,11 @@ var collectorTiers = map[string]time.Duration{
 	// first collector the #569 audit should re-weigh. Tier UNCHANGED here — retiering
 	// is out of scope for #568.
 	NetflowSubsystem: IntervalFast,
+	// The two-second iftop sample is volatile, but the endpoint can spend up to
+	// ten seconds per interface and is an opt-in fallback for boxes without the
+	// cheaper NetFlow receiver. Five minutes keeps that sampled diagnostic useful
+	// without making an expensive shell-out a default-tier request storm.
+	PftopSubsystem: IntervalSlow,
 	// Clause (a), and the case the rule exists to protect. opnsense_carp_vip_status is
 	// byte-identical for days on a healthy box; zero churn is NOT disqualifying,
 	// because the MASTER/BACKUP transition is itself the alertable event —

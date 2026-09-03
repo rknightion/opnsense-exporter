@@ -516,6 +516,7 @@ var schemaRegistry = map[EndpointName]any{
 	"openVPNInstances":        openVPNSearchResponse{},
 	"openVPNSessions":         openVPNSearchSessionsResponse{},
 	"firewallStates":          firewallStatesResponse{},
+	"pfTop":                   pfTopSearchResponse{},
 	"pfStates":                pfStatesResponse{},
 	"pfStatisticsByInterface": firewallPFStatsResponse{},
 	"pfStatsInfo":             pfStatsInfoResponse{},
@@ -639,6 +640,7 @@ var schemaRegistry = map[EndpointName]any{
 	},
 	"torHiddenServices":       torHiddenServicesResponse{},
 	"trafficShaperStatistics": trafficShaperStatsResponse{},
+	"trafficTop":              map[string]trafficTopInterfaceRow{},
 	// The plain map, not the array-tolerant unboundPoliciesResponse the client
 	// decodes into — same treatment as netflowCacheStats below, and for the same
 	// reason: the alias's custom UnmarshalJSON stops the walker, hiding the

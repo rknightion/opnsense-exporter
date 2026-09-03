@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1035
-- **Gauges:** 681
-- **Counters:** 354
+- **Total metrics:** 1046
+- **Gauges:** 691
+- **Counters:** 355
 
 ## General
 
@@ -1455,4 +1455,20 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_zerotier_network_enabled | Gauge | network_id | Whether a configured ZeroTier network is enabled (1 = enabled, 0 = disabled) | --exporter.disable-zerotier |
 | opnsense_zerotier_network_status | Gauge | network_id, status | Current ZeroTier status for a configured network (value is always 1; status is the closed ZeroTier status vocabulary or unknown) | --exporter.disable-zerotier |
 | opnsense_zerotier_network_assigned_addresses | Gauge | network_id | Number of ZeroTier addresses assigned to this node on the network | --exporter.disable-zerotier |
+
+## pfTop Diagnostics
+
+| Metric Name | Type | Labels | Description | Enable Flag |
+|-------------|------|--------|-------------|-------------|
+| opnsense_pftop_state_bytes | Gauge | protocol, direction, source_address, source_port, destination_address, destination_port, gateway_address, gateway_port, rule, state | Current cumulative bytes summed by pf state identity. The state board is a bounded top-100 API snapshot; duplicate rows are folded before ranking and rows outside the board are represented by the overflow gauge. | --exporter.enable-pftop |
+| opnsense_pftop_state_packets | Gauge | protocol, direction, source_address, source_port, destination_address, destination_port, gateway_address, gateway_port, rule, state | Current cumulative packets summed by pf state identity. This is a gauge because the sampled pf state can disappear or reset between polls. | --exporter.enable-pftop |
+| opnsense_pftop_state_records | Gauge | protocol, direction, source_address, source_port, destination_address, destination_port, gateway_address, gateway_port, rule, state | Number of pfTop records folded into this state identity in the latest successful snapshot. | --exporter.enable-pftop |
+| opnsense_pftop_state_overflow_bytes | Gauge | --- | Bytes from pfTop state groups outside the named top-100 board or refused by its bounded inventory in the latest successful snapshot. | --exporter.enable-pftop |
+| opnsense_pftop_state_overflow_packets | Gauge | --- | Packets from pfTop state groups outside the named top-100 board or refused by its bounded inventory in the latest successful snapshot. | --exporter.enable-pftop |
+| opnsense_pftop_state_overflow_records | Gauge | --- | Record count from pfTop state groups outside the named top-100 board or refused by its bounded inventory in the latest successful snapshot. | --exporter.enable-pftop |
+| opnsense_pftop_talker_rate_bits | Gauge | interface, address, direction | Bits per second for a host/interface identity from the latest two-second traffic-top sample, split by in, out and total direction. Only status=ok interfaces are included. | --exporter.enable-pftop |
+| opnsense_pftop_talker_overflow_rate_bits | Gauge | direction | Bits per second from traffic-top identities outside the named top-100 board or refused by its bounded inventory in the latest successful snapshot, split by in, out and total direction. | --exporter.enable-pftop |
+| opnsense_pftop_talker_overflow_records | Gauge | --- | Record count from traffic-top identities outside the named top-100 board or refused by its bounded inventory in the latest successful snapshot. | --exporter.enable-pftop |
+| opnsense_pftop_cardinality_capped_total | Counter | family | Cumulative number of leaderboard candidate observations refused by a bounded 100-key inventory. | --exporter.enable-pftop |
+| opnsense_pftop_cardinality_keys | Gauge | family | Number of live identities retained by a five-minute leaderboard inventory. | --exporter.enable-pftop |
 
