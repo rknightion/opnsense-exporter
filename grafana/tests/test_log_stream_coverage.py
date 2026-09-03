@@ -50,7 +50,7 @@ LOG_SHIPPING_DOC = REPO / "docs" / "log-shipping.md"
 # decide whether the new stream needs a panel; do not simply update the set.
 EXPECTED_SOURCES = {
     "syslog", "unbound", "ids", "crowdsec", "zenarmor", "netflow", "merged",
-    "configchange", "configstate",
+    "configchange", "configstate", "routingchange",
 }
 
 

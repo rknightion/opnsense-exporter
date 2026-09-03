@@ -370,6 +370,11 @@ size, and a content digest rather than a byte-sliced document. These records con
 firewall policy and topology detail, so enabling the general logs pipeline does not
 enable them.
 
+`--logs.config-snapshot.routing-changes.enabled` is a separate `routingchange` source.
+Its first poll establishes a baseline; later effective default-route changes emit one
+before/after record, with changes inside a one-minute cooldown folded into a bounded
+flap-detail record. dpinger-only status changes do not count as a route move.
+
 ### Flow log records (`netflow`, `merged`)
 
 A **push** source layered on the separate NetFlow/Zenarmor flow pipeline
@@ -398,7 +403,7 @@ them, whatever the tenant config says. Cardinality discipline therefore falls ou
 | `service.name` | `--otlp.service-name` | **yes** |
 | `service.instance.id` | the resolved instance label | **yes** |
 | `service.version` | the exporter version | no |
-| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor`, `configchange`, `configstate`, `exporter`, `netflow`, `merged` | no - opt in below |
+| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor`, `configchange`, `configstate`, `routingchange`, `exporter`, `netflow`, `merged` | no - opt in below |
 | `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (26) | no - opt in below |
 | `opnsense.action` | `pass`, `block` | no - opt in below |
 | `opnsense.device_category` | `laptop`, `camera`, `iot`, `server`, … (9) | no - opt in below |

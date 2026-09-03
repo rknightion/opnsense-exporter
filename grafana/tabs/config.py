@@ -10,6 +10,7 @@ CONFIG_STREAM = loki_sel('opnsense_source="configstate", opnsense_subsystem="con
 FIREWALL_SNAPSHOTS = f'{CONFIG_STREAM} | snapshot_family="firewall" | json'
 DEVICE_SNAPSHOTS = f'{CONFIG_STREAM} | snapshot_family="device_inventory" | json'
 SECURITY_POSTURE = f'{CONFIG_STREAM} | snapshot_family="security_posture" | json'
+ROUTING_CHANGES = loki_sel('opnsense_source="routingchange", opnsense_subsystem="routing"') + " | json"
 
 
 def firewall_snapshot_table(b: Builder) -> str:
@@ -48,6 +49,11 @@ def build(b: Builder):
         matchers='opnsense_source="configstate", opnsense_subsystem="config"',
         label="opnsense_source",
     )
+    b.loki_sentinel(
+        "has_routing_change_logs",
+        matchers='opnsense_source="routingchange", opnsense_subsystem="routing"',
+        label="opnsense_source",
+    )
     firewall = firewall_snapshot_table(b)
     devices = b.loki_table(
         "Device Inventory Snapshots",
@@ -76,8 +82,19 @@ def build(b: Builder):
         ),
         w=24,
     )
+    routing = b.logs(
+        "Default Route Changes",
+        ROUTING_CHANGES,
+        desc=(
+            "Rate-bounded default-route movement records with before/after route and gateway "
+            "state. The first poll is a baseline; changes inside the one-minute cooldown are "
+            "coalesced into a later flap-detail record rather than emitted as a storm."
+        ),
+        w=24,
+    )
     b.tab("Config", [
         b.row("Firewall & NAT", [firewall], present="has_config_snapshot_logs", collapse=True),
         b.row("Device Inventory", [devices], present="has_config_snapshot_logs", collapse=True),
         b.row("Security Posture", [posture], present="has_config_snapshot_logs", collapse=True),
-    ], present="has_config_snapshot_logs")
+        b.row("Routing Changes", [routing], present="has_routing_change_logs", collapse=True),
+    ], present=["has_config_snapshot_logs", "has_routing_change_logs"])

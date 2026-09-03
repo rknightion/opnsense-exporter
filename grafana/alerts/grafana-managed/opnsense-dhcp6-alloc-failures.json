@@ -26,7 +26,7 @@
       "description": "This box's own DHCPv6 SERVER has been refusing lease requests continuously for 30m. reason=exhausted means the pool it tried is full. reason=no_pools means kea had NO pool of the requested kind to try - which is a configuration fault, but note it does not say WHICH kind: kea reports no_pools both for a missing address pool on an IA_NA request and for a missing pd-pools on an IA_PD (prefix delegation) request, and the log line names neither. An IA_PD refusal denies a downstream router or Thread border router a prefix; it does not deny anyone an address. Confirm which before treating this as a client-facing outage.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensedhcp6allocationfailures",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "328"
+      "__panelId__": "329"
     },
     "expressions": {
       "A": {

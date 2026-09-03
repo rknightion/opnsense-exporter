@@ -47,7 +47,7 @@ class ConfigSnapshotTabTest(unittest.TestCase):
             [{"displayName": "Total", "desc": False}],
         )
 
-    def test_device_and_posture_views_use_the_closed_configstate_stream_shape(self):
+    def test_device_posture_and_routing_views_use_their_closed_stream_shapes(self):
         builder = Builder()
         config.build(builder)
         panels = {
@@ -64,3 +64,7 @@ class ConfigSnapshotTabTest(unittest.TestCase):
         posture_query = panels["Security Posture Snapshots"]["spec"]["data"]["spec"]["queries"][0]["spec"]["query"]["spec"]["expr"]
         self.assertIn('opnsense_source="configstate"', posture_query)
         self.assertIn('snapshot_family="security_posture"', posture_query)
+
+        routing_query = panels["Default Route Changes"]["spec"]["data"]["spec"]["queries"][0]["spec"]["query"]["spec"]["expr"]
+        self.assertIn('opnsense_source="routingchange"', routing_query)
+        self.assertIn('opnsense_subsystem="routing"', routing_query)

@@ -1264,7 +1264,7 @@
     ]
   },
   "loki": {
-    "total": 9,
+    "total": 10,
     "sentinels": [
       {
         "name": "has_config_snapshot_logs",
@@ -1318,6 +1318,16 @@
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"ids\"}, opnsense_source)",
         "gates": [
           "opnsense2otel > Security > IDS/IPS > Alert Records"
+        ]
+      },
+      {
+        "name": "has_routing_change_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"routingchange\", opnsense_subsystem=\"routing\"}, opnsense_source)",
+        "gates": [
+          "opnsense2otel > Config > Routing Changes"
         ]
       },
       {

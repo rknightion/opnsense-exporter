@@ -990,6 +990,12 @@ settings:
   # are deduplicated by content hash, and repeat as a 6h heartbeat.
   # logs.config-snapshot.firewall.enabled: false
   #
+  # Enable default-route movement events from routingTable and gatewaysStatus. Off by
+  # default; requires --logs.enabled. The source emits one before/after event per observed
+  # route movement, coalesces flapping transitions, and ignores dpinger-only gateway health
+  # changes.
+  # logs.config-snapshot.routing-changes.enabled: false
+  #
   # Ship a compact firmware, certificate-expiry and API-key-owner security-posture snapshot
   # to Loki. Off by default; requires --logs.enabled. Snapshots are deduplicated by content
   # hash and repeat as a 7d heartbeat.
