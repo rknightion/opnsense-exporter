@@ -24,5 +24,6 @@ func Init() {
 	RegisterAllFlags()
 	kingpin.CommandLine.UsageWriter(os.Stdout)
 	kingpin.HelpFlag.Short('h')
+	kingpin.EnableFileExpansion = true
 	kingpin.Parse()
 }

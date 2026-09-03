@@ -127,6 +127,41 @@ ReadOnlyPaths=/etc/opnsense2otel
 WantedBy=multi-user.target
 ```
 
+### Alternative: share settings through an arguments file
+
+Kingpin can read non-secret command-line settings from an `@file`. Create one argument per line,
+using `--flag=value` for flags that take a value:
+
+```bash
+sudo tee /etc/opnsense2otel/exporter.args > /dev/null << 'EOF'
+# Comment and blank lines are ignored.
+
+--web.listen-address=:8080
+--log.level=info
+--log.format=json
+EOF
+sudo chown root:opnsense2otel /etc/opnsense2otel/exporter.args
+sudo chmod 0640 /etc/opnsense2otel/exporter.args
+```
+
+The file is not shell-parsed, so do not add quotes, indentation, or multiple arguments on one line.
+Keep credentials in the environment or secret files from Step 3 rather than putting them here.
+
+Use a systemd drop-in to replace the unit's commands with invocations that share the file:
+
+```ini title="/etc/systemd/system/opnsense2otel.service.d/arguments.conf"
+[Service]
+ExecStartPre=
+ExecStart=
+ExecStartPre=/usr/local/bin/opnsense2otel @/etc/opnsense2otel/exporter.args --config.check
+ExecStart=/usr/local/bin/opnsense2otel @/etc/opnsense2otel/exporter.args
+```
+
+The empty assignments first clear the commands from the main unit. Keep `--config.check` outside
+the shared arguments file: `ExecStartPre` adds it to validate the same settings the service will
+use, while `ExecStart` runs the service. Putting it in `exporter.args` would make both invocations
+validate and exit successfully.
+
 ## Step 5: Enable and start the service
 
 ```bash
@@ -184,7 +219,8 @@ curl --fail --silent --show-error http://127.0.0.1:8080/-/healthy
 
 ## Disabling collectors
 
-Add disable flags to the `ExecStart` line in the unit file, or add environment variables to the environment file:
+If you use the shared arguments file, add disable flags there. Otherwise add them to `ExecStart`, or
+add environment variables to the environment file:
 
 ```bash
 # In /etc/opnsense2otel/exporter.env
