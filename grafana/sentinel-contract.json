@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 114,
+    "total": 115,
     "by_scope": {
-      "collector": 107,
+      "collector": 108,
       "self_labeled": 5,
       "target_join": 2,
       "global": 0
@@ -388,9 +388,20 @@
           "opnsense2otel > Network > FRR - OSPF > OSPFv3 (ospf6) Parity",
           "opnsense2otel > Network > FRR Routing",
           "opnsense2otel > Network > FRR Routing > BFD",
+          "opnsense2otel > Network > FRR Routing > BFD Summary",
           "opnsense2otel > Network > FRR Routing > BGP Peer Session Detail",
           "opnsense2otel > Network > FRR Routing > BGP Peers",
           "opnsense2otel > Network > FRR Routing > FRR Service & Summary"
+        ]
+      },
+      {
+        "name": "has_frr_bgp_routes",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_frr_bgp_route_count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel > Network > FRR - OSPF > BGP Route-Table Volume (opt-in: --exporter.enable-frr-routes)"
         ]
       },
       {

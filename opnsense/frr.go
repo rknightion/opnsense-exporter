@@ -778,6 +778,303 @@ func (c *Client) FetchFRRBFD() (FRRBFD, *APICallError) {
 	return data, nil
 }
 
+// --- BGP route tables + BFD summary (#OPN-0017) ---
+
+// frrBGPRouteRow is one bootgrid row from search_bgproute4/6. The OPNsense
+// controller flattens every FRR path/nexthop pair into a row and copies the
+// scalar FRR header fields (including totalRoutes and totalPaths) into each
+// row. The fields used for fallback path identity are deliberately limited to
+// path attributes; nexthop addresses are not retained as metric labels and do
+// not turn an ECMP path into multiple paths.
+type frrBGPRouteRow struct {
+	Prefix      flexString `json:"prefix"`
+	Network     flexString `json:"network"`
+	Path        flexString `json:"path"`
+	PeerID      flexString `json:"peerId"`
+	Origin      flexString `json:"origin"`
+	PathFrom    flexString `json:"pathFrom"`
+	Metric      flexString `json:"metric"`
+	LocalPref   flexString `json:"locPrf"`
+	Weight      flexString `json:"weight"`
+	TotalRoutes flexString `json:"totalRoutes"`
+	TotalPaths  flexString `json:"totalPaths"`
+}
+
+// frrBGPRouteSearch is the bootgrid envelope returned by the two BGP route
+// endpoints. totalRoutes/totalPaths are normally row fields after the PHP
+// flattening step, but retaining envelope fields makes the reader tolerant of
+// a controller that preserves FRR's header at the top level.
+type frrBGPRouteSearch struct {
+	Rows        []frrBGPRouteRow `json:"rows"`
+	TotalRoutes flexString       `json:"totalRoutes"`
+	TotalPaths  flexString       `json:"totalPaths"`
+}
+
+// FRRBGPRouteTable holds aggregate counts for one BGP address family. It does
+// not expose route prefixes, paths, peers, or nexthops: the route endpoints
+// are full-table payloads and those dimensions would make the exporter emit an
+// unbounded/high-cardinality series set.
+type FRRBGPRouteTable struct {
+	AF         string
+	RouteCount float64
+	PathCount  float64
+}
+
+// FRRBGPRouteTables holds aggregate BGP route-table counts for IPv4 and IPv6.
+type FRRBGPRouteTables struct {
+	Present bool
+	Tables  []FRRBGPRouteTable
+}
+
+// frrBGPRoutePrefix returns the stable route key present in the flattened
+// controller row. Current FRR rows carry both fields; accepting either keeps
+// the fallback useful across older/newer route-table response shapes.
+func frrBGPRoutePrefix(row frrBGPRouteRow) string {
+	if network := strings.TrimSpace(row.Network.String()); network != "" {
+		return network
+	}
+	return strings.TrimSpace(row.Prefix.String())
+}
+
+// frrBGPRoutePathKey identifies one FRR path while deliberately excluding
+// nexthops. A path may have multiple nexthops (ECMP), but FRR's totalPaths is
+// a count of path objects, not nexthop rows. The tuple contains the stable
+// attributes FRR exposes in every normal route row and falls back safely when
+// a field is absent.
+func frrBGPRoutePathKey(row frrBGPRouteRow, prefix string) string {
+	return strings.Join([]string{
+		prefix,
+		row.Path.String(),
+		row.PeerID.String(),
+		row.Origin.String(),
+		row.PathFrom.String(),
+		row.Metric.String(),
+		row.LocalPref.String(),
+		row.Weight.String(),
+	}, "\x00")
+}
+
+// frrNonNegativeFloat parses a finite, non-negative count while preserving
+// whether the wire value was usable. Counts are allowed to arrive as either
+// JSON numbers or quoted decimal strings through flexString.
+func frrNonNegativeFloat(raw string) (float64, bool) {
+	v, ok := safeParseFloatOK(strings.TrimSpace(raw))
+	if !ok || v < 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+// frrBGPRouteCounts derives route/path counts from the flattened rows. It
+// returns explicit header totals when present, and derives only the missing
+// total from distinct route/path keys otherwise. The bool reports whether the
+// response contained usable route data; an empty/daemon-disabled response is
+// absent rather than a fabricated zero-valued table.
+func frrBGPRouteCounts(search frrBGPRouteSearch) (routeCount, pathCount float64, present bool) {
+	var (
+		headerRoutes, headerPaths       float64
+		hasHeaderRoutes, hasHeaderPaths bool
+	)
+	if v, ok := frrNonNegativeFloat(search.TotalRoutes.String()); ok {
+		headerRoutes, hasHeaderRoutes = v, true
+	}
+	if v, ok := frrNonNegativeFloat(search.TotalPaths.String()); ok {
+		headerPaths, hasHeaderPaths = v, true
+	}
+
+	routeKeys := make(map[string]struct{})
+	pathKeys := make(map[string]struct{})
+	for _, row := range search.Rows {
+		prefix := frrBGPRoutePrefix(row)
+		if prefix == "" {
+			continue
+		}
+		present = true
+		routeKeys[prefix] = struct{}{}
+		pathKeys[frrBGPRoutePathKey(row, prefix)] = struct{}{}
+
+		// The PHP controller copies FRR's scalar header into each flattened
+		// row. Prefer the first valid value for each field, including an
+		// explicit zero, and ignore an inconsistent/malformed later row.
+		if !hasHeaderRoutes {
+			if v, ok := frrNonNegativeFloat(row.TotalRoutes.String()); ok {
+				headerRoutes, hasHeaderRoutes = v, true
+			}
+		}
+		if !hasHeaderPaths {
+			if v, ok := frrNonNegativeFloat(row.TotalPaths.String()); ok {
+				headerPaths, hasHeaderPaths = v, true
+			}
+		}
+	}
+
+	if hasHeaderRoutes {
+		routeCount = headerRoutes
+	} else {
+		routeCount = float64(len(routeKeys))
+	}
+	if hasHeaderPaths {
+		pathCount = headerPaths
+	} else {
+		pathCount = float64(len(pathKeys))
+	}
+	// A top-level header with a positive count can be useful even when a
+	// controller omitted rows; an all-zero empty response remains absent.
+	if hasHeaderRoutes || hasHeaderPaths {
+		present = present || headerRoutes > 0 || headerPaths > 0
+	}
+	return routeCount, pathCount, present
+}
+
+// fetchFRRBGPRouteTable fetches one BGP route-table endpoint. A 404 means the
+// plugin/daemon is absent and is represented by a nil table; other transport or
+// decode errors are returned to the collector.
+func (c *Client) fetchFRRBGPRouteTable(endpointName EndpointName, af string) (*FRRBGPRouteTable, *APICallError) {
+	endpointURL, ok := c.endpoints[endpointName]
+	if !ok {
+		return nil, &APICallError{
+			Endpoint:   string(endpointName),
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var search frrBGPRouteSearch
+	if err := c.do("GET", endpointURL, nil, &search); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	routeCount, pathCount, present := frrBGPRouteCounts(search)
+	if !present {
+		return nil, nil
+	}
+	return &FRRBGPRouteTable{AF: af, RouteCount: routeCount, PathCount: pathCount}, nil
+}
+
+// FetchFRRBGPRouteTables fetches both full BGP route tables and returns only
+// per-address-family aggregate counts. It is intentionally called only by the
+// opt-in route path in the collector because the underlying payload scales
+// with the complete BGP table.
+func (c *Client) FetchFRRBGPRouteTables() (FRRBGPRouteTables, *APICallError) {
+	var data FRRBGPRouteTables
+	for _, endpoint := range []struct {
+		name EndpointName
+		af   string
+	}{
+		{name: "quaggaBgpRoute4", af: "ipv4"},
+		{name: "quaggaBgpRoute6", af: "ipv6"},
+	} {
+		table, err := c.fetchFRRBGPRouteTable(endpoint.name, endpoint.af)
+		if err != nil {
+			return data, err
+		}
+		if table != nil {
+			data.Present = true
+			data.Tables = append(data.Tables, *table)
+		}
+	}
+	return data, nil
+}
+
+// frrBFDSummaryRow is one row from the bfdsummary bootgrid response. The
+// upstream parser admits only four whitespace-separated fields and an integer
+// session id; flexString keeps this reader tolerant of PHP's numeric/string
+// encoding differences.
+type frrBFDSummaryRow struct {
+	ID     flexString `json:"id"`
+	Local  flexString `json:"local"`
+	Peer   flexString `json:"peer"`
+	Status flexString `json:"status"`
+}
+
+type frrBFDSummarySearch struct {
+	Rows []frrBFDSummaryRow `json:"rows"`
+}
+
+// FRRBFDSummaryPeer holds one validated BFD summary session. All dimensions
+// come from the configured BFD peer table, so the collector can expose them as
+// bounded info labels rather than trying to parse them into an unbounded
+// series.
+type FRRBFDSummaryPeer struct {
+	ID, Local, Peer, Status string
+}
+
+// FRRBFDSummary holds the validated BFD summary rows.
+type FRRBFDSummary struct {
+	Present bool
+	Peers   []FRRBFDSummaryPeer
+}
+
+// normalizeFRRBFDSummaryStatus maps the FRR BFD session-state vocabulary to a
+// closed set suitable for a Prometheus label. The brief command emits
+// "admin-down", while FRR's detailed JSON uses "shutdown" for that same
+// state; tolerate the common separator/case variants but never let an
+// upstream diagnostic or future state create an unbounded label value.
+func normalizeFRRBFDSummaryStatus(raw string) string {
+	canonical := strings.ToLower(strings.TrimSpace(raw))
+	canonical = strings.NewReplacer("-", "", "_", "", " ", "").Replace(canonical)
+	switch canonical {
+	case "up", "down", "init":
+		return canonical
+	case "admindown", "administrativelydown", "shutdown":
+		return "admin-down"
+	default:
+		return "unknown"
+	}
+}
+
+// FetchFRRBFDSummary fetches the plugin's `show bfd peers brief` summary. The
+// endpoint returns an empty bootgrid when the daemon has no peers; that and a
+// plugin 404 are both absent, without an error. Rows that cannot have come
+// from the upstream four-column parser are ignored defensively.
+func (c *Client) FetchFRRBFDSummary() (FRRBFDSummary, *APICallError) {
+	var data FRRBFDSummary
+	endpointURL, ok := c.endpoints["quaggaBfdSummary"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "quaggaBfdSummary",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var search frrBFDSummarySearch
+	if err := c.do("GET", endpointURL, nil, &search); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, err
+	}
+
+	seen := make(map[string]struct{}, len(search.Rows))
+	for _, row := range search.Rows {
+		id := strings.TrimSpace(row.ID.String())
+		local := strings.TrimSpace(row.Local.String())
+		peer := strings.TrimSpace(row.Peer.String())
+		status := strings.TrimSpace(row.Status.String())
+		if id == "" || local == "" || peer == "" || status == "" {
+			continue
+		}
+		// bfdsummaryAction uses FILTER_VALIDATE_INT for the first field.
+		if _, err := strconv.ParseInt(id, 10, 64); err != nil {
+			continue
+		}
+		key := strings.Join([]string{id, local, peer}, "\x00")
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		data.Peers = append(data.Peers, FRRBFDSummaryPeer{
+			ID: id, Local: local, Peer: peer, Status: normalizeFRRBFDSummaryStatus(status),
+		})
+	}
+	data.Present = len(data.Peers) > 0
+	return data, nil
+}
+
 // --- BGP Neighbor Session Detail (#197) ---
 
 // frrBGPNeighborMessageStats holds the per-message-type send/receive counters

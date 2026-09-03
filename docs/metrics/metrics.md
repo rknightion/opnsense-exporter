@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1014
-- **Gauges:** 660
+- **Total metrics:** 1018
+- **Gauges:** 664
 - **Counters:** 354
 
 ## General
@@ -263,6 +263,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_bgp_peer_last_reset_seconds | Gauge | peer | Time since this BGP peer session was last reset, in seconds. The reset reason (FRR's lastResetDueTo) is logged at debug level rather than carried as a label (unbounded free-text value). | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_prefixes_accepted | Gauge | peer, af | Number of prefixes accepted from this BGP peer after inbound policy, by address family (complements the pre-policy opnsense_frr_bgp_peer_prefixes_received) | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_queue_depth | Gauge | peer, direction | Current BGP work-queue depth for this peer, by direction (in = inbound, out = outbound) | --exporter.disable-frr |
+| opnsense_frr_bgp_route_count | Gauge | af | Number of distinct prefixes in the BGP route table, by address family. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+| opnsense_frr_bgp_path_count | Gauge | af | Number of paths in the BGP route table, by address family. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
 | opnsense_frr_ospf_neighbors_total | Gauge | --- | Total number of OSPF neighbors | --exporter.disable-frr |
 | opnsense_frr_ospf_neighbor_adjacency | Gauge | neighbor_id, address, interface | Whether this OSPF neighbor is in Full adjacency state (1 = Full, 0 = otherwise) | --exporter.disable-frr |
 | opnsense_frr_ospf_neighbor_nsm_state_info | Gauge | neighbor_id, address, interface, nsm_state | FRR's raw OSPF neighbor state machine state for this neighbor (value is always 1; use the nsm_state label — DependUpon/Deleted/Down/Attempt/Init/2-Way/ExStart/Exchange/Loading/Full). Distinct from ospf_neighbor_adjacency: that flag only shows Full vs. not, this shows what a non-Full neighbor is stuck at. | --exporter.disable-frr |
@@ -288,6 +290,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_ospfv3_spf_last_duration_seconds | Gauge | --- | Wall-clock duration of this OSPFv3 instance's last SPF calculation, in seconds. Absent until the instance's first SPF run. | --exporter.disable-frr |
 | opnsense_frr_ospfv3_area_spf_last_executed_timestamp_seconds | Gauge | area | Unix timestamp of this OSPFv3 area's last SPF calculation. Exported as an absolute timestamp for the same reason as opnsense_frr_ospf_spf_last_executed_timestamp_seconds above. Absent until this area's first SPF run. | --exporter.disable-frr |
 | opnsense_frr_bfd_peers_total | Gauge | --- | Total number of configured BFD peers | --exporter.disable-frr |
+| opnsense_frr_bfd_summary_peer_info | Gauge | id, local, peer, status | BFD summary peer information (value is always 1) | --exporter.disable-frr |
+| opnsense_frr_bfd_summary_peers | Gauge | status | Number of BFD summary peers by reported status | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_up | Gauge | peer, interface | Whether this BFD peer session is up (1 = up, 0 = down) | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_uptime_seconds | Gauge | peer | Uptime of this BFD peer session in seconds | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_control_packets_received_total | Counter | peer | Cumulative BFD control packets received from this peer | --exporter.disable-frr |

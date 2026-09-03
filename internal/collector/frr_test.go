@@ -348,6 +348,33 @@ func TestFRRCollector_Update_PluginAbsent(t *testing.T) {
 	}
 }
 
+func TestFRRCollector_Update_PluginAbsentRoutesEnabled(t *testing.T) {
+	// Route collection is opt-in, but the flag alone must not make an absent
+	// plugin look present. In particular, do not probe service status after all
+	// FRR data endpoints have returned 404.
+	mux := http.NewServeMux()
+	serviceStatusHits := 0
+	mux.HandleFunc("/api/quagga/service/status", func(w http.ResponseWriter, r *http.Request) {
+		serviceStatusHits++
+		_, _ = w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetRoutesEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics when plugin absent with routes enabled, got %d", len(metrics))
+	}
+	if serviceStatusHits != 0 {
+		t.Errorf("service status must not be probed for an absent plugin, got %d request(s)", serviceStatusHits)
+	}
+}
+
 // TestFRRCollector_Update_DualSAFINoDuplicateSeries guards #162: a neighbor
 // activated in both ipv4 unicast and multicast must not emit duplicate label
 // tuples for bgp_peers_total/bgp_failed_peers/bgp_rib_entries (which would fail
@@ -997,5 +1024,107 @@ func TestFRRCollector_Update_OSPFv3SPFTiming(t *testing.T) {
 	wantTimestamp := float64(time.Now().Unix()) - 10.25
 	if diff := areaTimestampVal - wantTimestamp; diff > 2 || diff < -2 {
 		t.Errorf("frr_ospfv3_area_spf_last_executed_timestamp_seconds: want ~%v, got %v", wantTimestamp, areaTimestampVal)
+	}
+}
+
+func TestFRRCollector_Update_BGPRouteTables_AggregatesOnly(t *testing.T) {
+	// Keep the route endpoints isolated from the ordinary FRR endpoints: the
+	// route flag must be sufficient to expose these aggregate metrics, and the
+	// route rows must never become labels.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute4", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"rows":[
+          {"network":"192.0.2.0/24","path":"65001","peerId":"198.51.100.2","origin":"IGP","totalRoutes":2,"totalPaths":3},
+          {"network":"192.0.2.0/24","path":"65001","peerId":"198.51.100.2","origin":"IGP","totalRoutes":2,"totalPaths":3},
+          {"network":"198.51.100.0/24","path":"65002","peerId":"198.51.100.3","origin":"IGP","totalRoutes":2,"totalPaths":3}
+        ]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute6", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"rows":[]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetRoutesEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawRoutes, sawPaths bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if !strings.Contains(desc, "frr_bgp_route_count") && !strings.Contains(desc, "frr_bgp_path_count") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if labels["af"] != "ipv4" {
+			t.Errorf("expected only the IPv4 route-table series, got labels %v", labels)
+		}
+		for _, forbidden := range []string{"prefix", "network", "path", "peer", "peerId", "nexthop", "next_hop"} {
+			if _, present := labels[forbidden]; present {
+				t.Errorf("route aggregate must not carry %q label: %v", forbidden, labels)
+			}
+		}
+		switch {
+		case strings.Contains(desc, "frr_bgp_route_count"):
+			sawRoutes = true
+			if got := getMetricValue(m); got != 2 {
+				t.Errorf("bgp_route_count{af=ipv4}: want 2, got %v", got)
+			}
+		case strings.Contains(desc, "frr_bgp_path_count"):
+			sawPaths = true
+			if got := getMetricValue(m); got != 3 {
+				t.Errorf("bgp_path_count{af=ipv4}: want 3, got %v", got)
+			}
+		}
+	}
+	if !sawRoutes || !sawPaths {
+		t.Errorf("missing BGP route aggregate metrics: route_count=%v path_count=%v", sawRoutes, sawPaths)
+	}
+}
+
+func TestFRRCollector_Update_BFDSummary(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/quagga/diagnostics/bfdsummary", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"total":4,"rowCount":4,"current":1,"rows":[
+          {"id":1,"local":"192.0.2.1","peer":"192.0.2.2","status":"up"},
+          {"id":2,"local":"192.0.2.1","peer":"192.0.2.3","status":"down"},
+		  {"id":3,"local":"192.0.2.1","peer":"192.0.2.4","status":"up"},
+		  {"id":4,"local":"192.0.2.1","peer":"192.0.2.5","status":"future-state"}
+        ]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var infoCount int
+	statusCounts := map[string]float64{}
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		switch {
+		case strings.Contains(desc, "frr_bfd_summary_peer_info"):
+			infoCount++
+			if labels["id"] == "1" && labels["status"] != "up" {
+				t.Errorf("summary peer id=1 status: want up, got %q", labels["status"])
+			}
+		case strings.Contains(desc, "frr_bfd_summary_peers"):
+			statusCounts[labels["status"]] = getMetricValue(m)
+		}
+	}
+	if infoCount != 4 {
+		t.Errorf("expected 4 BFD summary peer info series, got %d", infoCount)
+	}
+	if statusCounts["up"] != 2 || statusCounts["down"] != 1 || statusCounts["unknown"] != 1 {
+		t.Errorf("BFD summary status counts: want up=2/down=1/unknown=1, got %v", statusCounts)
 	}
 }

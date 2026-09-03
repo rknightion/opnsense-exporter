@@ -276,7 +276,8 @@ func NegativeCacheable404Endpoints() []EndpointName {
 		"dmidecodeInfo", "dyndnsAccounts", "haproxyCounters", "haproxyInfo", "haproxyTables",
 		"firewallMigrationOutbound", "firewallMigrationRules", "gatewayGroups", "ipsecPhase1", "ipsecPools", "lldpdNeighbors", "monitStatus", "netbirdStatus",
 		"nginxBans", "nginxVts", "nutUpsStatus", "qfeedsStats", "quaggaBfdCounters",
-		"quaggaBfdNeighbors", "quaggaBgpSummary", "quaggaOspfOverview", "relaydStatusSum",
+		"quaggaBfdNeighbors", "quaggaBfdSummary", "quaggaBgpRoute4", "quaggaBgpRoute6",
+		"quaggaBgpSummary", "quaggaOspfOverview", "relaydStatusSum",
 		"siproxdRegistrations", "tailscaleStatus", "torCircuits", "torHiddenServices",
 		"torStreams", "trafficShaperStatistics",
 

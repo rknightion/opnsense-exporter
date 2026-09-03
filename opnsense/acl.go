@@ -1359,6 +1359,14 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-routing", Name: "Routing", Origin: "net/frr", Pattern: "api/quagga/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"quaggaBfdSummary": {
+		Consumer:  "frr",
+		Component: "net/frr",
+		Status:    ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{
+			{Key: "page-routing", Name: "Routing", Origin: "net/frr", Pattern: "api/quagga/*", Scope: ACLScopeWildcard},
+		},
+	},
 	"quaggaBgpNeighbors": {
 		Consumer:  "frr",
 		Component: "net/frr",
@@ -1368,6 +1376,22 @@ var endpointACL = map[EndpointName]aclEntry{
 		},
 	},
 	"quaggaBgpSummary": {
+		Consumer:  "frr",
+		Component: "net/frr",
+		Status:    ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{
+			{Key: "page-routing", Name: "Routing", Origin: "net/frr", Pattern: "api/quagga/*", Scope: ACLScopeWildcard},
+		},
+	},
+	"quaggaBgpRoute4": {
+		Consumer:  "frr",
+		Component: "net/frr",
+		Status:    ACLStatusPluginDependent,
+		Privileges: []ACLPrivilege{
+			{Key: "page-routing", Name: "Routing", Origin: "net/frr", Pattern: "api/quagga/*", Scope: ACLScopeWildcard},
+		},
+	},
+	"quaggaBgpRoute6": {
 		Consumer:  "frr",
 		Component: "net/frr",
 		Status:    ACLStatusPluginDependent,

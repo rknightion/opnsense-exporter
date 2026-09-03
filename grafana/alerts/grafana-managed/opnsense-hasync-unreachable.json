@@ -26,7 +26,7 @@
       "description": "opnsense_hasync_remote_reachable has been 0 for 10m on a box where HA sync is configured (remote_services_total > 0). The guard excludes boxes with HA sync unconfigured, where reachable=0 is the normal, expected reading.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensehasyncunreachable",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "764"
+      "__panelId__": "768"
     },
     "expressions": {
       "A": {

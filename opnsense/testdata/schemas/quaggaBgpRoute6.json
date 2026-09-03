@@ -1,0 +1,73 @@
+{
+  "endpoint": "quaggaBgpRoute6",
+  "method": "GET",
+  "path": "api/quagga/diagnostics/searchBgproute6",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows",
+    "totalPaths",
+    "totalRoutes"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].locPrf",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].metric",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].network",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].origin",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].path",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].pathFrom",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].peerId",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].prefix",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].totalPaths",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].totalRoutes",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].weight",
+      "kind": "any"
+    },
+    {
+      "path": "totalPaths",
+      "kind": "any"
+    },
+    {
+      "path": "totalRoutes",
+      "kind": "any"
+    }
+  ]
+}

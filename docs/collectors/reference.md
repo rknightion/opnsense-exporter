@@ -22,7 +22,7 @@ This page provides a summary of all collectors in opnsense2otel.
 | CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPN2OTEL_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPN2OTEL_DISABLE_DNSMASQ |
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPN2OTEL_DISABLE_DYNDNS |
-| FRR Routing (BGP/OSPF/BFD) | frr | 58 | Enabled | --exporter.disable-frr | OPN2OTEL_DISABLE_FRR |
+| FRR Routing (BGP/OSPF/BFD) | frr | 62 | Enabled | --exporter.disable-frr | OPN2OTEL_DISABLE_FRR |
 | Feature Availability | feature | 1 | Enabled | --exporter.disable-feature-availability | OPN2OTEL_DISABLE_FEATURE_AVAILABILITY |
 | Firewall | firewall | 26 | Enabled | --exporter.disable-firewall | OPN2OTEL_DISABLE_FIREWALL |
 | Firewall Aliases | alias | 8 | Enabled | --exporter.disable-alias | OPN2OTEL_DISABLE_ALIAS |

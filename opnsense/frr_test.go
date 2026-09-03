@@ -1031,6 +1031,220 @@ func TestFetchFRRBFD_CountersMissing(t *testing.T) {
 	}
 }
 
+// --- BGP route-table aggregates + BFD summary (OPN-0017) ---
+
+// bgpRouteTableFixture4 mirrors the bootgrid rows produced by
+// searchBgproute4Action. The first path has two flattened nexthop rows; FRR's
+// scalar totals are copied into each row by the PHP controller. The route and
+// path totals are therefore the authoritative values, not the number of rows.
+const bgpRouteTableFixture4 = `{
+  "total": 4,
+  "rowCount": 4,
+  "current": 1,
+  "rows": [
+    {"network":"192.0.2.0/24", "prefix":"192.0.2.0", "path":"65001", "peerId":"198.51.100.2", "origin":"IGP", "pathFrom":"external", "totalRoutes":3, "totalPaths":4, "ip":"198.51.100.2"},
+    {"network":"192.0.2.0/24", "prefix":"192.0.2.0", "path":"65001", "peerId":"198.51.100.2", "origin":"IGP", "pathFrom":"external", "totalRoutes":3, "totalPaths":4, "ip":"198.51.100.3"},
+    {"network":"198.51.100.0/24", "prefix":"198.51.100.0", "path":"", "peerId":"(unspec)", "origin":"IGP", "pathFrom":"internal", "totalRoutes":3, "totalPaths":4},
+    {"network":"203.0.113.0/24", "prefix":"203.0.113.0", "path":"65002 65003", "peerId":"198.51.100.4", "origin":"IGP", "pathFrom":"external", "totalRoutes":3, "totalPaths":4}
+  ]
+}`
+
+func setFRRRouteAndBFDSummaryEndpoints(client *Client) {
+	client.endpoints["quaggaBgpRoute4"] = "api/quagga/diagnostics/searchBgproute4"
+	client.endpoints["quaggaBgpRoute6"] = "api/quagga/diagnostics/searchBgproute6"
+	client.endpoints["quaggaBfdSummary"] = "api/quagga/diagnostics/bfdsummary"
+}
+
+func TestFetchFRRBGPRouteTables_HeaderTotalsAndAFs(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	setFRRRouteAndBFDSummaryEndpoints(client)
+
+	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute4", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(bgpRouteTableFixture4))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute6", func(w http.ResponseWriter, r *http.Request) {
+		// This deliberately uses envelope totals rather than row totals to
+		// keep the reader tolerant of a controller preserving FRR's header.
+		_, _ = w.Write([]byte(`{"totalRoutes":2,"totalPaths":2,"rows":[
+          {"network":"2001:db8:1::/64","path":"65001","peerId":"2001:db8::2"},
+          {"network":"2001:db8:2::/64","path":"65002","peerId":"2001:db8::3"}
+        ]}`))
+	})
+
+	data, err := client.FetchFRRBGPRouteTables()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present {
+		t.Fatal("expected Present=true")
+	}
+	if len(data.Tables) != 2 {
+		t.Fatalf("expected IPv4 and IPv6 tables, got %d: %+v", len(data.Tables), data.Tables)
+	}
+	if got := data.Tables[0]; got.AF != "ipv4" || got.RouteCount != 3 || got.PathCount != 4 {
+		t.Errorf("IPv4 table: want af=ipv4 routes=3 paths=4, got %+v", got)
+	}
+	if got := data.Tables[1]; got.AF != "ipv6" || got.RouteCount != 2 || got.PathCount != 2 {
+		t.Errorf("IPv6 table: want af=ipv6 routes=2 paths=2, got %+v", got)
+	}
+}
+
+func TestFetchFRRBGPRouteTables_FallbackDeduplicatesNexthops(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	setFRRRouteAndBFDSummaryEndpoints(client)
+
+	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute4", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"rows":[
+          {"network":"192.0.2.0/24","path":"65001","peerId":"198.51.100.2","origin":"IGP"},
+          {"network":"192.0.2.0/24","path":"65001","peerId":"198.51.100.2","origin":"IGP"},
+          {"network":"192.0.2.0/24","path":"65002","peerId":"198.51.100.3","origin":"IGP"}
+        ]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute6", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"rows":[]}`))
+	})
+
+	data, err := client.FetchFRRBGPRouteTables()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Tables) != 1 {
+		t.Fatalf("expected only non-empty IPv4 table, got %+v", data.Tables)
+	}
+	got := data.Tables[0]
+	if got.RouteCount != 1 {
+		t.Errorf("RouteCount: want 1 distinct prefix, got %v", got.RouteCount)
+	}
+	if got.PathCount != 2 {
+		t.Errorf("PathCount: want 2 distinct paths despite three nexthop rows, got %v", got.PathCount)
+	}
+}
+
+func TestFetchFRRBGPRouteTables_EmptyAndPluginAbsent(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		server, mux, client := newTestClientWithMux(t)
+		defer server.Close()
+		setFRRRouteAndBFDSummaryEndpoints(client)
+		mux.HandleFunc("/api/quagga/diagnostics/searchBgproute4", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+		})
+		mux.HandleFunc("/api/quagga/diagnostics/searchBgproute6", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"response":[]}`))
+		})
+
+		data, err := client.FetchFRRBGPRouteTables()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data.Present || len(data.Tables) != 0 {
+			t.Errorf("empty/disabled route tables must be absent, got %+v", data)
+		}
+	})
+
+	t.Run("plugin_absent_404", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "not found", http.StatusNotFound)
+		})
+		defer server.Close()
+		setFRRRouteAndBFDSummaryEndpoints(client)
+
+		data, err := client.FetchFRRBGPRouteTables()
+		if err != nil {
+			t.Fatalf("expected nil error on 404, got: %v", err)
+		}
+		if data.Present {
+			t.Error("expected Present=false when both route endpoints 404")
+		}
+	})
+}
+
+func TestFetchFRRBFDSummary_FiltersMalformedRows(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	setFRRRouteAndBFDSummaryEndpoints(client)
+
+	mux.HandleFunc("/api/quagga/diagnostics/bfdsummary", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"total":5,"rowCount":5,"current":1,"rows":[
+          {"id":1,"local":"192.0.2.1","peer":"192.0.2.2","status":"up"},
+          {"id":"2","local":"192.0.2.1","peer":"192.0.2.3","status":"down"},
+          {"id":"ID","local":"LocalAddress","peer":"PeerAddress","status":"Status"},
+          {"id":3,"local":"","peer":"192.0.2.4","status":"up"},
+          {"id":2,"local":"192.0.2.1","peer":"192.0.2.3","status":"down"}
+        ]}`))
+	})
+
+	data, err := client.FetchFRRBFDSummary()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present || len(data.Peers) != 2 {
+		t.Fatalf("expected two validated, de-duplicated peers, got %+v", data)
+	}
+	if data.Peers[0].ID != "1" || data.Peers[0].Status != "up" {
+		t.Errorf("first summary peer: got %+v", data.Peers[0])
+	}
+	if data.Peers[1].ID != "2" || data.Peers[1].Status != "down" {
+		t.Errorf("second summary peer: got %+v", data.Peers[1])
+	}
+}
+
+func TestNormalizeFRRBFDSummaryStatus(t *testing.T) {
+	tests := map[string]string{
+		"up":                    "up",
+		" Down ":                "down",
+		"INIT":                  "init",
+		"admin-down":            "admin-down",
+		"admin_down":            "admin-down",
+		"Admin Down":            "admin-down",
+		"administratively-down": "admin-down",
+		"shutdown":              "admin-down",
+		"future-state":          "unknown",
+		"":                      "unknown",
+	}
+	for raw, want := range tests {
+		if got := normalizeFRRBFDSummaryStatus(raw); got != want {
+			t.Errorf("normalizeFRRBFDSummaryStatus(%q): want %q, got %q", raw, want, got)
+		}
+	}
+}
+
+func TestFetchFRRBFDSummary_EmptyAndPluginAbsent(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		server, mux, client := newTestClientWithMux(t)
+		defer server.Close()
+		setFRRRouteAndBFDSummaryEndpoints(client)
+		mux.HandleFunc("/api/quagga/diagnostics/bfdsummary", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+		})
+
+		data, err := client.FetchFRRBFDSummary()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data.Present || len(data.Peers) != 0 {
+			t.Errorf("empty summary must be absent, got %+v", data)
+		}
+	})
+
+	t.Run("plugin_absent_404", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "not found", http.StatusNotFound)
+		})
+		defer server.Close()
+		setFRRRouteAndBFDSummaryEndpoints(client)
+
+		data, err := client.FetchFRRBFDSummary()
+		if err != nil {
+			t.Fatalf("expected nil error on 404, got: %v", err)
+		}
+		if data.Present {
+			t.Error("expected Present=false on plugin absent 404")
+		}
+	})
+}
+
 func TestFetchFRRBFD_PluginAbsent404(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)

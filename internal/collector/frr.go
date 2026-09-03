@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -34,6 +35,10 @@ type frrCollector struct {
 	bgpPeerLastResetSec     *prometheus.Desc
 	bgpPeerPrefixesAccepted *prometheus.Desc
 	bgpPeerQueueDepth       *prometheus.Desc
+
+	// BGP route-table aggregates (opt-in via --exporter.enable-frr-routes)
+	bgpRouteCount *prometheus.Desc
+	bgpPathCount  *prometheus.Desc
 
 	// OSPF summary
 	ospfNeighborsTotal *prometheus.Desc
@@ -78,7 +83,9 @@ type frrCollector struct {
 	ospfv3AreaSPFLastExecutedTimestamp *prometheus.Desc
 
 	// BFD summary
-	bfdPeersTotal *prometheus.Desc
+	bfdPeersTotal      *prometheus.Desc
+	bfdSummaryPeerInfo *prometheus.Desc
+	bfdSummaryPeers    *prometheus.Desc
 
 	// BFD per-peer
 	bfdPeerUp              *prometheus.Desc
@@ -148,6 +155,7 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 
 	// #199 (opt-in): routing-state volume label sets.
 	routeLabels := []string{"af", "protocol"}
+	bgpRouteLabels := []string{"af"}
 	routeTypeLabels := []string{"type"}
 	ospfLSALabels := []string{"area", "lsa_type"}
 	ospfv3LSAScopeLabels := []string{"scope"}
@@ -200,6 +208,18 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	c.bgpPeerQueueDepth = buildPrometheusDesc(c.subsystem, "bgp_peer_queue_depth",
 		"Current BGP work-queue depth for this peer, by direction (in = inbound, out = outbound)",
 		bgpPeerDirectionLabels)
+
+	// BGP route-table aggregates (#OPN-0017). These are deliberately one
+	// series per address family; route prefixes, peers, paths, and nexthops
+	// never become Prometheus labels.
+	c.bgpRouteCount = buildPrometheusDesc(c.subsystem, "bgp_route_count",
+		"Number of distinct prefixes in the BGP route table, by address family. "+
+			"Only emitted when --exporter.enable-frr-routes is set.",
+		bgpRouteLabels)
+	c.bgpPathCount = buildPrometheusDesc(c.subsystem, "bgp_path_count",
+		"Number of paths in the BGP route table, by address family. "+
+			"Only emitted when --exporter.enable-frr-routes is set.",
+		bgpRouteLabels)
 
 	// OSPF summary
 	c.ospfNeighborsTotal = buildPrometheusDesc(c.subsystem, "ospf_neighbors_total",
@@ -315,6 +335,11 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	// BFD summary
 	c.bfdPeersTotal = buildPrometheusDesc(c.subsystem, "bfd_peers_total",
 		"Total number of configured BFD peers", nil)
+	c.bfdSummaryPeerInfo = buildPrometheusDesc(c.subsystem, "bfd_summary_peer_info",
+		"BFD summary peer information (value is always 1)",
+		[]string{"id", "local", "peer", "status"})
+	c.bfdSummaryPeers = buildPrometheusDesc(c.subsystem, "bfd_summary_peers",
+		"Number of BFD summary peers by reported status", []string{"status"})
 
 	// BFD per-peer
 	c.bfdPeerUp = buildPrometheusDesc(c.subsystem, "bfd_peer_up",
@@ -391,6 +416,25 @@ func (c *frrCollector) SetRoutesEnabled(enabled bool) {
 // interface, exactly one of these series is 1 and the rest are 0.
 var frrOSPFEnumStates = []string{"DR", "BDR", "DROther", "PointToPoint", "Waiting", "Down"}
 
+// frrBFDSummaryStatuses is the closed label vocabulary for the textual
+// `show bfd peers brief` status column. FRR may add a new spelling in a future
+// release; it must collapse into unknown rather than opening a new series.
+var frrBFDSummaryStatuses = map[string]struct{}{
+	"up": {}, "down": {}, "init": {}, "admin-down": {},
+}
+
+func normalizeFRRBFDSummaryStatus(raw string) string {
+	status := strings.ToLower(strings.TrimSpace(raw))
+	status = strings.NewReplacer("_", "-", " ", "-").Replace(status)
+	if status == "shutdown" || status == "administratively-down" {
+		status = "admin-down"
+	}
+	if _, ok := frrBFDSummaryStatuses[status]; ok {
+		return status
+	}
+	return "unknown"
+}
+
 // normalizeFRROSPFState canonicalizes a raw FRR OSPF/OSPFv3 interface state
 // string (which may be hyphenated, e.g. "Point-To-Point") against
 // frrOSPFEnumStates. Returns "" when the raw value doesn't match any known
@@ -419,6 +463,7 @@ func (c *frrCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.bgpPeerUptimeSec, c.bgpPeerMsgRcvd, c.bgpPeerMsgSent,
 		c.bgpPeerConnEstablished, c.bgpPeerConnDropped, c.bgpPeerMessagesByType,
 		c.bgpPeerLastResetSec, c.bgpPeerPrefixesAccepted, c.bgpPeerQueueDepth,
+		c.bgpRouteCount, c.bgpPathCount,
 		c.ospfNeighborsTotal,
 		c.ospfNeighborAdjacency,
 		c.ospfNeighborNSMStateInfo, c.ospfNeighborUptimeSec, c.ospfNeighborDeadTimerSec,
@@ -430,7 +475,7 @@ func (c *frrCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.ospfv3InterfaceUp, c.ospfv3InterfaceCost, c.ospfv3InterfaceState,
 		c.ospfv3AreaLSACount, c.ospfv3InterfacePendingLSA,
 		c.ospfv3SPFLastDurationSec, c.ospfv3AreaSPFLastExecutedTimestamp,
-		c.bfdPeersTotal,
+		c.bfdPeersTotal, c.bfdSummaryPeerInfo, c.bfdSummaryPeers,
 		c.bfdPeerUp, c.bfdPeerUptimeSec,
 		c.bfdPeerCtrlIn, c.bfdPeerCtrlOut,
 		c.bfdPeerSessionUpEvents, c.bfdPeerSessionDnEvents,
@@ -459,6 +504,11 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 		return bfdErr
 	}
 
+	bfdSummary, bfdSummaryErr := client.FetchFRRBFDSummary()
+	if bfdSummaryErr != nil {
+		return bfdSummaryErr
+	}
+
 	bgpNeighbors, bgpNeighborsErr := client.FetchFRRBGPNeighbors()
 	if bgpNeighborsErr != nil {
 		return bgpNeighborsErr
@@ -479,11 +529,32 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 		return ospfv3InterfacesErr
 	}
 
+	// Route-volume collection is opt-in because the bootgrid payloads contain
+	// full tables. Fetch them before the absent-plugin decision so an enabled
+	// route path still has an honest presence signal: the flag itself does not
+	// prove that the FRR plugin exists. Reuse these results for emission below.
+	var bgpRouteTables opnsense.FRRBGPRouteTables
+	var routes opnsense.FRRRouteVolumes
+	if c.routesEnabled {
+		var bgpRouteTablesErr *opnsense.APICallError
+		bgpRouteTables, bgpRouteTablesErr = client.FetchFRRBGPRouteTables()
+		if bgpRouteTablesErr != nil {
+			return bgpRouteTablesErr
+		}
+
+		var routesErr *opnsense.APICallError
+		routes, routesErr = client.FetchFRRRouteVolumes()
+		if routesErr != nil {
+			return routesErr
+		}
+	}
+
 	// Skip-on-absent: if none of these subsystems are present, the plugin is
 	// absent — stay fully silent and do not probe service status (D1).
-	if !bgp.Present && !ospf.Present && !bfd.Present &&
+	if !bgp.Present && !ospf.Present && !bfd.Present && !bfdSummary.Present &&
 		!bgpNeighbors.Present && !ospfInterfaces.Present &&
-		!ospfv3Overview.Present && !ospfv3Interfaces.Present {
+		!ospfv3Overview.Present && !ospfv3Interfaces.Present &&
+		!bgpRouteTables.Present && !routes.Present {
 		return nil
 	}
 
@@ -703,14 +774,41 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 		}
 	}
 
+	// Emit the bounded `show bfd peers brief` summary. The info series keeps
+	// the operator-visible session identity and status; the status aggregate
+	// gives alerting and stat panels a compact count without any peer labels.
+	if bfdSummary.Present {
+		statusCounts := make(map[string]float64, len(bfdSummary.Peers))
+		for _, peer := range bfdSummary.Peers {
+			status := normalizeFRRBFDSummaryStatus(peer.Status)
+			ch <- prometheus.MustNewConstMetric(c.bfdSummaryPeerInfo,
+				prometheus.GaugeValue, 1, peer.ID, peer.Local, peer.Peer, status, c.instance)
+			statusCounts[status]++
+		}
+		statuses := make([]string, 0, len(statusCounts))
+		for status := range statusCounts {
+			statuses = append(statuses, status)
+		}
+		sort.Strings(statuses)
+		for _, status := range statuses {
+			ch <- prometheus.MustNewConstMetric(c.bfdSummaryPeers,
+				prometheus.GaugeValue, statusCounts[status], status, c.instance)
+		}
+	}
+
 	// Emit opt-in routing-state volume gauges (#199). Only fetched when
 	// enabled: the underlying bootgrid endpoints have no success-body caching
 	// and their payload size scales with route-table size.
 	if c.routesEnabled {
-		routes, routesErr := client.FetchFRRRouteVolumes()
-		if routesErr != nil {
-			return routesErr
+		if bgpRouteTables.Present {
+			for _, table := range bgpRouteTables.Tables {
+				ch <- prometheus.MustNewConstMetric(c.bgpRouteCount,
+					prometheus.GaugeValue, table.RouteCount, table.AF, c.instance)
+				ch <- prometheus.MustNewConstMetric(c.bgpPathCount,
+					prometheus.GaugeValue, table.PathCount, table.AF, c.instance)
+			}
 		}
+
 		if routes.Present {
 			for _, r := range routes.Routes {
 				ch <- prometheus.MustNewConstMetric(c.routeCount,

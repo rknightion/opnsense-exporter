@@ -519,6 +519,9 @@ var schemaRegistry = map[EndpointName]any{
 		Field:    "response",
 		Inner:    map[string]frrBFDNeighborEntry{},
 	},
+	"quaggaBfdSummary": frrBFDSummarySearch{},
+	"quaggaBgpRoute4":  frrBGPRouteSearch{},
+	"quaggaBgpRoute6":  frrBGPRouteSearch{},
 	"quaggaBgpSummary": envelopeDescent{
 		Envelope: frrBGPSummaryEnvelope{},
 		Field:    "response",

@@ -17,7 +17,9 @@ bfd_peer_downtime_seconds, bfd_peer_rtt_min/avg/max_microseconds,
 bgp_peer_last_reset_seconds, bgp_peer_prefixes_accepted, bgp_peer_queue_depth,
 ospf_interface_up/cost/neighbors/neighbors_adjacent, ospfv3_interface_up/cost,
 ospfv3_area_lsa_count, ospfv3_interface_pending_lsa, and (opt-in) route_count,
-route_nexthop_count, ospf/ospfv3_route_count, ospf/ospfv3_lsa_count.
+route_nexthop_count, bgp_route_count, bgp_path_count, ospf/ospfv3_route_count,
+ospf/ospfv3_lsa_count. BFD summary peers are shown as a bounded status count
+and an identity table.
 
 ospf_interface_state/ospfv3_interface_state are enum-style gauges: one series
 per (interface, state) with exactly one state at value 1 per interface. Shown
@@ -34,10 +36,9 @@ this panel as zero downtime. bfd_peer_rtt_min/avg/max_microseconds read 0
 unless both BFD peers support FRR's RTT extension, which is a legitimate
 zero, not a fault signal.
 
-The routing-state volume gauges (route_count, route_nexthop_count,
-ospf_route_count, ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count) are
-opt-in (--exporter.enable-frr-routes) and gated behind their own
-has_frr_routes sentinel/row, since they are absent unless that flag is set.
+The routing-state volume gauges are opt-in (--exporter.enable-frr-routes).
+Zebra/OSPF panels use the has_frr_routes sentinel; BGP route-table panels use
+has_frr_bgp_routes because either endpoint family can be present independently.
 
 OSPF neighbor adjacency stability (#582): ospf_neighbor_nsm_state_info is an
 info metric (value always 1) carrying FRR's raw NSM state name as a label —
@@ -74,6 +75,7 @@ from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
 def build(b: Builder):
     b.sentinel("has_frr", metric="opnsense_frr_service_running")
     b.sentinel("has_frr_routes", metric="opnsense_frr_route_count")
+    b.sentinel("has_frr_bgp_routes", metric="opnsense_frr_bgp_route_count")
 
     # ------------------------------------------------------------------ #
     # Row 1: FRR Service                                                   #
@@ -438,6 +440,18 @@ def build(b: Builder):
         unit="short", w=12, h=8,
         desc="Number of LSAs in the OSPFv3 LSDB, by flooding scope.",
     )
+    bgp_route_count = b.ts(
+        "BGP Route Table Count",
+        [(sel("opnsense_frr_bgp_route_count"), "{{af}}")],
+        unit="short", w=12, h=8,
+        desc="Number of distinct prefixes in the BGP route table, by address family.",
+    )
+    bgp_path_count = b.ts(
+        "BGP Path Count",
+        [(sel("opnsense_frr_bgp_path_count"), "{{af}}")],
+        unit="short", w=12, h=8,
+        desc="Number of BGP paths in the route table, by address family.",
+    )
 
     # ------------------------------------------------------------------ #
     # Row 4: BFD                                                           #
@@ -518,6 +532,27 @@ def build(b: Builder):
              "exclusive fields, so a peer that is up, initializing, or administratively "+
              "shut down has NO series here at all (absent, not zero).",
     )
+    bfd_summary_peers = b.ts(
+        "BFD Summary Peers by Status",
+        [(sel("opnsense_frr_bfd_summary_peers"), "{{status}}")],
+        unit="short", w=12, h=8,
+        desc="Bounded count of BFD summary peers grouped by the status reported by FRR.",
+    )
+    bfd_summary_peer_info = b.table(
+        "BFD Summary Peer Identity",
+        [sel("opnsense_frr_bfd_summary_peer_info")],
+        w=24, h=6,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "id": "ID",
+            "local": "Local",
+            "peer": "Peer",
+            "status": "Status",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="Peer",
+        desc="Current BFD summary sessions with bounded identity and status labels.",
+    )
 
     # Split into sibling leaves (#619): 51 panels in one tab is a tab people
     # scroll past. The existing rows are regrouped and nothing else changes — no row
@@ -538,6 +573,9 @@ def build(b: Builder):
         b.row("BFD",
               [bfd_state, bfd_uptime, bfd_pkt_rate, bfd_events,
                bfd_diagnostic, bfd_rtt, bfd_downtime],
+              present="has_frr"),
+        b.row("BFD Summary",
+              [bfd_summary_peers, bfd_summary_peer_info],
               present="has_frr"),
     ])
     b.tab("FRR - OSPF", [
@@ -562,4 +600,7 @@ def build(b: Builder):
               [route_count, route_nexthop_count, ospf_route_count,
                ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count],
               present="has_frr_routes"),
+        b.row("BGP Route-Table Volume (opt-in: --exporter.enable-frr-routes)",
+              [bgp_route_count, bgp_path_count],
+              present="has_frr_bgp_routes"),
     ])

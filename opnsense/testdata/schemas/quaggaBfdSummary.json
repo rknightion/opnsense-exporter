@@ -1,0 +1,35 @@
+{
+  "endpoint": "quaggaBfdSummary",
+  "method": "GET",
+  "path": "api/quagga/diagnostics/bfdsummary",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].id",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].local",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].peer",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "any"
+    }
+  ]
+}
