@@ -512,6 +512,101 @@ func TestTruncateBody_RedactsTruncatedAndCompositeSensitiveFields(t *testing.T) 
 			secrets: []string{"PREFIX", "SUFFIX"},
 			keep:    `"keep":1`,
 		},
+		{
+			name:    "stray quote before sensitive JSON field",
+			body:    `"notice {"password":"CREDENTIAL"}`,
+			secrets: []string{"CREDENTIAL"},
+			keep:    "notice",
+		},
+		{
+			name:    "stray quote before unquoted sensitive JSON-like field",
+			body:    `"notice {password:"CREDENTIAL"}`,
+			secrets: []string{"CREDENTIAL"},
+			keep:    "notice",
+		},
+		{
+			name:    "stray quote before structural-prefix sensitive value",
+			body:    `"notice {password:",COMMASECRET"}`,
+			secrets: []string{"COMMASECRET"},
+			keep:    "notice",
+		},
+		{
+			name:    "object value quote overlaps sensitive value opener",
+			body:    `{"message":"notice {password:",OBJECTSECRET"}`,
+			secrets: []string{"OBJECTSECRET"},
+			keep:    "notice",
+		},
+		{
+			name:    "array value quote overlaps sensitive value opener",
+			body:    `["notice {password:",ARRAYSECRET"]`,
+			secrets: []string{"ARRAYSECRET"},
+			keep:    "notice",
+		},
+		{
+			name:    "comma-delimited value quote overlaps sensitive value opener",
+			body:    `{username:"public","notice {password:",COMMASECRET"}`,
+			secrets: []string{"COMMASECRET"},
+			keep:    "public",
+		},
+		{
+			name:    "single-quoted sensitive JSON-like field",
+			body:    `{'password':'FIELDSECRET'}`,
+			secrets: []string{"FIELDSECRET"},
+		},
+		{
+			name:    "single-quoted sensitive field containing object delimiters",
+			body:    `{'password':'FIELD}SECRET,TAIL'}`,
+			secrets: []string{"FIELD", "SECRET", "TAIL"},
+		},
+		{
+			name:    "unquoted sensitive JSON-like field",
+			body:    `{password:"UNQUOTEDFIELDSECRET"}`,
+			secrets: []string{"UNQUOTEDFIELDSECRET"},
+		},
+		{
+			name:    "split-quote sensitive JSON-like field",
+			body:    `{"pass"word":"SPLITFIELDSECRET"}`,
+			secrets: []string{"SPLITFIELDSECRET"},
+		},
+		{
+			name:    "single-quoted string inside sensitive composite",
+			body:    `{'password':{'part':'CRED}PREFIX'},'keep':1}`,
+			secrets: []string{"CRED", "PREFIX"},
+			keep:    "'keep':1",
+		},
+		{
+			name:    "malformed suffix after quoted sensitive value",
+			body:    `{"password":"CREDPREFIX"CREDSUFFIX,"keep":1}`,
+			secrets: []string{"CREDPREFIX", "CREDSUFFIX"},
+			keep:    `"keep":1`,
+		},
+		{
+			name:    "malformed suffix after composite sensitive value",
+			body:    `{"password":{"part":"CREDPREFIX"}CREDSUFFIX,"keep":1}`,
+			secrets: []string{"CREDPREFIX", "CREDSUFFIX"},
+			keep:    `"keep":1`,
+		},
+		{
+			name:    "quoted comma inside malformed sensitive suffix",
+			body:    `{"password":"CREDPREFIX"junk"CREDMID,CREDSUFFIX","keep":1}`,
+			secrets: []string{"CREDPREFIX", "CREDMID", "CREDSUFFIX"},
+			keep:    `"keep":1`,
+		},
+		{
+			name:    "Unicode-escaped malformed JSON-like key",
+			body:    `{pass\u0077ord:"UNICODESECRET"}`,
+			secrets: []string{"UNICODESECRET"},
+		},
+		{
+			name:    "invalidly escaped malformed JSON-like key",
+			body:    `{pass\qword:"INVALIDESCAPESECRET"}`,
+			secrets: []string{"INVALIDESCAPESECRET"},
+		},
+		{
+			name:    "Unicode-escaped malformed JSON-like field delimiter",
+			body:    `{password\u003a"UNICODECOLONSECRET"}`,
+			secrets: []string{"UNICODECOLONSECRET"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := string(truncateBody([]byte(tc.body)))
@@ -527,6 +622,19 @@ func TestTruncateBody_RedactsTruncatedAndCompositeSensitiveFields(t *testing.T) 
 				t.Errorf("expected benign suffix %q to survive, got: %s", tc.keep, got)
 			}
 		})
+	}
+}
+
+func TestTruncateBody_LeavesBenignJSONLikeFieldsAlone(t *testing.T) {
+	for _, body := range []string{
+		`{'username':'operator',{community_id:"public-name"},{"display"name:"visible"}}`,
+		`{"message":"authentication failed, password: incorrect"}`,
+		`{"path\\name":"visible"}`,
+	} {
+		got := string(truncateBody([]byte(body)))
+		if got != body {
+			t.Errorf("expected benign JSON-like fields to remain unchanged, got: %s", got)
+		}
 	}
 }
 
@@ -748,6 +856,25 @@ func TestTruncateBody_RedactsCredentialInURLValue(t *testing.T) {
 			keep:           "example.com",
 		},
 		{
+			name:           "JSON-escaped ampersand before HTML quote reference",
+			body:           `{"url":"https://example.invalid/?api_key=PREFIX\u0026quot;SUFFIX"}`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:   "JSON-escaped ampersand before HTML question reference",
+			body:   `{"url":"https://example.invalid/\u0026#63;api_key=QUESTIONSECRET"}`,
+			secret: "QUESTIONSECRET",
+			keep:   "example.invalid",
+		},
+		{
+			name:   "JSON-escaped ampersand inside HTML credential key reference",
+			body:   `{"url":"https://example.invalid/?api\u0026#95;key=KEYSECRET"}`,
+			secret: "KEYSECRET",
+			keep:   "example.invalid",
+		},
+		{
 			name:           "HTML quote reference inside userinfo password",
 			body:           `<a href="https://admin:PREFIX&quot;SUFFIX@backup.example.com/config">retry</a>`,
 			secret:         "PREFIX",
@@ -788,6 +915,90 @@ func TestTruncateBody_RedactsCredentialInURLValue(t *testing.T) {
 			secret:         "PREFIX",
 			decodedSecrets: []string{"SUFFIX"},
 			keep:           "retry",
+		},
+		{
+			name:           "quoted HTML query credential after unmatched text quote",
+			body:           `"notice <a href="https://example.invalid/?api_key=CREDPREFIX CREDSUFFIX">retry</a>`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "quoted HTML credential after benign backslash attribute",
+			body:           `<a href="safe\">first</a><a href="https://user:CREDPREFIX CREDSUFFIX@example.invalid/config">retry</a>`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "credential URL after stray malformed JSON quote",
+			body:           `"notice {"url":"https://user:CREDPREFIX CREDSUFFIX@example.invalid/config"}`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "notice",
+		},
+		{
+			name:           "overlapping credential JSON URL tokens",
+			body:           `"https://old:OLDSECRET@example.invalid "https://user:CRED PREFIX@example.invalid/config"`,
+			secret:         "OLDSECRET",
+			decodedSecrets: []string{"CRED", "PREFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "credential URL after malformed single-quoted HTML attribute",
+			body:           `<a href='safe><a href='https://user:CREDPREFIX CREDSUFFIX@example.invalid/config'>`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "credential query after malformed single-quoted HTML attribute",
+			body:           `<a href='safe><a href='https://example.invalid/?api_key=CREDPREFIX CREDSUFFIX'>`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "standalone single-quoted credential URL",
+			body:           `request to 'https://user:CREDPREFIX CREDSUFFIX@example.invalid/config' failed`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "incomplete standalone single-quoted credential URL",
+			body:           `request to 'https://user:CREDPREFIX CREDSUFFIX@example.invalid/config`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "incomplete standalone single-quoted userinfo prefix",
+			body:           `request to 'https://user:CREDPREFIX CREDSUFFIX`,
+			secret:         "CREDPREFIX",
+			decodedSecrets: []string{"CREDSUFFIX"},
+			keep:           "request to",
+		},
+		{
+			name:           "single-quoted credential URL with escaped apostrophe",
+			body:           `request to 'https://user:CRED\'PREFIX@example.invalid/config' failed`,
+			secret:         "CRED",
+			decodedSecrets: []string{"PREFIX"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "overlapping single-quoted credential URLs",
+			body:           `request 'https://old:OLDSECRET@example.invalid/path\' https://new:NEWSECRET@example.invalid/config'`,
+			secret:         "OLDSECRET",
+			decodedSecrets: []string{"NEWSECRET"},
+			keep:           "example.invalid",
+		},
+		{
+			name:           "nested opposite-quoted HTML credential attributes",
+			body:           `<a href="https://old:OLDSECRET@example.invalid <a href='https://new:NEWSECRET@example.invalid'>">`,
+			secret:         "OLDSECRET",
+			decodedSecrets: []string{"NEWSECRET"},
+			keep:           "example.invalid",
 		},
 		{
 			name:   "JSON escaped userinfo separators",
@@ -949,6 +1160,16 @@ func TestTruncateBody_RedactsTruncatedURLUserinfo(t *testing.T) {
 			name:   "cut quoted HTML userinfo after unmatched text quote",
 			prefix: ` "notice <a href="https://admin:LEAK ED-PASSWORD`,
 			tail:   `@backup.example.com/config">`,
+		},
+		{
+			name:   "cut quoted HTML query after unmatched text quote",
+			prefix: ` "notice <a href="https://example.invalid/?api_key=LEAK-PREFIX LEAK-SUFFIX`,
+			tail:   `">retry</a>`,
+		},
+		{
+			name:   "cut JSON userinfo after escaped text quote",
+			prefix: ` {"message":"notice \" https://user:LEAK ED-PASSWORD`,
+			tail:   `@backup.example.com/config"}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

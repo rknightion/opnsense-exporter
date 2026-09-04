@@ -934,13 +934,15 @@ func redactTruncatedHTMLQuotedURLUserinfo(value string) string {
 		if start >= len(value) || value[start] != '"' && value[start] != '\'' {
 			continue
 		}
-		end, complete := quotedStringEnd(b, start, value[start])
+		_, complete := htmlQuotedStringEnd(b, start, value[start])
 		if complete {
-			i = end - 1
+			// A malformed attribute may close on the quote that opens a
+			// later attribute. Keep scanning inside this candidate so the
+			// later URL boundary is still considered.
 			continue
 		}
 		decoded := html.UnescapeString(value[start+1:])
-		if truncatedQuotedURLUserinfoSuffix.MatchString(decoded) {
+		if redactSensitiveURLValue(decoded) != decoded || truncatedQuotedURLUserinfoSuffix.MatchString(decoded) {
 			return value[:start+1] + marker
 		}
 		break
@@ -985,6 +987,23 @@ func quotedStringEnd(b []byte, start int, quote byte) (int, bool) {
 	return len(b), false
 }
 
+// htmlQuotedStringEnd finds an HTML attribute's closing quote. Unlike JSON,
+// HTML does not give backslash any escape semantics: a quote after a
+// backslash still ends the attribute. Keeping this separate prevents one
+// benign attribute from swallowing the opener of a later credential-bearing
+// URL attribute during diagnostic redaction.
+func htmlQuotedStringEnd(b []byte, start int, quote byte) (int, bool) {
+	if start >= len(b) || b[start] != quote {
+		return start, false
+	}
+	for i := start + 1; i < len(b); i++ {
+		if b[i] == quote {
+			return i + 1, true
+		}
+	}
+	return len(b), false
+}
+
 func jsonSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
@@ -1007,7 +1026,13 @@ func jsonLikeValueEnd(b []byte, start int) (int, bool) {
 		if !complete {
 			return len(b), true
 		}
-		return end, true
+		return jsonLikeClosedValueEnd(b, end), true
+	case '\'':
+		end, complete := quotedStringEnd(b, start, '\'')
+		if !complete {
+			return len(b), true
+		}
+		return jsonLikeClosedValueEnd(b, end), true
 	case '{', '[':
 		stack := []byte{'}'}
 		if b[start] == '[' {
@@ -1015,8 +1040,8 @@ func jsonLikeValueEnd(b []byte, start int) (int, bool) {
 		}
 		for i := start + 1; i < len(b); {
 			switch b[i] {
-			case '"':
-				end, complete := jsonStringEnd(b, i)
+			case '"', '\'':
+				end, complete := quotedStringEnd(b, i, b[i])
 				if !complete {
 					return len(b), true
 				}
@@ -1032,7 +1057,7 @@ func jsonLikeValueEnd(b []byte, start int) (int, bool) {
 				}
 				stack = stack[:len(stack)-1]
 				if len(stack) == 0 {
-					return i + 1, true
+					return jsonLikeClosedValueEnd(b, i+1), true
 				}
 			}
 			i++
@@ -1048,6 +1073,34 @@ func jsonLikeValueEnd(b []byte, start int) (int, bool) {
 		}
 		return end, true
 	}
+}
+
+func jsonLikeClosedValueEnd(b []byte, end int) int {
+	boundary := end
+	for boundary < len(b) && jsonSpace(b[boundary]) {
+		boundary++
+	}
+	if boundary == len(b) || b[boundary] == ',' || b[boundary] == '}' || b[boundary] == ']' {
+		return end
+	}
+	// A known-sensitive closed value followed by non-structural bytes is
+	// malformed. Consume that suffix through the next object delimiter so no
+	// credential fragment can survive after the first apparent closing token.
+	for boundary < len(b) {
+		switch b[boundary] {
+		case '"', '\'':
+			quotedEnd, complete := quotedStringEnd(b, boundary, b[boundary])
+			if !complete {
+				return len(b)
+			}
+			boundary = quotedEnd
+			continue
+		case ',', '}', ']':
+			return boundary
+		}
+		boundary++
+	}
+	return boundary
 }
 
 // redactSensitiveJSONFields replaces the values of sensitive JSON fields with
@@ -1071,7 +1124,10 @@ func redactSensitiveJSONFields(b []byte) []byte {
 			colon++
 		}
 		if colon >= len(b) || b[colon] != ':' {
-			i = keyEnd
+			// Malformed error bodies may contain a stray quote before a real
+			// field opener. Reconsider overlapping quote starts rather than
+			// letting that stray token hide a later sensitive key.
+			i++
 			continue
 		}
 		var key string
@@ -1099,6 +1155,181 @@ func redactSensitiveJSONFields(b []byte) []byte {
 		i = valueEnd
 	}
 	return append(out, b[cursor:]...)
+}
+
+func jsonLikeKeyBeforeDelimiter(b []byte, delimiter int) (string, bool, bool) {
+	end := delimiter
+	for end > 0 && jsonSpace(b[end-1]) {
+		end--
+	}
+	start := end
+	for start > 0 {
+		c := b[start-1]
+		if asciiAlphaNumeric(c) || c == '_' || c == '-' || c == '.' || c == '%' ||
+			c == '\'' || c == '"' || c == '\\' {
+			start--
+			continue
+		}
+		break
+	}
+	boundary := start
+	for boundary > 0 && jsonSpace(b[boundary-1]) {
+		boundary--
+	}
+	if boundary == 0 || b[boundary-1] != '{' && b[boundary-1] != ',' {
+		return "", false, false
+	}
+	if end-start >= 2 && b[start] == '"' && b[end-1] == '"' {
+		var key string
+		if json.Unmarshal(b[start:end], &key) == nil {
+			return key, false, true
+		}
+	}
+
+	var key strings.Builder
+	key.Grow(end - start)
+	for i := start; i < end; i++ {
+		c := b[i]
+		if c == '\'' || c == '"' {
+			continue
+		}
+		if c != '\\' {
+			key.WriteByte(c)
+			continue
+		}
+		if i+5 >= end || b[i+1] != 'u' {
+			return key.String(), true, true
+		}
+		decoded, err := strconv.ParseUint(string(b[i+2:i+6]), 16, 16)
+		if err != nil {
+			return key.String(), true, true
+		}
+		i += 5
+		if decoded != '\'' && decoded != '"' && decoded != '\\' {
+			key.WriteRune(rune(decoded))
+		}
+	}
+	if key.Len() == 0 {
+		return "", false, false
+	}
+	return key.String(), false, true
+}
+
+// redactSensitiveJSONLikeFields covers bounded object-key syntax from
+// malformed diagnostic bodies: single-quoted keys, unquoted keys, and quote
+// artifacts inside a key. A candidate must follow an object boundary, which
+// keeps URL colons and ordinary prose out of this fail-closed field pass.
+func redactSensitiveJSONLikeFields(b []byte) []byte {
+	const marker = `"[REDACTED]"`
+	out := make([]byte, 0, len(b))
+	cursor := 0
+	for at := 0; at < len(b); at++ {
+		if (b[at] == '"' || b[at] == '\'') && jsonLikeStringOpener(b, at) {
+			end, complete := quotedStringEnd(b, at, b[at])
+			if complete && jsonLikeQuotedTokenCanSkip(b, at, end) {
+				at = end - 1
+				continue
+			}
+		}
+		delimiterEnd := at + 1
+		if b[at] != ':' {
+			if at+6 > len(b) || b[at] != '\\' || b[at+1] != 'u' {
+				continue
+			}
+			decoded, err := strconv.ParseUint(string(b[at+2:at+6]), 16, 16)
+			if err != nil || decoded != ':' {
+				continue
+			}
+			delimiterEnd = at + 6
+		}
+		key, malformed, ok := jsonLikeKeyBeforeDelimiter(b, at)
+		if !ok || !malformed && !SensitiveConfigKey(key) {
+			continue
+		}
+		valueStart := delimiterEnd
+		for valueStart < len(b) && jsonSpace(b[valueStart]) {
+			valueStart++
+		}
+		valueEnd, present := jsonLikeValueEnd(b, valueStart)
+		if !present || valueStart < cursor {
+			continue
+		}
+		out = append(out, b[cursor:valueStart]...)
+		out = append(out, marker...)
+		cursor = valueEnd
+		at = valueEnd - 1
+	}
+	return append(out, b[cursor:]...)
+}
+
+func jsonLikeQuotedTokenCanSkip(b []byte, start, end int) bool {
+	if jsonLikeTokenEndsAtSensitiveDelimiter(b, start, end) {
+		// The apparent closing quote may also open the malformed sensitive
+		// value. Do not skip the enclosing token or its inner key delimiter.
+		return false
+	}
+	previous := start
+	for previous > 0 && jsonSpace(b[previous-1]) {
+		previous--
+	}
+	next := end
+	for next < len(b) && jsonSpace(b[next]) {
+		next++
+	}
+	if previous == 0 {
+		return next == len(b)
+	}
+	if next == len(b) {
+		return b[previous-1] == ':' || b[previous-1] == '[' || b[previous-1] == ','
+	}
+	switch b[previous-1] {
+	case '{':
+		return b[next] == ':'
+	case ':', '[':
+		return b[next] == ',' || b[next] == '}' || b[next] == ']'
+	case ',':
+		return b[next] == ':' || b[next] == ',' || b[next] == '}' || b[next] == ']'
+	}
+	return false
+}
+
+func jsonLikeTokenEndsAtSensitiveDelimiter(b []byte, start, end int) bool {
+	contentEnd := end - 1
+	for contentEnd > start+1 && jsonSpace(b[contentEnd-1]) {
+		contentEnd--
+	}
+	if contentEnd <= start+1 {
+		return false
+	}
+	delimiter := contentEnd - 1
+	if b[delimiter] != ':' {
+		if contentEnd-start <= 6 || b[contentEnd-6] != '\\' || b[contentEnd-5] != 'u' {
+			return false
+		}
+		decoded, err := strconv.ParseUint(string(b[contentEnd-4:contentEnd]), 16, 16)
+		if err != nil || decoded != ':' {
+			return false
+		}
+		delimiter = contentEnd - 6
+	}
+	key, malformed, ok := jsonLikeKeyBeforeDelimiter(b, delimiter)
+	return ok && (malformed || SensitiveConfigKey(key))
+}
+
+func jsonLikeStringOpener(b []byte, at int) bool {
+	previous := at
+	for previous > 0 && jsonSpace(b[previous-1]) {
+		previous--
+	}
+	if previous == 0 {
+		return true
+	}
+	switch b[previous-1] {
+	case '{', '[', ',', ':':
+		return true
+	default:
+		return false
+	}
 }
 
 func redactSensitiveURLValue(value string) string {
@@ -1338,7 +1569,6 @@ func redactSensitiveHTMLQueryRegions(value string) string {
 // preserving byte offsets is less important than keeping every password byte
 // out of the diagnostic.
 func redactSensitiveHTMLQuotedURLs(value string) string {
-	const marker = "[REDACTED]"
 	var out strings.Builder
 	cursor := 0
 	for i := 0; i < len(value); i++ {
@@ -1352,19 +1582,66 @@ func redactSensitiveHTMLQuotedURLs(value string) string {
 		if start >= len(value) || value[start] != '"' && value[start] != '\'' {
 			continue
 		}
-		end, complete := quotedStringEnd([]byte(value), start, value[start])
+		end, complete := htmlQuotedStringEnd([]byte(value), start, value[start])
 		if !complete {
 			break
 		}
 		raw := value[start+1 : end-1]
 		decoded := html.UnescapeString(raw)
-		redacted := quotedURLUserinfo.ReplaceAllString(decoded, `${1}[REDACTED]@`)
+		redacted := redactSensitiveURLValue(decoded)
 		if redacted != decoded {
 			out.WriteString(value[cursor : start+1])
-			out.WriteString(marker)
+			out.WriteString(html.EscapeString(redacted))
 			cursor = end - 1
+			i = end - 2
 		}
-		i = end - 1
+		// Do not skip the candidate wholesale. In malformed HTML its closing
+		// quote can also open a later URL attribute, and that later equals
+		// boundary must remain visible to this pass.
+	}
+	if cursor == 0 {
+		return value
+	}
+	out.WriteString(value[cursor:])
+	return out.String()
+}
+
+// redactSensitiveSingleQuotedURLs handles standalone diagnostic URLs enclosed
+// in single quotes. JSON string scanning intentionally owns double quotes;
+// this pass closes the equivalent boundary for prose and malformed HTML after
+// entity normalization.
+func redactSensitiveSingleQuotedURLs(value string) string {
+	var out strings.Builder
+	cursor := 0
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\'' {
+			continue
+		}
+		end, complete := quotedStringEnd([]byte(value), i, '\'')
+		rawEnd := end
+		if complete {
+			rawEnd--
+		}
+		raw := value[i+1 : rawEnd]
+		redacted := redactSensitiveURLValue(raw)
+		if !complete && truncatedQuotedURLUserinfoSuffix.MatchString(redacted) {
+			redacted = "[REDACTED]"
+		}
+		if redacted == raw {
+			if !complete {
+				break
+			}
+			continue
+		}
+		out.WriteString(value[cursor : i+1])
+		out.WriteString(redacted)
+		if complete {
+			cursor = end - 1
+			i = end - 2
+		} else {
+			cursor = end
+			break
+		}
 	}
 	if cursor == 0 {
 		return value
@@ -1490,6 +1767,7 @@ func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
 		}
 		end, complete := jsonStringEnd(b, i)
 		token := b[i:end]
+		replaced := false
 		if !complete {
 			// A truncated JSON string can still be decoded when its content and
 			// escapes are complete. Add only the missing quote for inspection;
@@ -1498,49 +1776,73 @@ func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
 		}
 		var value string
 		if err := json.Unmarshal(token, &value); err == nil {
-			redacted := redactSensitiveURLValue(value)
+			decoded := html.UnescapeString(value)
+			redacted := redactSensitiveURLValue(decoded)
 			if !complete && bodyTruncated {
 				// The body limit may cut an otherwise valid userinfo URL before its
 				// trailing @. Classify the decoded prefix at EOF so JSON-escaped
 				// separators cannot conceal the password bytes that did arrive.
 				redacted = truncatedURLUserinfoSuffix.ReplaceAllString(redacted, `${1}[REDACTED]`)
 			}
-			if redacted != value {
+			if redacted != decoded {
 				encoded, err := json.Marshal(redacted)
 				if err == nil {
 					if !complete {
 						encoded = encoded[:len(encoded)-1]
 					}
 					out = append(out, b[cursor:i]...)
-					out = append(out, encoded...)
-					cursor = end
+					if complete {
+						// Leave the source closing quote in place. Malformed
+						// input can reuse it as the next string opener.
+						out = append(out, encoded[:len(encoded)-1]...)
+						cursor = end - 1
+					} else {
+						out = append(out, encoded...)
+						cursor = end
+					}
+					replaced = true
 				}
 			}
 		} else {
 			// token always has a closing quote here: either the wire supplied it
 			// or the incomplete-token path appended one for detection.
 			shadow := looselyDecodeJSONStringToken(token, true)
-			redacted := redactSensitiveURLValue(shadow)
+			decoded := html.UnescapeString(shadow)
+			redacted := redactSensitiveURLValue(decoded)
 			if !complete && bodyTruncated {
 				// A cut inside an encoded escape (for example the @ in userinfo)
 				// makes the temporary JSON token undecodable. Apply the same EOF
 				// userinfo rule to the tolerant detection view as to decoded tokens.
 				redacted = truncatedURLUserinfoSuffix.ReplaceAllString(redacted, `${1}[REDACTED]`)
 			}
-			if redacted != shadow {
+			if redacted != decoded {
 				replacement := []byte(`"[REDACTED]"`)
 				if !complete {
 					replacement = replacement[:len(replacement)-1]
 				}
 				out = append(out, b[cursor:i]...)
-				out = append(out, replacement...)
-				cursor = end
+				if complete {
+					out = append(out, replacement[:len(replacement)-1]...)
+					cursor = end - 1
+				} else {
+					out = append(out, replacement...)
+					cursor = end
+				}
+				replaced = true
 			}
 		}
 		if !complete {
 			break
 		}
-		i = end
+		if replaced {
+			// Reconsider the closing quote as a possible overlapping opener.
+			i = end - 1
+		} else {
+			// A malformed body may contain a stray quote before the real
+			// URL-string opener. Reconsider overlapping quote starts until a
+			// candidate is actually rewritten.
+			i++
+		}
 	}
 	return append(out, b[cursor:]...)
 }
@@ -1553,6 +1855,7 @@ func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
 // the same URL.
 func redactSensitiveFields(b []byte, truncated bool) []byte {
 	b = redactSensitiveJSONFields(b)
+	b = redactSensitiveJSONLikeFields(b)
 	b = []byte(redactSensitiveHTMLUnquotedURLs(string(b)))
 	b = []byte(redactSensitiveHTMLQuotedURLs(string(b)))
 	if truncated {
@@ -1570,7 +1873,9 @@ func redactSensitiveFields(b []byte, truncated bool) []byte {
 		b = []byte(redactTruncatedHTMLQuotedURLUserinfo(string(b)))
 	}
 	b = redactSensitiveJSONFields(b)
+	b = redactSensitiveJSONLikeFields(b)
 	b = redactSensitiveURLsInJSONStrings(b, truncated)
+	b = []byte(redactSensitiveSingleQuotedURLs(string(b)))
 	b = []byte(redactSensitiveRawQueryComponents(string(b), true))
 	b = urlUserinfo.ReplaceAll(b, []byte(`${1}[REDACTED]@`))
 	return b
