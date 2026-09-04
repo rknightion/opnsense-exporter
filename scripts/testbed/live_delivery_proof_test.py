@@ -170,6 +170,54 @@ class TestResultParsing(unittest.TestCase):
             }),
         ])
 
+    def test_dedicated_alias_discovery_rejects_repeated_page_and_boolean_total(self):
+        rows = [
+            {"uuid": "unrelated-" + str(index), "name": "unrelated_" + str(index)}
+            for index in range(100)
+        ]
+
+        class RepeatingAPI:
+            def post(self, _path, _payload):
+                return {"total": 101, "rows": rows}
+
+        with self.assertRaisesRegex(proof.ProofFailure, "pagination made no progress") as caught:
+            proof.resolve_delivery_proof_alias(RepeatingAPI())
+        self.assertEqual(caught.exception.code, "alias_search_pagination_no_progress")
+
+        class BooleanTotalAPI:
+            def post(self, _path, _payload):
+                return {"total": True, "rows": []}
+
+        with self.assertRaisesRegex(proof.ProofFailure, "complete page") as caught:
+            proof.resolve_delivery_proof_alias(BooleanTotalAPI())
+        self.assertEqual(caught.exception.code, "alias_search_total_invalid")
+
+        class UnderreportedTotalAPI:
+            def post(self, _path, _payload):
+                return {"total": 0, "rows": [
+                    {"uuid": "unexpected", "name": "unrelated_alias"},
+                ]}
+
+        with self.assertRaisesRegex(proof.ProofFailure, "complete page") as caught:
+            proof.resolve_delivery_proof_alias(UnderreportedTotalAPI())
+        self.assertEqual(caught.exception.code, "alias_search_total_invalid")
+
+        class OversizedTotalAPI:
+            def post(self, _path, _payload):
+                return {"total": proof.ALIAS_SEARCH_MAX_ROWS + 1, "rows": []}
+
+        with self.assertRaisesRegex(proof.ProofFailure, "complete page") as caught:
+            proof.resolve_delivery_proof_alias(OversizedTotalAPI())
+        self.assertEqual(caught.exception.code, "alias_search_total_invalid")
+
+    def test_api_invalid_response_encoding_is_a_bounded_failure(self):
+        api = proof.API("testbed.invalid", "key", "secret")
+        invalid = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        with mock.patch.object(proof.urllib.request, "urlopen", side_effect=invalid):
+            with self.assertRaises(proof.ProofFailure) as caught:
+                api.get("/api/test")
+        self.assertEqual(caught.exception.code, "testbed_api_response_not_json")
+
     def test_alias_description_write_and_exact_restoration_preserve_other_fields(self):
         class FakeAPI:
             calls = []
@@ -241,6 +289,34 @@ class TestResultParsing(unittest.TestCase):
         self.assertIn("- proof stage: resolving_alias", rendered)
         self.assertNotIn("response-body", rendered)
         self.assertNotIn("credential@example.invalid", rendered)
+
+    def test_alias_resolution_failure_reports_only_a_bounded_reason_code(self):
+        class NoMatchAPI:
+            def __init__(self, *_args):
+                pass
+
+            def post(self, _path, _payload):
+                return {"total": 1, "rows": [
+                    {"uuid": "unrendered-id", "name": "unrelated_alias"},
+                ]}
+
+        environment = {
+            "DEVBOX_HOST": "testbed.invalid",
+            "DEVBOX_API_KEY": "not-rendered",
+            "DEVBOX_API_SECRET": "not-rendered",
+            "GRAFANA_OTLP_USER": "not-rendered",
+            "GRAFANA_LOKI_USER": "not-rendered",
+            "GRAFANA_CAP_TOKEN": "not-rendered",
+        }
+        output = io.StringIO()
+        with mock.patch.dict(proof.os.environ, environment, clear=False), \
+                mock.patch.object(proof, "API", NoMatchAPI), \
+                mock.patch("sys.stdout", output):
+            self.assertEqual(proof.main(["--exporter", "not-started"]), 1)
+        rendered = output.getvalue()
+        self.assertIn("- proof failure query result: alias_search_no_approved_match", rendered)
+        self.assertNotIn("unrelated_alias", rendered)
+        self.assertNotIn("unrendered-id", rendered)
 
     def test_summary_names_only_the_validated_matched_alias(self):
         class FailingReadAPI:

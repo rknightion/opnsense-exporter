@@ -35,6 +35,14 @@ PROOF_ALIAS_NAMES = frozenset((PROOF_ALIAS_NAME, "delivery_proof", "delivery-pro
 PROOF_SOURCES = ("configchange", "configstate", "exporter", "syslog", "zenarmor")
 SAFE_ALIAS_NAME = re.compile(r"[A-Za-z0-9_-]+\Z")
 ALIAS_SEARCH_PAGE_SIZE = 100
+ALIAS_SEARCH_MAX_ROWS = 10_000
+
+
+class ProofFailure(RuntimeError):
+    """A bounded failure whose code is safe to render without response data."""
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
 
 
 def required(name):
@@ -69,10 +77,23 @@ class API:
         try:
             with urllib.request.urlopen(request, timeout=20, context=self.tls) as response:
                 if response.status // 100 != 2:
-                    raise RuntimeError("testbed API returned non-2xx")
+                    raise ProofFailure("testbed_api_non_2xx", "testbed API returned non-2xx")
                 return json.load(response)
-        except (urllib.error.URLError, json.JSONDecodeError) as err:
-            raise RuntimeError("testbed API request failed without exposing its body") from err
+        except urllib.error.HTTPError as err:
+            raise ProofFailure(
+                "testbed_api_http_status_" + str(err.code),
+                "testbed API request failed without exposing its body",
+            ) from err
+        except urllib.error.URLError as err:
+            raise ProofFailure(
+                "testbed_api_unreachable",
+                "testbed API request failed without exposing its body",
+            ) from err
+        except (json.JSONDecodeError, UnicodeDecodeError) as err:
+            raise ProofFailure(
+                "testbed_api_response_not_json",
+                "testbed API request failed without exposing its body",
+            ) from err
 
     def get(self, path):
         return self.request("GET", path)
@@ -84,6 +105,7 @@ class API:
 def resolve_delivery_proof_alias(api):
     """Discover only the one pre-existing alias the proof is permitted to edit."""
     rows = []
+    row_ids = set()
     page = 1
     while True:
         payload = api.post(
@@ -96,26 +118,72 @@ def resolve_delivery_proof_alias(api):
         )
         page_rows = payload.get("rows") if isinstance(payload, dict) else None
         total = payload.get("total") if isinstance(payload, dict) else None
-        if not isinstance(page_rows, list) or not isinstance(total, int) or total < 0:
-            raise RuntimeError("dedicated delivery-proof alias search did not return a complete page")
+        if not isinstance(page_rows, list):
+            raise ProofFailure(
+                "alias_search_rows_invalid",
+                "dedicated delivery-proof alias search did not return a complete page",
+            )
+        if (isinstance(total, bool) or not isinstance(total, int)
+                or total < 0 or total > ALIAS_SEARCH_MAX_ROWS):
+            raise ProofFailure(
+                "alias_search_total_invalid",
+                "dedicated delivery-proof alias search did not return a complete page",
+            )
+        page_ids = []
+        for row in page_rows:
+            row_id = row.get("uuid") if isinstance(row, dict) else None
+            if not isinstance(row_id, str) or not row_id:
+                raise ProofFailure(
+                    "alias_search_rows_invalid",
+                    "dedicated delivery-proof alias search did not return a complete page",
+                )
+            page_ids.append(row_id)
+        if len(set(page_ids)) != len(page_ids) or any(row_id in row_ids for row_id in page_ids):
+            raise ProofFailure(
+                "alias_search_pagination_no_progress",
+                "dedicated delivery-proof alias search pagination made no progress",
+            )
         rows.extend(page_rows)
-        if len(rows) >= total:
+        row_ids.update(page_ids)
+        if len(rows) > total:
+            raise ProofFailure(
+                "alias_search_total_invalid",
+                "dedicated delivery-proof alias search did not return a complete page",
+            )
+        if len(rows) == total:
             break
         if not page_rows:
-            raise RuntimeError("dedicated delivery-proof alias search pagination made no progress")
+            raise ProofFailure(
+                "alias_search_pagination_no_progress",
+                "dedicated delivery-proof alias search pagination made no progress",
+            )
         page += 1
     matches = [
         row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)
         and row["name"] in PROOF_ALIAS_NAMES
     ]
+    if not matches:
+        raise ProofFailure(
+            "alias_search_no_approved_match",
+            "dedicated delivery-proof alias search did not find exactly one match",
+        )
     if len(matches) != 1:
-        raise RuntimeError("dedicated delivery-proof alias search did not find exactly one match")
+        raise ProofFailure(
+            "alias_search_multiple_approved_matches",
+            "dedicated delivery-proof alias search did not find exactly one match",
+        )
     alias_uuid = matches[0].get("uuid")
     alias_name = matches[0]["name"]
     if not isinstance(alias_uuid, str) or not alias_uuid:
-        raise RuntimeError("dedicated delivery-proof alias did not resolve to one UUID")
+        raise ProofFailure(
+            "alias_search_uuid_invalid",
+            "dedicated delivery-proof alias did not resolve to one UUID",
+        )
     if not SAFE_ALIAS_NAME.fullmatch(alias_name):
-        raise RuntimeError("dedicated delivery-proof alias name is not safe to report")
+        raise ProofFailure(
+            "alias_search_name_unsafe",
+            "dedicated delivery-proof alias name is not safe to report",
+        )
     return alias_uuid, alias_name
 
 
@@ -490,6 +558,9 @@ def main(argv=None):
         diagnostics["configchange poll errors"] = poll_error_diagnostic(metrics, "configchange")
         diagnostics["configstate poll errors"] = poll_error_diagnostic(metrics, "configstate")
         stage = "complete"
+    except ProofFailure as err:
+        diagnostics["proof failure"] = err.code
+        facts["proof_completed"] = False
     except Exception:
         # Do not render exception text: HTTP/library errors can include a response
         # body and that body is outside this proof's redaction boundary.
