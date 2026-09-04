@@ -3,9 +3,11 @@ package logship
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -100,20 +102,41 @@ func withRegistry(t *testing.T, factories ...SourceFactory) {
 // startWithSink is like Start but injects a sink, bypassing sink construction
 // (so the pipeline can be tested without a live OTLP endpoint). It mirrors
 // Start's wiring.
-func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, reg prometheus.Registerer) func(context.Context) error {
+func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, reg prometheus.Registerer, selfLogs ...*SelfLogHandler) func(context.Context) error {
 	t.Helper()
+	var selfLog *SelfLogHandler
+	for _, candidate := range selfLogs {
+		if candidate != nil {
+			selfLog = candidate
+			break
+		}
+	}
+	// Resolve the logger roles through the same helper Start uses, so this
+	// mirror cannot drift from the production split.
+	sourceLog, pipelineLog := splitDiagnosticLoggers(deps.Logger, selfLog)
+	if selfLog != nil {
+		deps.Logger = pipelineLog
+	}
 	sources, err := buildSources(deps)
 	if err != nil {
 		t.Fatalf("buildSources: %v", err)
 	}
 	pctx, cancel := context.WithCancel(context.Background())
 	p := &pipeline{
-		sink: sink, cfg: cfg, log: deps.Logger,
+		sink: sink, cfg: cfg, log: deps.Logger, sourceLog: sourceLog, selfLog: selfLog,
 		sources: sources, stateFile: cfg.StateFile,
 		ctx: pctx, cancel: cancel, limiter: NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(cfg.BufferSize, p.noteOverflow)
 	p.metrics = newMetrics(reg, queueBounds{capacity: cfg.BufferSize, length: func() float64 { return float64(p.queue.length()) }}, sourceNames{})
+	if selfLog != nil {
+		selfLog.Bind(func(e Entry) bool {
+			e.Record.Attributes = sanitizeAttributes(e.Record.Attributes)
+			_, ok := p.enqueue(e)
+			return ok
+		})
+		t.Cleanup(selfLog.Unbind)
+	}
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {
 			p.stateful = append(p.stateful, st)
@@ -358,4 +381,68 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("condition not met before deadline")
+}
+
+// TestPipeline_SourcePollErrorReachesTheLogBackend pins the diagnostic that made
+// the OPN-0060 delivery proof inconclusive: configstate stopped delivering, its
+// logs_poll_errors_total moved, and the reason existed only on the exporter's
+// stderr because Start routed EVERY pipeline diagnostic to the non-forwarding
+// handler.
+//
+// The recursion guard that motivated that routing covers sink, retry and
+// shutdown diagnostics - all of which describe the delivery path and would
+// manufacture another record per failed attempt. A source poll error describes
+// the firewall side and cannot recur as a consequence of being shipped, so it
+// belongs on the forwarding handler.
+func TestPipeline_SourcePollErrorReachesTheLogBackend(t *testing.T) {
+	src := &fakeSource{name: "configstate", err: errors.New("snapshot fetch failed")}
+	withRegistry(t, func(Deps) (Source, error) { return src, nil })
+
+	selfLog := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	deps := Deps{Logger: slog.New(selfLog)}
+	sink := &fakeSink{}
+	stop := startWithSink(t, testCfg(), sink, deps, prometheus.NewRegistry(), selfLog)
+
+	waitFor(t, func() bool {
+		for _, e := range sink.got() {
+			if e.Source == SelfLogSource && strings.Contains(e.Record.Body, "log source poll error") {
+				return true
+			}
+		}
+		return false
+	})
+	_ = stop(context.Background())
+
+	var shipped *Entry
+	for i, e := range sink.got() {
+		if e.Source == SelfLogSource && strings.Contains(e.Record.Body, "log source poll error") {
+			shipped = &sink.got()[i]
+			break
+		}
+	}
+	if shipped == nil {
+		t.Fatal("poll-error diagnostic never reached the sink")
+	}
+	if got := shipped.Record.Attributes["source"]; got != "configstate" {
+		t.Errorf("shipped poll error source = %q, want %q", got, "configstate")
+	}
+	if got := shipped.Record.Attributes["err"]; got != "snapshot fetch failed" {
+		t.Errorf("shipped poll error reason = %q, want the underlying error", got)
+	}
+}
+
+// TestPipeline_SinkDiagnosticsStayOffTheWire is the other half of the split: a
+// sink diagnostic must never re-enter the queue it is complaining about.
+func TestPipeline_SinkDiagnosticsStayOffTheWire(t *testing.T) {
+	selfLog := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	var forwarded int
+	selfLog.Bind(func(Entry) bool { forwarded++; return true })
+	t.Cleanup(selfLog.Unbind)
+
+	_, pipelineLog := splitDiagnosticLoggers(slog.New(selfLog), selfLog)
+	pipelineLog.Error("log sink export failed; retrying", "attempt", 3)
+
+	if forwarded != 0 {
+		t.Fatalf("sink diagnostic entered the self-log queue %d times, want 0", forwarded)
+	}
 }

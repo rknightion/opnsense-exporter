@@ -5,7 +5,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 07:48'
+updated_date: '2026-09-04 08:38'
 labels: []
 dependencies: []
 priority: high
@@ -69,6 +69,30 @@ RESUME PATH IS NOW CI, NOT LOCAL. `DEVBOX_HOST`, `DEVBOX_API_KEY` and `DEVBOX_AP
 Wave 5 CI evidence. Full delivery run 33849420068 at b360e86b used instance delivery-proof-33849420068. Query {service_name="opnsense2otel",service_instance_id="delivery-proof-33849420068",opnsense_source="<source>"}: exporter=yes, syslog=yes, configchange=no with other instance data present, configstate=no with other instance data present; local configstate poll-error counter=yes and configchange poll-error counter=no. Domain structured-metadata assertion=no. Broad query {service_name="opnsense2otel",service_instance_id="delivery-proof-33849420068"}: seven-key-only assertion=no; 202 unexpected key names were observed, including dst_domain, so the current-build result does not match the previously proven production label set. Config revision/snapshot on-wire redaction=no because neither source arrived; no inference was made from empty queries. All gateway and Loki response bodies remained suppressed.
 
 The reversible Auth-user trigger exposed a testbed API authority defect. Search succeeds only as POST with an empty JSON body; deletion failed in deployed path, query-parameter and JSON-body forms. Runs 33843852532, 33848582974 and 33849420068 each created one disabled deliveryproof account and could not remove it; cleanup-only guarded run 33850228416 observed exactly three, attempted all three forms three times for every account, failed, and stopped before exporter startup or any new mutation. PARKED RESUME BOUNDARY: grant the tailnet credential a deletion path that succeeds on the deployed testbed, or remove the three matching non-system proof accounts through an authorised firewall administration path; then diagnose configstate API poll errors and the current-build 202-key label expansion before rerunning the four assertions. Do not create another proof user until cleanup is confirmed.
+
+## Wave 5 assertion results corrected, 2026-09-04 (attended re-query)
+
+Two of the four Wave 5 'no' results were harness measurement artifacts, not exporter defects. Re-queried m7kni Loki directly for the same three proof instances with X-Loki-Response-Encoding-Flags: categorize-labels. Cause and fix: OPN-0070.
+
+| Assertion | Wave 5 said | Corrected | Evidence |
+| --- | --- | --- | --- |
+| Current build promotes nothing outside the documented seven keys | No (202 unexpected) | **Yes** | Stream labels are exactly opnsense_action, opnsense_source, opnsense_subsystem, service_instance_id, service_name in all three instances. All five are inside the documented seven. The 202 were structured-metadata keys that Loki's default response encoding merges into the stream map. |
+| Domain is structured metadata on the enriched record | No | **Yes** | dst_domain present in structuredMetadata with the expected value delivery-proof.example, and absent from stream labels in every stream of all three instances. Under the default encoding the metadata element is omitted entirely, so this assertion was structurally incapable of passing. |
+| configchange and the three configstate families arrive | No | **Still no** | Genuine. Sources observed in the proof instances are exporter, syslog and zenarmor only. |
+| Config revision and snapshot bodies arrive redacted on the wire | No | **Still unproven** | No body arrived to inspect. Blocked behind the assertion above. |
+
+Note also that zenarmor DID arrive in all three runs. Wave 5 reported only exporter and syslog because its per-source queries covered configchange, configstate, exporter and syslog only.
+
+## Why configstate could not be diagnosed, and what changed
+
+Its poll-error counter was positive and no reason reached the backend. pollOnce logs the reason via p.log.Warn("log source poll error", source, err), and Start had routed every pipeline diagnostic to the non-forwarding handler, so it existed only on the exporter's stderr. Read back from the run's own shipped exporter records: 48 entries covering the whole process lifecycle, startup through 'received signal, shutting down gracefully', with no poll-error warning among them.
+
+Fixed by OPN-0069. The next proof run ships the reason, so configstate's failure becomes self-diagnosing instead of a bare counter.
+
+## Still open
+
+- The three disabled deliveryproof users on the testbed. No local firewall credential exists on this machine, so cleanup still needs the testbed's own delete authority. Do not create a fourth proof user before this is cleared.
+- configchange showed poll errors=no yet emitted nothing. It baselines on first poll and only emits past its cursor, so the open question is whether a new backup revision appeared at all in the ~20s window after the user add.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -31,6 +31,27 @@ const errorLogInterval = 30 * time.Second
 // so this is only a backstop and is never reached in practice.
 const errorLogMaxKeys = 64
 
+// splitDiagnosticLoggers separates the two logger roles the pipeline needs once
+// self-log shipping is on. Without a self-log handler both roles collapse onto
+// the caller's logger.
+//
+// pipelineLog drops to the wrapped stderr handler. Sink, retry, ingest-cap and
+// shutdown diagnostics all describe the delivery path itself, so submitting one
+// back into that path manufactures another record on every failed attempt while
+// the endpoint is down.
+//
+// sourceLog keeps the forwarding handler. A source poll error describes the
+// FIREWALL side, not the sink: it is the only place the reason behind a
+// logs_poll_errors_total increment exists, and shipping it cannot make it recur.
+// Routing it to stderr leaves an operator watching a counter move with the cause
+// reachable only by reading the container's console (#OPN-0069).
+func splitDiagnosticLoggers(logger *slog.Logger, selfLog *SelfLogHandler) (sourceLog, pipelineLog *slog.Logger) {
+	if selfLog == nil {
+		return logger, logger
+	}
+	return logger, selfLog.DiagnosticLogger()
+}
+
 // pipeline is the running log-shipping loop.
 type pipeline struct {
 	sink    Sink
@@ -38,7 +59,10 @@ type pipeline struct {
 	metrics *metrics
 	cfg     *options.LogsConfig
 	log     *slog.Logger
-	selfLog *SelfLogHandler
+	// sourceLog carries diagnostics about a polled source. See
+	// splitDiagnosticLoggers for why it is not log.
+	sourceLog *slog.Logger
+	selfLog   *SelfLogHandler
 
 	sources     []Source
 	pushSources []PushSource
@@ -102,14 +126,12 @@ func Start(
 			break
 		}
 	}
+	sourceLog, pipelineLog := splitDiagnosticLoggers(deps.Logger, selfLog)
 	if selfLog != nil {
 		if cfg.Sink != "otlp" {
 			return nil, fmt.Errorf("self-log shipping requires --logs.sink=otlp; stdout cannot carry OTLP resource attributes")
 		}
-		// Sink/pipeline diagnostics must stay on the wrapped stderr handler. A
-		// failing sink otherwise logs an error which re-enters the same queue and
-		// creates a feedback loop while the endpoint is down.
-		deps.Logger = selfLog.DiagnosticLogger()
+		deps.Logger = pipelineLog
 	}
 
 	// Stamp instance identity onto EVERY logship self-metric (#395). Both registerers
@@ -146,6 +168,7 @@ func Start(
 		sink:                sink,
 		cfg:                 cfg,
 		log:                 deps.Logger,
+		sourceLog:           sourceLog,
 		selfLog:             selfLog,
 		sources:             sources,
 		pushSources:         pushSources,
@@ -339,7 +362,7 @@ func (p *pipeline) pollOnce(s Source, name string) {
 	if err != nil {
 		p.metrics.pollErrors.WithLabelValues(name).Inc()
 		if p.limiter.Allow("poll:" + name) {
-			p.log.Warn("log source poll error", "source", name, "err", err)
+			p.sourceLog.Warn("log source poll error", "source", name, "err", err)
 		}
 		return
 	}

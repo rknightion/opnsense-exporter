@@ -8,9 +8,28 @@ import live_delivery_proof as proof
 
 
 class TestResultParsing(unittest.TestCase):
-    def test_records_keeps_structured_metadata_separate_from_labels(self):
-        rows = [{"stream": {"service_name": "x"}, "values": [["1", "body", {"dst_domain": "example.com"}]]}]
+    def test_records_reads_the_categorized_structured_metadata_member(self):
+        # Loki's categorize-labels encoding nests each category under its own key.
+        rows = [{"stream": {"service_name": "x"},
+                 "values": [["1", "body", {"structuredMetadata": {"dst_domain": "example.com"}}]]}]
         self.assertEqual(list(proof.records(rows)), [({"service_name": "x"}, "body", {"dst_domain": "example.com"})])
+
+    def test_records_yields_no_metadata_for_an_uncategorized_response(self):
+        # Without the categorize-labels request header Loki merges structured
+        # metadata into "stream" and drops the third element. Wave 5 read that
+        # shape and reported 202 phantom promoted labels plus a domain
+        # assertion that could never pass. Yielding empty metadata keeps such a
+        # response failing closed rather than being read as exporter behaviour.
+        rows = [{"stream": {"service_name": "x", "dst_domain": "example.com"},
+                 "values": [["1", "body"]]}]
+        labels, _, metadata = next(iter(proof.records(rows)))
+        self.assertEqual(metadata, {})
+        self.assertFalse(proof.has_domain_metadata(proof.records(rows), "example.com"))
+        self.assertIn("dst_domain", labels)
+
+    def test_loki_query_requests_categorized_labels(self):
+        source = pathlib.Path(proof.__file__).read_text(encoding="utf-8")
+        self.assertIn('"X-Loki-Response-Encoding-Flags": "categorize-labels"', source)
 
     def test_sensitive_key_scan_rejects_nested_secret_and_accepts_safe_document(self):
         self.assertFalse(proof.no_sensitive_keys({"entity": {"password": "not printed"}}))
@@ -24,7 +43,8 @@ class TestResultParsing(unittest.TestCase):
 
     def test_query_diagnostic_distinguishes_label_mismatch_and_empty_window(self):
         empty = {"streams": [], "succeeded": True}
-        broad_mismatch = {"streams": [{"stream": {"service_name": "x"}, "values": [["1", "body", {"opnsense_source": "configstate"}]]}], "succeeded": True}
+        broad_mismatch = {"streams": [{"stream": {"service_name": "x"},
+                                       "values": [["1", "body", {"structuredMetadata": {"opnsense_source": "configstate"}}]]}], "succeeded": True}
         self.assertEqual(proof.query_diagnostic("configstate", empty, broad_mismatch), "arrived_with_unexpected_labels")
         self.assertEqual(proof.query_diagnostic("configstate", empty, empty), "instance_absent_in_explicit_window")
 

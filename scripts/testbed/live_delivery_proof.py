@@ -166,7 +166,17 @@ def loki_query(query, user, token, start_ns, attempts=12):
         })
         request = urllib.request.Request(
             LOKI_ENDPOINT + "/loki/api/v1/query_range?" + params,
-            headers={"Authorization": basic(user, token)},
+            headers={
+                "Authorization": basic(user, token),
+                # Without this flag Loki MERGES structured metadata into each
+                # stream's label map and omits the per-entry metadata element
+                # entirely. Reading the default response therefore reports every
+                # structured-metadata key as a promoted stream label, and makes
+                # the "domain is structured metadata" assertion impossible to
+                # satisfy. Both are measurement artifacts, not exporter
+                # behaviour: Wave 5 recorded 202 phantom promoted labels this way.
+                "X-Loki-Response-Encoding-Flags": "categorize-labels",
+            },
         )
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
@@ -183,13 +193,21 @@ def loki_query(query, user, token, start_ns, attempts=12):
 
 
 def records(streams):
-    """Yield labels, body and structured metadata without writing any of them."""
+    """Yield labels, body and structured metadata without writing any of them.
+
+    Requires the categorize-labels response encoding: the per-entry third
+    element is then a category map whose "structuredMetadata" member holds the
+    non-promoted attributes, and "stream" holds only true stream labels.
+    """
     for stream in streams:
         labels = stream.get("stream", {})
         for value in stream.get("values", []):
             if len(value) < 2:
                 continue
-            metadata = value[2] if len(value) > 2 and isinstance(value[2], dict) else {}
+            categories = value[2] if len(value) > 2 and isinstance(value[2], dict) else {}
+            metadata = categories.get("structuredMetadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
             yield labels, value[1], metadata
 
 
