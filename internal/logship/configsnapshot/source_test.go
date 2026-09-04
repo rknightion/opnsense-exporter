@@ -201,6 +201,161 @@ func TestSourceStateRoundTripSuppressesUnchangedFamily(t *testing.T) {
 	}
 }
 
+func TestSourceStateRoundTripRestoresDeviceInventorySeenIdentities(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	initialFetcher := &fakeDeviceInventoryFetcher{observations: []DeviceInventoryObservation{
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:01", IP: "192.0.2.10"},
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:02", IP: "192.0.2.11"},
+	}}
+	initialProvider := newDeviceInventoryProviderWithFetcher(initialFetcher)
+	initial := newSource([]Provider{initialProvider}, func() time.Time { return now }, func() string { return "snapshot-1" })
+	if _, err := initial.Poll(context.Background()); err != nil {
+		t.Fatalf("initial Poll: %v", err)
+	}
+	state, ok := initial.SaveState()
+	if !ok {
+		t.Fatal("SaveState returned ok=false after the initial device snapshot")
+	}
+
+	restartedFetcher := &fakeDeviceInventoryFetcher{observations: []DeviceInventoryObservation{
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:01", IP: "192.0.2.10"},
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:02", IP: "192.0.2.11"},
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:03", IP: "192.0.2.12"},
+	}}
+	restartedProvider := newDeviceInventoryProviderWithFetcher(restartedFetcher)
+	restarted := newSource([]Provider{restartedProvider}, func() time.Time { return now.Add(time.Minute) }, func() string { return "snapshot-2" })
+	restarted.LoadState(state)
+
+	records, err := restarted.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("restarted Poll: %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("restarted Poll emitted %d records, want 3 for the one-device change", len(records))
+	}
+	for _, record := range records {
+		var envelope struct {
+			Entity DeviceInventoryRecord `json:"entity"`
+		}
+		if err := json.Unmarshal([]byte(record.Body), &envelope); err != nil {
+			t.Fatalf("device body is invalid JSON: %v", err)
+		}
+		wantNew := record.Attributes["snapshot.entity_id"] == "mac:aa:bb:cc:dd:ee:03"
+		if envelope.Entity.NewDevice != wantNew {
+			t.Errorf("entity %q new_device = %v, want %v", record.Attributes["snapshot.entity_id"], envelope.Entity.NewDevice, wantNew)
+		}
+	}
+}
+
+func TestSourceStateDoesNotPersistPendingDeviceInventoryIdentities(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	fetcher := &fakeDeviceInventoryFetcher{observations: []DeviceInventoryObservation{
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:01", IP: "192.0.2.10"},
+	}}
+	device := newDeviceInventoryProviderWithFetcher(fetcher)
+	later := &fakeProvider{family: "later", entities: []Entity{{ID: "later", Value: map[string]any{"ok": true}}}}
+	source := newSource([]Provider{device, later}, func() time.Time { return now }, func() string { return "batch" })
+	if _, err := source.Poll(context.Background()); err != nil {
+		t.Fatalf("initial Poll: %v", err)
+	}
+	committed, ok := source.SaveState()
+	if !ok {
+		t.Fatal("SaveState returned ok=false after the initial successful poll")
+	}
+
+	fetcher.observations = append(fetcher.observations, DeviceInventoryObservation{
+		Source: "arp", MAC: "aa:bb:cc:dd:ee:02", IP: "192.0.2.11",
+	})
+	later.err = errors.New("later provider failed")
+	if _, err := source.Poll(context.Background()); err == nil {
+		t.Fatal("changed Poll succeeded despite a later provider failure")
+	}
+	current, ok := source.SaveState()
+	if !ok {
+		t.Fatal("SaveState returned ok=false after the failed poll")
+	}
+	if string(current) != string(committed) {
+		t.Fatalf("failed poll changed persisted state:\n got %s\nwant %s", current, committed)
+	}
+}
+
+func TestSourceLoadStateIgnoresMalformedProviderStateWithoutDroppingFamilies(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	initialFetcher := &fakeDeviceInventoryFetcher{observations: []DeviceInventoryObservation{
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:01", IP: "192.0.2.10"},
+	}}
+	initial := newSource([]Provider{newDeviceInventoryProviderWithFetcher(initialFetcher)}, func() time.Time { return now }, func() string { return "batch-1" })
+	if _, err := initial.Poll(context.Background()); err != nil {
+		t.Fatalf("initial Poll: %v", err)
+	}
+	state, ok := initial.SaveState()
+	if !ok {
+		t.Fatal("SaveState returned ok=false after the initial device snapshot")
+	}
+	var persisted persistedState
+	if err := json.Unmarshal(state, &persisted); err != nil {
+		t.Fatalf("saved state is invalid JSON: %v", err)
+	}
+	persisted.Providers = json.RawMessage(`{"device_inventory":{"seen":"not-an-array"}}`)
+	malformedProviderState, err := json.Marshal(persisted)
+	if err != nil {
+		t.Fatalf("marshal malformed provider state: %v", err)
+	}
+
+	restartedFetcher := &fakeDeviceInventoryFetcher{observations: []DeviceInventoryObservation{
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:01", IP: "192.0.2.10"},
+		{Source: "arp", MAC: "aa:bb:cc:dd:ee:02", IP: "192.0.2.11"},
+	}}
+	restartedProvider := newDeviceInventoryProviderWithFetcher(restartedFetcher)
+	restarted := newSource([]Provider{restartedProvider}, func() time.Time { return now.Add(time.Minute) }, func() string { return "batch-2" })
+	restarted.LoadState(malformedProviderState)
+	if got, want := restarted.families[deviceInventoryFamily], initial.families[deviceInventoryFamily]; got != want {
+		t.Fatalf("malformed provider state dropped family cursor: got %+v, want %+v", got, want)
+	}
+
+	records, err := restarted.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("restarted Poll: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("restarted Poll emitted %d records, want 2 for the changed inventory", len(records))
+	}
+	for _, record := range records {
+		var envelope struct {
+			Entity DeviceInventoryRecord `json:"entity"`
+		}
+		if err := json.Unmarshal([]byte(record.Body), &envelope); err != nil {
+			t.Fatalf("device body is invalid JSON: %v", err)
+		}
+		if !envelope.Entity.NewDevice {
+			t.Errorf("malformed provider state restored identity %q", record.Attributes["snapshot.entity_id"])
+		}
+	}
+}
+
+func TestSourceLoadStateAcceptsFamilyStateWithoutProviderState(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	p := &fakeProvider{family: "firewall", entities: []Entity{{ID: "filter_rule:a", Value: map[string]any{"kind": "filter_rule"}}}}
+	initial := newSource([]Provider{p}, func() time.Time { return now }, func() string { return "batch-1" })
+	if _, err := initial.Poll(context.Background()); err != nil {
+		t.Fatalf("initial Poll: %v", err)
+	}
+	familyOnly, err := json.Marshal(persistedState{Schema: stateSchema, Families: initial.families})
+	if err != nil {
+		t.Fatalf("marshal family-only state: %v", err)
+	}
+
+	restarted := newSource([]Provider{p}, func() time.Time { return now.Add(time.Hour) }, func() string { return "batch-2" })
+	restarted.LoadState(familyOnly)
+	records, err := restarted.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("restarted Poll: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("family-only unchanged Poll emitted %d records, want 0", len(records))
+	}
+}
+
 func TestSourceOversizeEntityFallsBackToBoundedValidJSON(t *testing.T) {
 	p := &fakeProvider{family: "firewall", entities: []Entity{{
 		ID:    "filter_rule:large",

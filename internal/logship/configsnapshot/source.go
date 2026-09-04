@@ -24,7 +24,10 @@ const (
 	schema       = "opnsense.config.snapshot.v1"
 	heartbeat    = 6 * time.Hour
 	maxBodyBytes = 196608
-	stateSchema  = 1
+	// Provider state is an optional extension to schema 1. Keeping the version
+	// unchanged lets older binaries continue to restore the family cursor when
+	// a state file written by a newer binary is encountered.
+	stateSchema = 1
 )
 
 // Entity is one stable member of a configuration family. Value must be JSON
@@ -48,6 +51,16 @@ type snapshotCommitter interface {
 	CommitSnapshot()
 }
 
+// providerStateful is an optional persistence seam for providers with
+// observation-only state in addition to the source's family cursor. The source
+// calls these methods while holding its poll/state mutex, so the provider state
+// and family state are saved and restored as one source-state operation.
+type providerStateful interface {
+	Provider
+	LoadState([]byte)
+	SaveState() ([]byte, bool)
+}
+
 // heartbeatProvider is an optional future-family override. Most families use
 // the frozen six-hour cadence; the security-posture family has a separately
 // decided seven-day cadence without duplicating this framework.
@@ -63,6 +76,9 @@ type familyState struct {
 type persistedState struct {
 	Schema   int                    `json:"schema"`
 	Families map[string]familyState `json:"families"`
+	// Providers is decoded separately so a malformed optional provider entry
+	// cannot invalidate an otherwise usable family cursor.
+	Providers json.RawMessage `json:"providers,omitempty"`
 }
 
 type source struct {
@@ -238,17 +254,21 @@ func recordBody(family string, entity Entity) ([]byte, bool, error) {
 	return fallback, true, nil
 }
 
-// LoadState restores only a complete current-version state blob. A malformed
-// file intentionally behaves like no file, matching the other StatefulSource
-// implementations: the next successful poll publishes a fresh snapshot.
+// LoadState restores a complete state blob from the current schema, including
+// the family-only form written before provider state was added.
+// A malformed file intentionally behaves like no file, matching the other
+// StatefulSource implementations: the next successful poll publishes a fresh
+// snapshot. The optional provider envelope is decoded independently so a bad
+// provider cursor cannot discard a valid family cursor.
 func (s *source) LoadState(data []byte) {
 	var persisted persistedState
 	if json.Unmarshal(data, &persisted) != nil || persisted.Schema != stateSchema || persisted.Families == nil {
 		return
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.families = persisted.Families
-	s.mu.Unlock()
+	loadProviderStates(s.providers, persisted.Providers)
 }
 
 func (s *source) SaveState() ([]byte, bool) {
@@ -257,11 +277,62 @@ func (s *source) SaveState() ([]byte, bool) {
 	if len(s.families) == 0 {
 		return nil, false
 	}
-	data, err := json.Marshal(persistedState{Schema: stateSchema, Families: s.families})
+	persisted := persistedState{Schema: stateSchema, Families: s.families}
+	providerStates := make(map[string]json.RawMessage)
+	for _, provider := range s.providers {
+		stateful, ok := provider.(providerStateful)
+		if !ok {
+			continue
+		}
+		data, ok := stateful.SaveState()
+		if !ok {
+			continue
+		}
+		if !json.Valid(data) {
+			// Provider state is part of this source's one state blob. Do not
+			// persist a family cursor without it, because that would restore
+			// an incomplete restart baseline.
+			return nil, false
+		}
+		providerStates[provider.Family()] = json.RawMessage(append([]byte(nil), data...))
+	}
+	if len(providerStates) > 0 {
+		data, err := json.Marshal(providerStates)
+		if err != nil {
+			return nil, false
+		}
+		persisted.Providers = data
+	}
+	data, err := json.Marshal(persisted)
 	if err != nil {
 		return nil, false
 	}
 	return data, true
+}
+
+// loadProviderStates treats the optional provider envelope independently from
+// the family cursor. A malformed provider entry therefore has the same safe
+// fallback as a malformed provider's own state: that provider starts fresh,
+// while a valid family hash and timestamp remain usable.
+func loadProviderStates(providers []Provider, data json.RawMessage) {
+	if len(data) == 0 {
+		return
+	}
+	var states map[string]json.RawMessage
+	if json.Unmarshal(data, &states) != nil || states == nil {
+		return
+	}
+	for _, provider := range providers {
+		stateful, ok := provider.(providerStateful)
+		if !ok {
+			continue
+		}
+		state, ok := states[provider.Family()]
+		if !ok {
+			continue
+		}
+		stateful.LoadState(append([]byte(nil), state...))
+	}
 }
 
 var _ logship.Source = (*source)(nil)

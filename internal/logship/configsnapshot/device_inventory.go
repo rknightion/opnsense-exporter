@@ -113,6 +113,13 @@ type deviceInventoryProvider struct {
 	pending map[string]struct{}
 }
 
+// deviceInventoryState contains only the provider's normalized identity keys.
+// The source family hash and emission time remain in source state; keeping this
+// separate prevents the restart marker from being coupled to record contents.
+type deviceInventoryState struct {
+	Seen []string `json:"seen"`
+}
+
 func newDeviceInventoryProvider(client *opnsense.Client) *deviceInventoryProvider {
 	return newDeviceInventoryProviderWithFetcher(opnsenseDeviceInventoryFetcher{client: client})
 }
@@ -162,6 +169,64 @@ func (p *deviceInventoryProvider) CommitSnapshot() {
 		p.seen[id] = struct{}{}
 	}
 	p.pending = nil
+}
+
+// LoadState restores committed identities from the optional configsnapshot
+// provider-state envelope. Invalid state is ignored so a valid family cursor
+// can still suppress an unchanged snapshot; pending observations are never
+// restored because they were not part of a committed poll.
+func (p *deviceInventoryProvider) LoadState(data []byte) {
+	if p == nil || len(data) == 0 {
+		return
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil || fields == nil {
+		return
+	}
+	seenData, ok := fields["seen"]
+	if !ok || strings.TrimSpace(string(seenData)) == "null" {
+		return
+	}
+	var seenIDs []string
+	if json.Unmarshal(seenData, &seenIDs) != nil {
+		return
+	}
+	seen := make(map[string]struct{}, len(seenIDs))
+	for _, id := range seenIDs {
+		if id == "" {
+			return
+		}
+		seen[id] = struct{}{}
+	}
+
+	p.mu.Lock()
+	p.seen = seen
+	p.pending = nil
+	p.mu.Unlock()
+}
+
+// SaveState returns only identities promoted by CommitSnapshot. In particular,
+// pending identities from a poll that later failed are deliberately excluded.
+func (p *deviceInventoryProvider) SaveState() ([]byte, bool) {
+	if p == nil {
+		return nil, false
+	}
+	p.mu.Lock()
+	seen := make([]string, 0, len(p.seen))
+	for id := range p.seen {
+		seen = append(seen, id)
+	}
+	p.mu.Unlock()
+	if len(seen) == 0 {
+		return nil, false
+	}
+	sort.Strings(seen)
+
+	data, err := json.Marshal(deviceInventoryState{Seen: seen})
+	if err != nil {
+		return nil, false
+	}
+	return data, true
 }
 
 type fusedDevice struct {
@@ -787,3 +852,4 @@ func lldpIdentity(neighbor opnsense.LLDPNeighbor) string {
 }
 
 var _ Provider = (*deviceInventoryProvider)(nil)
+var _ providerStateful = (*deviceInventoryProvider)(nil)
