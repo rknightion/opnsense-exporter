@@ -1,0 +1,53 @@
+name: OPNsense Live Delivery Proof
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-delivery-proof
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    if: github.repository == 'rknightion/opnsense2otel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: tailnet
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Join tailnet
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          args: --accept-dns=false
+
+      - name: Build dispatched tree
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          go build -o "$RUNNER_TEMP/opnsense2otel" .
+
+      - name: Prove delivery and rollback testbed change
+        env:
+          DEVBOX_HOST: ${{ secrets.DEVBOX_HOST }}
+          DEVBOX_API_KEY: ${{ secrets.DEVBOX_API_KEY }}
+          DEVBOX_API_SECRET: ${{ secrets.DEVBOX_API_SECRET }}
+          GRAFANA_OTLP_USER: ${{ secrets.GRAFANA_OTLP_USER }}
+          GRAFANA_LOKI_USER: ${{ secrets.GRAFANA_LOKI_USER }}
+          GRAFANA_CAP_TOKEN: ${{ secrets.GRAFANA_CAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/testbed/live_delivery_proof.py --exporter "$RUNNER_TEMP/opnsense2otel" | tee -a "$GITHUB_STEP_SUMMARY"
