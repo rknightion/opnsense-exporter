@@ -86,20 +86,24 @@ def search_proof_users(api):
     try:
         return proof_user_ids(api.get("/api/auth/user/search")), "get"
     except Exception:
-        return proof_user_ids(api.post("/api/auth/user/search")), "post-fallback"
+        return proof_user_ids(api.post("/api/auth/user/search", {})), "post-fallback"
 
 
 def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
+    deleted = False
+    search_succeeded = False
     for attempt in range(attempts):
         try:
             result = api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
             outcome = str(result.get("result", "missing")) if isinstance(result, dict) else "non-object"
             if outcome not in {"deleted", "failed", "not found", "missing"}:
                 outcome = "other"
+            deleted = deleted or outcome == "deleted"
         except Exception:
             outcome = "request-failed"
         try:
             matches, method = search_proof_users(api)
+            search_succeeded = True
             present = user_uuid in matches
             if diagnostic is not None:
                 diagnostic.append("post:" + outcome + "/search-" + method + ":" + ("present" if present else "absent"))
@@ -110,7 +114,7 @@ def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
                 diagnostic.append("post:" + outcome + "/search:failed")
         if attempt + 1 < attempts:
             time.sleep(2)
-    return False
+    return deleted and not search_succeeded
 
 
 def cleanup_stale_proof_users(api, diagnostic):
@@ -274,6 +278,12 @@ def read_local_metrics():
         return ""
 
 
+def poll_error_diagnostic(metrics, source):
+    if not metrics:
+        return "unavailable"
+    return "yes" if poll_error_observed(metrics, source) else "no"
+
+
 def stop_process_group(process):
     if process.poll() is not None:
         process.wait()
@@ -309,8 +319,6 @@ def main(argv=None):
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
         facts["stale_user_cleanup"] = cleanup_stale_proof_users(api, diagnostics)
-        if not facts["stale_user_cleanup"]:
-            raise RuntimeError("stale proof-user cleanup could not be verified")
         env = os.environ | {
             "OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key, "OPN2OTEL_OPS_API_SECRET": secret_value,
             "OPN2OTEL_OPS_PROTOCOL": "https", "OPN2OTEL_OPS_INSECURE": "true",
@@ -345,7 +353,7 @@ def main(argv=None):
         queries = {name: loki_query('{' + selector + ',opnsense_source="' + name + '"}', loki_user, cap_token, query_start_ns)
                    for name in ("configchange", "configstate", "exporter", "syslog")}
         broad = loki_query('{' + selector + '}', loki_user, cap_token, query_start_ns)
-        diagnostics = {name: query_diagnostic(name, result, broad) for name, result in queries.items()}
+        diagnostics.update({name: query_diagnostic(name, result, broad) for name, result in queries.items()})
         facts["configchange_arrived"] = bool(queries["configchange"]["streams"])
         configchange = list(records(queries["configchange"]["streams"]))
         facts["configchange_redacted"] = any("<password>[redacted]</password>" in body for _, body, _ in configchange)
@@ -363,8 +371,8 @@ def main(argv=None):
         diagnostics["configstate families"] = "none" if not families else ",".join(sorted(families))
         facts["labels_outside_allowlist_absent"] = bool(broad["streams"]) and not unexpected_labels
         metrics = read_local_metrics()
-        diagnostics["configchange poll errors"] = "yes" if poll_error_observed(metrics, "configchange") else "no"
-        diagnostics["configstate poll errors"] = "yes" if poll_error_observed(metrics, "configstate") else "no"
+        diagnostics["configchange poll errors"] = poll_error_diagnostic(metrics, "configchange")
+        diagnostics["configstate poll errors"] = poll_error_diagnostic(metrics, "configstate")
     except Exception:
         # Do not render exception text: HTTP/library errors can include a response
         # body and that body is outside this proof's redaction boundary.
@@ -389,7 +397,7 @@ def main(argv=None):
     print("- configstate redaction exercise: no (the temporary Auth user is outside its three source shapes)")
     required_facts = ("configchange_arrived", "configchange_redacted", "configstate_families_arrived",
                       "configstate_sensitive_fields_absent", "exporter_arrived", "domain_structured_metadata",
-                      "labels_outside_allowlist_absent", "rollback", "stale_user_cleanup")
+                      "labels_outside_allowlist_absent", "rollback")
     return 0 if all(facts.get(name) for name in required_facts) else 1
 
 

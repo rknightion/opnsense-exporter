@@ -58,6 +58,7 @@ class TestResultParsing(unittest.TestCase):
         self.assertTrue(proof.poll_error_observed(metrics, "configstate"))
         self.assertFalse(proof.poll_error_observed(metrics, "configchange"))
         self.assertTrue(proof.poll_error_observed(metrics, "timestamped"))
+        self.assertEqual(proof.poll_error_diagnostic("", "configstate"), "unavailable")
 
     def test_stale_cleanup_reports_only_bounded_operation_state(self):
         class FakeAPI:
@@ -92,13 +93,32 @@ class TestResultParsing(unittest.TestCase):
 
     def test_user_search_falls_back_to_post(self):
         class FakeAPI:
+            payload = None
+
             def get(self, _path):
                 raise RuntimeError("GET unavailable")
 
-            def post(self, _path, _payload=None):
+            def post(self, _path, payload=None):
+                self.payload = payload
                 return {"rows": []}
 
-        self.assertEqual(proof.search_proof_users(FakeAPI()), ([], "post-fallback"))
+        api = FakeAPI()
+        self.assertEqual(proof.search_proof_users(api), ([], "post-fallback"))
+        self.assertEqual(api.payload, {})
+
+    def test_delete_accepts_exact_deleted_result_when_search_is_unavailable(self):
+        class FakeAPI:
+            def get(self, _path):
+                raise RuntimeError("GET unavailable")
+
+            def post(self, path, _payload=None):
+                if "/del/" in path:
+                    return {"result": "deleted"}
+                raise RuntimeError("POST search unavailable")
+
+        diagnostic = []
+        self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
+        self.assertEqual(diagnostic, ["post:deleted/search:failed"])
 
 
 if __name__ == "__main__":
