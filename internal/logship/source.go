@@ -86,6 +86,11 @@ type ExtraSourceNames interface {
 type Deps struct {
 	Client *opnsense.Client
 	Logger *slog.Logger
+	// AfterSourcesStopped runs during pipeline shutdown after every poll and push
+	// source has returned, but before the queue is closed and drained. main uses
+	// this lifecycle seam to quiesce external NetFlow producers and flush their
+	// correlator into the still-live queue. Sources must not call it.
+	AfterSourcesStopped func()
 
 	// Cache is the log-enrichment snapshot cache. Reads are lock-free. It is never
 	// nil when the pipeline is started by main; a cold cache simply misses every

@@ -900,7 +900,16 @@ func main() {
 				return collector.FlowLogStats{Emitted: s.Emitted, Truncated: s.Truncated, Dropped: s.Dropped}
 			})
 			flowCtx, cancelFlow := context.WithCancel(context.Background())
+			flowDone := make(chan struct{})
+			// Flush drains pending entries into the still-live log pipeline, so it MUST run
+			// after every NetFlow producer has quiesced and before the pipeline drains.
+			stopFlowLog = func() {
+				cancelFlow()
+				<-flowDone
+				corr.Flush()
+			}
 			go func() {
+				defer close(flowDone)
 				t := time.NewTicker(flowExpireTick)
 				defer t.Stop()
 				for {
@@ -912,12 +921,6 @@ func main() {
 					}
 				}
 			}()
-			// Flush drains pending entries into the still-live log pipeline, so it MUST run
-			// before the pipeline itself drains — stopLogs calls this first.
-			stopFlowLog = func() {
-				cancelFlow()
-				corr.Flush()
-			}
 			logger.Info("flow log emission enabled",
 				"mode", flowCfg.LogMode, "correlate", flowCfg.Correlate, "window", flowCfg.CorrelateWindow)
 		}
@@ -1644,6 +1647,13 @@ func main() {
 			Client:     &opnsenseClient,
 			Logger:     logger,
 			Registerer: selfMetricsRegistry,
+			// Zenarmor is a correlator producer owned by the log pipeline, while
+			// NetFlow is external to it. This hook runs only after Zenarmor and every
+			// other log source has returned, then quiesces NetFlow and performs the
+			// one final correlator flush before the log queue closes.
+			AfterSourcesStopped: func() {
+				stopFlowProducers(stopNetflow, stopFlowLog)
+			},
 		}
 		// Feed the log_events collector's running totals from the syslog receiver
 		// (#258), unless the collector is disabled — in which case the receiver sees a
@@ -1699,21 +1709,13 @@ func main() {
 		stopLogs = func() {
 			ctx, cancel := context.WithTimeout(context.Background(), logsShutdownTimeout)
 			defer cancel()
-			// Flush the correlator FIRST, while the pipeline is still live: its final
-			// records must reach the queue before stop drains it, or they are dropped.
-			if stopFlowLog != nil {
-				stopFlowLog()
-			}
 			if err := stop(ctx); err != nil {
 				logger.Error("failed to flush log pipeline on shutdown", "err", err)
 			}
 			// Stop the enrichment refresher only after the pipeline has drained: records
 			// still in flight are enriched from the snapshot, and a refresher torn down
-			// first would strand them. The NetFlow lane reads the same snapshot, so it
-			// stops here too, ahead of the refresher.
-			if stopNetflow != nil {
-				stopNetflow()
-			}
+			// first would strand them. The NetFlow lane was quiesced before the flow-log
+			// flush above, so it is safe to stop the refresher now.
 			if stopEnrich != nil {
 				stopEnrich()
 			}
@@ -1767,7 +1769,11 @@ func main() {
 			logger.Error("failed to start netflow receiver", "err", lerr)
 			os.Exit(1)
 		}
-		go listener.Serve()
+		listenerDone := make(chan struct{})
+		go func() {
+			defer close(listenerDone)
+			listener.Serve()
+		}()
 
 		// Rebuild the ifIndex map on a ticker. ng_netflow numbers interfaces
 		// POSITIONALLY over ifinfo output, so adding or removing any interface
@@ -1924,7 +1930,9 @@ func main() {
 		// Release the VLAN hold buffer on a ticker. ObserveDatagram already drains what
 		// is due on every datagram, so this covers only the lane that has gone quiet —
 		// and the shutdown Flush covers the records still parked when it does.
+		netflowReleaseDone := make(chan struct{})
 		go func() {
+			defer close(netflowReleaseDone)
 			ticker := time.NewTicker(flowHoldReleaseInterval)
 			defer ticker.Stop()
 			for {
@@ -1963,9 +1971,14 @@ func main() {
 		stopNetflow = func() {
 			cancelNetflow()
 			_ = listener.Close()
-			// Flushed synchronously, and AFTER the socket is closed, so the records
-			// still parked in the hold buffer are reported rather than abandoned —
-			// the same contract as Correlator.Flush.
+			// Serve closes its work queue and waits for every decoder worker after the
+			// socket closes. The release ticker can also emit held records, so wait for
+			// it before the final processor flush; otherwise either producer could add
+			// a correlator entry after its one final flush.
+			<-listenerDone
+			<-netflowReleaseDone
+			// Flush synchronously after all NetFlow producers have stopped, so records
+			// still parked in the hold buffer are reported rather than abandoned.
 			proc.Flush(time.Now())
 		}
 		// An empty allowlist is legitimate but it is a decision, not a default to
@@ -1987,10 +2000,7 @@ func main() {
 	// cancelling so it does not leak.
 	if stopNetflow != nil && stopLogs == nil {
 		stopLogs = func() {
-			if stopFlowLog != nil {
-				stopFlowLog()
-			}
-			stopNetflow()
+			stopFlowProducers(stopNetflow, stopFlowLog)
 			if stopEnrich != nil {
 				stopEnrich()
 			}
@@ -2129,6 +2139,19 @@ func main() {
 		case <-srvClose:
 			os.Exit(1)
 		}
+	}
+}
+
+// stopFlowProducers owns the shutdown boundary between the external NetFlow
+// receiver and the correlator. With log shipping enabled it is invoked by the
+// pipeline only after its own push sources (including Zenarmor) have stopped and
+// while its output queue is still live. The standalone path calls it directly.
+func stopFlowProducers(stopNetflow, stopFlowLog func()) {
+	if stopNetflow != nil {
+		stopNetflow()
+	}
+	if stopFlowLog != nil {
+		stopFlowLog()
 	}
 }
 

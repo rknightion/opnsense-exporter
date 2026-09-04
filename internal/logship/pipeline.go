@@ -47,6 +47,9 @@ type pipeline struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+	// afterSourcesStopped bridges producers outside the source registry into the
+	// shutdown order. It runs after pollerWG reaches zero and before queue.close.
+	afterSourcesStopped func()
 
 	pollerWG  sync.WaitGroup
 	emitterWG sync.WaitGroup
@@ -140,16 +143,17 @@ func Start(
 
 	pctx, cancel := context.WithCancel(context.Background())
 	p := &pipeline{
-		sink:        sink,
-		cfg:         cfg,
-		log:         deps.Logger,
-		selfLog:     selfLog,
-		sources:     sources,
-		pushSources: pushSources,
-		stateFile:   cfg.StateFile,
-		ctx:         pctx,
-		cancel:      cancel,
-		limiter:     NewLogLimiter(errorLogInterval, errorLogMaxKeys),
+		sink:                sink,
+		cfg:                 cfg,
+		log:                 deps.Logger,
+		selfLog:             selfLog,
+		sources:             sources,
+		pushSources:         pushSources,
+		stateFile:           cfg.StateFile,
+		ctx:                 pctx,
+		cancel:              cancel,
+		afterSourcesStopped: deps.AfterSourcesStopped,
+		limiter:             NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueueBytes(cfg.BufferSize, cfg.BufferMaxBytes, p.noteOverflow)
 	sourceLabels := collectSourceNames(sources, pushSources)
@@ -738,6 +742,9 @@ func (p *pipeline) stop(ctx context.Context) error {
 	}
 	p.cancel()
 	p.pollerWG.Wait()
+	if p.afterSourcesStopped != nil {
+		p.afterSourcesStopped()
+	}
 	p.queue.close()
 
 	drained := make(chan struct{})

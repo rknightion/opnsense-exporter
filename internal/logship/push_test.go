@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -313,10 +314,22 @@ func TestPushSourceDoesNotBlockStop(t *testing.T) {
 	s := &fakePush{n: 2}
 	p.pushSources = []PushSource{s}
 	p.pollerWG.Add(1)
+	var pushStopped atomic.Bool
 	go func() {
 		defer p.pollerWG.Done()
 		p.runPushSource(p.ctx, s)
+		pushStopped.Store(true)
 	}()
+	p.afterSourcesStopped = func() {
+		if !pushStopped.Load() {
+			t.Error("after-sources hook ran while a push producer was still live")
+		}
+		// Model the final correlator flush. The hook must be able to enqueue this
+		// record before stop closes and drains the output queue.
+		if _, ok := p.enqueue(Entry{Source: "merged", Record: Record{Body: "final-flow"}}); !ok {
+			t.Error("after-sources hook could not enqueue the final flow record")
+		}
+	}
 
 	done := make(chan error, 1)
 	go func() { done <- p.stop(context.Background()) }()
@@ -328,7 +341,7 @@ func TestPushSourceDoesNotBlockStop(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("stop() did not return: a push source blocked pollerWG.Wait()")
 	}
-	if got := len(sink.got()); got != 2 {
-		t.Errorf("sink got %d entries, want 2 (queue must drain on stop)", got)
+	if got := len(sink.got()); got != 3 {
+		t.Errorf("sink got %d entries, want 3 (push records plus final flow must drain on stop)", got)
 	}
 }
