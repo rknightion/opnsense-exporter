@@ -57,6 +57,37 @@ class TestResultParsing(unittest.TestCase):
         self.assertTrue(proof.poll_error_observed(metrics, "configstate"))
         self.assertFalse(proof.poll_error_observed(metrics, "configchange"))
 
+    def test_stale_cleanup_reports_only_bounded_operation_state(self):
+        class FakeAPI:
+            def get(self, _path):
+                return {"rows": [{"uuid": "opaque", "name": "deliveryproof0123456789abcdef", "scope": "user"}]}
+
+            def post(self, _path, _payload=None):
+                return {"result": "unexpected body text"}
+
+        diagnostic = {}
+        self.assertFalse(proof.cleanup_stale_proof_users(FakeAPI(), diagnostic))
+        self.assertEqual(diagnostic["stale cleanup detail"],
+                         "found:1;post:other/search:present,post:other/search:present,post:other/search:present")
+
+    def test_stale_cleanup_attempts_every_matching_user(self):
+        class FakeAPI:
+            users = {"first": "deliveryproof0123456789abcdef", "second": "deliveryprooffedcba9876543210"}
+            deleted = []
+
+            def get(self, _path):
+                return {"rows": [{"uuid": user_uuid, "name": name, "scope": "user"}
+                                 for user_uuid, name in self.users.items() if user_uuid not in self.deleted]}
+
+            def post(self, path, _payload=None):
+                self.deleted.append(path.rsplit("/", 1)[-1])
+                return {"result": "deleted"}
+
+        api = FakeAPI()
+        diagnostic = {}
+        self.assertTrue(proof.cleanup_stale_proof_users(api, diagnostic))
+        self.assertEqual(api.deleted, ["first", "second"])
+
 
 if __name__ == "__main__":
     unittest.main()

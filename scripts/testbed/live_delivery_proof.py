@@ -82,28 +82,40 @@ def proof_user_ids(payload):
     return result
 
 
-def delete_and_verify_user(api, user_uuid, attempts=3):
+def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
     for attempt in range(attempts):
         try:
-            api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
+            result = api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
+            outcome = str(result.get("result", "missing")) if isinstance(result, dict) else "non-object"
+            if outcome not in {"deleted", "failed", "not found", "missing"}:
+                outcome = "other"
         except Exception:
-            pass
+            outcome = "request-failed"
         try:
-            if user_uuid not in proof_user_ids(api.get("/api/auth/user/search")):
+            present = user_uuid in proof_user_ids(api.get("/api/auth/user/search"))
+            if diagnostic is not None:
+                diagnostic.append("post:" + outcome + "/search:" + ("present" if present else "absent"))
+            if not present:
                 return True
         except Exception:
-            pass
+            if diagnostic is not None:
+                diagnostic.append("post:" + outcome + "/search:failed")
         if attempt + 1 < attempts:
             time.sleep(2)
     return False
 
 
-def cleanup_stale_proof_users(api):
+def cleanup_stale_proof_users(api, diagnostic):
     try:
         stale = proof_user_ids(api.get("/api/auth/user/search"))
     except Exception:
+        diagnostic["stale cleanup detail"] = "search-failed"
         return False
-    return all(delete_and_verify_user(api, user_uuid) for user_uuid in stale)
+    attempts = []
+    outcomes = [delete_and_verify_user(api, user_uuid, diagnostic=attempts) for user_uuid in stale]
+    result = all(outcomes)
+    diagnostic["stale cleanup detail"] = "none" if not stale else "found:" + str(len(stale)) + ";" + ",".join(attempts)
+    return result
 
 
 def no_sensitive_keys(value):
@@ -288,7 +300,7 @@ def main(argv=None):
     diagnostics = {}
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
-        facts["stale_user_cleanup"] = cleanup_stale_proof_users(api)
+        facts["stale_user_cleanup"] = cleanup_stale_proof_users(api, diagnostics)
         if not facts["stale_user_cleanup"]:
             raise RuntimeError("stale proof-user cleanup could not be verified")
         env = os.environ | {
