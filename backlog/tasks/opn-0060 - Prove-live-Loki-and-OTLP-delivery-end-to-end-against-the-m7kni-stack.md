@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: In Progress
+status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 05:32'
+updated_date: '2026-09-04 07:48'
 labels: []
 dependencies: []
 priority: high
@@ -30,13 +30,13 @@ The proof runs locally against the testbed rather than in CI, and the evidence i
 - [ ] #2 The promoted stream-label set observed in Loki matches the documented table in docs/log-shipping.md, and any divergence is written up rather than silently accepted
 - [ ] #3 OPN-0038 domain enrichment is confirmed present as structured metadata and confirmed ABSENT from the stream-label set, per its frozen contract
 - [ ] #4 Config revision and config snapshot bodies are confirmed redacted in the delivered record, not merely in the unit test
-- [ ] #5 No credential value appears in any commit, tracker entry, log or report; the run is identifiable by its instance label so the data can be pruned
+- [x] #5 No credential value appears in any commit, tracker entry, log or report; the run is identifiable by its instance label so the data can be pruned
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -65,4 +65,14 @@ Discharged tonight by querying the m7kni backend directly:
 STILL UNPROVEN and owned by the next run: arrival of `configchange`, `configstate` (all three families) and `exporter`; domain present as structured metadata; and config-revision/config-snapshot redaction on the wire.
 
 RESUME PATH IS NOW CI, NOT LOCAL. `DEVBOX_HOST`, `DEVBOX_API_KEY` and `DEVBOX_API_SECRET` already exist in the `tailnet` environment, and `GRAFANA_OTLP_USER`, `GRAFANA_LOKI_USER` and `GRAFANA_CAP_TOKEN` were added there on 2026-09-04. A workflow modelled on `live-canary.yml` joins the tailnet, runs the current build against the testbed with the new sources enabled, exports to the m7kni gateway under a unique instance label, then queries Loki back for each source.
+
+Wave 5 CI evidence. Full delivery run 33849420068 at b360e86b used instance delivery-proof-33849420068. Query {service_name="opnsense2otel",service_instance_id="delivery-proof-33849420068",opnsense_source="<source>"}: exporter=yes, syslog=yes, configchange=no with other instance data present, configstate=no with other instance data present; local configstate poll-error counter=yes and configchange poll-error counter=no. Domain structured-metadata assertion=no. Broad query {service_name="opnsense2otel",service_instance_id="delivery-proof-33849420068"}: seven-key-only assertion=no; 202 unexpected key names were observed, including dst_domain, so the current-build result does not match the previously proven production label set. Config revision/snapshot on-wire redaction=no because neither source arrived; no inference was made from empty queries. All gateway and Loki response bodies remained suppressed.
+
+The reversible Auth-user trigger exposed a testbed API authority defect. Search succeeds only as POST with an empty JSON body; deletion failed in deployed path, query-parameter and JSON-body forms. Runs 33843852532, 33848582974 and 33849420068 each created one disabled deliveryproof account and could not remove it; cleanup-only guarded run 33850228416 observed exactly three, attempted all three forms three times for every account, failed, and stopped before exporter startup or any new mutation. PARKED RESUME BOUNDARY: grant the tailnet credential a deletion path that succeeds on the deployed testbed, or remove the three matching non-system proof accounts through an authorised firewall administration path; then diagnose configstate API poll errors and the current-build 202-key label expansion before rerunning the four assertions. Do not create another proof user until cleanup is confirmed.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Partial proof only. Exporter and syslog delivery were observed, but configchange/configstate arrival, domain metadata placement, on-wire config redaction and the seven-key label contract all answered no. Three disabled proof accounts remain because the protected credential can create/search but cannot delete; the guarded final run stopped before another mutation. Resume at authorised cleanup plus configstate poll-error and label-promotion diagnosis.
+<!-- SECTION:FINAL_SUMMARY:END -->

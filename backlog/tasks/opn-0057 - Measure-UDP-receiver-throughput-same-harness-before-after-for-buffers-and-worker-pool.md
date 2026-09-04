@@ -3,11 +3,11 @@ id: OPN-0057
 title: >-
   Measure UDP receiver throughput: same-harness before/after for buffers and
   worker pool
-status: In Progress
+status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-04 05:32'
+updated_date: '2026-09-04 05:59'
 labels:
   - needs-triage
 milestone: m-4
@@ -54,4 +54,12 @@ Wave 5: first commit a deterministic UDP throughput contract naming the sender c
 Wave 3 park: resume with one controlled harness that applies identical offered UDP load and packet size before and after the buffer/worker-pool changes. Read back numeric effective SO_RCVBUF on deployed Linux and BSD, accounting for Linux doubling, and capture both socket drops and bounded worker-queue drops alongside throughput. Do not make a throughput claim until all four measurements are recorded here.
 
 Wave 4 feasibility result: no throughput trial ran. The testbed hold was released before L2 traffic because the repository has no committed identical-load sender harness, receiver deployment topology, or fixed payload/rate/duration contract. Current code exposes queue_full loss but not a successful numeric effective SO_RCVBUF read-back; the BSD candidate socket-drop counter is system-wide unless receiver isolation is proved. A comparison without those facts would fail acceptance criteria 1 through 3 and any number would be manufactured. PARKED RESUME BOUNDARY: define one committed same-payload/rate/duration harness runnable against immutable pre-feature and current binaries, name the deployed Linux and BSD receiver targets, expose or trace numeric getsockopt SO_RCVBUF on both, and prove attributable socket-drop deltas before running the comparison.
+
+Wave 5 contract landed in 8c4d92ce. The fixed 256-byte, 5,000 packets/s, 60-second sender and fail-closed four-observation verifier passed 11 focused tests and the full just check gate. CodeRabbit completed three source-only passes: pass 1 found a major before/current socket-drop-scope gap plus a major non-JSON socket-failure path and a minor formatting issue; pass 2 found non-finite elapsed values could pass validation; pass 3 completed with zero findings after all were fixed. No traffic ran and no throughput number was observed. PARKED RESUME BOUNDARY: expose an ingress-accepted counter immediately after successful syslog UDP queue admission and a successful numeric getsockopt SO_RCVBUF read-back on each deployed receiver; provide immutable before/current deployments on the named isolated Linux and FreeBSD roles with the same instance and counter-capture method; then run the committed four-observation contract under one testbed hold and record buffer, accepted rate, socket drops, and queue drops. A CI-only API credential does not provide the missing FreeBSD binary deployment or receiver-local counters.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Committed the deterministic OPN-0057 measurement contract at 8c4d92ce; numeric measurement remains unproven and is parked at the exact missing receiver observations.
+<!-- SECTION:FINAL_SUMMARY:END -->
