@@ -38,10 +38,11 @@ var (
 	// RejectReasons: peer/auth/unhandled_endpoint/body/overloaded/index_limit are the
 	// HTTP receiver's (server.go) — overloaded is a bulk request refused at the
 	// concurrency cap (#315), index_limit a create refused at the index-registry
-	// ceiling (#316); unknown_family/filtered/self_traffic/excluded are the record's
-	// (source.go). There is no "oversized" here — that is a syslog framing concern only.
+	// ceiling (#316); conn_limit is a TCP socket refused at the listener connection
+	// cap; unknown_family/filtered/self_traffic/excluded are the record's (source.go).
+	// There is no "oversized" here — that is a syslog framing concern only.
 	RejectReasons = []string{
-		"peer", "auth", "unhandled_endpoint", "body", "overloaded", "index_limit",
+		"peer", "auth", "unhandled_endpoint", "body", "overloaded", "index_limit", "conn_limit",
 		"unknown_family", "filtered", "self_traffic", "excluded",
 	}
 	// ParseStages: bulk is the _bulk envelope (server.go), document one record inside
@@ -323,7 +324,7 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 		WriteTimeout:      writeTimeout,
 	}
 	if cfg.MaxConnections > 0 {
-		s.ln = newLimitedListener(s.ln, cfg.MaxConnections)
+		s.ln = newLimitedListenerWithMetrics(s.ln, cfg.MaxConnections, s.proc.m)
 	}
 	return s, nil
 }
@@ -331,10 +332,15 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 type limitedListener struct {
 	net.Listener
 	sem chan struct{}
+	m   *metrics
 }
 
 func newLimitedListener(ln net.Listener, max int) net.Listener {
-	return &limitedListener{Listener: ln, sem: make(chan struct{}, max)}
+	return newLimitedListenerWithMetrics(ln, max, nil)
+}
+
+func newLimitedListenerWithMetrics(ln net.Listener, max int, m *metrics) net.Listener {
+	return &limitedListener{Listener: ln, sem: make(chan struct{}, max), m: m}
 }
 
 func (l *limitedListener) Accept() (net.Conn, error) {
@@ -347,6 +353,10 @@ func (l *limitedListener) Accept() (net.Conn, error) {
 		case l.sem <- struct{}{}:
 			return &limitedConn{Conn: conn, release: func() { <-l.sem }}, nil
 		default:
+			// The connection is refused before HTTP parsing. Count it on the shared,
+			// closed receiver vocabulary so a slow-connection flood is visible without
+			// putting a peer address into a metric label.
+			l.m.reject("conn_limit")
 			_ = conn.Close()
 		}
 	}

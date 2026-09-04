@@ -117,6 +117,122 @@ func TestFactoryBindsEagerly(t *testing.T) {
 	}
 }
 
+// A connection that arrives after the configured socket cap is full is accepted
+// only long enough to be closed. It must still be counted on the shared receiver
+// rejection surface, or a slow-connection flood looks like a healthy receiver.
+func TestLimitedListenerCountsConnectionCapRejection(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	s, err := newSource(logship.Deps{Registerer: reg}, Config{
+		Addr:           "127.0.0.1:0",
+		MaxConnections: 1,
+	})
+	if err != nil {
+		t.Fatalf("newSource: %v", err)
+	}
+	t.Cleanup(func() { _ = s.ln.Close() })
+
+	accepted := make(chan net.Conn, 1)
+	acceptErr := make(chan error, 1)
+	go func() {
+		conn, err := s.ln.Accept()
+		if err != nil {
+			acceptErr <- err
+			return
+		}
+		accepted <- conn
+	}()
+
+	first, err := net.Dial("tcp", s.ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial first: %v", err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+
+	var held net.Conn
+	select {
+	case held = <-accepted:
+	case err := <-acceptErr:
+		t.Fatalf("accept first: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the first connection to hold the only slot")
+	}
+	t.Cleanup(func() { _ = held.Close() })
+
+	// Accept loops after closing an over-cap connection, so leave it running to
+	// consume the next connection and then prove that the released slot is reusable.
+	acceptedNext := make(chan net.Conn, 1)
+	acceptNextErr := make(chan error, 1)
+	go func() {
+		conn, err := s.ln.Accept()
+		if err != nil {
+			acceptNextErr <- err
+			return
+		}
+		acceptedNext <- conn
+	}()
+
+	second, err := net.Dial("tcp", s.ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial over-cap: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := rejectCount(t, reg, "conn_limit"); got == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := rejectCount(t, reg, "conn_limit"); got != 1 {
+		t.Fatalf("Rejected{conn_limit} = %v, want 1", got)
+	}
+
+	if err := second.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("set over-cap read deadline: %v", err)
+	}
+	if _, err := second.Read(make([]byte, 1)); err == nil {
+		t.Fatal("the over-cap connection should have been closed")
+	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatal("the over-cap connection was left open")
+	}
+
+	if err := held.Close(); err != nil {
+		t.Fatalf("close held connection: %v", err)
+	}
+	third, err := net.Dial("tcp", s.ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial after release: %v", err)
+	}
+	t.Cleanup(func() { _ = third.Close() })
+
+	select {
+	case conn := <-acceptedNext:
+		_ = conn.Close()
+	case err := <-acceptNextErr:
+		t.Fatalf("accept after slot release: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the released slot to accept a connection")
+	}
+
+	shutdownErr := make(chan error, 1)
+	go func() {
+		_, err := s.ln.Accept()
+		shutdownErr <- err
+	}()
+	if err := s.ln.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+	select {
+	case err := <-shutdownErr:
+		if err == nil {
+			t.Fatal("Accept returned nil after listener shutdown")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept did not return after listener shutdown")
+	}
+}
+
 // A source built from a zero Deps must not panic: nil Cache, nil MetricSink and nil
 // Registerer all have to be tolerated.
 func TestNewSourceToleratesZeroDeps(t *testing.T) {
