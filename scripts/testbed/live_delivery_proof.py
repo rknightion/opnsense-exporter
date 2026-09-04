@@ -99,8 +99,12 @@ def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
                 result = api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
                 delete_method = "path"
             except Exception:
-                result = api.post("/api/auth/user/del?" + urllib.parse.urlencode({"uuid": user_uuid}))
-                delete_method = "query-fallback"
+                try:
+                    result = api.post("/api/auth/user/del?" + urllib.parse.urlencode({"uuid": user_uuid}))
+                    delete_method = "query-fallback"
+                except Exception:
+                    result = api.post("/api/auth/user/del", {"uuid": user_uuid})
+                    delete_method = "body-fallback"
             outcome = str(result.get("result", "missing")) if isinstance(result, dict) else "non-object"
             if outcome not in {"deleted", "failed", "not found", "missing"}:
                 outcome = "other"
@@ -325,6 +329,8 @@ def main(argv=None):
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
         facts["stale_user_cleanup"] = cleanup_stale_proof_users(api, diagnostics)
+        if not facts["stale_user_cleanup"]:
+            raise RuntimeError("stale proof-user cleanup could not be verified")
         env = os.environ | {
             "OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key, "OPN2OTEL_OPS_API_SECRET": secret_value,
             "OPN2OTEL_OPS_PROTOCOL": "https", "OPN2OTEL_OPS_INSECURE": "true",

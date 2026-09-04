@@ -142,6 +142,28 @@ class TestResultParsing(unittest.TestCase):
         self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
         self.assertEqual(diagnostic, ["post-query-fallback:deleted/search-post-fallback:absent"])
 
+    def test_delete_falls_back_to_body_and_verifies_absence(self):
+        class FakeAPI:
+            deleted = False
+
+            def get(self, _path):
+                raise RuntimeError("GET unavailable")
+
+            def post(self, path, payload=None):
+                if "/del/" in path or "?uuid=" in path:
+                    raise RuntimeError("route shape unavailable")
+                if path == "/api/auth/user/del" and payload == {"uuid": "opaque"}:
+                    self.deleted = True
+                    return {"result": "deleted"}
+                if path == "/api/auth/user/search":
+                    rows = [] if self.deleted else [{"uuid": "opaque", "name": "deliveryproof0123456789abcdef"}]
+                    return {"rows": rows}
+                raise AssertionError("unexpected request")
+
+        diagnostic = []
+        self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
+        self.assertEqual(diagnostic, ["post-body-fallback:deleted/search-post-fallback:absent"])
+
 
 if __name__ == "__main__":
     unittest.main()
