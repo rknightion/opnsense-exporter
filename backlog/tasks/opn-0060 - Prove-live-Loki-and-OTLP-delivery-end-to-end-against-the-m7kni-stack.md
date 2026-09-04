@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: In Progress
+status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 12:00'
+updated_date: '2026-09-04 12:05'
 labels: []
 dependencies: []
 priority: high
@@ -107,6 +107,8 @@ Wave 6 run 33867334131 at 47f47313 failed at proof_stage=resolving_alias before 
 Wave 6 diagnostic run 33869285754 at 19b8625a failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match. The alias API request and complete pagination succeeded; none of the three lowercase approved spellings matched. No exporter started, no alias was mutated, and no m7kni write occurred. Next action: accept only the same two-word dedicated name with optional single hyphen or underscore and case-insensitive letters, retain exactly-one selection and near-collision rejection, then rerun.
 
 Wave 6 run 33870211682 at 21a824b2 again failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match after allowing case variants of the exact delivery-proof stem. No exporter started, no alias was mutated, and no m7kni write occurred. Final bounded identification attempt: allow one safe prefix and/or suffix token around the exact stem while retaining exactly-one selection and near-collision rejection. If that still finds nothing, park at dedicated alias absent or differently named.
+
+Wave 6 final bounded run 33870791765 at 1cda1d2b failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match after allowing one safe prefix and/or suffix around the delivery-proof stem. This establishes that the dedicated alias is absent or differently named; no exporter started, no alias was mutated or restored, no m7kni write occurred, and no user account was created. The testbed hold was released at 2026-09-04T12:04:54Z. PARKED RESUME BOUNDARY: create or identify the dedicated throwaway firewall alias and record its exact safe name, then dispatch the current proof workflow; do not fall back to any user-account trigger.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
