@@ -50,10 +50,10 @@ class API:
         self.tls.check_hostname = False
         self.tls.verify_mode = ssl.CERT_NONE
 
-    def post(self, path, payload=None):
-        data = json.dumps(payload).encode() if payload is not None else b""
+    def request(self, method, path, payload=None):
+        data = json.dumps(payload).encode() if payload is not None else (b"" if method == "POST" else None)
         request = urllib.request.Request(
-            self.base + path, data=data, method="POST",
+            self.base + path, data=data, method=method,
             headers={"Authorization": self.auth, "Content-Type": "application/json"},
         )
         try:
@@ -63,6 +63,47 @@ class API:
                 return json.load(response)
         except (urllib.error.URLError, json.JSONDecodeError) as err:
             raise RuntimeError("testbed API request failed without exposing its body") from err
+
+    def get(self, path):
+        return self.request("GET", path)
+
+    def post(self, path, payload=None):
+        return self.request("POST", path, payload)
+
+
+def proof_user_ids(payload):
+    rows = payload.get("rows", []) if isinstance(payload, dict) else []
+    result = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("scope") == "system":
+            continue
+        if re.fullmatch(r"deliveryproof[0-9a-f]{16}", str(row.get("name", ""))) and row.get("uuid"):
+            result.append(str(row["uuid"]))
+    return result
+
+
+def delete_and_verify_user(api, user_uuid, attempts=3):
+    for attempt in range(attempts):
+        try:
+            api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
+        except Exception:
+            pass
+        try:
+            if user_uuid not in proof_user_ids(api.get("/api/auth/user/search")):
+                return True
+        except Exception:
+            pass
+        if attempt + 1 < attempts:
+            time.sleep(2)
+    return False
+
+
+def cleanup_stale_proof_users(api):
+    try:
+        stale = proof_user_ids(api.get("/api/auth/user/search"))
+    except Exception:
+        return False
+    return all(delete_and_verify_user(api, user_uuid) for user_uuid in stale)
 
 
 def no_sensitive_keys(value):
@@ -191,6 +232,28 @@ def has_domain_metadata(rows, expected):
     )
 
 
+def poll_error_observed(metrics, source):
+    for line in metrics.splitlines():
+        if not line.startswith("opnsense_exporter_logs_poll_errors_total{"):
+            continue
+        labels, _, value = line.partition("} ")
+        if ('source="' + source + '"') not in labels:
+            continue
+        try:
+            return float(value) > 0
+        except ValueError:
+            return False
+    return False
+
+
+def read_local_metrics():
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8080/metrics", timeout=10) as response:
+            return response.read().decode("utf-8", "replace")
+    except urllib.error.URLError:
+        return ""
+
+
 def stop_process_group(process):
     if process.poll() is not None:
         process.wait()
@@ -225,6 +288,9 @@ def main(argv=None):
     diagnostics = {}
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
+        facts["stale_user_cleanup"] = cleanup_stale_proof_users(api)
+        if not facts["stale_user_cleanup"]:
+            raise RuntimeError("stale proof-user cleanup could not be verified")
         env = os.environ | {
             "OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key, "OPN2OTEL_OPS_API_SECRET": secret_value,
             "OPN2OTEL_OPS_PROTOCOL": "https", "OPN2OTEL_OPS_INSECURE": "true",
@@ -272,7 +338,13 @@ def main(argv=None):
         facts["domain_structured_metadata"] = has_domain_metadata(syslog_records, "delivery-proof.example")
         observed_labels = {key for labels, _, _ in records(broad["streams"]) for key in labels}
         expected = {"opnsense_action", "opnsense_device_category", "opnsense_interface", "opnsense_source", "opnsense_subsystem", "service_instance_id", "service_name"}
-        facts["labels_outside_allowlist_absent"] = bool(broad["streams"]) and observed_labels.issubset(expected)
+        unexpected_labels = sorted(observed_labels - expected)
+        diagnostics["unexpected promoted label keys"] = "none" if not unexpected_labels else ",".join(unexpected_labels)
+        diagnostics["configstate families"] = "none" if not families else ",".join(sorted(families))
+        facts["labels_outside_allowlist_absent"] = bool(broad["streams"]) and not unexpected_labels
+        metrics = read_local_metrics()
+        diagnostics["configchange poll errors"] = "yes" if poll_error_observed(metrics, "configchange") else "no"
+        diagnostics["configstate poll errors"] = "yes" if poll_error_observed(metrics, "configstate") else "no"
     except Exception:
         # Do not render exception text: HTTP/library errors can include a response
         # body and that body is outside this proof's redaction boundary.
@@ -282,11 +354,7 @@ def main(argv=None):
         # leave its credential-bearing process alive on the runner.
         try:
             if created_uuid:
-                try:
-                    rollback = api.post("/api/auth/user/del/" + urllib.parse.quote(created_uuid, safe=""))
-                    facts["rollback"] = rollback.get("result") == "deleted"
-                except Exception:
-                    facts["rollback"] = False
+                facts["rollback"] = delete_and_verify_user(api, created_uuid)
         finally:
             if process:
                 stop_process_group(process)
@@ -301,7 +369,7 @@ def main(argv=None):
     print("- configstate redaction exercise: no (the temporary Auth user is outside its three source shapes)")
     required_facts = ("configchange_arrived", "configchange_redacted", "configstate_families_arrived",
                       "configstate_sensitive_fields_absent", "exporter_arrived", "domain_structured_metadata",
-                      "labels_outside_allowlist_absent", "rollback")
+                      "labels_outside_allowlist_absent", "rollback", "stale_user_cleanup")
     return 0 if all(facts.get(name) for name in required_facts) else 1
 
 

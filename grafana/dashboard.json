@@ -20572,7 +20572,7 @@
         "spec": {
           "id": 191,
           "title": "pfTop Cardinality Guard",
-          "description": "Live five-minute inventory keys and cumulative novel identities refused at the 100-key state or talker cap. The complete collector ceiling is 611 series per target.",
+          "description": "Live five-minute inventory keys and cumulative novel identities refused at the 100-key state or talker cap. The simultaneous collector ceiling is 611 series per target, but expired slots can be reused by new address/port identities, so distinct series retained by Prometheus can grow beyond that ceiling over time.",
           "links": [],
           "data": {
             "kind": "QueryGroup",

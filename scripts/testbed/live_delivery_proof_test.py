@@ -41,6 +41,22 @@ class TestResultParsing(unittest.TestCase):
         self.assertFalse(proof.has_domain_metadata(wrong, "delivery-proof.example"))
         self.assertFalse(proof.has_domain_metadata(promoted, "delivery-proof.example"))
 
+    def test_proof_user_filter_excludes_system_and_unrelated_users(self):
+        rows = {"rows": [
+            {"uuid": "keep-system", "name": "deliveryproof-system", "scope": "system"},
+            {"uuid": "remove", "name": "deliveryproof-123", "scope": "user"},
+            {"uuid": "keep-admin", "name": "deliveryproof-admin", "scope": "user"},
+            {"uuid": "remove-generated", "name": "deliveryproof0123456789abcdef", "scope": "user"},
+            {"uuid": "keep-other", "name": "operator", "scope": "user"},
+        ]}
+        self.assertEqual(proof.proof_user_ids(rows), ["remove-generated"])
+
+    def test_poll_error_parser_is_source_specific(self):
+        metrics = ('opnsense_exporter_logs_poll_errors_total{instance="proof",source="configstate"} 2\n'
+                   'opnsense_exporter_logs_poll_errors_total{instance="proof",source="configchange"} 0\n')
+        self.assertTrue(proof.poll_error_observed(metrics, "configstate"))
+        self.assertFalse(proof.poll_error_observed(metrics, "configchange"))
+
 
 if __name__ == "__main__":
     unittest.main()
