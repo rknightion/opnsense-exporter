@@ -352,7 +352,9 @@ def build(b: Builder):
         w=8, h=8,
         desc=(
             "Live five-minute inventory keys and cumulative novel identities refused at the "
-            "100-key state or talker cap. The complete collector ceiling is 611 series per target."
+            "100-key state or talker cap. The simultaneous collector ceiling is 611 series per "
+            "target, but expired slots can be reused by new address/port identities, so distinct "
+            "series retained by Prometheus can grow beyond that ceiling over time."
         ),
     )
 

@@ -24,7 +24,15 @@ NetFlow receiver is not used. It polls the firewall's current pfTop state view a
 iftop sample on the slow tier, ranks separate state and talker boards deterministically, and
 retains at most 100 identities per board for five minutes. Named series plus the overflow gauges
 account for the fields in the successful endpoint response, but they do not prove completeness
-beyond that sampled response. The hard ceiling is 611 series per target.
+beyond that sampled response. The simultaneous active ceiling is 611 series per target. It is not a
+retention-window ceiling: after an identity expires, its slot can be reused by a different state or
+talker, so Prometheus can retain many more distinct label sets over time on a busy firewall.
+
+This opt-in collector puts endpoint-identifying data into metric labels: state series include source,
+destination and gateway addresses and ports, and talker series include host addresses. Size remote
+storage and retention for identity churn, and treat the resulting metrics as network-activity data
+when setting access and retention policy. The in-process cap bounds each scrape, not the number of
+identities stored by Prometheus across the retention window.
 
 Prefer the NetFlow receiver for traffic accounting. pfTop state bytes are current per-state values
 and the traffic-top values are short rate samples; NetFlow is a packet-flow feed. Enabling both can
