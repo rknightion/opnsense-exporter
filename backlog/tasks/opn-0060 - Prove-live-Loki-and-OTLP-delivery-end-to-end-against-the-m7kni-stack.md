@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 11:52'
+updated_date: '2026-09-04 12:00'
 labels: []
 dependencies: []
 priority: high
@@ -105,6 +105,8 @@ Wave 6 run 33864893085 at 68cbde58 still failed at proof_stage=resolving_alias b
 Wave 6 run 33867334131 at 47f47313 failed at proof_stage=resolving_alias before exporter startup, alias mutation or m7kni write. The harness still suppressed which safe failure class occurred. Next action: ship bounded response-shape and HTTP failure codes that cannot include response data, rerun under the existing hold, and diagnose from the code.
 
 Wave 6 diagnostic run 33869285754 at 19b8625a failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match. The alias API request and complete pagination succeeded; none of the three lowercase approved spellings matched. No exporter started, no alias was mutated, and no m7kni write occurred. Next action: accept only the same two-word dedicated name with optional single hyphen or underscore and case-insensitive letters, retain exactly-one selection and near-collision rejection, then rerun.
+
+Wave 6 run 33870211682 at 21a824b2 again failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match after allowing case variants of the exact delivery-proof stem. No exporter started, no alias was mutated, and no m7kni write occurred. Final bounded identification attempt: allow one safe prefix and/or suffix token around the exact stem while retaining exactly-one selection and near-collision rejection. If that still finds nothing, park at dedicated alias absent or differently named.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

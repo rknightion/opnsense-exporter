@@ -30,7 +30,10 @@ SENSITIVE_DIAGNOSTIC = re.compile(
     r"(?:basic|bearer)\s+\S+|\b[a-z][a-z0-9+.-]*://\S+)",
     re.I,
 )
-PROOF_ALIAS_NAME = re.compile(r"delivery(?:[-_]?proof)\Z", re.I)
+PROOF_ALIAS_NAME = re.compile(
+    r"(?:[a-z0-9]+[-_])?delivery(?:[-_]?proof)(?:[-_][a-z0-9]+)?\Z",
+    re.I,
+)
 PROOF_SOURCES = ("configchange", "configstate", "exporter", "syslog", "zenarmor")
 SAFE_ALIAS_NAME = re.compile(r"[A-Za-z0-9_-]+\Z")
 ALIAS_SEARCH_PAGE_SIZE = 100

@@ -145,6 +145,12 @@ class TestResultParsing(unittest.TestCase):
             ])),
             ("case-variant", "Delivery_Proof"),
         )
+        self.assertEqual(
+            proof.resolve_delivery_proof_alias(FakeAPI([
+                {"uuid": "bounded-affixes", "name": "opnsense_delivery_proof_alias"},
+            ])),
+            ("bounded-affixes", "opnsense_delivery_proof_alias"),
+        )
 
     def test_dedicated_alias_discovery_inspects_later_pages(self):
         class FakeAPI:
