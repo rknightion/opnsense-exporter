@@ -5,7 +5,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 12:05'
+updated_date: '2026-09-04 18:22'
 labels: []
 dependencies: []
 priority: high
@@ -115,4 +115,6 @@ Wave 6 final bounded run 33870791765 at 1cda1d2b failed at proof_stage=resolving
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Partial proof only. Exporter and syslog delivery were observed, but configchange/configstate arrival, domain metadata placement, on-wire config redaction and the seven-key label contract all answered no. Three disabled proof accounts remain because the protected credential can create/search but cannot delete; the guarded final run stopped before another mutation. Resume at authorised cleanup plus configstate poll-error and label-promotion diagnosis.
+
+Wave 6 supersession: five assertions are discharged and were not rerun: end-to-end transport for merged/netflow/syslog/zenarmor; documented production stream-label set; no domain stream label; current build promotes nothing outside the documented seven; dst_domain is structured metadata rather than a stream label. Wave 6 final run 33870791765 stopped at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match before exporter startup. Therefore configchange/configstate arrival and on-wire config redaction remain unproven; their Loki queries were not executed and no configstate err attribute was observable. No alias was edited or restored, no account was created, and no m7kni telemetry was written. PARKED RESUME BOUNDARY: create or identify the dedicated throwaway firewall alias and record its exact safe name, then rerun without any user-account trigger.
 <!-- SECTION:FINAL_SUMMARY:END -->

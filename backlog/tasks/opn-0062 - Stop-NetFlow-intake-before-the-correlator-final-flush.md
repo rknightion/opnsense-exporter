@@ -1,11 +1,11 @@
 ---
 id: OPN-0062
 title: Stop NetFlow intake before the correlator final flush
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-04 05:38'
-updated_date: '2026-09-04 12:42'
+updated_date: '2026-09-04 18:22'
 labels:
   - needs-triage
 dependencies: []
@@ -47,10 +47,14 @@ Wave 6 correction: add an end-to-end shutdown regression using the real flowlog 
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 6 audit disproved AC2 in the real bridge lifecycle: pipeline cancellation makes Bridge.Run clear its emit callback before AfterSourcesStopped invokes corr.Flush, so pending flow logs increment the bridge dropped count instead of entering the still-open queue. The prior shutdown regression used a direct sink and could not observe this seam.
+
+Wave 6 final integration: the real flowlog bridge stays bound through the correlator flush and is explicitly unbound afterward. Regression and full repository gate passed at 2389ac3b.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Fixed by 8962f470. Shutdown now waits for log push sources, NetFlow listener/workers and the release ticker, then performs one processor flush and one correlator flush before the log queue closes. The pre-fix regression failed with a stranded held record; targeted checks passed: just test TestShutdownFlowQuiescesBeforeFinalFlush and just test TestPushSourceDoesNotBlockStop. Integrated just check passed. CodeRabbit took two completed passes: pass 1 found the valid Zenarmor quiescence gap; pass 2 completed with zero findings.
+
+Wave 6 supersession: fixed at 2389ac3b. NetFlow producers quiesce before one final processor/correlator drain; the real bridge remains bound until that drain enqueues, then unbinds. The pre-fix regression lost the held flow and moved the dropped counter; the fixed regression and final just check passed.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,11 +1,11 @@
 ---
 id: OPN-0074
 title: Bound log pipeline source shutdown by its deadline
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-04 12:43'
-updated_date: '2026-09-04 12:43'
+updated_date: '2026-09-04 18:22'
 labels: []
 dependencies: []
 modified_files:
@@ -24,15 +24,15 @@ pipeline.stop waits on pollerWG without consulting its shutdown context. A push 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A source that ignores cancellation cannot keep pipeline stop blocked past its context deadline
-- [ ] #2 Timeout returns and logs an attributable source-shutdown error without closing delivery resources still owned by a live producer
-- [ ] #3 A regression deliberately holds a source past cancellation and releases it for test cleanup
+- [x] #1 A source that ignores cancellation cannot keep pipeline stop blocked past its context deadline
+- [x] #2 Timeout returns and logs an attributable source-shutdown error without closing delivery resources still owned by a live producer
+- [x] #3 A regression deliberately holds a source past cancellation and releases it for test cleanup
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -40,3 +40,15 @@ pipeline.stop waits on pollerWG without consulting its shutdown context. A push 
 <!-- SECTION:PLAN:BEGIN -->
 Replace the unconditional poller wait with a context-aware completion channel. On deadline return an attributable source-shutdown error and leave shared delivery resources open while ownership is unresolved; add a cancellation-ignoring fake source regression that is released for cleanup.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented at 2389ac3b. A cancellation-ignoring source regression failed before the fix and passes after it; final just check passed.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed at 2389ac3b. Source shutdown now respects its context deadline, returns and logs an attributable error, and leaves delivery resources owned by a live producer open for a later safe stop. Focused race tests and final just check passed.
+<!-- SECTION:FINAL_SUMMARY:END -->

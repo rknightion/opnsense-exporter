@@ -1,11 +1,11 @@
 ---
 id: OPN-0073
 title: Make startup and shutdown self-log loss observable
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-04 12:43'
-updated_date: '2026-09-04 12:43'
+updated_date: '2026-09-04 18:22'
 labels: []
 dependencies: []
 modified_files:
@@ -24,15 +24,15 @@ The exporter self-log handler silently overwrites the oldest of its 256 pre-bind
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Startup-buffer overflow produces a bounded direct diagnostic identifying the self-log overflow
-- [ ] #2 Unbind waits for submissions that acquired the enqueue callback before the pipeline closes its queue
-- [ ] #3 Barrier-controlled regressions cover the 257th pre-bind record and the submit/Unbind/queue-close interleaving
+- [x] #1 Startup-buffer overflow produces a bounded direct diagnostic identifying the self-log overflow
+- [x] #2 Unbind waits for submissions that acquired the enqueue callback before the pipeline closes its queue
+- [x] #3 Barrier-controlled regressions cover the 257th pre-bind record and the submit/Unbind/queue-close interleaving
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -40,3 +40,15 @@ The exporter self-log handler silently overwrites the oldest of its 256 pre-bind
 <!-- SECTION:PLAN:BEGIN -->
 Add failing overflow and interleaving regressions; emit a bounded direct diagnostic when the pre-bind ring evicts; track in-flight submit callbacks so Unbind waits for callbacks that already acquired enqueue before returning.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented at 2389ac3b. Both the 257th-record overflow and submit/Unbind interleaving regressions failed before the fix and pass after it; final just check passed.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed at 2389ac3b. Startup self-log overflow emits one direct bounded diagnostic, and Unbind waits for callbacks admitted before shutdown. Barrier-controlled regressions and final just check passed.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-04 12:35'
+updated_date: '2026-09-04 18:22'
 labels:
   - needs-triage
 milestone: m-4
@@ -66,4 +66,6 @@ Wave 6 implementation: added opnsense_exporter_syslog_udp_accepted_total at succ
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Committed the deterministic OPN-0057 measurement contract at 8c4d92ce; numeric measurement remains unproven and is parked at the exact missing receiver observations.
+
+Wave 6 supersession: observability shipped at b10ffbb5. opnsense_exporter_syslog_udp_accepted_total counts successful bounded-queue admission and opnsense_exporter_syslog_udp_receive_buffer_bytes exposes the positive getsockopt SO_RCVBUF read-back. Linux commonly reports roughly double the request while FreeBSD does not; no equality assertion was added. No traffic ran and no throughput, drop or buffer number was observed. PARKED RESUME BOUNDARY: provide the two isolated receiver host roles required by the committed contract, one Linux and one FreeBSD, then run it.
 <!-- SECTION:FINAL_SUMMARY:END -->
