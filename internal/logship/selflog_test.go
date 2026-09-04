@@ -1,6 +1,7 @@
 package logship
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -123,6 +124,32 @@ func TestSelfLogHandlerRedactsCredentialBearingURLsBeforeBuffering(t *testing.T)
 		t.Fatalf("exported %d records, want 1", len(records))
 	}
 	assertSanitizedSelfLogEndpoint(t, recordAttrs(records[0]), userinfoSecret, tokenSecret, apiKeySecret, passwordSecret)
+}
+
+func TestSelfLogHandlerReportsPreBindOverflowOnce(t *testing.T) {
+	var stderr bytes.Buffer
+	h := NewSelfLogHandler(slog.NewTextHandler(&stderr, nil))
+	logger := slog.New(h)
+
+	for sequence := 0; sequence <= selfLogPendingLimit; sequence++ {
+		logger.Info("startup self log", "sequence", sequence)
+	}
+
+	h.state.mu.Lock()
+	pending := append([]Record(nil), h.state.pending...)
+	h.state.mu.Unlock()
+	if len(pending) != selfLogPendingLimit {
+		t.Fatalf("pending self-log records = %d, want %d", len(pending), selfLogPendingLimit)
+	}
+	if got := pending[0].Attributes["sequence"]; got != "1" {
+		t.Fatalf("first retained self-log sequence = %q, want 1", got)
+	}
+	if got := pending[len(pending)-1].Attributes["sequence"]; got != "256" {
+		t.Fatalf("last retained self-log sequence = %q, want 256", got)
+	}
+	if got := strings.Count(stderr.String(), "self-log startup buffer overflow"); got != 1 {
+		t.Fatalf("startup overflow diagnostics = %d, want 1", got)
+	}
 }
 
 func assertSanitizedSelfLogEndpoint(t *testing.T, attrs map[string]string, secrets ...string) {
@@ -278,6 +305,47 @@ func TestSelfLogHandlerDeliversConcurrentRecords(t *testing.T) {
 	if got != goroutines {
 		t.Fatalf("self-log callback received %d records, want %d", got, goroutines)
 	}
+}
+
+func TestSelfLogHandlerUnbindWaitsForAdmittedEnqueue(t *testing.T) {
+	enqueueAcquired := make(chan struct{})
+	releaseEnqueue := make(chan struct{})
+	queueClosed := make(chan struct{})
+
+	h := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	h.Bind(func(Entry) bool {
+		close(enqueueAcquired)
+		<-releaseEnqueue
+		select {
+		case <-queueClosed:
+			t.Error("queue closed before admitted self-log enqueue returned")
+		default:
+		}
+		return true
+	})
+
+	logged := make(chan struct{})
+	go func() {
+		slog.New(h).Info("self log during shutdown")
+		close(logged)
+	}()
+	<-enqueueAcquired
+
+	unbound := make(chan struct{})
+	go func() {
+		h.Unbind()
+		close(unbound)
+	}()
+	select {
+	case <-unbound:
+		t.Fatal("Unbind returned before the admitted enqueue callback completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseEnqueue)
+	<-logged
+	<-unbound
+	close(queueClosed)
 }
 
 func TestSelfLogDiagnosticLoggerCannotReenterSink(t *testing.T) {

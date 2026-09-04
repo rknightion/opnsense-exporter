@@ -2,6 +2,7 @@ package logship
 
 import (
 	"context"
+	"errors"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -106,7 +107,7 @@ func (p *pipeline) runPushSource(ctx context.Context, s PushSource) {
 		}
 		lr.Set(unixSeconds(recv))
 	}
-	if err := s.Run(ctx, emit); err != nil && ctx.Err() == nil {
+	if err := s.Run(ctx, emit); err != nil && !errors.Is(err, ctx.Err()) {
 		p.metrics.pollErrors.WithLabelValues(name).Inc()
 		p.log.Error("push source stopped with error", "source", name, "err", err)
 	}

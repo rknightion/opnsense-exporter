@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // --- test doubles ---------------------------------------------------------
@@ -28,6 +31,15 @@ type fakeSource struct {
 	loaded   []byte
 	saveData []byte
 	minEvery time.Duration
+}
+
+type apiErrorSource struct{ client opnsense.Client }
+
+func (s apiErrorSource) Name() string { return "configstate" }
+
+func (s apiErrorSource) Poll(context.Context) ([]Record, error) {
+	_, err := s.client.FetchServices()
+	return nil, err
 }
 
 func (f *fakeSource) Name() string { return f.name }
@@ -429,6 +441,53 @@ func TestPipeline_SourcePollErrorReachesTheLogBackend(t *testing.T) {
 	if got := shipped.Record.Attributes["err"]; got != "snapshot fetch failed" {
 		t.Errorf("shipped poll error reason = %q, want the underlying error", got)
 	}
+}
+
+func TestPipeline_SourcePollErrorRedactsAPICallErrorBeforeShipping(t *testing.T) {
+	const secret = "forwarded-snmp-community"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"community":"` + secret))
+	}))
+	defer server.Close()
+
+	client, err := opnsense.NewClient(options.OPNSenseConfig{
+		Protocol:  "http",
+		Host:      strings.TrimPrefix(server.URL, "http://"),
+		APIKey:    "test-key",
+		APISecret: "test-secret",
+	}, "test", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	withRegistry(t, func(Deps) (Source, error) { return apiErrorSource{client: client}, nil })
+
+	selfLog := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	sink := &fakeSink{}
+	stop := startWithSink(t, testCfg(), sink, Deps{Logger: slog.New(selfLog)}, prometheus.NewRegistry(), selfLog)
+	waitFor(t, func() bool {
+		for _, e := range sink.got() {
+			if e.Source == SelfLogSource && strings.Contains(e.Record.Body, "log source poll error") {
+				return true
+			}
+		}
+		return false
+	})
+	_ = stop(context.Background())
+
+	for _, e := range sink.got() {
+		if e.Source != SelfLogSource || !strings.Contains(e.Record.Body, "log source poll error") {
+			continue
+		}
+		if got := e.Record.Attributes["err"]; strings.Contains(got, secret) {
+			t.Fatalf("forwarded poll error leaked %q: %s", secret, got)
+		}
+		if got := e.Record.Attributes["err"]; !strings.Contains(got, "[REDACTED]") {
+			t.Fatalf("forwarded poll error has no redaction marker: %s", got)
+		}
+		return
+	}
+	t.Fatal("poll-error diagnostic never reached the sink")
 }
 
 // TestPipeline_SinkDiagnosticsStayOffTheWire is the other half of the split: a

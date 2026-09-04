@@ -429,6 +429,86 @@ func TestCorrelator_OverflowForceEmitsOldest(t *testing.T) {
 	}
 }
 
+// A Zenarmor-first key must use the same bounded-capacity path as a NetFlow-first
+// key. At cap=1, admitting B's enrichment force-emits A, keeps B resident, and lets
+// the later NetFlow fragment merge with that enrichment. A Zenarmor-only entry still
+// has no record to emit when it expires or is flushed.
+func TestCorrelator_ZenarmorFirstAtCapacityEvictsOldestAndMerges(t *testing.T) {
+	c, sink := newCorr(t, true, 1*time.Hour, 1)
+	t0 := time.Unix(1_700_000_000, 0)
+
+	c.Observe(baseNF("cid-A", 100, 1, t0, t0))
+	c.Observe(baseZen("cid-B", 80, t0, t0.Add(time.Second)))
+
+	if len(sink.recs) != 1 {
+		t.Fatalf("admitting Zenarmor-first B at cap must force-emit A, got %d records", len(sink.recs))
+	}
+	if got := sink.recs[0].CommunityID; got != "cid-A" {
+		t.Errorf("force-emitted community = %q, want cid-A", got)
+	}
+	if got := sink.recs[0].NF.Bytes(); got != 100 {
+		t.Errorf("force-emitted A bytes = %d, want 100", got)
+	}
+	if st := c.Stats(); st.Emitted != 1 || st.Evicted != 1 {
+		t.Errorf("stats after Zenarmor admission = %+v, want Emitted=1 and Evicted=1", st)
+	}
+	if st := c.Stats(); st.Entries != 1 || c.order.Len() != 1 {
+		t.Errorf("capacity after Zenarmor admission = entries %d, age index %d; want both 1", st.Entries, c.order.Len())
+	}
+
+	c.Observe(baseNF("cid-B", 300, 3, t0, t0.Add(2*time.Second)))
+	if len(sink.recs) != 1 {
+		t.Fatalf("B must remain held until expiry after its NetFlow fragment arrives, got %d records", len(sink.recs))
+	}
+	if st := c.Stats(); st.Entries != 1 || c.order.Len() != 1 {
+		t.Errorf("capacity after B merge = entries %d, age index %d; want both 1", st.Entries, c.order.Len())
+	}
+
+	c.Expire(t0.Add(2 * time.Hour))
+	if len(sink.recs) != 2 {
+		t.Fatalf("B must emit once as the merged record on expiry, got %d records", len(sink.recs))
+	}
+	got := sink.recs[1]
+	if got.Source != SourceMerged {
+		t.Errorf("B source = %v, want merged", got.Source)
+	}
+	if got.CommunityID != "cid-B" {
+		t.Errorf("merged B community = %q, want cid-B", got.CommunityID)
+	}
+	if got.L7.AppCategory != "Web Browsing" || got.Verdict != VerdictPass {
+		t.Errorf("merged B enrichment = category %q, verdict %v; want Web Browsing/pass", got.L7.AppCategory, got.Verdict)
+	}
+	if got.NF.Bytes() != 300 || got.Zen.Bytes() != 80 {
+		t.Errorf("merged B NF/Zen bytes = %d/%d, want 300/80", got.NF.Bytes(), got.Zen.Bytes())
+	}
+	if st := c.Stats(); st.Emitted != 2 || st.Matched != 1 || st.Evicted != 1 || st.Expired != 1 {
+		t.Errorf("stats after B expiry = %+v, want Emitted=2 Matched=1 Evicted=1 Expired=1", st)
+	}
+
+	// A Zenarmor-only entry is admitted when there is room. Replacing it at the cap
+	// cannot force-emit a duplicate of its separately shipped conn document, but the
+	// lost join opportunity still counts as an eviction so cap pressure is visible.
+	c.Observe(baseZen("cid-C", 40, t0, t0.Add(3*time.Hour)))
+	if st := c.Stats(); st.Entries != 1 || c.order.Len() != 1 {
+		t.Errorf("capacity with Zenarmor-only C = entries %d, age index %d; want both 1", st.Entries, c.order.Len())
+	}
+	c.Observe(baseZen("cid-D", 50, t0, t0.Add(4*time.Hour)))
+	if len(sink.recs) != 2 {
+		t.Fatalf("evicting Zenarmor-only C must not double-ship it, got %d records", len(sink.recs))
+	}
+	if st := c.Stats(); st.Entries != 1 || st.Evicted != 2 || c.order.Len() != 1 {
+		t.Errorf("stats after Zenarmor-only cap eviction = %+v, age index %d; want Entries=1 Evicted=2", st, c.order.Len())
+	}
+	c.Expire(t0.Add(5 * time.Hour))
+	c.Flush()
+	if len(sink.recs) != 2 {
+		t.Fatalf("Zenarmor-only C must not emit on expiry or flush, got %d records", len(sink.recs))
+	}
+	if st := c.Stats(); st.Entries != 0 || st.Emitted != 2 {
+		t.Errorf("stats after Zenarmor-only drains = %+v, want Entries=0 and Emitted=2", st)
+	}
+}
+
 // Flush drains every pending NetFlow entry at shutdown, whatever the window says.
 func TestCorrelator_FlushEmitsPending(t *testing.T) {
 	c, sink := newCorr(t, true, 1*time.Hour, 0)

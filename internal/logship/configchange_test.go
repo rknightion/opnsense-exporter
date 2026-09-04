@@ -116,6 +116,49 @@ func TestConfigChangeSource_EmitsNewRevisionExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestConfigChangeSource_RedactsExpandedCredentialVocabulary(t *testing.T) {
+	t0 := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	secrets := []string{
+		"configchange-totp-seed",
+		"configchange-ldap-bind-password",
+		"configchange-encrypted-key",
+		"configchange-snmp-community",
+	}
+	fetcher := &fakeConfigChangeFetcher{
+		revisions: []ConfigChangeRevision{{ID: "config-r1.xml", Timestamp: t0}},
+		diffs: map[string]string{
+			"config-r1.xml->config-r2.xml": "+ <otp_seed>" + secrets[0] + "</otp_seed>\n" +
+				"+ <ldap_bindpw>" + secrets[1] + "</ldap_bindpw>\n" +
+				"+ <enckey>" + secrets[2] + "</enckey>\n" +
+				"+ <community>" + secrets[3] + "</community>",
+		},
+	}
+	source := NewConfigChangeSource(fetcher, nil)
+	if _, err := source.Poll(context.Background()); err != nil {
+		t.Fatalf("baseline poll: %v", err)
+	}
+	fetcher.revisions = []ConfigChangeRevision{
+		{ID: "config-r2.xml", Timestamp: t0.Add(time.Minute)},
+		{ID: "config-r1.xml", Timestamp: t0},
+	}
+
+	records, err := source.Poll(context.Background())
+	if err != nil {
+		t.Fatalf("changed-revision poll: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %d, want 1", len(records))
+	}
+	for _, secret := range secrets {
+		if strings.Contains(records[0].Body, secret) {
+			t.Errorf("config-change record leaked %q: %s", secret, records[0].Body)
+		}
+	}
+	if !strings.Contains(records[0].Body, configChangeRedactionMarker) {
+		t.Errorf("config-change record has no redaction marker: %s", records[0].Body)
+	}
+}
+
 func TestConfigChangeSource_RestoresCursorWithoutReplay(t *testing.T) {
 	t0 := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
 	fetcher := &fakeConfigChangeFetcher{
@@ -260,6 +303,30 @@ func TestRedactConfigChangeDiff_RemovesCredentials(t *testing.T) {
 			diff:    "+      <privkey>wgPrivateKeyBase64Value=</privkey>",
 			secret:  "wgPrivateKeyBase64Value=",
 			wantTag: "<privkey>",
+		},
+		{
+			name:    "TOTP seed",
+			diff:    "+      <otp_seed>JBSWY3DPEHPK3PXP</otp_seed>",
+			secret:  "JBSWY3DPEHPK3PXP",
+			wantTag: "<otp_seed>",
+		},
+		{
+			name:    "LDAP bind password",
+			diff:    "+      <ldap_bindpw>ldapBindSecret</ldap_bindpw>",
+			secret:  "ldapBindSecret",
+			wantTag: "<ldap_bindpw>",
+		},
+		{
+			name:    "encrypted key",
+			diff:    "+      <enckey>encryptedKeyMaterial</enckey>",
+			secret:  "encryptedKeyMaterial",
+			wantTag: "<enckey>",
+		},
+		{
+			name:    "Net-SNMP community",
+			diff:    "+      <community>netSNMPCommunity</community>",
+			secret:  "netSNMPCommunity",
+			wantTag: "<community>",
 		},
 	}
 

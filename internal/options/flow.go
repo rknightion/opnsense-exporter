@@ -174,9 +174,10 @@ var (
 
 	flowCorrelateMaxEntries = kingpin.Flag(
 		"flow.correlate.max-entries",
-		"Hard cap on live correlator entries. At the cap the oldest is force-emitted (never "+
-			"dropped) and counted. The NetFlow ingress is unauthenticated, so this bounds memory "+
-			"against a flood. 0 is unbounded (unwise with the listener on).",
+		"Hard cap on live correlator entries. At the cap the oldest is removed and counted. "+
+			"A NetFlow-bearing entry is force-emitted without losing bytes; a Zenarmor-only entry "+
+			"already shipped separately but loses its future join opportunity. The NetFlow ingress "+
+			"is unauthenticated, so this bounds memory against a flood. 0 is unbounded (unwise with the listener on).",
 	).Envar("OPN2OTEL_FLOW_CORRELATE_MAX_ENTRIES").Default("50000").Int()
 
 	flowLogMode = kingpin.Flag(

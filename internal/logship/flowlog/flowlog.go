@@ -50,9 +50,11 @@ var Sink = New()
 
 // Bridge turns flow.Records into logship.Records and feeds them to the pipeline.
 type Bridge struct {
-	// emit is the pipeline's callback, non-nil only while Run is executing. Stored
-	// atomically because Emit reads it from correlator/ticker goroutines while Run
-	// writes it once at startup.
+	// emit is the pipeline's callback. Run binds it at startup; it remains live after
+	// Run returns until Unbind releases it, so the shutdown owner can flush the final
+	// correlator entries through the still-open pipeline queue. Stored atomically
+	// because Emit reads it from correlator/ticker goroutines while Run and Unbind
+	// write it.
 	emit atomic.Pointer[func(logship.Record)]
 
 	mode   atomic.Value // string; LogModeOff until configured
@@ -96,16 +98,21 @@ func (b *Bridge) Name() string { return subsystem }
 func (b *Bridge) ExtraSourceNames() []string { return []string{"netflow", "merged"} }
 
 // Run captures the pipeline's emit callback and blocks until ctx is cancelled. It must
-// return promptly on cancellation — the pipeline waits on it during shutdown.
+// return promptly on cancellation — the pipeline waits on it during shutdown. It does
+// not unbind the callback: AfterSourcesStopped performs the final correlator flush
+// after every PushSource has returned, and the shutdown owner calls Unbind immediately
+// after that flush.
 func (b *Bridge) Run(ctx context.Context, emit func(logship.Record)) error {
 	fn := emit
 	b.emit.Store(&fn)
 	<-ctx.Done()
-	// Clear the handle so a late Emit counts as dropped rather than racing a
-	// torn-down pipeline.
-	b.emit.Store(nil)
 	return nil
 }
+
+// Unbind clears the pipeline callback after the shutdown owner has flushed every
+// producer that can emit flow records. A later Emit is counted as dropped rather than
+// sent to a queue that may already be closed. It is safe to call more than once.
+func (b *Bridge) Unbind() { b.emit.Store(nil) }
 
 // Emit ships one flow record as a log record. Safe for concurrent callers. It never
 // blocks beyond the pipeline's own non-blocking enqueue, matching the Sink.Observe

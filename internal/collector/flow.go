@@ -643,8 +643,9 @@ func (c *flowCollector) registerCorrelator() {
 			"correlator_emitted_total this is the join hit-rate, which #346 shows is materially lower "+
 			"for long flows whose NetFlow records arrive up to ~30m after the connection ended.", nil)
 	c.corrEvicted = buildPrometheusDesc(c.subsystem, "correlator_evicted_total",
-		"Entries force-emitted early because the map hit --flow.correlate.max-entries. A forced emit "+
-			"loses no bytes, but a rising rate means the cap is binding under load and should be raised.",
+		"Entries removed early because the map hit --flow.correlate.max-entries. NetFlow-bearing entries "+
+			"are force-emitted without losing bytes; Zenarmor-only entries already shipped on their own lane, "+
+			"but their future join opportunity is lost. A rising rate means the cap is binding and should be raised.",
 		nil)
 	c.corrExpired = buildPrometheusDesc(c.subsystem, "correlator_expired_total",
 		"Entries emitted on the normal window-expiry path (the healthy path, as opposed to eviction).",

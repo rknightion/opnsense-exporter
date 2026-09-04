@@ -366,7 +366,7 @@ def build(b: Builder):
         [(f'{sel("opnsense_flow_correlator_entries")}', "live entries"),
          (f'rate({sel("opnsense_flow_correlator_emitted_total")}[{RATE}])', "emitted/sec"),
          (f'rate({sel("opnsense_flow_correlator_matched_total")}[{RATE}])', "merged/sec"),
-         (f'rate({sel("opnsense_flow_correlator_evicted_total")}[{RATE}])', "force-evicted/sec"),
+         (f'rate({sel("opnsense_flow_correlator_evicted_total")}[{RATE}])', "evicted/sec"),
          (f'rate({sel("opnsense_flow_correlator_expired_total")}[{RATE}])', "expired/sec"),
          (f'rate({sel("opnsense_flow_correlator_enrichment_overwrites_total")}[{RATE}])',
           "enrichment overwrites/sec"),
@@ -379,8 +379,10 @@ def build(b: Builder):
              "into one record per connection-window and merges Zenarmor L7 where a conn document "
              "matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is "
              "materially lower for long flows whose NetFlow records arrive up to ~30m after the "
-             "connection ended. A rising force-evicted rate means --flow.correlate.max-entries is "
-             "binding under load and should be raised; expired is the healthy path. enrichment "
+             "connection ended. A rising evicted rate means --flow.correlate.max-entries is "
+             "binding under load and should be raised; NetFlow-bearing entries are force-emitted, "
+             "while a Zenarmor-only eviction loses a future join opportunity. expired is the "
+             "healthy path. enrichment "
              "overwrites (#590) counts a second Zenarmor conn document for the same connection-window "
              "replacing the first wholesale rather than merging - a non-zero rate means Zenarmor "
              "re-reported a connection and only the latest report survived. fragment disagreements "

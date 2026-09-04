@@ -100,11 +100,11 @@ func redactConfigSnapshotFields(value any) {
 	}
 }
 
-// sensitiveConfigSubstrings and sensitiveConfigExact are the shared vocabulary
-// for every path that ships firewall configuration off the box: the JSON
-// snapshot rows and the config.xml revision diff. Keeping one vocabulary is the
-// point — when the two drifted, camelCase keys were redacted in one and shipped
-// in the other.
+// sensitiveConfigSubstrings, sensitiveConfigTerms and sensitiveConfigExact are
+// the shared vocabulary for every path that ships firewall configuration off the
+// box: JSON snapshot rows, config.xml revision diffs and API error bodies.
+// Keeping one vocabulary is the point — when the paths drifted, a field could
+// be redacted in one and shipped in another.
 //
 // Substring matching is deliberate: it catches wgPrivateKey, radius_secret and
 // api-key alike. The exact set carries OPNsense element names too short to
@@ -113,12 +113,19 @@ func redactConfigSnapshotFields(value any) {
 var (
 	sensitiveConfigSubstrings = []string{
 		"password", "passphrase", "secret", "privatekey", "privkey",
-		"sharedkey", "token", "apikey", "authkey", "credential",
+		"sharedkey", "token", "apikey", "authkey", "credential", "passwd",
+	}
+	// A term is deliberately narrower than a substring. prv is the private
+	// certificate half, and appears in compound keys such as prv_payload, but
+	// it is too short to match at an arbitrary position.
+	sensitiveConfigTerms = map[string]struct{}{
+		"prv": {},
 	}
 	sensitiveConfigExact = map[string]struct{}{
-		"prv": {}, "psk": {}, "pass": {},
+		"psk": {}, "pass": {},
+		"otpseed": {}, "ldapbindpw": {}, "enckey": {}, "community": {},
 	}
-	sensitiveConfigNormalizer = strings.NewReplacer("_", "", "-", "", ".", "")
+	sensitiveConfigNormalizer = strings.NewReplacer("_", "", "-", "", ".", "", "%", "")
 )
 
 // SensitiveConfigKey reports whether a configuration key or XML element name
@@ -134,6 +141,16 @@ func SensitiveConfigKey(key string) bool {
 	}
 	for _, needle := range sensitiveConfigSubstrings {
 		if strings.Contains(normalized, needle) {
+			return true
+		}
+	}
+	if strings.HasPrefix(normalized, "prv") {
+		return true
+	}
+	for _, term := range strings.FieldsFunc(strings.ToLower(key), func(r rune) bool {
+		return r == '_' || r == '-' || r == '.' || r == '%'
+	}) {
+		if _, ok := sensitiveConfigTerms[term]; ok {
 			return true
 		}
 	}

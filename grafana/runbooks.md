@@ -1703,7 +1703,7 @@ sum by (opnsense_instance) (opnsense_ids_recent_alerts{action="blocked"})
 sum by (opnsense_instance) (rate(opnsense_flow_correlator_evicted_total[5m]))
 ```
 
-**What it measures:** Rate of forced-eviction of flow-correlator entries over 5m, summed by opnsense_instance - the correlate window can no longer be held under current flow volume. No bytes are lost (the oldest entry is force-emitted, not dropped).
+**What it measures:** Rate of flow-correlator entry eviction over 5m, summed by opnsense_instance - the correlate window can no longer be held under current flow volume. NetFlow entries are force-emitted; Zenarmor-only entries lose their future join opportunity.
 
 **Threshold & window:** gt 0 sustained for 15m.
 

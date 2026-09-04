@@ -47,10 +47,15 @@ type SelfLogHandler struct {
 
 type selfLogState struct {
 	mu sync.Mutex
+	// drained is signaled when the last submission that acquired enqueue returns.
+	// Unbind waits on it before allowing its caller to close the shared queue.
+	drained *sync.Cond
 
-	enqueue func(Entry) bool
-	pending []Record
-	closed  bool
+	enqueue          func(Entry) bool
+	pending          []Record
+	closed           bool
+	inFlight         int
+	overflowReported bool
 }
 
 // NewSelfLogHandler wraps next with the opt-in self-log adapter. The adapter is
@@ -62,9 +67,11 @@ func NewSelfLogHandler(next slog.Handler) *SelfLogHandler {
 	if next == nil {
 		next = slog.NewTextHandler(io.Discard, nil)
 	}
+	state := &selfLogState{}
+	state.drained = sync.NewCond(&state.mu)
 	return &SelfLogHandler{
 		next:  next,
-		state: &selfLogState{},
+		state: state,
 	}
 }
 
@@ -118,6 +125,9 @@ func (h *SelfLogHandler) Unbind() {
 	h.state.enqueue = nil
 	h.state.pending = nil
 	h.state.closed = true
+	for h.state.inFlight > 0 {
+		h.state.drained.Wait()
+	}
 	h.state.mu.Unlock()
 }
 
@@ -185,17 +195,44 @@ func (h *SelfLogHandler) submit(record Record) {
 	}
 	enqueue := h.state.enqueue
 	if enqueue == nil {
+		reportOverflow := false
 		if len(h.state.pending) >= selfLogPendingLimit {
 			copy(h.state.pending, h.state.pending[1:])
 			h.state.pending = h.state.pending[:selfLogPendingLimit-1]
+			if !h.state.overflowReported {
+				h.state.overflowReported = true
+				reportOverflow = true
+			}
 		}
 		h.state.pending = append(h.state.pending, record)
 		h.state.mu.Unlock()
+		if reportOverflow {
+			h.reportStartupOverflow()
+		}
 		return
 	}
+	h.state.inFlight++
 	h.state.mu.Unlock()
 
+	defer h.finishSubmit()
 	_ = enqueue(Entry{Source: SelfLogSource, Record: record})
+}
+
+// reportStartupOverflow writes directly to the wrapped non-forwarding handler.
+// It deliberately does not use slog.New(h): the loss diagnostic must not enter
+// the full startup buffer and evict another record while reporting the eviction.
+func (h *SelfLogHandler) reportStartupOverflow() {
+	record := slog.NewRecord(time.Now(), slog.LevelWarn, "self-log startup buffer overflow: oldest record discarded", 0)
+	_ = h.next.Handle(context.Background(), record)
+}
+
+func (h *SelfLogHandler) finishSubmit() {
+	h.state.mu.Lock()
+	h.state.inFlight--
+	if h.state.inFlight == 0 {
+		h.state.drained.Broadcast()
+	}
+	h.state.mu.Unlock()
 }
 
 func selfLogRecord(record slog.Record, bound []slog.Attr, group []string) Record {

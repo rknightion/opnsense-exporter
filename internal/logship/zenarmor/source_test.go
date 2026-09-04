@@ -2,6 +2,7 @@ package zenarmor
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/netip"
@@ -38,6 +39,79 @@ func TestRunReturnsOnContextCancel(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return on ctx cancel — the exporter would never exit on SIGTERM")
+	}
+}
+
+// A bulk handler can spend the full request ReadTimeout building and enriching its
+// records. If graceful shutdown expires first, Run must not return until that
+// admitted handler has been forced to stop and has left the source: the pipeline
+// closes its delivery queue immediately after Run returns.
+func TestRunJoinsBulkHandlerAfterGraceExpires(t *testing.T) {
+	s, err := newSource(logship.Deps{Registerer: prometheus.NewRegistry()}, Config{Addr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("newSource: %v", err)
+	}
+
+	emitEntered := make(chan struct{})
+	releaseEmit := make(chan struct{})
+	release := func() {
+		select {
+		case <-releaseEmit:
+		default:
+			close(releaseEmit)
+		}
+	}
+	t.Cleanup(release)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- s.Run(ctx, func(logship.Record) {
+			close(emitEntered)
+			<-releaseEmit
+		})
+	}()
+
+	body := "{\"index\":{\"_index\":\"zenarmor_0000000000_abc_conn_write\"}}\n" + connDoc + "\n"
+	requestDone := make(chan error, 1)
+	go func() {
+		resp, err := http.Post("http://"+s.ln.Addr().String()+"/_bulk", "application/x-ndjson", strings.NewReader(body)) //nolint:noctx // test client
+		if err == nil {
+			err = resp.Body.Close()
+		}
+		requestDone <- err
+	}()
+
+	select {
+	case <-emitEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("bulk handler did not reach the emission barrier")
+	}
+
+	cancel()
+	select {
+	case err := <-runDone:
+		release()
+		t.Fatalf("Run returned before the blocked handler left after graceful shutdown expired: %v", err)
+	case <-time.After(shutdownGrace + time.Second):
+		// The graceful deadline has expired and the source must now be waiting for
+		// its force-closed handler to leave.
+	}
+
+	release()
+	select {
+	case err := <-runDone:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Run error = %v, want shutdown deadline error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after the blocked handler was released")
+	}
+	select {
+	case <-requestDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("bulk client did not return after the handler was released")
 	}
 }
 

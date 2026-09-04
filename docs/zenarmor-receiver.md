@@ -83,7 +83,7 @@ opnsense2otel \
 | `--logs.zenarmor.enabled` | `false` | Enables the receiver. Also needs `--logs.enabled`. |
 | `--logs.zenarmor.listen-http` | `:9200` | Elasticsearch's conventional port. Zenarmor's own port field accepts any value, so this only needs to match what you configure on the Zenarmor side. |
 | `--logs.zenarmor.allowed-peers` | *(any)* | CIDR allowlist of permitted senders. The ingress is otherwise unauthenticated. |
-| `--logs.zenarmor.families` | *(all)* | Comma-separated subset to ship: `conn,dns,tls,http,alert,sip` (Zenarmor's own index tokens; the exporter's own family names `flow,dns,tls,web,ids,voip` are also accepted). Prefer cutting families in Zenarmor's own `indexes` setting instead - see [Volume](#volume) below. |
+| `--logs.zenarmor.families` | *(all)* | Comma-separated subset to ship: `conn,dns,tls,http,alert,sip` (the only accepted Zenarmor wire tokens; the exporter's normalized family names `flow,dns,tls,web,ids,voip` are not accepted). Prefer cutting families in Zenarmor's own `indexes` setting instead - see [Volume](#volume) below. |
 | `--logs.zenarmor.enrich` | `true` | Enrich records from the OPNsense API. |
 | `--logs.zenarmor.drop-self-traffic` | `true` | Drop records describing the receiver's own ingest connection - see [Self-traffic](#self-traffic) below. |
 | `--logs.zenarmor.auth-user` / `--logs.zenarmor.auth-password` | *(none)* | Require HTTP basic auth on the ingress. Zenarmor's streaming config has matching username/password fields. |
@@ -308,12 +308,17 @@ second reason to pin `source` in every query — see
 ## Derived counters
 
 `opnsense_log_events_zenarmor_total{family,action,category,interface,rcode,severity,status_class}`
-counts every document Zenarmor sends, by family, whether or not it parsed cleanly. Only
-bounded dimensions are ever labels here - `app_name`, any IP or port, hostname, MAC,
-JA3, session/community/connection id, signature, URI and query never become one, and
-never will. Because Loki's retention is finite and this is the highest-volume stream the
-exporter handles, this counter - not the raw log stream - is how you ask rate questions
-that need to outlive 31 days.
+counts each document from a known family that passes the `--logs.zenarmor.families`
+allowlist and the default `--logs.zenarmor.drop-self-traffic` filter. A document parse
+failure still ships with its raw body and is counted with only the family dimension
+available. Derivation happens before `--logs.zenarmor.exclude`, so an explicitly
+excluded document still contributes its bounded dimensions even though its log record
+is dropped. Unknown families, family-filtered documents, and self-traffic dropped by
+the default filter do not reach this counter. Only bounded dimensions are ever labels
+here - `app_name`, any IP or port, hostname, MAC, JA3, session/community/connection id,
+signature, URI and query never become one, and never will. Because Loki's retention is
+finite and this is the highest-volume stream the exporter handles, this counter - not
+the raw log stream - is how you ask rate questions that need to outlive 31 days.
 
 ### The device inventory
 

@@ -1042,9 +1042,11 @@ services:
       # record per connection-window. A pass-through when only one source is present.
       # Off emits NetFlow records raw and per-fragment.
       # OPN2OTEL_FLOW_CORRELATE: "true"
-      # Hard cap on live correlator entries. At the cap the oldest is force-emitted
-      # (never dropped) and counted. The NetFlow ingress is unauthenticated, so this
-      # bounds memory against a flood. 0 is unbounded (unwise with the listener on).
+      # Hard cap on live correlator entries. At the cap the oldest is removed and
+      # counted. A NetFlow-bearing entry is force-emitted without losing bytes; a
+      # Zenarmor-only entry already shipped separately but loses its future join
+      # opportunity. The NetFlow ingress is unauthenticated, so this bounds memory
+      # against a flood. 0 is unbounded (unwise with the listener on).
       # OPN2OTEL_FLOW_CORRELATE_MAX_ENTRIES: "50000"
       # How long the correlator holds a connection-window before emitting. Also the
       # maximum a flow log is delayed. NetFlow export lag runs to ~30m for long flows

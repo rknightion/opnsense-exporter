@@ -213,8 +213,9 @@ func Start(
 		go p.runPoller(s, interval)
 	}
 
-	// Push sources are registered on pollerWG too, so stop() waits for them: each
-	// Run must return on ctx cancel (pollerWG.Wait() is unbounded).
+	// Push sources are registered on pollerWG too, so orderly stop waits for them
+	// before closing the shared delivery path. A broken source that ignores
+	// cancellation is bounded by the caller's shutdown context instead.
 	for _, s := range pushSources {
 		p.pollerWG.Add(1)
 		go func(s PushSource) {
@@ -754,17 +755,29 @@ func (p *pipeline) runStateFlusher() {
 }
 
 // stop drains the pipeline in order: stop pollers, flush the queue through the emitter,
-// persist final cursors, then flush the sink. The emitter drain is bounded by ctx: if it
-// does not finish within the shutdown deadline, stop returns an error rather than
-// reporting a clean flush while cursors imply the buffered records were delivered (#290).
-// The emitter goroutine still exits shortly after, when its in-flight export returns and
-// it observes the cancelled context.
+// persist final cursors, then flush the sink. Each wait is bounded by ctx: if source
+// shutdown does not finish in time, the queue and sink remain open because a live
+// producer still owns them; if the emitter drain does not finish in time, stop returns
+// an error rather than reporting a clean flush while cursors imply the buffered records
+// were delivered (#290). The emitter goroutine still exits shortly after, when its
+// in-flight export returns and it observes the cancelled context.
 func (p *pipeline) stop(ctx context.Context) error {
 	if p.selfLog != nil {
 		p.selfLog.Unbind()
 	}
 	p.cancel()
-	p.pollerWG.Wait()
+	sourcesStopped := make(chan struct{})
+	go func() {
+		p.pollerWG.Wait()
+		close(sourcesStopped)
+	}()
+	select {
+	case <-sourcesStopped:
+	case <-ctx.Done():
+		err := fmt.Errorf("log pipeline source shutdown did not finish before shutdown deadline: %w", ctx.Err())
+		p.log.Error("log pipeline source shutdown did not finish before shutdown deadline; leaving delivery resources open while a producer remains live", "err", err)
+		return err
+	}
 	if p.afterSourcesStopped != nil {
 		p.afterSourcesStopped()
 	}

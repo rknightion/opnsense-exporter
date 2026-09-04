@@ -135,6 +135,11 @@ func loadConfig() (Config, bool, error) {
 type zenarmorSource struct {
 	srv *http.Server
 	ln  net.Listener
+	// handler is the Elasticsearch surface. srv serves through zenarmorSource so
+	// handlerDrain can make Run's return a completion boundary for every request
+	// that was admitted before shutdown began.
+	handler http.Handler
+	drain   handlerDrain
 
 	proc docProcessor
 
@@ -157,6 +162,36 @@ type zenarmorSource struct {
 	// before Run has written it.
 	emit func(logship.Record)
 }
+
+// handlerDrain tracks request handlers that may still call emit. stop orders the
+// last Add before wait, so a shutdown cannot race a newly-admitted handler past the
+// completion boundary. A bare WaitGroup is not sufficient: Add concurrent with a
+// Wait on its zero transition can let Wait return while that handler is live.
+type handlerDrain struct {
+	mu        sync.Mutex
+	accepting bool
+	wg        sync.WaitGroup
+}
+
+func (d *handlerDrain) admit() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.accepting {
+		return false
+	}
+	d.wg.Add(1)
+	return true
+}
+
+func (d *handlerDrain) done() { d.wg.Done() }
+
+func (d *handlerDrain) stop() {
+	d.mu.Lock()
+	d.accepting = false
+	d.mu.Unlock()
+}
+
+func (d *handlerDrain) wait() { d.wg.Wait() }
 
 // docProcessor runs the shared per-record pipeline: enrichment, self-traffic
 // filtering, derived-metric observation, and exclusion. Both the ES source and
@@ -313,10 +348,12 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 	}
 	s.ln = ln
 	s.listenPorts = []int{listenPortOf(ln.Addr().String())}
-	srv := newServer(cfg, s.handleDoc, s.proc.m, d.Logger)
-	srv.cap = s.proc.cap // same sink the processor uses; nil unless this receiver opted in
+	h := newServer(cfg, s.handleDoc, s.proc.m, d.Logger)
+	h.cap = s.proc.cap // same sink the processor uses; nil unless this receiver opted in
+	s.handler = h
+	s.drain.accepting = true
 	s.srv = &http.Server{
-		Handler:           srv,
+		Handler:           s,
 		TLSConfig:         cfg.TLSConfig,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -376,6 +413,19 @@ func (c *limitedConn) Close() error {
 
 func (s *zenarmorSource) Name() string { return sourceName }
 
+// ServeHTTP admits one request into the source's shutdown barrier before passing it
+// to the Elasticsearch surface. A request arriving after shutdown starts was never
+// admitted, so it receives an honest retryable response and cannot reach emit.
+func (s *zenarmorSource) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.drain.admit() {
+		esHeaders(w)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	defer s.drain.done()
+	s.handler.ServeHTTP(w, r)
+}
+
 // Run serves until ctx is cancelled, then drains. It must return promptly on
 // cancellation: the pipeline waits on it unbounded during shutdown, so a Run that
 // ignores ctx hangs the exporter forever on SIGTERM.
@@ -399,16 +449,45 @@ func (s *zenarmorSource) Run(ctx context.Context, emit func(logship.Record)) err
 
 	select {
 	case err := <-errc:
-		return err
+		// A listener failure also stops Serve without waiting for active handlers.
+		// Close and join them before exposing that failure for the same reason as the
+		// shutdown-deadline path below: Run returning is the pipeline's permission to
+		// close its shared delivery resources.
+		s.drain.stop()
+		closeErr := s.srv.Close()
+		s.drain.wait()
+		if joined := errors.Join(err, closeErr); joined != nil {
+			return fmt.Errorf("zenarmor: server stopped: %w", joined)
+		}
+		return nil
 	case <-ctx.Done():
 	}
+
+	// Close the admission gate BEFORE shutting down the HTTP server. It orders every
+	// handler's WaitGroup Add before the wait below, so Run cannot hand the pipeline a
+	// returned source while an already-admitted handler could still emit to its queue.
+	s.drain.stop()
 
 	// Shutdown gets a FRESH context: ctx is already cancelled, and handing it over
 	// would make Shutdown return instantly and abandon the in-flight bulk writes it
 	// exists to drain.
 	sctx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
-	return s.srv.Shutdown(sctx)
+	shutdownErr := s.srv.Shutdown(sctx)
+	if shutdownErr != nil {
+		// Shutdown's deadline only stops waiting; it deliberately leaves active
+		// connections alone. Force-close those connections, then join their handlers
+		// before returning so a late emit can never race the pipeline queue close.
+		closeErr := s.srv.Close()
+		s.drain.wait()
+		return fmt.Errorf("zenarmor: graceful shutdown: %w", errors.Join(shutdownErr, closeErr))
+	}
+
+	// Shutdown observed every connection become idle. The explicit join is still the
+	// source-level proof that no admitted handler can retain the emit callback after
+	// Run returns.
+	s.drain.wait()
+	return nil
 }
 
 // handleDoc is invoked per document in a bulk write, on the request goroutine. peer

@@ -140,7 +140,7 @@ type CorrelatorStats struct {
 	Entries int    // live accumulator entries
 	Emitted uint64 // flow-log records emitted (netflow + merged)
 	Matched uint64 // subset emitted as merged (Zenarmor enrichment found)
-	Evicted uint64 // entries force-emitted early because the map hit MaxEntries
+	Evicted uint64 // entries removed early because the map hit MaxEntries
 	Expired uint64 // entries emitted on the normal window-expiry path
 
 	// EnrichmentOverwrites counts a second Zenarmor conn document landing for a key
@@ -214,7 +214,7 @@ func (c *Correlator) Observe(r Record) {
 	case SourceNetflow:
 		pending = c.observeNetflowLocked(r)
 	case SourceZenarmor:
-		c.observeZenarmorLocked(r)
+		pending = c.observeZenarmorLocked(r)
 	}
 	c.mu.Unlock()
 
@@ -232,20 +232,7 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 	var pending []Record
 	if e == nil {
 		if c.maxEntries > 0 && c.entries >= c.maxEntries {
-			// Emit the oldest immediately rather than dropping it: a forced early emit
-			// loses no bytes, whereas a silent drop loses the whole flow. The counter
-			// makes the pressure visible so the bound can be raised.
-			if victim := c.oldestLocked(); victim != nil {
-				if rec, ok := c.finalize(victim); ok {
-					c.emitted++
-					if rec.Source == SourceMerged {
-						c.matched++
-					}
-					c.evicted++
-					pending = append(pending, rec)
-				}
-				c.removeEntryLocked(victim)
-			}
+			pending = append(pending, c.evictOldestLocked()...)
 		}
 		e = &corrEntry{key: k, firstSeen: r.Observed}
 		c.cells[k] = e
@@ -346,19 +333,22 @@ func isMirrorOf(sample, r Record) bool {
 }
 
 // observeZenarmorLocked stashes a Zenarmor conn document as enrichment for a matching
-// NetFlow entry. It never emits: the conn document ships on its own lane. If no NetFlow
-// entry exists yet, it holds the enrichment so a fragment arriving later — order is not
+// NetFlow entry. It never emits the conn document: that ships on its own lane. It can
+// return a NetFlow record force-emitted to make room at the cap. If no NetFlow entry
+// exists yet, it holds the enrichment so a fragment arriving later — order is not
 // guaranteed — can still merge it. A Zenarmor-only entry that never gains NetFlow
 // expires silently.
-func (c *Correlator) observeZenarmorLocked(r Record) {
+func (c *Correlator) observeZenarmorLocked(r Record) []Record {
 	k := c.keyOf(r)
 	e := c.cells[k]
+	var pending []Record
 	if e == nil {
 		// Holding Zenarmor-only state costs a map slot, so respect the cap here too;
-		// dropping the enrichment (rather than evicting a real NetFlow entry) is the
-		// right sacrifice, because the conn document still ships regardless.
+		// reuse the normal oldest-entry path: a pending NetFlow flow is force-emitted,
+		// while a Zenarmor-only victim is removed silently. The conn document still
+		// ships regardless.
 		if c.maxEntries > 0 && c.entries >= c.maxEntries {
-			return
+			pending = append(pending, c.evictOldestLocked()...)
 		}
 		e = &corrEntry{key: k, firstSeen: r.Observed}
 		c.cells[k] = e
@@ -377,6 +367,7 @@ func (c *Correlator) observeZenarmorLocked(r Record) {
 	}
 	zc := r
 	e.zen = &zc
+	return pending
 }
 
 // Expire emits every entry whose window has elapsed. Called from a ticker, never on
@@ -604,6 +595,28 @@ func (c *Correlator) oldestLocked() *corrEntry {
 		return nil
 	}
 	return c.order[0]
+}
+
+// evictOldestLocked force-emits and removes the oldest entry. Callers hold the
+// lock; any returned record must be emitted after it is released. A Zenarmor-only
+// victim has nothing to emit, but is still removed to make room under the hard cap.
+func (c *Correlator) evictOldestLocked() []Record {
+	victim := c.oldestLocked()
+	if victim == nil {
+		return nil
+	}
+
+	var pending []Record
+	c.evicted++
+	if rec, ok := c.finalize(victim); ok {
+		c.emitted++
+		if rec.Source == SourceMerged {
+			c.matched++
+		}
+		pending = append(pending, rec)
+	}
+	c.removeEntryLocked(victim)
+	return pending
 }
 
 func (c *Correlator) removeEntryLocked(e *corrEntry) {

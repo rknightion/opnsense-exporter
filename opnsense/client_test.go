@@ -459,6 +459,77 @@ func TestTruncateBody_RedactsSensitiveFields(t *testing.T) {
 	}
 }
 
+func TestTruncateBody_RedactsTruncatedAndCompositeSensitiveFields(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		secrets []string
+		keep    string
+	}{
+		{
+			name:    "truncated string",
+			body:    `{"community":"forwarded-snmp-community`,
+			secrets: []string{"forwarded-snmp-community"},
+		},
+		{
+			name:    "array",
+			body:    `{"otp_seed":["first-seed",{"nested":"second-seed"}],"keep":"visible"}`,
+			secrets: []string{"first-seed", "second-seed"},
+			keep:    `"keep":"visible"`,
+		},
+		{
+			name:    "object",
+			body:    `{"enckey":{"ciphertext":"encrypted-material","parts":["other-material"]},"keep":true}`,
+			secrets: []string{"encrypted-material", "other-material"},
+			keep:    `"keep":true`,
+		},
+		{
+			name:    "truncated composite",
+			body:    `{"ldap_bindpw":{"password":"bind-secret","nested":[1,2`,
+			secrets: []string{"bind-secret"},
+		},
+		{
+			name:    "malformed unquoted value with spaces",
+			body:    `{"ldap_bindpw":alpha bravo charlie,"keep":1}`,
+			secrets: []string{"alpha", "bravo", "charlie"},
+			keep:    `"keep":1`,
+		},
+		{
+			name:    "malformed escaped sensitive key",
+			body:    `{"pass\word":"MALFORMEDKEYSECRET","keep":1}`,
+			secrets: []string{"MALFORMEDKEYSECRET"},
+			keep:    `"keep":1`,
+		},
+		{
+			name:    "malformed escape inserted in sensitive key",
+			body:    `{"pass\qword":"INSERTEDESCAPESECRET","keep":1}`,
+			secrets: []string{"INSERTEDESCAPESECRET"},
+			keep:    `"keep":1`,
+		},
+		{
+			name:    "HTML quote reference inside sensitive JSON value",
+			body:    `{"password":"PREFIX&quot;SUFFIX","keep":1}`,
+			secrets: []string{"PREFIX", "SUFFIX"},
+			keep:    `"keep":1`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(truncateBody([]byte(tc.body)))
+			for _, secret := range tc.secrets {
+				if strings.Contains(got, secret) {
+					t.Errorf("expected sensitive value %q to be redacted, got: %s", secret, got)
+				}
+			}
+			if !strings.Contains(got, `"[REDACTED]"`) {
+				t.Errorf("expected a REDACTED marker, got: %s", got)
+			}
+			if tc.keep != "" && !strings.Contains(got, tc.keep) {
+				t.Errorf("expected benign suffix %q to survive, got: %s", tc.keep, got)
+			}
+		})
+	}
+}
+
 func TestTruncateBody_RedactsCAPrivateKey(t *testing.T) {
 	body := []byte(`{"descr":"OPNsense-CA","prv":"LS0tLS1CRUdJTiBQUklWQVRF","prv_payload":"-----BEGIN PRIVATE KEY-----\nMIIE","crt":"keep"}`)
 
@@ -484,10 +555,11 @@ func TestTruncateBody_RedactsCAPrivateKey(t *testing.T) {
 // whatever the enclosing key is called.
 func TestTruncateBody_RedactsCredentialInURLValue(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		body   string
-		secret string
-		keep   string
+		name           string
+		body           string
+		secret         string
+		decodedSecrets []string
+		keep           string
 	}{
 		{
 			name:   "maxmind license_key in a url field",
@@ -519,11 +591,243 @@ func TestTruncateBody_RedactsCredentialInURLValue(t *testing.T) {
 			secret: "supersecret",
 			keep:   "backup.example.com",
 		},
+		{
+			name:   "url userinfo password containing colons",
+			body:   `{"remote":"https://admin:password-prefix:password-suffix@backup.example.com/config.xml"}`,
+			secret: "password-prefix:password-suffix",
+			keep:   "backup.example.com",
+		},
+		{
+			name:   "scheme relative URL userinfo",
+			body:   `{"remote":"//admin:relative-secret@backup.example.com/config.xml"}`,
+			secret: "relative-secret",
+			keep:   "backup.example.com",
+		},
+		{
+			name:   "JSON escaped URL userinfo",
+			body:   `{"remote":"https:\/\/admin:escaped-secret@backup.example.com/config.xml"}`,
+			secret: "escaped-secret",
+			keep:   "backup.example.com",
+		},
+		{
+			name:   "JSON escaped ampersand before query credential",
+			body:   `{"url":"https:\/\/example.com\/download?format=json\u0026license_key=escaped-query-secret"}`,
+			secret: "escaped-query-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "JSON escaped question mark before query credential",
+			body:   `{"url":"https:\/\/example.com\/download\u003fapi_key=escaped-leading-secret"}`,
+			secret: "escaped-leading-secret",
+			keep:   "example.com",
+		},
+		{
+			name:           "JSON escaped query credential value",
+			body:           `{"url":"https:\/\/example.com\/?license_key=\u0053ECRET"}`,
+			secret:         `\u0053ECRET`,
+			decodedSecrets: []string{"SECRET"},
+			keep:           "example.com",
+		},
+		{
+			name:   "JSON escaped query credential key and equals",
+			body:   `{"url":"https:\/\/example.com\/?api\u005fkey\u003descaped-key-secret"}`,
+			secret: "escaped-key-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "URL percent encoded query credential key",
+			body:   `{"url":"https://example.com/?api%5Fkey=percent-encoded-key-secret"}`,
+			secret: "percent-encoded-key-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "malformed query component before percent encoded credential key",
+			body:   `{"url":"https://example.com/?bad=x;y&api%5Fkey=mixed-query-secret"}`,
+			secret: "mixed-query-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "percent encoded credential key with malformed value",
+			body:   `{"url":"https://example.com/?api%5Fkey=%zzQUERYSECRET"}`,
+			secret: "QUERYSECRET",
+			keep:   "example.com",
+		},
+		{
+			name:           "decoded query credential containing spaces",
+			body:           `{"url":"https://example.com/?api%5Fkey=alpha bravo charlie"}`,
+			secret:         "alpha bravo charlie",
+			decodedSecrets: []string{"alpha", "bravo", "charlie"},
+			keep:           "example.com",
+		},
+		{
+			name:           "decoded query credential containing backslash",
+			body:           `{"url":"https://example.com/?api%5Fkey=alpha\\bravo"}`,
+			secret:         `alpha\\bravo`,
+			decodedSecrets: []string{"alpha", "bravo"},
+			keep:           "example.com",
+		},
+		{
+			name:   "relative URL with percent encoded credential key",
+			body:   `{"url":"//example.com/?api%5Fkey=relative-query-secret"}`,
+			secret: "relative-query-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "plain text URL with percent encoded credential key",
+			body:   `fetch //example.com/?api%5Fkey=plain-query-secret failed`,
+			secret: "plain-query-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML named ampersand before credential",
+			body:   `<a href="https://example.com/?format=json&amp;api_key=html-secret">retry</a>`,
+			secret: "html-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML decimal ampersand before credential",
+			body:   `<a href="https://example.com/?format=json&#38;api_key=decimal-secret">retry</a>`,
+			secret: "decimal-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML decimal ampersand with leading zero before credential",
+			body:   `<a href="https://example.com/?format=json&#038;api_key=leading-zero-secret">retry</a>`,
+			secret: "leading-zero-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML semicolonless decimal ampersand before credential",
+			body:   `<a href="https://example.com/?format=json&#38api_key=semicolonless-secret">retry</a>`,
+			secret: "semicolonless-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML hexadecimal ampersand before credential",
+			body:   `<a href="https://example.com/?format=json&#x26;api_key=hex-secret">retry</a>`,
+			secret: "hex-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML hexadecimal ampersand with leading zeroes before credential",
+			body:   `<a href="https://example.com/?format=json&#x00026;api_key=hex-leading-zero-secret">retry</a>`,
+			secret: "hex-leading-zero-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML semicolonless named ampersand before encoded credential",
+			body:   `<a href="https://example.com/?format=json&amp%61pi_key=named-semicolonless-secret">retry</a>`,
+			secret: "named-semicolonless-secret",
+			keep:   "example.com",
+		},
+		{
+			name:   "HTML numeric reference inside credential key",
+			body:   `<a href="https://example.com/?api&#95;key=entity-key-secret">retry</a>`,
+			secret: "entity-key-secret",
+			keep:   "example.com",
+		},
+		{
+			name:           "HTML quote reference inside credential value",
+			body:           `<a href="https://example.com/?api_key=PREFIX&quot;SUFFIX">retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "example.com",
+		},
+		{
+			name:           "HTML question and quote references around credential value",
+			body:           `<a href="https://example.com/&#63;api_key=PREFIX&quot;SUFFIX">retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "example.com",
+		},
+		{
+			name:           "JSON-encoded HTML quote reference inside credential value",
+			body:           `{"url":"https://example.com/?api_key=PREFIX&quot;SUFFIX"}`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "example.com",
+		},
+		{
+			name:           "HTML quote reference inside userinfo password",
+			body:           `<a href="https://admin:PREFIX&quot;SUFFIX@backup.example.com/config">retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "single-quoted HTML attribute with quote reference inside userinfo password",
+			body:           `<a href='https://admin:PREFIX&quot;SUFFIX@backup.example.com/config'>retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "unquoted HTML attribute with space reference inside userinfo password",
+			body:           `<a href=https://admin:PREFIX&#32;SUFFIX@backup.example.com/config>retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "unquoted HTML attribute with whitespace before equals",
+			body:           `<a href =https://admin:PREFIX&#32;SUFFIX@backup.example.com/config>retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "unquoted HTML attribute with form feed boundaries",
+			body:           "<a href\f=\fhttps://admin:PREFIX&#32;SUFFIX@backup.example.com/config>retry</a>",
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:           "quoted HTML attribute after unmatched text quote",
+			body:           `"notice <a href="https://admin:PREFIX SUFFIX@backup.example.com/config">retry</a>`,
+			secret:         "PREFIX",
+			decodedSecrets: []string{"SUFFIX"},
+			keep:           "retry",
+		},
+		{
+			name:   "JSON escaped userinfo separators",
+			body:   `{"remote":"https:\/\/admin\u003asupersecret\u0040backup.example.com"}`,
+			secret: "supersecret",
+			keep:   "backup.example.com",
+		},
+		{
+			name:           "truncated JSON escaped query credential value",
+			body:           `{"url":"https:\/\/example.com\/?license_key=\u0053ECRET`,
+			secret:         `\u0053ECRET`,
+			decodedSecrets: []string{"SECRET"},
+			keep:           "example.com",
+		},
+		{
+			name:   "truncated JSON escaped userinfo separators",
+			body:   `{"remote":"https:\/\/admin\u003asupersecret\u0040backup.example.com`,
+			secret: "supersecret",
+			keep:   "backup.example.com",
+		},
+		{
+			name:   "trailing incomplete escape after escaped query syntax",
+			body:   `{"url":"https:\/\/example.com\/?api\u005fkey\u003dQUERYSECRET\`,
+			secret: "QUERYSECRET",
+		},
+		{
+			name:   "invalid escape after escaped userinfo syntax",
+			body:   `{"remote":"https:\/\/admin\u003asupersecret\u0040backup.example.com\q"}`,
+			secret: "supersecret",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := string(truncateBody([]byte(tc.body)))
 			if strings.Contains(got, tc.secret) {
 				t.Errorf("expected credential %q to be redacted, got: %s", tc.secret, got)
+			}
+			for _, secret := range tc.decodedSecrets {
+				if strings.Contains(got, secret) {
+					t.Errorf("expected decoded credential component %q to be redacted, got: %s", secret, got)
+				}
 			}
 			if !strings.Contains(got, "REDACTED") {
 				t.Errorf("expected a REDACTED marker, got: %s", got)
@@ -572,6 +876,96 @@ func TestTruncateBody_RedactsBeforeTruncating(t *testing.T) {
 	}
 }
 
+func TestTruncateBody_ReclassifiesUserinfoAfterPostRedactionClamp(t *testing.T) {
+	prefix := `{"password":"x","pad":"`
+	suffix := ` https://admin:LEAKED-PASSWORD"}`
+	body := []byte(prefix + strings.Repeat("a", maxErrorBodyBytes-len(prefix)-len(suffix)) + suffix)
+
+	got := string(truncateBody(body))
+
+	if strings.Contains(got, "LEAK") {
+		t.Errorf("expected the userinfo prefix exposed by the final clamp to be redacted, got suffix: %.80s", got[len(got)-80:])
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Errorf("expected a redaction marker, got suffix: %.80s", got[len(got)-80:])
+	}
+}
+
+func TestRedactSensitiveURLValue_RedactsWhitespaceInsideUserinfo(t *testing.T) {
+	got := redactSensitiveURLValue(`https://admin:PREFIX SUFFIX@backup.example.com/config`)
+
+	for _, secret := range []string{"PREFIX", "SUFFIX"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("expected userinfo component %q to be redacted, got: %s", secret, got)
+		}
+	}
+	if !strings.Contains(got, "backup.example.com") {
+		t.Errorf("expected the benign host to survive redaction, got: %s", got)
+	}
+}
+
+func TestTruncateBody_RedactsTruncatedURLUserinfo(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prefix string
+		tail   string
+	}{
+		{
+			name:   "plain text separators",
+			prefix: " https://admin:LEAK",
+			tail:   "ED-PASSWORD@host",
+		},
+		{
+			name:   "scheme relative separators",
+			prefix: " //admin:LEAK",
+			tail:   "ED-PASSWORD@host",
+		},
+		{
+			name:   "JSON escaped separators",
+			prefix: ` {"url":"https:\/\/admin\u003aLEAK`,
+			tail:   `ED-PASSWORD@host"}`,
+		},
+		{
+			name:   "cut inside JSON escaped at sign",
+			prefix: ` {"url":"https:\/\/admin\u003aLEAK\u00`,
+			tail:   `40host"}`,
+		},
+		{
+			name:   "cut quoted HTML userinfo after entity whitespace",
+			prefix: ` <a href="https://admin:LEAK&#32;ED-PASSWORD`,
+			tail:   `@backup.example.com/config">`,
+		},
+		{
+			name:   "cut quoted HTML userinfo after literal whitespace",
+			prefix: ` <a href="https://admin:LEAK ED-PASSWORD`,
+			tail:   `@backup.example.com/config">`,
+		},
+		{
+			name:   "cut HTML userinfo after encoded opening quote",
+			prefix: ` &quot;https://admin:LEAK ED-PASSWORD`,
+			tail:   `@backup.example.com/config&quot;`,
+		},
+		{
+			name:   "cut quoted HTML userinfo after unmatched text quote",
+			prefix: ` "notice <a href="https://admin:LEAK ED-PASSWORD`,
+			tail:   `@backup.example.com/config">`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prefix := strings.Repeat("x", maxErrorBodyBytes-len(tc.prefix))
+			body := []byte(prefix + tc.prefix + tc.tail)
+			got := string(truncateBody(body))
+
+			if strings.Contains(got, "LEAK") {
+				t.Errorf("expected truncated userinfo password prefix to be redacted, got suffix: %.80s", got[len(got)-80:])
+			}
+			if !strings.Contains(got, "[REDACTED]") {
+				t.Errorf("expected [REDACTED] marker in truncated userinfo body, got suffix: %.80s", got[len(got)-80:])
+			}
+		})
+	}
+}
+
 func TestTruncateBody_NonJSONPassesThrough(t *testing.T) {
 	body := []byte("<html><body>plain error page</body></html>")
 
@@ -603,6 +997,39 @@ func TestDo_InvalidJSONRedactsSecrets(t *testing.T) {
 	}
 	if !strings.Contains(err.Message, "[REDACTED]") {
 		t.Errorf("expected [REDACTED] marker in error message, got: %s", err.Message)
+	}
+}
+
+func TestDo_InvalidJSONRedactsSharedSensitiveConfigKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		key    string
+		secret string
+	}{
+		{name: "TOTP seed", key: "otp_seed", secret: "totp-seed-secret"},
+		{name: "LDAP bind password", key: "ldap_bindpw", secret: "ldap-bind-secret"},
+		{name: "encrypted key", key: "enckey", secret: "encrypted-key-material"},
+		{name: "Net-SNMP community", key: "community", secret: "snmp-community-secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"` + tc.key + `":"` + tc.secret + `",`))
+			})
+			defer server.Close()
+
+			var result struct{}
+			err := client.do("GET", "api/core/service/search", nil, &result)
+			if err == nil {
+				t.Fatal("expected malformed response error")
+			}
+			if got := err.Error(); strings.Contains(got, tc.secret) {
+				t.Errorf("APICallError.Error leaked %q: %s", tc.secret, got)
+			}
+			if got := err.Error(); !strings.Contains(got, `"`+tc.key+`":"[REDACTED]"`) {
+				t.Errorf("APICallError.Error did not preserve redacted %q field: %s", tc.key, got)
+			}
+		})
 	}
 }
 

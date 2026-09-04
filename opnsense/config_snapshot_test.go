@@ -86,3 +86,29 @@ func TestRedactConfigSnapshotFieldsRemovesNestedCamelCaseSecrets(t *testing.T) {
 		t.Errorf("non-sensitive name = %v, want keep-name", got)
 	}
 }
+
+func TestSensitiveConfigKey(t *testing.T) {
+	cases := []struct {
+		key  string
+		want bool
+	}{
+		{key: "password", want: true},
+		{key: "apiKey", want: true},
+		{key: "otp_seed", want: true},
+		{key: "ldap_bindpw", want: true},
+		{key: "enckey", want: true},
+		{key: "community", want: true},
+		{key: "prvPayload", want: true},
+		{key: "community_id", want: false},
+		{key: "community_name", want: false},
+		{key: "remoteCommunity", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			if got := SensitiveConfigKey(tc.key); got != tc.want {
+				t.Errorf("SensitiveConfigKey(%q) = %t, want %t", tc.key, got, tc.want)
+			}
+		})
+	}
+}

@@ -907,6 +907,11 @@ func main() {
 				cancelFlow()
 				<-flowDone
 				corr.Flush()
+				// Bridge.Run returns when the pipeline cancels push sources, which happens
+				// before AfterSourcesStopped invokes this closure. Keep its callback live
+				// through the final flush above, then clear it so any later emission is
+				// counted as dropped rather than enqueued after the queue closes.
+				flowlog.Sink.Unbind()
 			}
 			go func() {
 				defer close(flowDone)

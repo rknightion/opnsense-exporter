@@ -1,11 +1,11 @@
 ---
 id: OPN-0062
 title: Stop NetFlow intake before the correlator final flush
-status: Done
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-04 05:38'
-updated_date: '2026-09-04 07:26'
+updated_date: '2026-09-04 12:42'
 labels:
   - needs-triage
 dependencies: []
@@ -39,7 +39,15 @@ The log shutdown path flushes and stops the flow correlator while the NetFlow so
 
 <!-- SECTION:PLAN:BEGIN -->
 Add a lifecycle regression around the shutdown seam, watch it fail for the post-flush intake window, then reorder shutdown ownership so the listener and processor quiesce before the final correlator flush and before the log pipeline drain.
+
+Wave 6 correction: add an end-to-end shutdown regression using the real flowlog Bridge and pipeline; keep the bridge callback live through AfterSourcesStopped and clear it only after the correlator final flush has enqueued; verify the sink receives the pending flow and the dropped counter does not move.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 6 audit disproved AC2 in the real bridge lifecycle: pipeline cancellation makes Bridge.Run clear its emit callback before AfterSourcesStopped invokes corr.Flush, so pending flow logs increment the bridge dropped count instead of entering the still-open queue. The prior shutdown regression used a direct sink and could not observe this seam.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 

@@ -127,8 +127,11 @@ In short: it accepts Elasticsearch `_bulk` writes on port 9200 by default, ships
 of Zenarmor's reporting families (`conn`, `dns`, `tls`, `http`, `alert`, `sip` - mapped
 to `opnsense.subsystem` values `flow`, `dns`, `tls`, `web`, `ids`, `voip`) as enriched
 OTLP logs, and derives a Prometheus counter (`opnsense_log_events_zenarmor_total`) from
-every document. Volume is substantial - measured at ~39 docs/sec on a live box, ~4–6
-GB/day of raw JSON - so prefer cutting families in Zenarmor's own `indexes` setting over
+known-family documents that pass family selection and the default self-traffic filter.
+Document parse failures still count and ship with their raw body; explicit exclusions
+are applied after derivation, so they still contribute to the derived counter. Volume
+is substantial - measured at ~39 docs/sec on a live box, ~4–6 GB/day of raw JSON - so
+prefer cutting families in Zenarmor's own `indexes` setting over
 `--logs.zenarmor.families`: data cut at the source never crosses the wire.
 
 ### IDS (Suricata EVE alerts)
@@ -384,12 +387,13 @@ A **push** source layered on the separate NetFlow/Zenarmor flow pipeline
 [NetFlow & flow metrics](flow.md)): the same correlator that builds the `netflow_*`
 metrics also ships one OTLP log record per correlated flow, stamped
 `opnsense.source` = `netflow` (NetFlow only) or `merged` (a NetFlow fragment joined
-with a matching Zenarmor `conn` document). Gated on three settings rather than its
+with a matching Zenarmor `conn` document). Gated on four settings rather than its
 own `--logs.<source>.enabled` flag: `--logs.enabled`, `--flow.enabled`, and
 `--flow.log-mode` (`per_flow`, the default, ships the logs; `off` keeps deriving the
-metrics without them). See **[Flow log records](flow.md#flow-log-records)** for the
-full attribute set, timestamp semantics and the `--flow.max-logs-per-window` flood
-guard.
+metrics without them), and the flow collector must remain enabled - leave
+`--exporter.disable-flow` unset. See **[Flow log records](flow.md#flow-log-records)**
+for the full attribute set, timestamp semantics and the `--flow.max-logs-per-window`
+flood guard.
 
 ## Loki label model
 

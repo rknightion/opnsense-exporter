@@ -1,9 +1,12 @@
 package logship
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -298,9 +301,40 @@ func TestPushSourceRunErrorCounted(t *testing.T) {
 	}
 }
 
-// stop() waits on pollerWG with NO timeout, so a push source that ignores ctx
-// would hang the exporter forever on SIGTERM. This proves the contract: a push
-// source registered on the pipeline does not prevent stop() from returning.
+type shutdownErrorPush struct{ err error }
+
+func (s *shutdownErrorPush) Name() string { return "shutdown-error" }
+
+func (s *shutdownErrorPush) Run(ctx context.Context, _ func(Record)) error {
+	<-ctx.Done()
+	return s.err
+}
+
+// A source may fail its own graceful-shutdown phase after the pipeline has
+// cancelled the shared context. That is not the benign context cancellation the
+// old guard intended to suppress: it is the only reason an operator has for an
+// abandoned in-flight request, so it must remain counted and diagnostic.
+func TestPushSourceShutdownErrorCounted(t *testing.T) {
+	p := newTestPipeline(t, 4)
+	var logs bytes.Buffer
+	p.log = slog.New(slog.NewTextHandler(&logs, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	p.runPushSource(ctx, &shutdownErrorPush{err: context.DeadlineExceeded})
+
+	if got := counterValue(t, p.metrics.pollErrors.WithLabelValues("shutdown-error")); got != 1 {
+		t.Errorf("logs_poll_errors_total{source=shutdown-error} = %v, want 1", got)
+	}
+	if got := logs.String(); !strings.Contains(got, "push source stopped with error") ||
+		!strings.Contains(got, context.DeadlineExceeded.Error()) {
+		t.Errorf("shutdown diagnostic = %q, want attributable deadline error", got)
+	}
+}
+
+// TestPushSourceDoesNotBlockStop covers the ordinary shutdown path: every
+// registered producer returns after cancellation, then the final producer flush runs
+// before the queue closes and drains.
 func TestPushSourceDoesNotBlockStop(t *testing.T) {
 	p := newTestPipeline(t, 8)
 	sink := &fakeSink{}
@@ -343,5 +377,133 @@ func TestPushSourceDoesNotBlockStop(t *testing.T) {
 	}
 	if got := len(sink.got()); got != 3 {
 		t.Errorf("sink got %d entries, want 3 (push records plus final flow must drain on stop)", got)
+	}
+}
+
+// cancellationIgnoringPush deliberately stays live after its context is cancelled.
+// Its release is test-owned so the regression never leaves a goroutine behind.
+type cancellationIgnoringPush struct {
+	cancelled chan struct{}
+	release   chan struct{}
+}
+
+func (s *cancellationIgnoringPush) Name() string { return "stuck" }
+
+func (s *cancellationIgnoringPush) Run(ctx context.Context, emit func(Record)) error {
+	<-ctx.Done()
+	close(s.cancelled)
+	<-s.release
+	emit(Record{Body: "after-deadline"})
+	return nil
+}
+
+// A producer that ignores cancellation must not keep stop blocked beyond the shutdown
+// deadline. Its queue and sink stay live until it returns: closing either early would
+// race its final emit or make a later cleanup unsafe.
+func TestPushSourceShutdownDeadlineLeavesDeliveryOwnedByLiveProducer(t *testing.T) {
+	p := newTestPipeline(t, 8)
+	sink := &fakeSink{}
+	p.sink = sink
+	var logs bytes.Buffer
+	p.log = slog.New(slog.NewTextHandler(&logs, nil))
+	pctx, cancel := context.WithCancel(context.Background())
+	p.ctx, p.cancel = pctx, cancel
+
+	p.emitterWG.Add(1)
+	go p.runEmitter()
+
+	s := &cancellationIgnoringPush{cancelled: make(chan struct{}), release: make(chan struct{})}
+	p.pollerWG.Add(1)
+	pushDone := make(chan struct{})
+	go func() {
+		defer p.pollerWG.Done()
+		defer close(pushDone)
+		p.runPushSource(p.ctx, s)
+	}()
+
+	var afterSourcesStopped atomic.Bool
+	p.afterSourcesStopped = func() { afterSourcesStopped.Store(true) }
+
+	t.Cleanup(func() {
+		select {
+		case <-s.release:
+		default:
+			close(s.release)
+		}
+		select {
+		case <-pushDone:
+		case <-time.After(2 * time.Second):
+			t.Error("cancellation-ignoring source did not release for cleanup")
+		}
+		p.queue.close()
+		emitterDone := make(chan struct{})
+		go func() {
+			p.emitterWG.Wait()
+			close(emitterDone)
+		}()
+		select {
+		case <-emitterDone:
+		case <-time.After(2 * time.Second):
+			t.Error("emitter did not stop during test cleanup")
+		}
+	})
+
+	ctx, cancelStop := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancelStop()
+	stopped := make(chan error, 1)
+	go func() { stopped <- p.stop(ctx) }()
+
+	var err error
+	select {
+	case err = <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("stop() remained blocked after its source-shutdown deadline")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stop error = %v, want source-shutdown deadline error", err)
+	}
+	if !strings.Contains(err.Error(), "source shutdown") {
+		t.Errorf("stop error = %q, want an attributable source-shutdown error", err)
+	}
+	select {
+	case <-s.cancelled:
+	default:
+		t.Fatal("stop returned before cancelling the source")
+	}
+	if afterSourcesStopped.Load() {
+		t.Error("after-sources hook ran while a producer was still live")
+	}
+	sink.mu.Lock()
+	shutdown := sink.shutdown
+	sink.mu.Unlock()
+	if shutdown {
+		t.Error("sink shut down while a producer was still live")
+	}
+	p.queue.mu.Lock()
+	queueClosed := p.queue.closed
+	p.queue.mu.Unlock()
+	if queueClosed {
+		t.Error("queue closed while a producer was still live")
+	}
+	if !strings.Contains(logs.String(), "source shutdown did not finish") {
+		t.Errorf("shutdown log = %q, want source-shutdown timeout diagnostic", logs.String())
+	}
+
+	close(s.release)
+	<-pushDone
+	if err := p.stop(context.Background()); err != nil {
+		t.Fatalf("later stop cleanup: %v", err)
+	}
+	if !afterSourcesStopped.Load() {
+		t.Error("after-sources hook did not run after the producer released")
+	}
+	if got := len(sink.got()); got != 1 {
+		t.Errorf("sink got %d entries, want the producer's final entry after cleanup", got)
+	}
+	sink.mu.Lock()
+	shutdown = sink.shutdown
+	sink.mu.Unlock()
+	if !shutdown {
+		t.Error("sink did not shut down after the producer released and cleanup retried")
 	}
 }

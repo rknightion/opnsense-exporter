@@ -58,7 +58,8 @@ to turn it off.
 | `--flow.max-keys` | `100000` | maximum label combinations held in memory |
 | `--exporter.disable-flow` | *(off)* | remove the collector entirely |
 
-To get any data you also need the Zenarmor receiver running
+To get any flow data, leave the flow collector enabled - do not set
+`--exporter.disable-flow` - and also run the Zenarmor receiver
 (`--logs.zenarmor.enabled`), the NetFlow receiver below, or both.
 
 ## The NetFlow receiver
@@ -746,10 +747,13 @@ on the device. See `grafana/README.md#alerts` for the full rule catalogue and de
 | Flag | Default | Purpose |
 |---|---|---|
 | `--flow.log-mode` | `per_flow` | `per_flow` ships one OTLP log record per correlated flow on the shared log pipeline; `off` ships none while still deriving all metrics above |
-| `--flow.max-logs-per-window` | `0` (unlimited) | cap on flow log records shipped per minute; excess is TRUNCATED, never sampled, and counted - a flood guard for the unauthenticated NetFlow ingress |
+| `--flow.max-logs-per-window` | `10000` | cap on flow log records shipped per minute; excess is TRUNCATED, never sampled, and counted - a flood guard for the unauthenticated NetFlow ingress |
 
-This is separate from, and in addition to, the Zenarmor `conn` record's own lane
-(`--logs.zenarmor.enabled`), which ships regardless of `--flow.log-mode`. Turning
+Flow-log emission also requires `--logs.enabled`, `--flow.enabled`,
+`--flow.log-mode=per_flow`, and the flow collector to remain enabled (leave
+`--exporter.disable-flow` unset). This is separate from, and in addition to, the
+Zenarmor `conn` record's own lane (`--logs.zenarmor.enabled`), which ships regardless
+of `--flow.log-mode`. Turning
 `--flow.log-mode` off removes only the correlator's own per-flow record; it never
 touches metrics or the Zenarmor lane.
 

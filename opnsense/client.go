@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"math/rand/v2"
@@ -16,6 +17,7 @@ import (
 	"net/url"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -870,40 +872,706 @@ func unmarshalBody(path EndpointPath, body []byte, statusCode int, responseStruc
 	return nil
 }
 
-// sensitiveJSONField matches JSON key/value pairs whose key contains a
-// credential-like word (password, secret, token, api key, private key, otp
-// seed), including OPNsense's "%"-prefixed field variants, so the value
-// (string, number or null) can be redacted before the body reaches an error
-// message. otp_seed was added for #222: a TOTP seed is exactly as sensitive as
-// a password and must never surface in an error-path body dump.
-var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key|prv|otp_?seed)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
+// sensitiveURLQueryName recognizes credential-bearing query parameter names.
+// Redacting by JSON field name alone is not enough: the firewall GeoIP config
+// returns a field literally named "url" whose value embeds a live credential.
+const sensitiveURLQueryNamePattern = `license_?key|api_?key|apikey|auth_?token|access_?token|key|secret|token|password|passwd|auth`
 
-// sensitiveURLQueryParam matches a credential-bearing query parameter ANYWHERE
-// in a body, regardless of what the enclosing JSON key is called (#305).
-// Redacting by key name alone is not enough: the firewall GeoIP config returns
-// a field literally named "url" whose VALUE embeds
-// "...&license_key=<MaxMind secret>", so a non-2xx or malformed-JSON body
-// copied a live credential verbatim into APICallError.Message — which
-// internal/collector/firewall.go logs. The value stops at the first delimiter
-// that can end a query parameter inside a JSON string (& " ' whitespace) so
-// the rest of the URL stays legible for debugging.
-var sensitiveURLQueryParam = regexp.MustCompile(`(?i)([?&](?:license_?key|api_?key|apikey|auth_?token|access_?token|key|secret|token|password|passwd|auth)=)[^&"'\s\\]+`)
+var sensitiveURLQueryName = regexp.MustCompile(`(?i)^(?:` + sensitiveURLQueryNamePattern + `)$`)
 
-// urlUserinfo matches the "user:password@" credential form of a URL
-// (https://admin:hunter2@host/...), which no key-name rule would ever catch
-// either. Only the password half is replaced; the scheme, username and host
-// survive so the body still says what it was talking to.
-var urlUserinfo = regexp.MustCompile(`(?i)([a-z][a-z0-9+.\-]*://[^/@\s"']*:)[^/@\s"']+@`)
+// urlUserinfo matches the "user:password@" credential form of an absolute or
+// scheme-relative URL, which no key-name rule would ever catch either. Only
+// the password half is replaced; the scheme, username and host survive so the
+// body still says what it was talking to.
+const urlAuthorityPrefixPattern = `(?:[a-z][a-z0-9+.\-]*:)?(?:/|\\/){2}`
 
-// redactSensitiveFields replaces the values of credential-like JSON fields
-// with "[REDACTED]", then makes a second pass over the whole body to scrub
+var urlUserinfo = regexp.MustCompile(`(?i)(` + urlAuthorityPrefixPattern + `[^/:@\s"']*:)[^/@\s"']+@`)
+
+// quotedURLUserinfo is used only after a complete quoted token has been
+// isolated. Quote and whitespace bytes are data there, not token boundaries,
+// so they cannot be allowed to split a password around an HTML reference.
+var quotedURLUserinfo = regexp.MustCompile(`(?i)(` + urlAuthorityPrefixPattern + `[^/:@]*:)[^/@]+@`)
+
+// truncatedURLUserinfoSuffix is the fail-closed form used only after an error
+// body has been cut to its diagnostic limit. The trailing @ may be beyond that
+// boundary, so a scheme://authority-prefix:value at EOF must be treated as
+// possible userinfo rather than allowed to expose a password prefix.
+var truncatedURLUserinfoSuffix = regexp.MustCompile(`(?i)(` + urlAuthorityPrefixPattern + `[^/:@\s"']*:)[^/@\s"']*$`)
+
+// truncatedQuotedURLUserinfoSuffix runs only inside an already isolated,
+// incomplete quoted token. Whitespace and quote bytes can therefore be part
+// of entity-decoded password data rather than trustworthy token boundaries.
+var truncatedQuotedURLUserinfoSuffix = regexp.MustCompile(`(?i)` + urlAuthorityPrefixPattern + `[^/:@]*:[^/@]+$`)
+
+func redactTruncatedURLUserinfo(b []byte) []byte {
+	match := truncatedURLUserinfoSuffix.FindSubmatchIndex(b)
+	if match == nil {
+		return b
+	}
+	const marker = "[REDACTED]"
+	prefixEnd := match[3]
+	// Keep the diagnostic body within its fixed budget without cutting the
+	// redaction marker itself when the observed password prefix is shorter.
+	if limit := maxErrorBodyBytes - len(marker); prefixEnd > limit {
+		prefixEnd = limit
+	}
+	out := make([]byte, 0, prefixEnd+len(marker))
+	out = append(out, b[:prefixEnd]...)
+	return append(out, marker...)
+}
+
+func redactTruncatedHTMLQuotedURLUserinfo(value string) string {
+	const marker = "[REDACTED]"
+	b := []byte(value)
+	for i := 0; i < len(value); i++ {
+		if value[i] != '=' || !htmlURLAttributeEquals(value, i) {
+			continue
+		}
+		start := i + 1
+		for start < len(value) && htmlSpace(value[start]) {
+			start++
+		}
+		if start >= len(value) || value[start] != '"' && value[start] != '\'' {
+			continue
+		}
+		end, complete := quotedStringEnd(b, start, value[start])
+		if complete {
+			i = end - 1
+			continue
+		}
+		decoded := html.UnescapeString(value[start+1:])
+		if truncatedQuotedURLUserinfoSuffix.MatchString(decoded) {
+			return value[:start+1] + marker
+		}
+		break
+	}
+	for start := 0; start < len(value); {
+		quote := value[start]
+		if quote != '"' && quote != '\'' {
+			start++
+			continue
+		}
+		end, complete := quotedStringEnd(b, start, quote)
+		if complete {
+			start = end
+			continue
+		}
+		raw := value[start+1:]
+		decoded := html.UnescapeString(raw)
+		if truncatedQuotedURLUserinfoSuffix.MatchString(decoded) {
+			return value[:start+1] + marker
+		}
+		break
+	}
+	return value
+}
+
+func jsonStringEnd(b []byte, start int) (int, bool) {
+	return quotedStringEnd(b, start, '"')
+}
+
+func quotedStringEnd(b []byte, start int, quote byte) (int, bool) {
+	if start >= len(b) || b[start] != quote {
+		return start, false
+	}
+	for i := start + 1; i < len(b); i++ {
+		switch b[i] {
+		case '\\':
+			i++
+		case quote:
+			return i + 1, true
+		}
+	}
+	return len(b), false
+}
+
+func jsonSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
+}
+
+func htmlSpace(c byte) bool {
+	return jsonSpace(c) || c == '\f'
+}
+
+// jsonLikeValueEnd finds the end of the value after a closed JSON key. The
+// response itself may be malformed, so incomplete strings and composites run
+// through the end of the body. That is the fail-closed behaviour required for
+// error text: once a sensitive key is known, no part of its value may survive.
+func jsonLikeValueEnd(b []byte, start int) (int, bool) {
+	if start >= len(b) {
+		return start, false
+	}
+	switch b[start] {
+	case '"':
+		end, complete := jsonStringEnd(b, start)
+		if !complete {
+			return len(b), true
+		}
+		return end, true
+	case '{', '[':
+		stack := []byte{'}'}
+		if b[start] == '[' {
+			stack[0] = ']'
+		}
+		for i := start + 1; i < len(b); {
+			switch b[i] {
+			case '"':
+				end, complete := jsonStringEnd(b, i)
+				if !complete {
+					return len(b), true
+				}
+				i = end
+				continue
+			case '{':
+				stack = append(stack, '}')
+			case '[':
+				stack = append(stack, ']')
+			case '}', ']':
+				if b[i] != stack[len(stack)-1] {
+					return len(b), true
+				}
+				stack = stack[:len(stack)-1]
+				if len(stack) == 0 {
+					return i + 1, true
+				}
+			}
+			i++
+		}
+		return len(b), true
+	default:
+		if b[start] == ',' || b[start] == '}' || b[start] == ']' || jsonSpace(b[start]) {
+			return start, false
+		}
+		end := start
+		for end < len(b) && b[end] != ',' && b[end] != '}' && b[end] != ']' {
+			end++
+		}
+		return end, true
+	}
+}
+
+// redactSensitiveJSONFields replaces the values of sensitive JSON fields with
+// "[REDACTED]". It deliberately uses SensitiveConfigKey, so malformed API
+// response bodies cannot drift from the vocabulary used for shipped config.
+func redactSensitiveJSONFields(b []byte) []byte {
+	const marker = `"[REDACTED]"`
+	out := make([]byte, 0, len(b))
+	cursor := 0
+	for i := 0; i < len(b); {
+		if b[i] != '"' {
+			i++
+			continue
+		}
+		keyEnd, complete := jsonStringEnd(b, i)
+		if !complete {
+			break
+		}
+		colon := keyEnd
+		for colon < len(b) && jsonSpace(b[colon]) {
+			colon++
+		}
+		if colon >= len(b) || b[colon] != ':' {
+			i = keyEnd
+			continue
+		}
+		var key string
+		keyErr := json.Unmarshal(b[i:keyEnd], &key)
+		// An invalidly escaped field name has no authoritative decoded value
+		// to classify through SensitiveConfigKey. Error diagnostics fail closed
+		// by redacting its value rather than letting malformed escape bytes hide
+		// a credential name (for example pass\qword).
+		if keyErr == nil && !SensitiveConfigKey(key) {
+			i = keyEnd
+			continue
+		}
+		valueStart := colon + 1
+		for valueStart < len(b) && jsonSpace(b[valueStart]) {
+			valueStart++
+		}
+		valueEnd, present := jsonLikeValueEnd(b, valueStart)
+		if !present {
+			i = keyEnd
+			continue
+		}
+		out = append(out, b[cursor:valueStart]...)
+		out = append(out, marker...)
+		cursor = valueEnd
+		i = valueEnd
+	}
+	return append(out, b[cursor:]...)
+}
+
+func redactSensitiveURLValue(value string) string {
+	value = redactSensitiveRawQueryComponents(value, false)
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+		changed := false
+		if parsed.User != nil {
+			if _, hasPassword := parsed.User.Password(); hasPassword {
+				parsed.User = url.UserPassword(parsed.User.Username(), "[REDACTED]")
+				changed = true
+			}
+		}
+		if changed {
+			value = parsed.String()
+		}
+	}
+	return quotedURLUserinfo.ReplaceAllString(value, `${1}[REDACTED]@`)
+}
+
+// redactSensitiveRawQueryComponents scans query-shaped text without parsing
+// the whole URL. Each key is decoded independently from its value, so a bad
+// percent escape in one credential value cannot make the parser discard that
+// same component. It also covers relative URLs and plain-text diagnostics.
+// Decoded JSON strings run to URL delimiters because spaces and backslashes are
+// value bytes there; the whole-body pass additionally stops at text boundaries.
+func redactSensitiveRawQueryComponents(value string, textBoundaries bool) string {
+	const marker = "[REDACTED]"
+	var out strings.Builder
+	cursor := 0
+	for i := 0; i < len(value); i++ {
+		keyStart, separator := querySeparatorEnd(value, i)
+		if !separator {
+			continue
+		}
+		keyEnd := keyStart
+		for keyEnd < len(value) && value[keyEnd] != '=' && !queryKeyDelimiter(value[keyEnd]) {
+			keyEnd++
+		}
+		if keyEnd >= len(value) || value[keyEnd] != '=' {
+			continue
+		}
+		key, err := url.QueryUnescape(value[keyStart:keyEnd])
+		if err != nil || !sensitiveURLQueryName.MatchString(key) {
+			continue
+		}
+		valueStart := keyEnd + 1
+		valueEnd := valueStart
+		for valueEnd < len(value) && !queryValueDelimiter(value[valueEnd], textBoundaries) {
+			valueEnd++
+		}
+		out.WriteString(value[cursor:valueStart])
+		out.WriteString(marker)
+		cursor = valueEnd
+		i = valueEnd - 1
+	}
+	if cursor == 0 {
+		return value
+	}
+	out.WriteString(value[cursor:])
+	return out.String()
+}
+
+func querySeparatorEnd(value string, start int) (int, bool) {
+	if value[start] == '?' {
+		return start + 1, true
+	}
+	if value[start] != '&' {
+		return start, false
+	}
+	// HTML error pages normally entity-escape ampersands inside href values.
+	// Treat named and numeric references to '&' as separators for detection
+	// while preserving the original diagnostic representation in the output.
+	if end := start + len("&amp;"); end <= len(value) && strings.EqualFold(value[start:end], "&amp;") {
+		return end, true
+	}
+	if end := start + len("&amp"); end < len(value) && strings.EqualFold(value[start:end], "&amp") &&
+		!asciiAlphaNumeric(value[end]) && value[end] != '=' {
+		return end, true
+	}
+	if end, ok := numericAmpersandReferenceEnd(value, start); ok {
+		return end, true
+	}
+	return start + 1, true
+}
+
+func numericAmpersandReferenceEnd(value string, start int) (int, bool) {
+	if start+3 >= len(value) || value[start:start+2] != "&#" {
+		return start, false
+	}
+	base := byte(10)
+	pos := start + 2
+	if value[pos] == 'x' || value[pos] == 'X' {
+		base = 16
+		pos++
+	}
+	digitStart := pos
+	number := 0
+	for pos < len(value) {
+		var digit int
+		switch c := value[pos]; {
+		case c >= '0' && c <= '9':
+			digit = int(c - '0')
+		case base == 16 && c >= 'a' && c <= 'f':
+			digit = int(c-'a') + 10
+		case base == 16 && c >= 'A' && c <= 'F':
+			digit = int(c-'A') + 10
+		default:
+			goto parsed
+		}
+		number = number*int(base) + digit
+		if number > '&' {
+			number = '&' + 1
+		}
+		pos++
+	}
+
+parsed:
+	if pos == digitStart || number != '&' {
+		return start, false
+	}
+	if pos < len(value) && value[pos] == ';' {
+		pos++
+	}
+	return pos, true
+}
+
+func questionMarkReferenceEnd(value string, start int) (int, bool) {
+	if value[start] == '?' {
+		return start + 1, true
+	}
+	if value[start] != '&' {
+		return start, false
+	}
+	if end := start + len("&quest;"); end <= len(value) && strings.EqualFold(value[start:end], "&quest;") {
+		return end, true
+	}
+	if end := start + len("&quest"); end < len(value) && strings.EqualFold(value[start:end], "&quest") &&
+		!asciiAlphaNumeric(value[end]) && value[end] != '=' {
+		return end, true
+	}
+	if start+3 >= len(value) || value[start:start+2] != "&#" {
+		return start, false
+	}
+	base := byte(10)
+	pos := start + 2
+	if value[pos] == 'x' || value[pos] == 'X' {
+		base = 16
+		pos++
+	}
+	digitStart := pos
+	number := 0
+	for pos < len(value) {
+		var digit int
+		switch c := value[pos]; {
+		case c >= '0' && c <= '9':
+			digit = int(c - '0')
+		case base == 16 && c >= 'a' && c <= 'f':
+			digit = int(c-'a') + 10
+		case base == 16 && c >= 'A' && c <= 'F':
+			digit = int(c-'A') + 10
+		default:
+			goto parsed
+		}
+		number = number*int(base) + digit
+		if number > '?' {
+			number = '?' + 1
+		}
+		pos++
+	}
+
+parsed:
+	if pos == digitStart || number != '?' {
+		return start, false
+	}
+	if pos < len(value) && value[pos] == ';' {
+		pos++
+	}
+	return pos, true
+}
+
+func asciiAlphaNumeric(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+func queryKeyDelimiter(c byte) bool {
+	return c == '&' || c == '#' || c == '"' || c == '\'' || c == '\\' || jsonSpace(c)
+}
+
+func queryValueDelimiter(c byte, textBoundaries bool) bool {
+	if c == '&' || c == '#' {
+		return true
+	}
+	return textBoundaries && (c == '"' || c == '\'' || c == '\\' || jsonSpace(c))
+}
+
+// redactSensitiveHTMLQueryRegions handles the mapping problem introduced by
+// HTML character references. When decoding a query-shaped region exposes a
+// sensitive parameter, redact the whole original query rather than trying to
+// map decoded byte offsets back onto source bytes. This is intentionally
+// conservative diagnostic text: it prevents an encoded quote or ampersand in
+// the value from leaving a credential suffix behind.
+func redactSensitiveHTMLQueryRegions(value string) string {
+	const marker = "[REDACTED]"
+	var out strings.Builder
+	cursor := 0
+	for start := 0; start < len(value); start++ {
+		queryEnd, ok := questionMarkReferenceEnd(value, start)
+		if !ok {
+			continue
+		}
+		end := queryEnd
+		for end < len(value) && value[end] != '"' && value[end] != '\'' &&
+			value[end] != '\\' && !jsonSpace(value[end]) {
+			end++
+		}
+		raw := value[start:end]
+		decoded := html.UnescapeString(raw)
+		if decoded == raw || redactSensitiveRawQueryComponents(decoded, false) == decoded {
+			continue
+		}
+		out.WriteString(value[cursor:queryEnd])
+		out.WriteString(marker)
+		cursor = end
+		start = end - 1
+	}
+	if cursor == 0 {
+		return value
+	}
+	out.WriteString(value[cursor:])
+	return out.String()
+}
+
+// redactSensitiveHTMLQuotedURLs inspects complete quoted URL attributes before
+// whole-body entity normalization. Starting at the attribute's equals boundary
+// avoids pairing an unrelated quote in HTML text with the attribute opener.
+// If decoding exposes URL credentials, replace the whole token content:
+// preserving byte offsets is less important than keeping every password byte
+// out of the diagnostic.
+func redactSensitiveHTMLQuotedURLs(value string) string {
+	const marker = "[REDACTED]"
+	var out strings.Builder
+	cursor := 0
+	for i := 0; i < len(value); i++ {
+		if value[i] != '=' || !htmlURLAttributeEquals(value, i) {
+			continue
+		}
+		start := i + 1
+		for start < len(value) && htmlSpace(value[start]) {
+			start++
+		}
+		if start >= len(value) || value[start] != '"' && value[start] != '\'' {
+			continue
+		}
+		end, complete := quotedStringEnd([]byte(value), start, value[start])
+		if !complete {
+			break
+		}
+		raw := value[start+1 : end-1]
+		decoded := html.UnescapeString(raw)
+		redacted := quotedURLUserinfo.ReplaceAllString(decoded, `${1}[REDACTED]@`)
+		if redacted != decoded {
+			out.WriteString(value[cursor : start+1])
+			out.WriteString(marker)
+			cursor = end - 1
+		}
+		i = end - 1
+	}
+	if cursor == 0 {
+		return value
+	}
+	out.WriteString(value[cursor:])
+	return out.String()
+}
+
+// redactSensitiveHTMLUnquotedURLs protects URL-valued attributes before HTML
+// normalization. Character references are decoded after the tokenizer has
+// already delimited an unquoted attribute, so an encoded space or quote is
+// data inside a password even though the normalized byte would otherwise look
+// like a boundary to the whole-body scanners.
+func redactSensitiveHTMLUnquotedURLs(value string) string {
+	const marker = "[REDACTED]"
+	var out strings.Builder
+	cursor := 0
+	for i := 0; i < len(value); i++ {
+		if value[i] != '=' || !htmlURLAttributeEquals(value, i) {
+			continue
+		}
+		start := i + 1
+		for start < len(value) && htmlSpace(value[start]) {
+			start++
+		}
+		if start >= len(value) || value[start] == '"' || value[start] == '\'' {
+			continue
+		}
+		end := start
+		for end < len(value) && value[end] != '>' && !htmlSpace(value[end]) {
+			end++
+		}
+		raw := value[start:end]
+		decoded := html.UnescapeString(raw)
+		redacted := redactSensitiveURLValue(decoded)
+		redacted = quotedURLUserinfo.ReplaceAllString(redacted, `${1}[REDACTED]@`)
+		if redacted == decoded {
+			continue
+		}
+		out.WriteString(value[cursor:start])
+		out.WriteString(marker)
+		cursor = end
+		i = end - 1
+	}
+	if cursor == 0 {
+		return value
+	}
+	out.WriteString(value[cursor:])
+	return out.String()
+}
+
+func htmlURLAttributeEquals(value string, equals int) bool {
+	nameEnd := equals
+	for nameEnd > 0 && htmlSpace(value[nameEnd-1]) {
+		nameEnd--
+	}
+	for _, name := range []string{"href", "src", "action", "formaction", "poster"} {
+		start := nameEnd - len(name)
+		if start < 0 || !strings.EqualFold(value[start:nameEnd], name) {
+			continue
+		}
+		if start == 0 || value[start-1] == '<' || htmlSpace(value[start-1]) {
+			return true
+		}
+	}
+	return false
+}
+
+// looselyDecodeJSONStringToken produces a detection-only view when a malformed
+// string token cannot be decoded by encoding/json. It recognizes every JSON
+// escape that can conceal URL syntax; invalid or incomplete escapes are reduced
+// conservatively. Callers replace the whole malformed token on a match, so no
+// byte from an uncertain credential value is copied back out.
+func looselyDecodeJSONStringToken(token []byte, complete bool) string {
+	end := len(token)
+	if complete && end > 1 && token[end-1] == '"' {
+		end--
+	}
+	var decoded strings.Builder
+	decoded.Grow(end)
+	for i := 1; i < end; i++ {
+		if token[i] != '\\' {
+			decoded.WriteByte(token[i])
+			continue
+		}
+		if i+1 >= end {
+			break
+		}
+		i++
+		switch token[i] {
+		case '"', '\\', '/':
+			decoded.WriteByte(token[i])
+		case 'b', 'f', 'n', 'r', 't':
+			decoded.WriteByte(' ')
+		case 'u':
+			if i+4 < end {
+				value, err := strconv.ParseUint(string(token[i+1:i+5]), 16, 16)
+				if err == nil {
+					decoded.WriteRune(rune(value))
+					i += 4
+					continue
+				}
+			}
+			decoded.WriteByte('u')
+		default:
+			decoded.WriteByte(token[i])
+		}
+	}
+	return decoded.String()
+}
+
+// redactSensitiveURLsInJSONStrings decodes each JSON string token, or builds a
+// conservative detection view when malformed escapes prevent decoding, before
+// applying the URL scrubbers. Looking only at the wire encoding is not enough:
+// JSON may escape any URL punctuation, key character or credential byte.
+func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
+	out := make([]byte, 0, len(b))
+	cursor := 0
+	for i := 0; i < len(b); {
+		if b[i] != '"' {
+			i++
+			continue
+		}
+		end, complete := jsonStringEnd(b, i)
+		token := b[i:end]
+		if !complete {
+			// A truncated JSON string can still be decoded when its content and
+			// escapes are complete. Add only the missing quote for inspection;
+			// remove it again if a redacted token is written back.
+			token = append(append([]byte(nil), token...), '"')
+		}
+		var value string
+		if err := json.Unmarshal(token, &value); err == nil {
+			redacted := redactSensitiveURLValue(value)
+			if !complete && bodyTruncated {
+				// The body limit may cut an otherwise valid userinfo URL before its
+				// trailing @. Classify the decoded prefix at EOF so JSON-escaped
+				// separators cannot conceal the password bytes that did arrive.
+				redacted = truncatedURLUserinfoSuffix.ReplaceAllString(redacted, `${1}[REDACTED]`)
+			}
+			if redacted != value {
+				encoded, err := json.Marshal(redacted)
+				if err == nil {
+					if !complete {
+						encoded = encoded[:len(encoded)-1]
+					}
+					out = append(out, b[cursor:i]...)
+					out = append(out, encoded...)
+					cursor = end
+				}
+			}
+		} else {
+			// token always has a closing quote here: either the wire supplied it
+			// or the incomplete-token path appended one for detection.
+			shadow := looselyDecodeJSONStringToken(token, true)
+			redacted := redactSensitiveURLValue(shadow)
+			if !complete && bodyTruncated {
+				// A cut inside an encoded escape (for example the @ in userinfo)
+				// makes the temporary JSON token undecodable. Apply the same EOF
+				// userinfo rule to the tolerant detection view as to decoded tokens.
+				redacted = truncatedURLUserinfoSuffix.ReplaceAllString(redacted, `${1}[REDACTED]`)
+			}
+			if redacted != shadow {
+				replacement := []byte(`"[REDACTED]"`)
+				if !complete {
+					replacement = replacement[:len(replacement)-1]
+				}
+				out = append(out, b[cursor:i]...)
+				out = append(out, replacement...)
+				cursor = end
+			}
+		}
+		if !complete {
+			break
+		}
+		i = end
+	}
+	return append(out, b[cursor:]...)
+}
+
+// redactSensitiveFields replaces the values of sensitive JSON fields, then
+// makes a second pass over the whole body to scrub
 // credentials embedded in URL VALUES (query parameters and userinfo), which
 // the key-name rule cannot see. Non-JSON bodies pass through unchanged apart
 // from that second pass, which is deliberate — an HTML error page can carry
 // the same URL.
-func redactSensitiveFields(b []byte) []byte {
-	b = sensitiveJSONField.ReplaceAll(b, []byte(`${1}"[REDACTED]"`))
-	b = sensitiveURLQueryParam.ReplaceAll(b, []byte(`${1}[REDACTED]`))
+func redactSensitiveFields(b []byte, truncated bool) []byte {
+	b = redactSensitiveJSONFields(b)
+	b = []byte(redactSensitiveHTMLUnquotedURLs(string(b)))
+	b = []byte(redactSensitiveHTMLQuotedURLs(string(b)))
+	if truncated {
+		b = []byte(redactTruncatedHTMLQuotedURLUserinfo(string(b)))
+	}
+	b = []byte(redactSensitiveHTMLQueryRegions(string(b)))
+	// Error bodies can be HTML as well as JSON. Normalize character
+	// references before classification so encoded punctuation inside a query
+	// key cannot hide its credential name from the same scanner a browser sees.
+	// Sensitive JSON values are protected first so normalization cannot inject
+	// a quote that makes the value appear to end early; scan fields again after
+	// normalization to catch an encoded sensitive key.
+	b = []byte(html.UnescapeString(string(b)))
+	if truncated {
+		b = []byte(redactTruncatedHTMLQuotedURLUserinfo(string(b)))
+	}
+	b = redactSensitiveJSONFields(b)
+	b = redactSensitiveURLsInJSONStrings(b, truncated)
+	b = []byte(redactSensitiveRawQueryComponents(string(b), true))
 	b = urlUserinfo.ReplaceAll(b, []byte(`${1}[REDACTED]@`))
 	return b
 }
@@ -911,9 +1579,24 @@ func redactSensitiveFields(b []byte) []byte {
 // truncateBody redacts credential-like field values from a response body
 // destined for an error message, then bounds its length.
 func truncateBody(b []byte) []byte {
-	b = redactSensitiveFields(b)
-	if len(b) <= maxErrorBodyBytes {
-		return b
+	truncated := len(b) > maxErrorBodyBytes
+	if truncated {
+		// Redaction only needs to inspect bytes that can reach the diagnostic.
+		// Cutting first also bounds its working memory; the scanners treat any
+		// sensitive value cut at this boundary as truncated and redact to EOF.
+		b = b[:maxErrorBodyBytes]
 	}
-	return append(b[:maxErrorBodyBytes:maxErrorBodyBytes], "... (truncated)"...)
+	b = redactSensitiveFields(b, truncated)
+	if truncated {
+		b = redactTruncatedURLUserinfo(b)
+	}
+	if len(b) > maxErrorBodyBytes {
+		b = b[:maxErrorBodyBytes]
+		b = redactTruncatedURLUserinfo(b)
+		truncated = true
+	}
+	if truncated {
+		return append(b[:len(b):len(b)], "... (truncated)"...)
+	}
+	return b
 }

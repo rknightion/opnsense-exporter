@@ -1,32 +1,58 @@
 package main
 
 import (
+	"context"
 	"net/netip"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rknightion/opnsense2otel/v4/internal/flow"
 	"github.com/rknightion/opnsense2otel/v4/internal/flow/netflow"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship"
 	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v4/internal/logship/flowlog"
 )
 
 // TestShutdownFlowQuiescesBeforeFinalFlush releases a held NetFlow record at the
-// shutdown seam. The release must enter the correlator before its one final flush,
-// while the log pipeline is still live.
+// shutdown seam through the real flowlog bridge. The bridge's push-source Run has
+// already returned when AfterSourcesStopped runs, but the final correlator flush
+// must still enter the live pipeline callback before it is unbound.
 func TestShutdownFlowQuiescesBeforeFinalFlush(t *testing.T) {
 	now := time.Unix(1784652010, 0)
-	var delivered int
+	bridge := flowlog.New()
+	bridge.Configure(flowlog.LogModePerFlow, 0)
+	bridgeCtx, cancelBridge := context.WithCancel(context.Background())
+	bridgeDone := make(chan struct{})
+	var delivered atomic.Uint64
+	go func() {
+		_ = bridge.Run(bridgeCtx, func(_ logship.Record) { delivered.Add(1) })
+		close(bridgeDone)
+	}()
+	// Confirm Run has captured the pipeline callback before simulating the
+	// pipeline cancellation that precedes AfterSourcesStopped.
+	for deadline := time.Now().Add(time.Second); bridge.Stats().Emitted == 0 && time.Now().Before(deadline); {
+		bridge.Emit(flow.Record{Source: flow.SourceNetflow})
+		time.Sleep(time.Millisecond)
+	}
+	beforeShutdown := bridge.Stats()
+	if beforeShutdown.Emitted == 0 {
+		t.Fatalf("bridge did not capture the pipeline callback; stats = %+v", beforeShutdown)
+	}
+	cancelBridge()
+	<-bridgeDone
+
 	pipelineDrained := false
 	corr := flow.NewCorrelator(flow.CorrelatorConfig{
 		Enabled:    true,
 		Window:     time.Hour,
 		MaxEntries: 10,
-	}, func(flow.Record) {
+	}, func(r flow.Record) {
 		if pipelineDrained {
 			t.Error("correlator emitted after the log pipeline drained")
 		}
-		delivered++
+		bridge.Emit(r)
 	})
 	proc := flow.NewProcessor(corr, flow.NewRepairer(100, 1000), nil)
 	proc.SetIfMap(flow.BuildIfMap(flow.IfMapInput{
@@ -66,6 +92,7 @@ func TestShutdownFlowQuiescesBeforeFinalFlush(t *testing.T) {
 		correlatorFlushes++
 		corr.Flush()
 		events = append(events, "correlator-flush")
+		bridge.Unbind()
 	}
 	drain := func() error {
 		events = append(events, "log-pipeline-drain")
@@ -96,8 +123,15 @@ func TestShutdownFlowQuiescesBeforeFinalFlush(t *testing.T) {
 	if correlatorFlushes != 1 {
 		t.Errorf("correlator flushes = %d, want exactly one", correlatorFlushes)
 	}
-	if delivered != 1 {
-		t.Errorf("delivered records = %d, want 1; a held record was stranded", delivered)
+	if got := delivered.Load(); got != beforeShutdown.Emitted+1 {
+		t.Errorf("delivered records = %d, want %d; final held flow was not enqueued", got, beforeShutdown.Emitted+1)
+	}
+	if got := bridge.Stats(); got.Emitted != beforeShutdown.Emitted+1 || got.Dropped != beforeShutdown.Dropped {
+		t.Errorf("bridge stats after final flush = %+v, want emitted=%d dropped=%d", got, beforeShutdown.Emitted+1, beforeShutdown.Dropped)
+	}
+	bridge.Emit(flow.Record{Source: flow.SourceNetflow})
+	if got := bridge.Stats(); got.Emitted != beforeShutdown.Emitted+1 || got.Dropped != beforeShutdown.Dropped+1 {
+		t.Errorf("bridge stats after late emit = %+v, want emitted=%d dropped=%d", got, beforeShutdown.Emitted+1, beforeShutdown.Dropped+1)
 	}
 	if got := proc.Stats().RecordsHeld; got != 0 {
 		t.Errorf("RecordsHeld after shutdown = %d, want 0", got)

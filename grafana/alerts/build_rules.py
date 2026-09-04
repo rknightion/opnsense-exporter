@@ -1796,19 +1796,20 @@ RULES = [
                 'The blocked-alert count in the lookback window drops back under 50',
             ],
          )),
-    # No bytes are lost on eviction (the oldest is force-emitted, not dropped), so this is a warning,
-    # not a page: the correlate window can no longer be held under current flow volume.
+    # NetFlow-bearing entries are force-emitted without losing bytes. A Zenarmor-only
+    # entry already shipped on its own lane, but eviction loses its future join opportunity.
     dict(name="opnsense-flow-correlator-evicting", title="OPNsenseFlowCorrelatorEvicting",
          A="sum by (opnsense_instance) (rate(opnsense_flow_correlator_evicted_total[5m]))",
          op="gt", params=[0, 0], for_min=15, severity="warning",
          summary="OPNsense flow correlator evicting entries ({{ $labels.opnsense_instance }})",
-         description="The flow correlator has force-emitted entries for 15m because "
-                     "--flow.correlate.max-entries is binding under current flow volume. No bytes are "
-                     "lost, but the cap should be raised so the accumulator can hold a full correlate "
-                     "window; sustained eviction shortens the effective join window and lowers the "
-                     "merged hit-rate.",
+         description="The flow correlator has evicted entries for 15m because "
+                     "--flow.correlate.max-entries is binding under current flow volume. "
+                     "NetFlow-bearing entries are force-emitted without losing bytes; a "
+                     "Zenarmor-only entry already shipped separately but loses its future join "
+                     "opportunity. Raise the cap so the accumulator can hold a full correlate "
+                     "window; sustained eviction lowers the merged hit-rate.",
          runbook=dict(
-             measures='Rate of forced-eviction of flow-correlator entries over 5m, summed by opnsense_instance - the correlate window can no longer be held under current flow volume. No bytes are lost (the oldest entry is force-emitted, not dropped).',
+             measures='Rate of flow-correlator entry eviction over 5m, summed by opnsense_instance - the correlate window can no longer be held under current flow volume. NetFlow entries are force-emitted; Zenarmor-only entries lose their future join opportunity.',
              threshold='gt 0 sustained for 15m.',
              absent='Default noDataState (Ok) - no eviction is the normal state.',
              checks=[
