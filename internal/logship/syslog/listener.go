@@ -129,15 +129,24 @@ func (s netUDPBufferSocket) ReadBuffer() (int, error) {
 // visible to operators. Linux doubles SO_RCVBUF on read-back, including after a
 // clamp, so its comparison threshold must be doubled too.
 func configureUDPReceiveBuffer(socket udpBufferSocket, requested int, log *slog.Logger) error {
+	_, err := configureUDPReceiveBufferObserved(socket, requested, log)
+	return err
+}
+
+// configureUDPReceiveBufferObserved is configureUDPReceiveBuffer's value-returning
+// form. Start uses the effective value it read from the kernel to populate the
+// receive-buffer gauge; the compatibility wrapper above keeps the existing helper
+// contract for tests and callers that only need the startup error.
+func configureUDPReceiveBufferObserved(socket udpBufferSocket, requested int, log *slog.Logger) (int, error) {
 	if requested <= 0 {
 		requested = defaultUDPReceiveBuffer
 	}
 	if err := socket.SetReadBuffer(requested); err != nil {
-		return fmt.Errorf("set UDP receive buffer to %d bytes: %w", requested, err)
+		return 0, fmt.Errorf("set UDP receive buffer to %d bytes: %w", requested, err)
 	}
 	effective, err := socket.ReadBuffer()
 	if err != nil {
-		return fmt.Errorf("read effective UDP receive buffer after requesting %d bytes: %w", requested, err)
+		return 0, fmt.Errorf("read effective UDP receive buffer after requesting %d bytes: %w", requested, err)
 	}
 	if effective < minimumEffectiveUDPReceiveBuffer(requested, runtime.GOOS) {
 		if log == nil {
@@ -152,7 +161,7 @@ func configureUDPReceiveBuffer(socket udpBufferSocket, requested int, log *slog.
 		}
 		log.Warn("UDP receive buffer was clamped; raise the host socket receive-buffer limit", attrs...)
 	}
-	return nil
+	return effective, nil
 }
 
 func minimumEffectiveUDPReceiveBuffer(requested int, goos string) int {
@@ -181,6 +190,7 @@ type Listener struct {
 	tlsLn net.Listener
 	udpQ  chan udpJob
 	udpWG sync.WaitGroup
+	udpM  *udpMetrics
 
 	// tcpSem and tlsSem are SEPARATE budgets, deliberately. They were one shared
 	// semaphore, which meant a plaintext flood — needing no credentials whatsoever —
@@ -270,6 +280,7 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 		tcpSem:  make(chan struct{}, cfg.MaxConns),
 		tlsSem:  make(chan struct{}, cfg.MaxConns),
 		udpQ:    make(chan udpJob, cfg.UDPQueueSize),
+		udpM:    newUDPMetrics(cfg.Registerer, cfg.UDPAddr != ""),
 		slots:   newSlotGauges(cfg.Registerer, cfg.MaxConns, slotTransports),
 		closing: make(chan struct{}),
 
@@ -294,10 +305,12 @@ func (l *Listener) Start() error {
 			return fmt.Errorf("syslog: listen UDP %q: %w", l.cfg.UDPAddr, err)
 		}
 		l.udp = conn
-		if err := configureUDPReceiveBuffer(netUDPBufferSocket{conn: conn}, l.cfg.UDPReceiveBuffer, l.log); err != nil {
+		effective, err := configureUDPReceiveBufferObserved(netUDPBufferSocket{conn: conn}, l.cfg.UDPReceiveBuffer, l.log)
+		if err != nil {
 			_ = l.closeSockets()
 			return fmt.Errorf("syslog: configure UDP receive buffer: %w", err)
 		}
+		l.udpM.observeReceiveBuffer(effective)
 	}
 	if l.cfg.TCPAddr != "" {
 		addr, err := net.ResolveTCPAddr("tcp", l.cfg.TCPAddr)
@@ -510,6 +523,10 @@ func (l *Listener) serveUDP() {
 		line := append([]byte(nil), buf[:n]...)
 		select {
 		case l.udpQ <- udpJob{line: line, peer: peer}:
+			// Admission is the exact ingress boundary: count only after the
+			// datagram has entered the bounded worker queue. A full queue and all
+			// earlier filters remain excluded from this counter.
+			l.udpM.observeAccepted()
 		default:
 			// A non-blocking enqueue keeps the reader ahead of the kernel receive
 			// buffer. This drop is attributable and exported; a blocked reader would

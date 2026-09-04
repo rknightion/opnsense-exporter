@@ -309,7 +309,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing to run just.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 117 total (collector 110 / self_labeled 5 / target_join 2 / global 0)
+### Prometheus sentinels — 118 total (collector 110 / self_labeled 6 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -416,6 +416,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_smart_plugin` | `collector` | existence (series presence) | opnsense2otel > System > Hardware & SMART > SMART Read Errors | `label_values(opnsense_smart_devices_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_syslog` | `collector` | existence (series presence) | opnsense2otel > Services; opnsense2otel > Services > Syslog; opnsense2otel > Services > Syslog > Syslog-ng Overview; opnsense2otel > Services > Syslog > Syslog-ng Target States; opnsense2otel > Services > Syslog > Syslog-ng Throughput | `label_values(opnsense_syslog_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_syslog_conn_slots` | `self_labeled` | existence (series presence) | opnsense2otel Health > Overview > Syslog Listener Headroom | `label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_syslog_udp` | `self_labeled` | existence (series presence) | opnsense2otel Health > Delivery > Log Shipping > Syslog UDP | `label_values(opnsense_exporter_syslog_udp_receive_buffer_bytes{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_tailscale` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access; opnsense2otel > VPN & remote access > Tailscale; opnsense2otel > VPN & remote access > Tailscale > Tailscale Node | `label_values(opnsense_tailscale_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_tailscale_peers` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > Tailscale > Tailscale Peers (details flag) | `label_values(opnsense_tailscale_peer_session_active{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_temperature` | `collector` | existence (series presence) | opnsense2otel > System > Hardware & SMART > Temperature | `label_values(opnsense_temperature_celsius{opnsense_instance=~"$opnsense_instance"}, __name__)` |

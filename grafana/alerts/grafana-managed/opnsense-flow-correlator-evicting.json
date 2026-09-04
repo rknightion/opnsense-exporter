@@ -26,7 +26,7 @@
       "description": "The flow correlator has force-emitted entries for 15m because --flow.correlate.max-entries is binding under current flow volume. No bytes are lost, but the cap should be raised so the accumulator can hold a full correlate window; sustained eviction shortens the effective join window and lowers the merged hit-rate.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseflowcorrelatorevicting",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "35"
+      "__panelId__": "37"
     },
     "expressions": {
       "A": {

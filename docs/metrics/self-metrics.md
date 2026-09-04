@@ -16,7 +16,7 @@ library's own collectors rather than from this codebase, they carry no
 `opnsense_instance` label, and they are charted from the Exporter Runtime row behind
 the `has_go_runtime` sentinel.
 
-Total: 58 self-metrics.
+Total: 60 self-metrics.
 
 | Metric | Type | Declared in |
 | --- | --- | --- |
@@ -78,3 +78,5 @@ Total: 58 self-metrics.
 | opnsense_exporter_server_metrics_requests_in_flight | Gauge | `internal/server` |
 | opnsense_exporter_server_metrics_requests_rejected_total | Counter | `internal/server` |
 | opnsense_exporter_server_metrics_requests_total | Counter | `internal/server` |
+| opnsense_exporter_syslog_udp_accepted_total | Counter | `internal/logship/syslog` |
+| opnsense_exporter_syslog_udp_receive_buffer_bytes | Gauge | `internal/logship/syslog` |

@@ -1,9 +1,9 @@
 {
   "prometheus": {
-    "total": 117,
+    "total": 118,
     "by_scope": {
       "collector": 110,
-      "self_labeled": 5,
+      "self_labeled": 6,
       "target_join": 2,
       "global": 0
     },
@@ -1138,6 +1138,16 @@
         "query": "label_values(opnsense_exporter_logs_syslog_conn_slots_limit{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel Health > Overview > Syslog Listener Headroom"
+        ]
+      },
+      {
+        "name": "has_syslog_udp",
+        "datasource": "prometheus",
+        "scope": "self_labeled",
+        "presence": "existence",
+        "query": "label_values(opnsense_exporter_syslog_udp_receive_buffer_bytes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "opnsense2otel Health > Delivery > Log Shipping > Syslog UDP"
         ]
       },
       {

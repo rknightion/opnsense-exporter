@@ -85,6 +85,206 @@ func TestConfigureUDPReceiveBufferReturnsSetError(t *testing.T) {
 	}
 }
 
+func TestConfigureUDPReceiveBufferReturnsReadErrorWithoutObservation(t *testing.T) {
+	socket := &fakeUDPBufferSocket{readErr: errors.New("read failed")}
+	reg := prometheus.NewRegistry()
+	m := newUDPMetrics(reg, true)
+	effective, err := configureUDPReceiveBufferObserved(socket, 4*1024*1024, testLogger())
+	if err == nil {
+		t.Fatal("configureUDPReceiveBufferObserved succeeded after ReadBuffer failed")
+	}
+	if effective != 0 {
+		t.Fatalf("effective receive buffer after read-back failure = %d, want 0", effective)
+	}
+	m.observeReceiveBuffer(effective)
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_receive_buffer_bytes"); ok && got > 0 {
+		t.Fatalf("UDP receive-buffer gauge after read-back failure = %v, want no positive observation", got)
+	}
+}
+
+func TestListenerUDPAcceptedMetricIsVisibleAtZero(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	NewListener(Config{
+		UDPAddr:    "127.0.0.1:0",
+		Registerer: reg,
+	}, func([]byte, netip.Addr) {}, nil, testLogger())
+
+	got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total")
+	if !ok {
+		t.Fatal("UDP accepted counter is not visible before the first datagram")
+	}
+	if got != 0 {
+		t.Fatalf("UDP accepted counter = %v before ingress, want 0", got)
+	}
+}
+
+func TestListenerUDPMetricsReuseRegisterer(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	cfg := Config{UDPAddr: "127.0.0.1:0", Registerer: reg}
+	first := NewListener(cfg, func([]byte, netip.Addr) {}, nil, testLogger())
+	second := NewListener(cfg, func([]byte, netip.Addr) {}, nil, testLogger())
+	if first == nil || second == nil {
+		t.Fatal("NewListener returned nil")
+	}
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total"); !ok || got != 0 {
+		t.Fatalf("shared UDP accepted counter = %v, visible=%t, want visible zero", got, ok)
+	}
+}
+
+func TestListenerUDPReceiveBufferReportsEffectiveReadback(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	l := startListener(t, Config{
+		UDPAddr:          "127.0.0.1:0",
+		UDPReceiveBuffer: 64 * 1024,
+		Registerer:       reg,
+	}, func([]byte, netip.Addr) {}, nil)
+
+	effective, err := effectiveUDPReceiveBuffer(l.udp)
+	if err != nil {
+		t.Fatalf("read effective UDP receive buffer: %v", err)
+	}
+	if effective <= 0 {
+		t.Fatalf("effective UDP receive buffer = %d, want positive", effective)
+	}
+	got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_receive_buffer_bytes")
+	if !ok {
+		t.Fatal("UDP receive-buffer gauge is not visible after Start")
+	}
+	if got != float64(effective) {
+		t.Fatalf("UDP receive-buffer gauge = %v, want actual read-back %d", got, effective)
+	}
+}
+
+func TestListenerUDPDisabledDoesNotPublishPositiveReceiveBuffer(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	l := NewListener(Config{
+		TCPAddr:    "127.0.0.1:0",
+		Registerer: reg,
+	}, func([]byte, netip.Addr) {}, nil, testLogger())
+	if err := l.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total"); !ok || got != 0 {
+		t.Fatalf("UDP accepted counter with UDP disabled = %v, visible=%t, want visible zero", got, ok)
+	}
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_receive_buffer_bytes"); ok && got > 0 {
+		t.Fatalf("UDP receive-buffer gauge with UDP disabled = %v, want no positive observation", got)
+	}
+}
+
+func TestListenerUDPAcceptedMetricCountsOnlyQueuedDatagrams(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{Reasons: []string{"queue_full"}})
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var enteredOnce sync.Once
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	h := func(line []byte, _ netip.Addr) {
+		if string(line) != "block" {
+			return
+		}
+		enteredOnce.Do(func() { close(entered) })
+		<-release
+	}
+	l := startListener(t, Config{
+		UDPAddr:      "127.0.0.1:0",
+		UDPWorkers:   1,
+		UDPQueueSize: 1,
+		Registerer:   reg,
+	}, h, m)
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write([]byte("block")); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("UDP worker did not receive blocker")
+	}
+	if _, err := conn.Write([]byte("queued")); err != nil {
+		t.Fatalf("write queued datagram: %v", err)
+	}
+	waitForMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total", 2)
+
+	for range 256 {
+		if _, err := conn.Write([]byte("drop")); err != nil {
+			t.Fatalf("write overload datagram: %v", err)
+		}
+	}
+	waitForCounter(t, reg, "opnsense_exporter_logs_rejected_total", "reason", "queue_full", 1)
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total"); !ok || got != 2 {
+		t.Fatalf("UDP accepted counter after queue-full drops = %v, visible=%t, want 2", got, ok)
+	}
+	releaseOnce.Do(func() { close(release) })
+}
+
+func TestListenerUDPAcceptedMetricExcludesEmptyDatagrams(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	l := startListener(t, Config{UDPAddr: "127.0.0.1:0", Registerer: reg}, func([]byte, netip.Addr) {}, nil)
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write(nil); err != nil {
+		t.Fatalf("write empty datagram: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total"); !ok || got != 0 {
+		t.Fatalf("UDP accepted counter after empty datagram = %v, visible=%t, want visible zero", got, ok)
+	}
+}
+
+func TestListenerUDPAcceptedMetricExcludesDisallowedPeers(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	l := startListener(t, Config{
+		UDPAddr:      "127.0.0.1:0",
+		AllowedPeers: []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24")},
+		Registerer:   reg,
+	}, func([]byte, netip.Addr) {}, nil)
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write([]byte("disallowed")); err != nil {
+		t.Fatalf("write disallowed datagram: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got, ok := unlabelledMetricValue(t, reg, "opnsense_exporter_syslog_udp_accepted_total"); !ok || got != 0 {
+		t.Fatalf("UDP accepted counter after disallowed datagram = %v, visible=%t, want visible zero", got, ok)
+	}
+}
+
+func TestListenerUDPMetricsPreserveInstanceLabel(t *testing.T) {
+	base := prometheus.NewRegistry()
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"opnsense_instance": "box-a"}, base)
+	l := startListener(t, Config{UDPAddr: "127.0.0.1:0", Registerer: reg}, func([]byte, netip.Addr) {}, nil)
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write([]byte("accepted")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	waitForMetricValue(t, base, "opnsense_exporter_syslog_udp_accepted_total", 1)
+	if !metricHasLabel(t, base, "opnsense_exporter_syslog_udp_accepted_total", "opnsense_instance", "box-a") {
+		t.Fatal("UDP accepted metric lost the instance label from Config.Registerer")
+	}
+}
+
 // counterValue reads a single counter sample out of reg. (prometheus/testutil is
 // not vendored, and vendor/ is not this lane's file to touch.)
 func counterValue(t *testing.T, reg *prometheus.Registry, name, label, value string) float64 {
@@ -106,6 +306,40 @@ func counterValue(t *testing.T, reg *prometheus.Registry, name, label, value str
 		}
 	}
 	return 0
+}
+
+func unlabelledMetricValue(t *testing.T, reg *prometheus.Registry, name string) (float64, bool) {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, f := range families {
+		if f.GetName() != name || len(f.GetMetric()) == 0 {
+			continue
+		}
+		metric := f.GetMetric()[0]
+		if metric.GetCounter() != nil {
+			return metric.GetCounter().GetValue(), true
+		}
+		if metric.GetGauge() != nil {
+			return metric.GetGauge().GetValue(), true
+		}
+	}
+	return 0, false
+}
+
+func waitForMetricValue(t *testing.T, reg *prometheus.Registry, name string, want float64) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if got, ok := unlabelledMetricValue(t, reg, name); ok && got == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	got, ok := unlabelledMetricValue(t, reg, name)
+	t.Fatalf("metric %s = %v, visible=%t, want %v", name, got, ok, want)
 }
 
 func testLogger() *slog.Logger {

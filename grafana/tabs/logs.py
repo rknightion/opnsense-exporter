@@ -39,6 +39,12 @@ def build(b: Builder):
     # rest of the family, so it carries opnsense_instance (#428).
     b.sentinel("has_debug_capture", metric="opnsense_exporter_logs_debug_captured_total",
                scope="self_labeled")
+    # Unlike the accepted counter, the receive-buffer gauge is registered only
+    # when the UDP listener is configured. Use it to keep the UDP-specific row
+    # absent on TCP/TLS-only receivers rather than presenting a meaningful-looking
+    # zero for a transport that does not exist.
+    b.sentinel("has_syslog_udp", metric="opnsense_exporter_syslog_udp_receive_buffer_bytes",
+               scope="self_labeled")
 
     shipped = b.ts(
         "Records Shipped (rate)",
@@ -216,6 +222,27 @@ def build(b: Builder):
              "to fetching), but the ~10.9k requests/day this saves have quietly come back.",
     )
 
+    udp_accepted = b.ts(
+        "Syslog UDP Accepted (rate)",
+        [(f'rate({sel("opnsense_exporter_syslog_udp_accepted_total")}[{RATE}])',
+          "accepted")],
+        unit="ops",
+        desc="opnsense_exporter_syslog_udp_accepted_total: UDP datagrams admitted to the "
+             "bounded worker queue per second. Disallowed peers, empty datagrams and "
+             "queue-full drops are excluded; parsing and OTLP delivery happen after this "
+             "boundary. Compare with Input Rejected and Records Shipped to locate loss.",
+    )
+    udp_receive_buffer = b.ts(
+        "Syslog UDP Receive Buffer",
+        [(f'{sel("opnsense_exporter_syslog_udp_receive_buffer_bytes")}',
+          "effective SO_RCVBUF")],
+        unit="bytes",
+        desc="opnsense_exporter_syslog_udp_receive_buffer_bytes: effective kernel socket "
+             "receive buffer read back with getsockopt(SO_RCVBUF). The value is reported "
+             "unchanged: Linux commonly returns roughly twice the requested size, while "
+             "FreeBSD does not apply that doubling convention.",
+    )
+
     # ---- debug capture (#428) ---------------------------------------------
     # These two series existed with no panel anywhere, and the coverage gate could not
     # notice because it only ever read the collector catalogue.
@@ -267,6 +294,7 @@ def build(b: Builder):
         b.row("Queue & Errors", [queue_len, queue_bytes, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [received_lag, exported_lag, possible_gaps], present="has_logs"),
         b.row("Receivers", [parse_errors, unparsed, rejected, resource_capped], present="has_logs"),
+        b.row("Syslog UDP", [udp_accepted, udp_receive_buffer], present="has_syslog_udp"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale, enrich_seam], present="has_logs"),
         b.row("Debug Capture", [debug_captured, debug_dropped], present="has_debug_capture"),
         # #523: the derived-metric budget. It belongs to this pipeline — these are the
