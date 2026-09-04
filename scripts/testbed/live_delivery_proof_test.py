@@ -1,7 +1,9 @@
 """Focused offline checks for live_delivery_proof's secret-safe result parser."""
+import io
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import live_delivery_proof as proof
@@ -164,6 +166,32 @@ class TestResultParsing(unittest.TestCase):
         source = pathlib.Path(proof.__file__).read_text(encoding="utf-8")
         self.assertNotIn("/api/auth/user/", source)
         self.assertNotIn("username", source)
+
+    def test_pre_mutation_failure_reports_its_stage_without_exception_detail(self):
+        class FailingAPI:
+            def __init__(self, *_args):
+                pass
+
+            def get(self, _path):
+                raise RuntimeError("https://user:credential@example.invalid/response-body")
+
+        environment = {
+            "DEVBOX_HOST": "testbed.invalid",
+            "DEVBOX_API_KEY": "not-rendered",
+            "DEVBOX_API_SECRET": "not-rendered",
+            "GRAFANA_OTLP_USER": "not-rendered",
+            "GRAFANA_LOKI_USER": "not-rendered",
+            "GRAFANA_CAP_TOKEN": "not-rendered",
+        }
+        output = io.StringIO()
+        with mock.patch.dict(proof.os.environ, environment, clear=False), \
+                mock.patch.object(proof, "API", FailingAPI), \
+                mock.patch("sys.stdout", output):
+            self.assertEqual(proof.main(["--exporter", "not-started"]), 1)
+        rendered = output.getvalue()
+        self.assertIn("- proof stage: resolving_alias", rendered)
+        self.assertNotIn("response-body", rendered)
+        self.assertNotIn("credential@example.invalid", rendered)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 10:07'
+updated_date: '2026-09-04 10:29'
 labels: []
 dependencies: []
 priority: high
@@ -95,6 +95,8 @@ Fixed by OPN-0069. The next proof run ships the reason, so configstate's failure
 
 - The three disabled deliveryproof users on the testbed. No local firewall credential exists on this machine, so cleanup still needs the testbed's own delete authority. Do not create a fourth proof user before this is cleared.
 - configchange showed poll errors=no yet emitted nothing. It baselines on first poll and only emits past its cursor, so the open question is whether a new backup revision appeared at all in the ~20s window after the user add.
+
+Wave 6 run 33863315389 at 40e68d6c failed before exporter startup or any testbed mutation. Instance label delivery-proof-33863315389. The harness emitted proof_completed=no but no bounded preflight stage, so this run cannot distinguish alias lookup absence from API or revision-list failure. No assertion was answered; do not treat the empty run as delivery evidence. Next action: add credential-safe stage diagnostics, then rerun under the existing hold.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

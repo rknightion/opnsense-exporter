@@ -78,17 +78,28 @@ class API:
         return self.request("POST", path, payload)
 
 
-def delivery_proof_alias(api):
-    """Return the one pre-existing alias the proof is permitted to edit."""
+def resolve_delivery_proof_alias(api):
+    """Resolve only the one pre-existing alias the proof is permitted to edit."""
     lookup = api.get("/api/firewall/alias/get_alias_uuid/" + PROOF_ALIAS_NAME)
     alias_uuid = lookup.get("uuid") if isinstance(lookup, dict) else None
     if not isinstance(alias_uuid, str) or not alias_uuid:
         raise RuntimeError("dedicated delivery-proof alias did not resolve to one UUID")
+    return alias_uuid
+
+
+def read_delivery_proof_alias(api, alias_uuid):
+    """Read the complete alias payload required for exact restoration."""
     item = api.get("/api/firewall/alias/get_item/" + urllib.parse.quote(alias_uuid, safe=""))
     alias = item.get("alias") if isinstance(item, dict) else None
     if not isinstance(alias, dict) or "description" not in alias:
         raise RuntimeError("dedicated delivery-proof alias did not return a restorable description")
-    return alias_uuid, alias
+    return alias
+
+
+def delivery_proof_alias(api):
+    """Return the one pre-existing alias the proof is permitted to edit."""
+    alias_uuid = resolve_delivery_proof_alias(api)
+    return alias_uuid, read_delivery_proof_alias(api, alias_uuid)
 
 
 def set_alias(api, alias_uuid, alias):
@@ -372,9 +383,14 @@ def main(argv=None):
     process = None
     facts = {}
     diagnostics = {}
+    stage = "initializing"
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
-        alias_uuid, original_alias = delivery_proof_alias(api)
+        stage = "resolving_alias"
+        alias_uuid = resolve_delivery_proof_alias(api)
+        stage = "reading_alias"
+        original_alias = read_delivery_proof_alias(api, alias_uuid)
+        stage = "reading_revisions_before"
         revisions_before = revision_ids(api)
         env = os.environ | {
             "OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key, "OPN2OTEL_OPS_API_SECRET": secret_value,
@@ -393,23 +409,31 @@ def main(argv=None):
                    "--logs.zenarmor.listen-http=127.0.0.1:9200",
                    "--logs.zenarmor.allowed-peers=127.0.0.1/32", "--logs.zenarmor.families=dns",
                    "--flow.enabled"]
+        stage = "starting_exporter"
         process = subprocess.Popen(
             command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        stage = "baselining_configchange"
         time.sleep(8)  # baselines configchange; initial configstate and exporter records ship.
+        stage = "mutating_alias"
         mutation = AliasDescriptionMutation(api, alias_uuid, original_alias, "temporary live delivery proof " + instance)
         mutation.apply()
+        stage = "reading_revisions_after_mutation"
         revisions_after_mutation = revision_ids(api)
         facts["alias_description_revision_written"] = revision_list_grew(revisions_before, revisions_after_mutation)
+        stage = "sending_inputs"
         dns_source, dns_destination = "192.0.2.10", "192.0.2.20"
         send_zenarmor_dns(dns_source, dns_destination)
         send_filterlog(dns_source, dns_destination)
+        stage = "waiting_for_delivery"
         time.sleep(20)
         selector = 'service_name="opnsense2otel",service_instance_id="' + instance + '"'
+        stage = "querying"
         queries = {name: loki_query('{' + selector + ',opnsense_source="' + name + '"}', loki_user, cap_token, query_start_ns)
                    for name in PROOF_SOURCES}
         broad = loki_query('{' + selector + '}', loki_user, cap_token, query_start_ns)
+        stage = "processing_results"
         diagnostics.update({name: query_diagnostic(name, result, broad) for name, result in queries.items()})
         facts.update({name + "_arrived": bool(result["streams"]) for name, result in queries.items()})
         configchange = list(records(queries["configchange"]["streams"]))
@@ -428,9 +452,11 @@ def main(argv=None):
         diagnostics["unexpected promoted label keys"] = "none" if not unexpected_labels else ",".join(unexpected_labels)
         diagnostics["configstate families"] = "none" if not families else ",".join(sorted(families))
         facts["labels_outside_allowlist_absent"] = bool(broad["streams"]) and not unexpected_labels
+        stage = "reading_local_metrics"
         metrics = read_local_metrics()
         diagnostics["configchange poll errors"] = poll_error_diagnostic(metrics, "configchange")
         diagnostics["configstate poll errors"] = poll_error_diagnostic(metrics, "configstate")
+        stage = "complete"
     except Exception:
         # Do not render exception text: HTTP/library errors can include a response
         # body and that body is outside this proof's redaction boundary.
@@ -458,6 +484,7 @@ def main(argv=None):
                 stop_process_group(process)
     print("## Live delivery proof")
     print("- instance label: `" + instance + "`")
+    print("- proof stage: " + stage)
     for name in sorted(facts):
         print("- " + name.replace("_", " ") + ": " + ("yes" if facts[name] else "no"))
     for name in sorted(diagnostics):
