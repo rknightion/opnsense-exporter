@@ -93,8 +93,14 @@ def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
     deleted = False
     search_succeeded = False
     for attempt in range(attempts):
+        delete_method = "failed"
         try:
-            result = api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
+            try:
+                result = api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
+                delete_method = "path"
+            except Exception:
+                result = api.post("/api/auth/user/del?" + urllib.parse.urlencode({"uuid": user_uuid}))
+                delete_method = "query-fallback"
             outcome = str(result.get("result", "missing")) if isinstance(result, dict) else "non-object"
             if outcome not in {"deleted", "failed", "not found", "missing"}:
                 outcome = "other"
@@ -106,12 +112,12 @@ def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
             search_succeeded = True
             present = user_uuid in matches
             if diagnostic is not None:
-                diagnostic.append("post:" + outcome + "/search-" + method + ":" + ("present" if present else "absent"))
+                diagnostic.append("post-" + delete_method + ":" + outcome + "/search-" + method + ":" + ("present" if present else "absent"))
             if not present:
                 return True
         except Exception:
             if diagnostic is not None:
-                diagnostic.append("post:" + outcome + "/search:failed")
+                diagnostic.append("post-" + delete_method + ":" + outcome + "/search:failed")
         if attempt + 1 < attempts:
             time.sleep(2)
     return deleted and not search_succeeded

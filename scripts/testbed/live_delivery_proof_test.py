@@ -71,7 +71,7 @@ class TestResultParsing(unittest.TestCase):
         diagnostic = {}
         self.assertFalse(proof.cleanup_stale_proof_users(FakeAPI(), diagnostic))
         self.assertEqual(diagnostic["stale cleanup detail"],
-                         "found:1;post:other/search-get:present,post:other/search-get:present,post:other/search-get:present")
+                         "found:1;post-path:other/search-get:present,post-path:other/search-get:present,post-path:other/search-get:present")
 
     def test_stale_cleanup_attempts_every_matching_user(self):
         class FakeAPI:
@@ -118,7 +118,29 @@ class TestResultParsing(unittest.TestCase):
 
         diagnostic = []
         self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
-        self.assertEqual(diagnostic, ["post:deleted/search:failed"])
+        self.assertEqual(diagnostic, ["post-path:deleted/search:failed"])
+
+    def test_delete_falls_back_to_query_parameter_and_verifies_absence(self):
+        class FakeAPI:
+            deleted = False
+
+            def get(self, _path):
+                raise RuntimeError("GET unavailable")
+
+            def post(self, path, _payload=None):
+                if "/del/" in path:
+                    raise RuntimeError("path route unavailable")
+                if path == "/api/auth/user/del?uuid=opaque":
+                    self.deleted = True
+                    return {"result": "deleted"}
+                if path == "/api/auth/user/search":
+                    rows = [] if self.deleted else [{"uuid": "opaque", "name": "deliveryproof0123456789abcdef"}]
+                    return {"rows": rows}
+                raise AssertionError("unexpected request")
+
+        diagnostic = []
+        self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
+        self.assertEqual(diagnostic, ["post-query-fallback:deleted/search-post-fallback:absent"])
 
 
 if __name__ == "__main__":
