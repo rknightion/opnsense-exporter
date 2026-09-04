@@ -101,7 +101,7 @@ class TestResultParsing(unittest.TestCase):
 
             def get(self, path):
                 self.paths.append(path)
-                if path == "/api/firewall/alias/get_alias_uuid/deliveryproof":
+                if path == "/api/firewall/alias/get_alias_u_u_i_d/deliveryproof":
                     return {"uuid": "alias-uuid"}
                 if path == "/api/firewall/alias/get_item/alias-uuid":
                     return {"alias": {"name": "deliveryproof", "description": "original", "type": "host"}}
@@ -111,7 +111,7 @@ class TestResultParsing(unittest.TestCase):
         alias_uuid, alias = proof.delivery_proof_alias(api)
         self.assertEqual(alias_uuid, "alias-uuid")
         self.assertEqual(alias["description"], "original")
-        self.assertEqual(api.paths, ["/api/firewall/alias/get_alias_uuid/deliveryproof",
+        self.assertEqual(api.paths, ["/api/firewall/alias/get_alias_u_u_i_d/deliveryproof",
                                      "/api/firewall/alias/get_item/alias-uuid"])
 
         class MissingAliasAPI:

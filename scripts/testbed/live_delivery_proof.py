@@ -80,7 +80,7 @@ class API:
 
 def resolve_delivery_proof_alias(api):
     """Resolve only the one pre-existing alias the proof is permitted to edit."""
-    lookup = api.get("/api/firewall/alias/get_alias_uuid/" + PROOF_ALIAS_NAME)
+    lookup = api.get("/api/firewall/alias/get_alias_u_u_i_d/" + PROOF_ALIAS_NAME)
     alias_uuid = lookup.get("uuid") if isinstance(lookup, dict) else None
     if not isinstance(alias_uuid, str) or not alias_uuid:
         raise RuntimeError("dedicated delivery-proof alias did not resolve to one UUID")
