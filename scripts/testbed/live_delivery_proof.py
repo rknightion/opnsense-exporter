@@ -31,7 +31,10 @@ SENSITIVE_DIAGNOSTIC = re.compile(
     re.I,
 )
 PROOF_ALIAS_NAME = "deliveryproof"
+PROOF_ALIAS_NAMES = frozenset((PROOF_ALIAS_NAME, "delivery_proof", "delivery-proof"))
 PROOF_SOURCES = ("configchange", "configstate", "exporter", "syslog", "zenarmor")
+SAFE_ALIAS_NAME = re.compile(r"[A-Za-z0-9_-]+\Z")
+ALIAS_SEARCH_PAGE_SIZE = 100
 
 
 def required(name):
@@ -79,12 +82,41 @@ class API:
 
 
 def resolve_delivery_proof_alias(api):
-    """Resolve only the one pre-existing alias the proof is permitted to edit."""
-    lookup = api.get("/api/firewall/alias/get_alias_u_u_i_d/" + PROOF_ALIAS_NAME)
-    alias_uuid = lookup.get("uuid") if isinstance(lookup, dict) else None
+    """Discover only the one pre-existing alias the proof is permitted to edit."""
+    rows = []
+    page = 1
+    while True:
+        payload = api.post(
+            "/api/firewall/alias/search_item",
+            {
+                "current": page,
+                "rowCount": ALIAS_SEARCH_PAGE_SIZE,
+                "sort": {"name": "asc"},
+            },
+        )
+        page_rows = payload.get("rows") if isinstance(payload, dict) else None
+        total = payload.get("total") if isinstance(payload, dict) else None
+        if not isinstance(page_rows, list) or not isinstance(total, int) or total < 0:
+            raise RuntimeError("dedicated delivery-proof alias search did not return a complete page")
+        rows.extend(page_rows)
+        if len(rows) >= total:
+            break
+        if not page_rows:
+            raise RuntimeError("dedicated delivery-proof alias search pagination made no progress")
+        page += 1
+    matches = [
+        row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)
+        and row["name"] in PROOF_ALIAS_NAMES
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("dedicated delivery-proof alias search did not find exactly one match")
+    alias_uuid = matches[0].get("uuid")
+    alias_name = matches[0]["name"]
     if not isinstance(alias_uuid, str) or not alias_uuid:
         raise RuntimeError("dedicated delivery-proof alias did not resolve to one UUID")
-    return alias_uuid
+    if not SAFE_ALIAS_NAME.fullmatch(alias_name):
+        raise RuntimeError("dedicated delivery-proof alias name is not safe to report")
+    return alias_uuid, alias_name
 
 
 def read_delivery_proof_alias(api, alias_uuid):
@@ -98,7 +130,7 @@ def read_delivery_proof_alias(api, alias_uuid):
 
 def delivery_proof_alias(api):
     """Return the one pre-existing alias the proof is permitted to edit."""
-    alias_uuid = resolve_delivery_proof_alias(api)
+    alias_uuid, _ = resolve_delivery_proof_alias(api)
     return alias_uuid, read_delivery_proof_alias(api, alias_uuid)
 
 
@@ -376,6 +408,7 @@ def main(argv=None):
     instance = "delivery-proof-" + os.environ.get("GITHUB_RUN_ID", secrets.token_hex(6))
     api = API(host, key, secret_value)
     alias_uuid = None
+    alias_name = None
     original_alias = None
     mutation = None
     revisions_before = None
@@ -387,7 +420,7 @@ def main(argv=None):
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
         stage = "resolving_alias"
-        alias_uuid = resolve_delivery_proof_alias(api)
+        alias_uuid, alias_name = resolve_delivery_proof_alias(api)
         stage = "reading_alias"
         original_alias = read_delivery_proof_alias(api, alias_uuid)
         stage = "reading_revisions_before"
@@ -485,6 +518,8 @@ def main(argv=None):
     print("## Live delivery proof")
     print("- instance label: `" + instance + "`")
     print("- proof stage: " + stage)
+    if alias_name is not None:
+        print("- proof alias: " + alias_name)
     for name in sorted(facts):
         print("- " + name.replace("_", " ") + ": " + ("yes" if facts[name] else "no"))
     for name in sorted(diagnostics):

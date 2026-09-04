@@ -95,31 +95,80 @@ class TestResultParsing(unittest.TestCase):
         self.assertTrue(proof.poll_error_observed(metrics, "timestamped"))
         self.assertEqual(proof.poll_error_diagnostic("", "configstate"), "unavailable")
 
-    def test_dedicated_alias_selection_is_name_bound_and_requires_one_uuid(self):
+    def test_dedicated_alias_discovery_pages_search_and_matches_delivery_proof(self):
         class FakeAPI:
-            paths = []
+            posts = []
 
-            def get(self, path):
-                self.paths.append(path)
-                if path == "/api/firewall/alias/get_alias_u_u_i_d/deliveryproof":
-                    return {"uuid": "alias-uuid"}
-                if path == "/api/firewall/alias/get_item/alias-uuid":
-                    return {"alias": {"name": "deliveryproof", "description": "original", "type": "host"}}
-                raise AssertionError("unexpected request")
+            def post(self, path, payload):
+                self.posts.append((path, payload))
+                return {"total": 2, "rows": [
+                    {"uuid": "unrelated-id", "name": "unrelated_alias"},
+                    {"uuid": "alias-uuid", "name": "delivery_proof"},
+                ]}
 
         api = FakeAPI()
-        alias_uuid, alias = proof.delivery_proof_alias(api)
+        alias_uuid, alias_name = proof.resolve_delivery_proof_alias(api)
         self.assertEqual(alias_uuid, "alias-uuid")
-        self.assertEqual(alias["description"], "original")
-        self.assertEqual(api.paths, ["/api/firewall/alias/get_alias_u_u_i_d/deliveryproof",
-                                     "/api/firewall/alias/get_item/alias-uuid"])
+        self.assertEqual(alias_name, "delivery_proof")
+        self.assertEqual(api.posts, [
+            ("/api/firewall/alias/search_item", {
+                "current": 1, "rowCount": 100, "sort": {"name": "asc"},
+            }),
+        ])
 
-        class MissingAliasAPI:
-            def get(self, _path):
-                return {"uuid": ""}
+    def test_dedicated_alias_discovery_rejects_zero_or_multiple_matches(self):
+        class FakeAPI:
+            def __init__(self, rows):
+                self.rows = rows
 
-        with self.assertRaisesRegex(RuntimeError, "did not resolve to one UUID"):
-            proof.delivery_proof_alias(MissingAliasAPI())
+            def post(self, _path, _payload):
+                return {"total": len(self.rows), "rows": self.rows}
+
+        with self.assertRaisesRegex(RuntimeError, "did not find exactly one"):
+            proof.resolve_delivery_proof_alias(FakeAPI([]))
+        with self.assertRaisesRegex(RuntimeError, "did not find exactly one"):
+            proof.resolve_delivery_proof_alias(FakeAPI([
+                {"uuid": "first", "name": "delivery-proof"},
+                {"uuid": "second", "name": "delivery_proof"},
+            ]))
+        with self.assertRaisesRegex(RuntimeError, "did not find exactly one"):
+            proof.resolve_delivery_proof_alias(FakeAPI([
+                {"uuid": "unsafe", "name": "delivery.proof"},
+            ]))
+        with self.assertRaisesRegex(RuntimeError, "did not find exactly one"):
+            proof.resolve_delivery_proof_alias(FakeAPI([
+                {"uuid": "near-collision", "name": "d-e-l-i-v-e-r-y-p-r-o-o-f"},
+            ]))
+        with self.assertRaisesRegex(RuntimeError, "did not find exactly one"):
+            proof.resolve_delivery_proof_alias(FakeAPI([
+                {"uuid": "case-variant", "name": "Delivery_Proof"},
+            ]))
+
+    def test_dedicated_alias_discovery_inspects_later_pages(self):
+        class FakeAPI:
+            posts = []
+
+            def post(self, path, payload):
+                self.posts.append((path, payload))
+                if payload["current"] == 1:
+                    return {"total": 101, "rows": [
+                        {"uuid": "unrelated-" + str(index), "name": "unrelated_" + str(index)}
+                        for index in range(100)
+                    ]}
+                return {"total": 101, "rows": [
+                    {"uuid": "alias-uuid", "name": "delivery_proof"},
+                ]}
+
+        api = FakeAPI()
+        self.assertEqual(proof.resolve_delivery_proof_alias(api), ("alias-uuid", "delivery_proof"))
+        self.assertEqual(api.posts, [
+            ("/api/firewall/alias/search_item", {
+                "current": 1, "rowCount": 100, "sort": {"name": "asc"},
+            }),
+            ("/api/firewall/alias/search_item", {
+                "current": 2, "rowCount": 100, "sort": {"name": "asc"},
+            }),
+        ])
 
     def test_alias_description_write_and_exact_restoration_preserve_other_fields(self):
         class FakeAPI:
@@ -172,7 +221,7 @@ class TestResultParsing(unittest.TestCase):
             def __init__(self, *_args):
                 pass
 
-            def get(self, _path):
+            def post(self, _path, _payload):
                 raise RuntimeError("https://user:credential@example.invalid/response-body")
 
         environment = {
@@ -192,6 +241,38 @@ class TestResultParsing(unittest.TestCase):
         self.assertIn("- proof stage: resolving_alias", rendered)
         self.assertNotIn("response-body", rendered)
         self.assertNotIn("credential@example.invalid", rendered)
+
+    def test_summary_names_only_the_validated_matched_alias(self):
+        class FailingReadAPI:
+            def __init__(self, *_args):
+                pass
+
+            def post(self, _path, _payload):
+                return {"total": 2, "rows": [
+                    {"uuid": "unrendered-id", "name": "unrelated_alias"},
+                    {"uuid": "alias-id", "name": "delivery_proof"},
+                ]}
+
+            def get(self, _path):
+                raise RuntimeError("do not render alias response")
+
+        environment = {
+            "DEVBOX_HOST": "testbed.invalid",
+            "DEVBOX_API_KEY": "not-rendered",
+            "DEVBOX_API_SECRET": "not-rendered",
+            "GRAFANA_OTLP_USER": "not-rendered",
+            "GRAFANA_LOKI_USER": "not-rendered",
+            "GRAFANA_CAP_TOKEN": "not-rendered",
+        }
+        output = io.StringIO()
+        with mock.patch.dict(proof.os.environ, environment, clear=False), \
+                mock.patch.object(proof, "API", FailingReadAPI), \
+                mock.patch("sys.stdout", output):
+            self.assertEqual(proof.main(["--exporter", "not-started"]), 1)
+        rendered = output.getvalue()
+        self.assertIn("- proof alias: delivery_proof", rendered)
+        self.assertNotIn("unrelated_alias", rendered)
+        self.assertNotIn("unrendered-id", rendered)
 
 
 if __name__ == "__main__":

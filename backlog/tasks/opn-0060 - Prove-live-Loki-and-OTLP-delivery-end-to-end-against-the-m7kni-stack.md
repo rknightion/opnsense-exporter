@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 10:40'
+updated_date: '2026-09-04 10:49'
 labels: []
 dependencies: []
 priority: high
@@ -99,6 +99,8 @@ Fixed by OPN-0069. The next proof run ships the reason, so configstate's failure
 Wave 6 run 33863315389 at 40e68d6c failed before exporter startup or any testbed mutation. Instance label delivery-proof-33863315389. The harness emitted proof_completed=no but no bounded preflight stage, so this run cannot distinguish alias lookup absence from API or revision-list failure. No assertion was answered; do not treat the empty run as delivery evidence. Next action: add credential-safe stage diagnostics, then rerun under the existing hold.
 
 Wave 6 diagnostic run 33864111463 at 8615d475 failed at proof_stage=resolving_alias before exporter startup or mutation. Root diagnosis against upstream AliasController.php: the action is getAliasUUIDAction, and OPNsense spells capital acronyms one letter at a time in routes (the repository already carries getGeoIPAction as get_geo_i_p). The harness used get_alias_uuid; next action is the narrow route correction to get_alias_u_u_i_d, followed by a newly reviewed rerun.
+
+Wave 6 run 33864893085 at 68cbde58 still failed at proof_stage=resolving_alias before exporter startup or mutation after the acronym route correction. This proves the hard-coded exact alias lookup did not resolve; it does not prove whether only the spelling differs or the object is absent. Next action: replace direct lookup with a POST search_item selection that accepts exactly one alias whose name normalizes to deliveryproof, emits only that safe matched name, and fails on zero/multiple matches. No object creation is authorised.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
