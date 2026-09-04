@@ -25,6 +25,13 @@ import urllib.request
 OTLP_ENDPOINT = "https://otlp-gateway-prod-gb-south-1.grafana.net/otlp"
 LOKI_ENDPOINT = "https://logs-prod-035.grafana.net"
 SENSITIVE_KEY = re.compile(r"password|passphrase|secret|private.?key|privkey|shared.?key|token|api.?key|auth.?key|credential|^(prv|psk|pass)$", re.I)
+SENSITIVE_DIAGNOSTIC = re.compile(
+    r"(?:password|passphrase|secret|private.?key|privkey|shared.?key|token|api.?key|auth.?key|credential|"
+    r"(?:basic|bearer)\s+\S+|\b[a-z][a-z0-9+.-]*://\S+)",
+    re.I,
+)
+PROOF_ALIAS_NAME = "deliveryproof"
+PROOF_SOURCES = ("configchange", "configstate", "exporter", "syslog", "zenarmor")
 
 
 def required(name):
@@ -71,73 +78,72 @@ class API:
         return self.request("POST", path, payload)
 
 
-def proof_user_ids(payload):
-    rows = payload.get("rows", []) if isinstance(payload, dict) else []
-    result = []
-    for row in rows:
-        if not isinstance(row, dict) or row.get("scope") == "system":
-            continue
-        if re.fullmatch(r"deliveryproof[0-9a-f]{16}", str(row.get("name", ""))) and row.get("uuid"):
-            result.append(str(row["uuid"]))
-    return result
+def delivery_proof_alias(api):
+    """Return the one pre-existing alias the proof is permitted to edit."""
+    lookup = api.get("/api/firewall/alias/get_alias_uuid/" + PROOF_ALIAS_NAME)
+    alias_uuid = lookup.get("uuid") if isinstance(lookup, dict) else None
+    if not isinstance(alias_uuid, str) or not alias_uuid:
+        raise RuntimeError("dedicated delivery-proof alias did not resolve to one UUID")
+    item = api.get("/api/firewall/alias/get_item/" + urllib.parse.quote(alias_uuid, safe=""))
+    alias = item.get("alias") if isinstance(item, dict) else None
+    if not isinstance(alias, dict) or "description" not in alias:
+        raise RuntimeError("dedicated delivery-proof alias did not return a restorable description")
+    return alias_uuid, alias
 
 
-def search_proof_users(api):
-    try:
-        return proof_user_ids(api.get("/api/auth/user/search")), "get"
-    except Exception:
-        return proof_user_ids(api.post("/api/auth/user/search", {})), "post-fallback"
+def set_alias(api, alias_uuid, alias):
+    result = api.post("/api/firewall/alias/set_item/" + urllib.parse.quote(alias_uuid, safe=""), {"alias": alias})
+    if not isinstance(result, dict) or result.get("result") != "saved":
+        raise RuntimeError("dedicated delivery-proof alias was not saved")
 
 
-def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
-    deleted = False
-    search_succeeded = False
-    for attempt in range(attempts):
-        delete_method = "failed"
-        try:
-            try:
-                result = api.post("/api/auth/user/del/" + urllib.parse.quote(user_uuid, safe=""))
-                delete_method = "path"
-            except Exception:
-                try:
-                    result = api.post("/api/auth/user/del?" + urllib.parse.urlencode({"uuid": user_uuid}))
-                    delete_method = "query-fallback"
-                except Exception:
-                    result = api.post("/api/auth/user/del", {"uuid": user_uuid})
-                    delete_method = "body-fallback"
-            outcome = str(result.get("result", "missing")) if isinstance(result, dict) else "non-object"
-            if outcome not in {"deleted", "failed", "not found", "missing"}:
-                outcome = "other"
-            deleted = deleted or outcome == "deleted"
-        except Exception:
-            outcome = "request-failed"
-        try:
-            matches, method = search_proof_users(api)
-            search_succeeded = True
-            present = user_uuid in matches
-            if diagnostic is not None:
-                diagnostic.append("post-" + delete_method + ":" + outcome + "/search-" + method + ":" + ("present" if present else "absent"))
-            if not present:
-                return True
-        except Exception:
-            if diagnostic is not None:
-                diagnostic.append("post-" + delete_method + ":" + outcome + "/search:failed")
-        if attempt + 1 < attempts:
-            time.sleep(2)
-    return deleted and not search_succeeded
+def edited_alias(alias, description):
+    updated = dict(alias)
+    updated["description"] = description
+    return updated
 
 
-def cleanup_stale_proof_users(api, diagnostic):
-    try:
-        stale, method = search_proof_users(api)
-    except Exception:
-        diagnostic["stale cleanup detail"] = "search-failed"
+class AliasDescriptionMutation:
+    """Write a temporary alias description and restore its original payload."""
+    def __init__(self, api, alias_uuid, original_alias, description):
+        self.api = api
+        self.alias_uuid = alias_uuid
+        self.original_alias = original_alias
+        self.description = description
+        self.restored = False
+
+    def __enter__(self):
+        self.apply()
+        return self
+
+    def apply(self):
+        set_alias(self.api, self.alias_uuid, edited_alias(self.original_alias, self.description))
+
+    def __exit__(self, _type, _value, _traceback):
+        self.restore()
         return False
-    attempts = []
-    outcomes = [delete_and_verify_user(api, user_uuid, diagnostic=attempts) for user_uuid in stale]
-    result = all(outcomes)
-    diagnostic["stale cleanup detail"] = "none-via-" + method if not stale else "found:" + str(len(stale)) + ";" + ",".join(attempts)
+
+    def restore(self):
+        set_alias(self.api, self.alias_uuid, self.original_alias)
+        self.restored = True
+
+
+def revision_ids(api):
+    payload = api.get("/api/core/backup/backups/this")
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        raise RuntimeError("configuration revision list was not available")
+    result = set()
+    for item in items:
+        revision_id = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(revision_id, str) or not revision_id:
+            raise RuntimeError("configuration revision list contained no revision identity")
+        result.add(revision_id)
     return result
+
+
+def revision_list_grew(before, after):
+    return bool(after - before)
 
 
 def no_sensitive_keys(value):
@@ -209,6 +215,25 @@ def records(streams):
             if not isinstance(metadata, dict):
                 metadata = {}
             yield labels, value[1], metadata
+
+
+def safe_diagnostic(value):
+    """Return an error detail only when it cannot carry credentials or a URL."""
+    if not isinstance(value, str) or not value.strip():
+        return "missing"
+    value = " ".join(value.split())
+    if len(value) > 240 or SENSITIVE_DIAGNOSTIC.search(value):
+        return "redacted"
+    return value
+
+
+def exporter_poll_error_diagnostic(rows, source):
+    """Find a shipped source-poll error without rendering arbitrary log bodies."""
+    for labels, body, metadata in rows:
+        if (labels.get("opnsense_source") == "exporter" and
+                body == "log source poll error" and metadata.get("source") == source):
+            return safe_diagnostic(metadata.get("err"))
+    return "not_observed"
 
 
 def send_zenarmor_dns(source, destination):
@@ -339,16 +364,18 @@ def main(argv=None):
     otlp_user, loki_user, cap_token = required("GRAFANA_OTLP_USER"), required("GRAFANA_LOKI_USER"), required("GRAFANA_CAP_TOKEN")
     instance = "delivery-proof-" + os.environ.get("GITHUB_RUN_ID", secrets.token_hex(6))
     api = API(host, key, secret_value)
-    username = "deliveryproof" + secrets.token_hex(8)
-    created_uuid = None
+    alias_uuid = None
+    original_alias = None
+    mutation = None
+    revisions_before = None
+    revisions_after_mutation = None
     process = None
     facts = {}
     diagnostics = {}
     query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
     try:
-        facts["stale_user_cleanup"] = cleanup_stale_proof_users(api, diagnostics)
-        if not facts["stale_user_cleanup"]:
-            raise RuntimeError("stale proof-user cleanup could not be verified")
+        alias_uuid, original_alias = delivery_proof_alias(api)
+        revisions_before = revision_ids(api)
         env = os.environ | {
             "OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key, "OPN2OTEL_OPS_API_SECRET": secret_value,
             "OPN2OTEL_OPS_PROTOCOL": "https", "OPN2OTEL_OPS_INSECURE": "true",
@@ -371,27 +398,28 @@ def main(argv=None):
             start_new_session=True,
         )
         time.sleep(8)  # baselines configchange; initial configstate and exporter records ship.
-        result = api.post("/api/auth/user/add", {"user": {"name": username, "disabled": "1", "scope": "user", "scrambled_password": "1", "descr": "temporary CI delivery proof"}})
-        if result.get("result") != "saved" or not result.get("uuid"):
-            raise RuntimeError("testbed refused temporary user creation")
-        created_uuid = result["uuid"]
+        mutation = AliasDescriptionMutation(api, alias_uuid, original_alias, "temporary live delivery proof " + instance)
+        mutation.apply()
+        revisions_after_mutation = revision_ids(api)
+        facts["alias_description_revision_written"] = revision_list_grew(revisions_before, revisions_after_mutation)
         dns_source, dns_destination = "192.0.2.10", "192.0.2.20"
         send_zenarmor_dns(dns_source, dns_destination)
         send_filterlog(dns_source, dns_destination)
         time.sleep(20)
         selector = 'service_name="opnsense2otel",service_instance_id="' + instance + '"'
         queries = {name: loki_query('{' + selector + ',opnsense_source="' + name + '"}', loki_user, cap_token, query_start_ns)
-                   for name in ("configchange", "configstate", "exporter", "syslog")}
+                   for name in PROOF_SOURCES}
         broad = loki_query('{' + selector + '}', loki_user, cap_token, query_start_ns)
         diagnostics.update({name: query_diagnostic(name, result, broad) for name, result in queries.items()})
-        facts["configchange_arrived"] = bool(queries["configchange"]["streams"])
+        facts.update({name + "_arrived": bool(result["streams"]) for name, result in queries.items()})
         configchange = list(records(queries["configchange"]["streams"]))
         facts["configchange_redacted"] = any("<password>[redacted]</password>" in body for _, body, _ in configchange)
         configstate = list(records(queries["configstate"]["streams"]))
         families = {metadata.get("snapshot_family", "") for _, _, metadata in configstate}
         facts["configstate_families_arrived"] = families == {"firewall", "device_inventory", "security_posture"}
         facts["configstate_sensitive_fields_absent"] = bodies_have_no_sensitive_keys(configstate)
-        facts["exporter_arrived"] = bool(queries["exporter"]["streams"])
+        exporter_records = list(records(queries["exporter"]["streams"]))
+        diagnostics["configstate shipped poll error"] = exporter_poll_error_diagnostic(exporter_records, "configstate")
         syslog_records = list(records(queries["syslog"]["streams"]))
         facts["domain_structured_metadata"] = has_domain_metadata(syslog_records, "delivery-proof.example")
         observed_labels = {key for labels, _, _ in records(broad["streams"]) for key in labels}
@@ -411,8 +439,20 @@ def main(argv=None):
         # Keep exporter teardown in a nested finally: a failed rollback must never
         # leave its credential-bearing process alive on the runner.
         try:
-            if created_uuid:
-                facts["rollback"] = delete_and_verify_user(api, created_uuid)
+            if mutation is not None:
+                try:
+                    mutation.restore()
+                    facts["rollback"] = mutation.restored
+                except Exception:
+                    facts["rollback"] = False
+                    facts["alias_description_restore_revision_written"] = False
+                else:
+                    try:
+                        revisions_after_restore = revision_ids(api)
+                        revision_floor = revisions_after_mutation if revisions_after_mutation is not None else revisions_before
+                        facts["alias_description_restore_revision_written"] = revision_list_grew(revision_floor, revisions_after_restore)
+                    except Exception:
+                        facts["alias_description_restore_revision_written"] = False
         finally:
             if process:
                 stop_process_group(process)
@@ -422,12 +462,11 @@ def main(argv=None):
         print("- " + name.replace("_", " ") + ": " + ("yes" if facts[name] else "no"))
     for name in sorted(diagnostics):
         print("- " + name + " query result: " + diagnostics[name])
-    # A configstate absence scan is useful live evidence, but is not a claim that
-    # its redactor saw the temporary user's password field.
-    print("- configstate redaction exercise: no (the temporary Auth user is outside its three source shapes)")
+    print("- configstate redaction exercise: no (the alias description trigger exercises configchange only)")
     required_facts = ("configchange_arrived", "configchange_redacted", "configstate_families_arrived",
-                      "configstate_sensitive_fields_absent", "exporter_arrived", "domain_structured_metadata",
-                      "labels_outside_allowlist_absent", "rollback")
+                      "configstate_sensitive_fields_absent", "exporter_arrived", "syslog_arrived", "zenarmor_arrived",
+                      "domain_structured_metadata", "labels_outside_allowlist_absent",
+                      "alias_description_revision_written", "alias_description_restore_revision_written", "rollback")
     return 0 if all(facts.get(name) for name in required_facts) else 1
 
 

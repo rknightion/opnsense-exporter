@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: Parked
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 08:38'
+updated_date: '2026-09-04 10:07'
 labels: []
 dependencies: []
 priority: high
@@ -45,6 +45,8 @@ The proof runs locally against the testbed rather than in CI, and the evidence i
 Wave 4: under one root-owned testbed hold, run the local exporter against the testbed with a unique instance label and m7kni OTLP credentials read only at point of use; generate each in-scope source, query Loki independently, and record per-source arrival, promoted labels, domain metadata placement, and on-wire redaction.
 
 Wave 5: add a manual protected-environment workflow modelled on live-canary, build the current tree, emit the four still-unproven source families under one unique instance label, perform one reversible secret-bearing testbed configuration change, and query the backend for per-source arrival, structured domain metadata, on-wire redaction, and the current-build promoted label set. The root alone dispatches the workflow and owns the testbed hold, backend writes, tracker updates, commit and push.
+
+Wave 6: replace the forbidden user-account trigger with a reversible description edit on the dedicated throwaway firewall alias; dispatch the protected live proof under one root-owned testbed hold; query the exporter stream first for the configstate poll-error err attribute; then diagnose and repair only from observed evidence, rerun as needed, and answer the two remaining arrival/redaction assertions. Do not retry through any user-account path.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes

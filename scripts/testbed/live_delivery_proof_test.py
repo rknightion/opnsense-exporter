@@ -61,15 +61,28 @@ class TestResultParsing(unittest.TestCase):
         self.assertFalse(proof.has_domain_metadata(wrong, "delivery-proof.example"))
         self.assertFalse(proof.has_domain_metadata(promoted, "delivery-proof.example"))
 
-    def test_proof_user_filter_excludes_system_and_unrelated_users(self):
-        rows = {"rows": [
-            {"uuid": "keep-system", "name": "deliveryproof-system", "scope": "system"},
-            {"uuid": "remove", "name": "deliveryproof-123", "scope": "user"},
-            {"uuid": "keep-admin", "name": "deliveryproof-admin", "scope": "user"},
-            {"uuid": "remove-generated", "name": "deliveryproof0123456789abcdef", "scope": "user"},
-            {"uuid": "keep-other", "name": "operator", "scope": "user"},
-        ]}
-        self.assertEqual(proof.proof_user_ids(rows), ["remove-generated"])
+    def test_exporter_poll_error_diagnostic_reads_only_the_configstate_record(self):
+        rows = [
+            ({"opnsense_source": "exporter"}, "log source poll error",
+             {"source": "configstate", "err": "snapshot fetch failed"}),
+            ({"opnsense_source": "exporter"}, "another diagnostic",
+             {"source": "configstate", "err": "must not be rendered"}),
+            ({"opnsense_source": "exporter"}, "log source poll error",
+             {"source": "configchange", "err": "wrong source"}),
+        ]
+        self.assertEqual(proof.exporter_poll_error_diagnostic(rows, "configstate"), "snapshot fetch failed")
+        self.assertEqual(proof.exporter_poll_error_diagnostic(rows, "routingchange"), "not_observed")
+
+    def test_exporter_poll_error_diagnostic_redacts_credential_bearing_error(self):
+        rows = [({"opnsense_source": "exporter"}, "log source poll error",
+                 {"source": "configstate", "err": "request used Bearer a-secret-value"})]
+        self.assertEqual(proof.exporter_poll_error_diagnostic(rows, "configstate"), "redacted")
+        rows[0][2]["err"] = "request failed at https://operator@example.invalid/path"
+        self.assertEqual(proof.exporter_poll_error_diagnostic(rows, "configstate"), "redacted")
+
+    def test_proof_queries_every_source_it_generates(self):
+        self.assertEqual(proof.PROOF_SOURCES,
+                         ("configchange", "configstate", "exporter", "syslog", "zenarmor"))
 
     def test_poll_error_parser_is_source_specific(self):
         metrics = ('opnsense_exporter_logs_poll_errors_total{instance="proof",source="configstate"} 2\n'
@@ -80,109 +93,77 @@ class TestResultParsing(unittest.TestCase):
         self.assertTrue(proof.poll_error_observed(metrics, "timestamped"))
         self.assertEqual(proof.poll_error_diagnostic("", "configstate"), "unavailable")
 
-    def test_stale_cleanup_reports_only_bounded_operation_state(self):
+    def test_dedicated_alias_selection_is_name_bound_and_requires_one_uuid(self):
         class FakeAPI:
-            def get(self, _path):
-                return {"rows": [{"uuid": "opaque", "name": "deliveryproof0123456789abcdef", "scope": "user"}]}
+            paths = []
 
-            def post(self, _path, _payload=None):
-                return {"result": "unexpected body text"}
-
-        diagnostic = {}
-        self.assertFalse(proof.cleanup_stale_proof_users(FakeAPI(), diagnostic))
-        self.assertEqual(diagnostic["stale cleanup detail"],
-                         "found:1;post-path:other/search-get:present,post-path:other/search-get:present,post-path:other/search-get:present")
-
-    def test_stale_cleanup_attempts_every_matching_user(self):
-        class FakeAPI:
-            users = {"first": "deliveryproof0123456789abcdef", "second": "deliveryprooffedcba9876543210"}
-            deleted = []
-
-            def get(self, _path):
-                return {"rows": [{"uuid": user_uuid, "name": name, "scope": "user"}
-                                 for user_uuid, name in self.users.items() if user_uuid not in self.deleted]}
-
-            def post(self, path, _payload=None):
-                self.deleted.append(path.rsplit("/", 1)[-1])
-                return {"result": "deleted"}
-
-        api = FakeAPI()
-        diagnostic = {}
-        self.assertTrue(proof.cleanup_stale_proof_users(api, diagnostic))
-        self.assertEqual(api.deleted, ["first", "second"])
-
-    def test_user_search_falls_back_to_post(self):
-        class FakeAPI:
-            payload = None
-
-            def get(self, _path):
-                raise RuntimeError("GET unavailable")
-
-            def post(self, _path, payload=None):
-                self.payload = payload
-                return {"rows": []}
-
-        api = FakeAPI()
-        self.assertEqual(proof.search_proof_users(api), ([], "post-fallback"))
-        self.assertEqual(api.payload, {})
-
-    def test_delete_accepts_exact_deleted_result_when_search_is_unavailable(self):
-        class FakeAPI:
-            def get(self, _path):
-                raise RuntimeError("GET unavailable")
-
-            def post(self, path, _payload=None):
-                if "/del/" in path:
-                    return {"result": "deleted"}
-                raise RuntimeError("POST search unavailable")
-
-        diagnostic = []
-        self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
-        self.assertEqual(diagnostic, ["post-path:deleted/search:failed"])
-
-    def test_delete_falls_back_to_query_parameter_and_verifies_absence(self):
-        class FakeAPI:
-            deleted = False
-
-            def get(self, _path):
-                raise RuntimeError("GET unavailable")
-
-            def post(self, path, _payload=None):
-                if "/del/" in path:
-                    raise RuntimeError("path route unavailable")
-                if path == "/api/auth/user/del?uuid=opaque":
-                    self.deleted = True
-                    return {"result": "deleted"}
-                if path == "/api/auth/user/search":
-                    rows = [] if self.deleted else [{"uuid": "opaque", "name": "deliveryproof0123456789abcdef"}]
-                    return {"rows": rows}
+            def get(self, path):
+                self.paths.append(path)
+                if path == "/api/firewall/alias/get_alias_uuid/deliveryproof":
+                    return {"uuid": "alias-uuid"}
+                if path == "/api/firewall/alias/get_item/alias-uuid":
+                    return {"alias": {"name": "deliveryproof", "description": "original", "type": "host"}}
                 raise AssertionError("unexpected request")
 
-        diagnostic = []
-        self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
-        self.assertEqual(diagnostic, ["post-query-fallback:deleted/search-post-fallback:absent"])
+        api = FakeAPI()
+        alias_uuid, alias = proof.delivery_proof_alias(api)
+        self.assertEqual(alias_uuid, "alias-uuid")
+        self.assertEqual(alias["description"], "original")
+        self.assertEqual(api.paths, ["/api/firewall/alias/get_alias_uuid/deliveryproof",
+                                     "/api/firewall/alias/get_item/alias-uuid"])
 
-    def test_delete_falls_back_to_body_and_verifies_absence(self):
-        class FakeAPI:
-            deleted = False
-
+        class MissingAliasAPI:
             def get(self, _path):
-                raise RuntimeError("GET unavailable")
+                return {"uuid": ""}
 
-            def post(self, path, payload=None):
-                if "/del/" in path or "?uuid=" in path:
-                    raise RuntimeError("route shape unavailable")
-                if path == "/api/auth/user/del" and payload == {"uuid": "opaque"}:
-                    self.deleted = True
-                    return {"result": "deleted"}
-                if path == "/api/auth/user/search":
-                    rows = [] if self.deleted else [{"uuid": "opaque", "name": "deliveryproof0123456789abcdef"}]
-                    return {"rows": rows}
-                raise AssertionError("unexpected request")
+        with self.assertRaisesRegex(RuntimeError, "did not resolve to one UUID"):
+            proof.delivery_proof_alias(MissingAliasAPI())
 
-        diagnostic = []
-        self.assertTrue(proof.delete_and_verify_user(FakeAPI(), "opaque", attempts=1, diagnostic=diagnostic))
-        self.assertEqual(diagnostic, ["post-body-fallback:deleted/search-post-fallback:absent"])
+    def test_alias_description_write_and_exact_restoration_preserve_other_fields(self):
+        class FakeAPI:
+            calls = []
+
+            def post(self, path, payload):
+                self.calls.append((path, payload))
+                return {"result": "saved"}
+
+        api = FakeAPI()
+        original = {"name": "deliveryproof", "description": "exact original", "type": "host", "content": "192.0.2.1"}
+        proof.set_alias(api, "alias-uuid", proof.edited_alias(original, "temporary proof"))
+        proof.set_alias(api, "alias-uuid", original)
+        self.assertEqual(api.calls, [
+            ("/api/firewall/alias/set_item/alias-uuid",
+             {"alias": {"name": "deliveryproof", "description": "temporary proof", "type": "host", "content": "192.0.2.1"}}),
+            ("/api/firewall/alias/set_item/alias-uuid", {"alias": original}),
+        ])
+        self.assertEqual(original["description"], "exact original")
+
+    def test_alias_description_restoration_runs_after_later_failure(self):
+        class FakeAPI:
+            calls = []
+
+            def post(self, path, payload):
+                self.calls.append((path, payload))
+                return {"result": "saved"}
+
+        original = {"name": "deliveryproof", "description": "exact original", "type": "host"}
+        api = FakeAPI()
+        mutation = proof.AliasDescriptionMutation(api, "alias-uuid", original, "temporary proof")
+        with self.assertRaisesRegex(RuntimeError, "later proof failure"):
+            with mutation:
+                raise RuntimeError("later proof failure")
+        self.assertTrue(mutation.restored)
+        self.assertEqual(api.calls[-1],
+                         ("/api/firewall/alias/set_item/alias-uuid", {"alias": original}))
+
+    def test_revision_evidence_detects_new_revision_without_rendering_ids(self):
+        self.assertTrue(proof.revision_list_grew({"old"}, {"old", "new"}))
+        self.assertFalse(proof.revision_list_grew({"old"}, {"old"}))
+
+    def test_executable_proof_contains_no_auth_user_api_path_or_generated_username(self):
+        source = pathlib.Path(proof.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("/api/auth/user/", source)
+        self.assertNotIn("username", source)
 
 
 if __name__ == "__main__":
