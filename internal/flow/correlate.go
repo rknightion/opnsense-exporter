@@ -618,8 +618,8 @@ func (c *Correlator) removeEntryLocked(e *corrEntry) {
 // keyOf groups a record by its community id and the window its flow-end falls in.
 func (c *Correlator) keyOf(r Record) corrKey {
 	var bucket int64
-	if secs := int64(c.window / time.Second); secs > 0 {
-		bucket = r.End.Unix() / secs
+	if c.window > 0 {
+		bucket = r.End.UnixNano() / int64(c.window)
 	}
 	return corrKey{community: r.CommunityID, bucket: bucket}
 }

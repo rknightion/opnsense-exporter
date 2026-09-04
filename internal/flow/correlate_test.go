@@ -156,6 +156,44 @@ func TestCorrelator_DifferentWindowsEmitSeparately(t *testing.T) {
 	}
 }
 
+// A sub-second window must keep records on opposite sides of its boundary in
+// separate buckets. Truncating the duration to seconds makes every key use
+// bucket zero and merges these records.
+func TestCorrelator_SubsecondWindowSeparatesBuckets(t *testing.T) {
+	window := 500 * time.Millisecond
+	c, sink := newCorr(t, true, window, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseNF("cid-A", 100, 1, t0, t0))
+	c.Observe(baseNF("cid-A", 200, 2, t0.Add(window), t0))
+
+	c.Expire(t0.Add(2 * time.Second))
+	if len(sink.recs) != 2 {
+		t.Fatalf("want 2 emitted records for distinct 500ms windows, got %d", len(sink.recs))
+	}
+	if sink.recs[0].NF.Bytes()+sink.recs[1].NF.Bytes() != 300 {
+		t.Errorf("emitted bytes = %d, want 300 across the two windows", sink.recs[0].NF.Bytes()+sink.recs[1].NF.Bytes())
+	}
+}
+
+// A 1.5-second window must use its fractional boundary for grouping. These
+// ends share a whole Unix second but fall on opposite sides of the 1.5-second
+// boundary; truncating the duration to one second merges them.
+func TestCorrelator_NonIntegralWindowSeparatesBuckets(t *testing.T) {
+	window := 1500 * time.Millisecond
+	c, sink := newCorr(t, true, window, 0)
+	t0 := time.Unix(1_700_000_002, 0)
+	c.Observe(baseNF("cid-A", 100, 1, t0.Add(400*time.Millisecond), t0))
+	c.Observe(baseNF("cid-A", 200, 2, t0.Add(600*time.Millisecond), t0))
+
+	c.Expire(t0.Add(2 * time.Second))
+	if len(sink.recs) != 2 {
+		t.Fatalf("want 2 emitted records for distinct 1.5s windows, got %d", len(sink.recs))
+	}
+	if sink.recs[0].NF.Bytes()+sink.recs[1].NF.Bytes() != 300 {
+		t.Errorf("emitted bytes = %d, want 300 across the two windows", sink.recs[0].NF.Bytes()+sink.recs[1].NF.Bytes())
+	}
+}
+
 // A NetFlow entry with a matching Zenarmor conn document emits ONE merged record
 // carrying the NetFlow repaired interfaces AND the Zenarmor L7. Remove the merge and
 // the record is source=netflow with no category.
