@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -85,6 +86,79 @@ func TestSelfLogHandlerConvertsRecordForTheOTLPPipeline(t *testing.T) {
 	}
 	if got := e.Record.Attributes["when"]; got == "" {
 		t.Fatal("time attribute was lost")
+	}
+}
+
+func TestSelfLogHandlerRedactsCredentialBearingURLsBeforeBuffering(t *testing.T) {
+	const (
+		userinfoSecret = "synthetic-userinfo-credential-not-real"
+		tokenSecret    = "synthetic-query-token-not-real"
+		apiKeySecret   = "synthetic-query-api-key-not-real"
+		passwordSecret = "synthetic-query-password-not-real"
+	)
+	endpoint := "https://operator:" + userinfoSecret +
+		"@telemetry.example.test/v1/logs?format=proto&access_token=" + tokenSecret +
+		"&api-key=" + apiKeySecret + "&password=" + passwordSecret + "&timeout=5s"
+
+	h := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	slog.New(h).Info("configuring OTLP logs", "endpoint", endpoint, "retry_after", "3s")
+
+	h.state.mu.Lock()
+	if len(h.state.pending) != 1 {
+		h.state.mu.Unlock()
+		t.Fatalf("pending self-log records = %d, want 1", len(h.state.pending))
+	}
+	pendingAttrs := h.state.pending[0].Attributes
+	h.state.mu.Unlock()
+	assertSanitizedSelfLogEndpoint(t, pendingAttrs, userinfoSecret, tokenSecret, apiKeySecret, passwordSecret)
+
+	exp := &fakeExporter{}
+	sink := newTestSink(exp)
+	h.Bind(func(e Entry) bool {
+		res := sink.Emit(context.Background(), []Entry{e})
+		return len(res.Acked) == 1
+	})
+	records := exp.exported()
+	if len(records) != 1 {
+		t.Fatalf("exported %d records, want 1", len(records))
+	}
+	assertSanitizedSelfLogEndpoint(t, recordAttrs(records[0]), userinfoSecret, tokenSecret, apiKeySecret, passwordSecret)
+}
+
+func assertSanitizedSelfLogEndpoint(t *testing.T, attrs map[string]string, secrets ...string) {
+	t.Helper()
+	endpoint := attrs["endpoint"]
+	for _, secret := range secrets {
+		for _, value := range attrs {
+			if strings.Contains(value, secret) {
+				t.Error("self-log attributes retained a credential")
+			}
+		}
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		t.Fatalf("sanitized self-log endpoint is not a URL: %v", err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "telemetry.example.test" || parsed.Path != "/v1/logs" {
+		t.Error("sanitized self-log endpoint lost scheme, host, or path context")
+	}
+	if parsed.User == nil {
+		t.Error("sanitized self-log endpoint lost the redacted userinfo marker")
+	} else if parsed.User.Username() != "[REDACTED]" {
+		t.Error("self-log endpoint userinfo was not redacted")
+	} else if _, hasPassword := parsed.User.Password(); hasPassword {
+		t.Error("sanitized self-log endpoint retained a userinfo password component")
+	}
+	query := parsed.Query()
+	if query.Get("access_token") != "[REDACTED]" || query.Get("api-key") != "[REDACTED]" ||
+		query.Get("password") != "[REDACTED]" {
+		t.Error("self-log endpoint retained a sensitive query value")
+	}
+	if query.Get("format") != "proto" || query.Get("timeout") != "5s" {
+		t.Error("sanitized self-log endpoint lost safe query context")
+	}
+	if attrs["retry_after"] != "3s" {
+		t.Error("self-log sanitization changed a non-URL diagnostic attribute")
 	}
 }
 

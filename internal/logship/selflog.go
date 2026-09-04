@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 // SelfLogSource and SelfLogSubsystem are the fixed resource dimensions for
@@ -17,6 +20,7 @@ import (
 const (
 	SelfLogSource    = "exporter"
 	SelfLogSubsystem = "self"
+	selfLogRedacted  = "[REDACTED]"
 
 	// selfLogPendingLimit is the startup buffer for records emitted after the
 	// handler is installed but before logship.Start binds it to the pipeline.
@@ -264,7 +268,50 @@ func flattenSelfLogAttr(dst map[string]string, prefix string, attr slog.Attr) {
 	if key == "" {
 		return
 	}
-	dst[key] = formatSelfLogValue(value)
+	dst[key] = sanitizeSelfLogValue(formatSelfLogValue(value))
+}
+
+// sanitizeSelfLogValue removes credentials from absolute URLs before a
+// converted record can reach either the startup buffer or the live pipeline.
+// Only URL components with credential semantics are changed; ordinary strings
+// and the URL's scheme, host, path and non-sensitive query parameters survive.
+func sanitizeSelfLogValue(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return value
+	}
+
+	changed := false
+	if parsed.User != nil {
+		parsed.User = url.User(selfLogRedacted)
+		changed = true
+	}
+	if rawQuery, redacted := redactSelfLogURLQuery(parsed.RawQuery); redacted {
+		parsed.RawQuery = rawQuery
+		changed = true
+	}
+	if !changed {
+		return value
+	}
+	return parsed.String()
+}
+
+func redactSelfLogURLQuery(rawQuery string) (string, bool) {
+	parts := strings.Split(rawQuery, "&")
+	changed := false
+	for i, part := range parts {
+		rawKey, _, hasValue := strings.Cut(part, "=")
+		if !hasValue {
+			continue
+		}
+		key, err := url.QueryUnescape(rawKey)
+		if err != nil || !opnsense.SensitiveConfigKey(key) {
+			continue
+		}
+		parts[i] = rawKey + "=" + url.QueryEscape(selfLogRedacted)
+		changed = true
+	}
+	return strings.Join(parts, "&"), changed
 }
 
 func joinSelfLogAttrKey(prefix, key string) string {
