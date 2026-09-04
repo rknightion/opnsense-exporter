@@ -31,7 +31,8 @@ docker run -p 8080:8080 \
       -e OPN2OTEL_OPS_API_SECRET=your-api-secret \
       ghcr.io/rknightion/opnsense2otel:latest \
       --opnsense.protocol=https \
-      --opnsense.address=ops.example.com
+      --opnsense.address=ops.example.com \
+      --web.ui-enabled=true
 ```
 
 Metrics are then at `http://localhost:8080/metrics`, and the operator console at
