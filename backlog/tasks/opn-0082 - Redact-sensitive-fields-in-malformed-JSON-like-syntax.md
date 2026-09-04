@@ -1,11 +1,11 @@
 ---
 id: OPN-0082
 title: Redact sensitive fields in malformed JSON-like syntax
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-04 20:05'
-updated_date: '2026-09-04 21:48'
+updated_date: '2026-09-04 22:03'
 labels:
   - needs-triage
 dependencies: []
@@ -22,15 +22,15 @@ The Wave 6 pre-close confidentiality review found that malformed API response fo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Malformed-body sensitive-field classification covers single-quoted and unquoted keys through the shared SensitiveConfigKey vocabulary
-- [ ] #2 Split-quote sensitive key fragments cannot expose their associated value in APICallError output
-- [ ] #3 Focused redaction tests and the repository gate pass without over-redacting benign JSON-like fields
+- [x] #1 Malformed-body sensitive-field classification covers single-quoted and unquoted keys through the shared SensitiveConfigKey vocabulary
+- [x] #2 Split-quote sensitive key fragments cannot expose their associated value in APICallError output
+- [x] #3 Focused redaction tests and the repository gate pass without over-redacting benign JSON-like fields
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -59,4 +59,12 @@ Independent review found that a stray opening quote could hide a later unquoted 
 Independent review found a credential beginning with a comma, brace or bracket could make a stray leading quote look complete and hide an unquoted password field. The comma regression failed before the fix and passes after token skipping became context-aware.
 
 Final independent-review reproducer: an apparently valid outer object, array, or comma-delimited string could end at password: while its closing quote simultaneously opened the malformed credential value. All three cases failed before the fix and pass after structurally skippable quoted tokens began yielding when they end at a shared sensitive-field delimiter.
+
+Validation at implementation commit 3bb2bdd9: the focused race-enabled redaction suites and final just check passed; the final CodeRabbit two-file source slice completed with findings=0. The independent reviewer found the last overlapping-quote bypass, its object/array/comma reproducers failed before the fix and passed after it; the requested final independent retry was platform-blocked and is not counted as a clean pass.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed the malformed API-response credential-redaction bypass described by this task in implementation commit 3bb2bdd9. Focused race tests, the repository gate, and a completed zero-finding CodeRabbit source review passed.
+<!-- SECTION:FINAL_SUMMARY:END -->

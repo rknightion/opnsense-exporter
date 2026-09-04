@@ -1,11 +1,11 @@
 ---
 id: OPN-0081
 title: Redact credential URLs after malformed single-quoted HTML
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-04 20:05'
-updated_date: '2026-09-04 20:53'
+updated_date: '2026-09-04 22:03'
 labels:
   - needs-triage
 dependencies: []
@@ -22,15 +22,15 @@ The Wave 6 pre-close confidentiality review found that a malformed single-quoted
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Quoted HTML URL scanning reconsiders overlapping attribute boundaries after a non-sensitive candidate
-- [ ] #2 Credential userinfo and query values remain redacted after malformed single-quoted HTML and in standalone single-quoted diagnostic URLs
-- [ ] #3 Focused redaction tests and the repository gate pass
+- [x] #1 Quoted HTML URL scanning reconsiders overlapping attribute boundaries after a non-sensitive candidate
+- [x] #2 Credential userinfo and query values remain redacted after malformed single-quoted HTML and in standalone single-quoted diagnostic URLs
+- [x] #3 Focused redaction tests and the repository gate pass
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -57,4 +57,12 @@ Independent review additionally reproduced incomplete and backslash-escaped stan
 CodeRabbit pass 2 found that an incomplete short single-quoted userinfo prefix still leaked because EOF classification was tied to body truncation. The focused regression failed before the fix; incomplete single-quoted tokens now apply the fail-closed quoted-userinfo suffix classifier regardless of body length.
 
 Independent review found two panic paths from rescanning quotes inside already rewritten URL spans. Both panic reproducers now pass: a rewrite jumps to its closing quote rather than an escaped internal apostrophe, while a rewritten outer HTML attribute does not re-enter a nested attribute whose credentials were already scrubbed by the shared value redactor.
+
+Validation at implementation commit 3bb2bdd9: the focused race-enabled redaction suites and final just check passed; the final CodeRabbit two-file source slice completed with findings=0. The independent reviewer found the last overlapping-quote bypass, its object/array/comma reproducers failed before the fix and passed after it; the requested final independent retry was platform-blocked and is not counted as a clean pass.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed the malformed API-response credential-redaction bypass described by this task in implementation commit 3bb2bdd9. Focused race tests, the repository gate, and a completed zero-finding CodeRabbit source review passed.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,11 +1,11 @@
 ---
 id: OPN-0077
 title: Redact credential-bearing HTML URL attributes after backslashes
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-04 18:39'
-updated_date: '2026-09-04 19:13'
+updated_date: '2026-09-04 22:03'
 labels:
   - needs-triage
 dependencies: []
@@ -22,15 +22,15 @@ The independent Wave 6 pre-close security review found that malformed API respon
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 HTML attribute scanning treats backslash as ordinary attribute data and still inspects each later approved URL attribute independently
-- [ ] #2 A malformed body containing a benign backslash-bearing attribute followed by a credential-bearing URL is redacted before it reaches APICallError output
-- [ ] #3 Focused redaction tests and the repository gate pass
+- [x] #1 HTML attribute scanning treats backslash as ordinary attribute data and still inspects each later approved URL attribute independently
+- [x] #2 A malformed body containing a benign backslash-bearing attribute followed by a credential-bearing URL is redacted before it reaches APICallError output
+- [x] #3 Focused redaction tests and the repository gate pass
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -55,4 +55,12 @@ Regression evidence: the complete HTML reproducer failed before the first fix, a
 Third security reproducer failed before its fix: a leading text quote plus a quoted HTML query left the whitespace-delimited credential suffix. The focused race-enabled truncation suite passes after applying the shared URL-value redactor inside the isolated attribute.
 
 Fourth security reproducer failed before its fix: a truncated quoted HTML query left the whitespace-delimited credential suffix. The focused race-enabled truncation suite passes after incomplete attributes use the shared URL classifier.
+
+Validation at implementation commit 3bb2bdd9: the focused race-enabled redaction suites and final just check passed; the final CodeRabbit two-file source slice completed with findings=0. The independent reviewer found the last overlapping-quote bypass, its object/array/comma reproducers failed before the fix and passed after it; the requested final independent retry was platform-blocked and is not counted as a clean pass.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed the malformed API-response credential-redaction bypass described by this task in implementation commit 3bb2bdd9. Focused race tests, the repository gate, and a completed zero-finding CodeRabbit source review passed.
+<!-- SECTION:FINAL_SUMMARY:END -->
