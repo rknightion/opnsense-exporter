@@ -3,11 +3,11 @@ id: OPN-0057
 title: >-
   Measure UDP receiver throughput: same-harness before/after for buffers and
   worker pool
-status: Parked
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-03 19:34'
+updated_date: '2026-09-04 05:32'
 labels:
   - needs-triage
 milestone: m-4
@@ -44,6 +44,8 @@ Deferred deliberately at wave 1 closeout (decision by Rob 2026-09-02): the clamp
 
 <!-- SECTION:PLAN:BEGIN -->
 Wave 4: in the same testbed hold but only after live-delivery traffic stops, run one controlled identical-load harness for before and after, read effective Linux and BSD receive buffers, and record throughput plus socket and worker-queue drops as measured numbers or park at the exact missing observation.
+
+Wave 5: first commit a deterministic UDP throughput contract naming the sender command, fixed payload, packet size, offered rate, duration, immutable before/current binaries, isolated Linux and BSD receiver targets, successful numeric SO_RCVBUF read-back, and attributable socket plus worker-queue drop counters. Only after that contract lands may the root take the shared testbed hold and measure; otherwise re-park with the exact missing observation.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
