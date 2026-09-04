@@ -53,9 +53,11 @@ class TestResultParsing(unittest.TestCase):
 
     def test_poll_error_parser_is_source_specific(self):
         metrics = ('opnsense_exporter_logs_poll_errors_total{instance="proof",source="configstate"} 2\n'
-                   'opnsense_exporter_logs_poll_errors_total{instance="proof",source="configchange"} 0\n')
+                   'opnsense_exporter_logs_poll_errors_total{instance="proof",source="configchange"} 0\n'
+                   'opnsense_exporter_logs_poll_errors_total{instance="proof",source="timestamped"} 2 1786057200000\n')
         self.assertTrue(proof.poll_error_observed(metrics, "configstate"))
         self.assertFalse(proof.poll_error_observed(metrics, "configchange"))
+        self.assertTrue(proof.poll_error_observed(metrics, "timestamped"))
 
     def test_stale_cleanup_reports_only_bounded_operation_state(self):
         class FakeAPI:
@@ -68,7 +70,7 @@ class TestResultParsing(unittest.TestCase):
         diagnostic = {}
         self.assertFalse(proof.cleanup_stale_proof_users(FakeAPI(), diagnostic))
         self.assertEqual(diagnostic["stale cleanup detail"],
-                         "found:1;post:other/search:present,post:other/search:present,post:other/search:present")
+                         "found:1;post:other/search-get:present,post:other/search-get:present,post:other/search-get:present")
 
     def test_stale_cleanup_attempts_every_matching_user(self):
         class FakeAPI:
@@ -87,6 +89,16 @@ class TestResultParsing(unittest.TestCase):
         diagnostic = {}
         self.assertTrue(proof.cleanup_stale_proof_users(api, diagnostic))
         self.assertEqual(api.deleted, ["first", "second"])
+
+    def test_user_search_falls_back_to_post(self):
+        class FakeAPI:
+            def get(self, _path):
+                raise RuntimeError("GET unavailable")
+
+            def post(self, _path, _payload=None):
+                return {"rows": []}
+
+        self.assertEqual(proof.search_proof_users(FakeAPI()), ([], "post-fallback"))
 
 
 if __name__ == "__main__":

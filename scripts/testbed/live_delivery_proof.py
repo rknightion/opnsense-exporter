@@ -82,6 +82,13 @@ def proof_user_ids(payload):
     return result
 
 
+def search_proof_users(api):
+    try:
+        return proof_user_ids(api.get("/api/auth/user/search")), "get"
+    except Exception:
+        return proof_user_ids(api.post("/api/auth/user/search")), "post-fallback"
+
+
 def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
     for attempt in range(attempts):
         try:
@@ -92,9 +99,10 @@ def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
         except Exception:
             outcome = "request-failed"
         try:
-            present = user_uuid in proof_user_ids(api.get("/api/auth/user/search"))
+            matches, method = search_proof_users(api)
+            present = user_uuid in matches
             if diagnostic is not None:
-                diagnostic.append("post:" + outcome + "/search:" + ("present" if present else "absent"))
+                diagnostic.append("post:" + outcome + "/search-" + method + ":" + ("present" if present else "absent"))
             if not present:
                 return True
         except Exception:
@@ -107,14 +115,14 @@ def delete_and_verify_user(api, user_uuid, attempts=3, diagnostic=None):
 
 def cleanup_stale_proof_users(api, diagnostic):
     try:
-        stale = proof_user_ids(api.get("/api/auth/user/search"))
+        stale, method = search_proof_users(api)
     except Exception:
         diagnostic["stale cleanup detail"] = "search-failed"
         return False
     attempts = []
     outcomes = [delete_and_verify_user(api, user_uuid, diagnostic=attempts) for user_uuid in stale]
     result = all(outcomes)
-    diagnostic["stale cleanup detail"] = "none" if not stale else "found:" + str(len(stale)) + ";" + ",".join(attempts)
+    diagnostic["stale cleanup detail"] = "none-via-" + method if not stale else "found:" + str(len(stale)) + ";" + ",".join(attempts)
     return result
 
 
@@ -252,7 +260,7 @@ def poll_error_observed(metrics, source):
         if ('source="' + source + '"') not in labels:
             continue
         try:
-            return float(value) > 0
+            return float(value.split(None, 1)[0]) > 0
         except ValueError:
             return False
     return False
