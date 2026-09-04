@@ -139,10 +139,12 @@ class TestResultParsing(unittest.TestCase):
             proof.resolve_delivery_proof_alias(FakeAPI([
                 {"uuid": "near-collision", "name": "d-e-l-i-v-e-r-y-p-r-o-o-f"},
             ]))
-        with self.assertRaisesRegex(RuntimeError, "did not find exactly one"):
+        self.assertEqual(
             proof.resolve_delivery_proof_alias(FakeAPI([
                 {"uuid": "case-variant", "name": "Delivery_Proof"},
-            ]))
+            ])),
+            ("case-variant", "Delivery_Proof"),
+        )
 
     def test_dedicated_alias_discovery_inspects_later_pages(self):
         class FakeAPI:

@@ -30,8 +30,7 @@ SENSITIVE_DIAGNOSTIC = re.compile(
     r"(?:basic|bearer)\s+\S+|\b[a-z][a-z0-9+.-]*://\S+)",
     re.I,
 )
-PROOF_ALIAS_NAME = "deliveryproof"
-PROOF_ALIAS_NAMES = frozenset((PROOF_ALIAS_NAME, "delivery_proof", "delivery-proof"))
+PROOF_ALIAS_NAME = re.compile(r"delivery(?:[-_]?proof)\Z", re.I)
 PROOF_SOURCES = ("configchange", "configstate", "exporter", "syslog", "zenarmor")
 SAFE_ALIAS_NAME = re.compile(r"[A-Za-z0-9_-]+\Z")
 ALIAS_SEARCH_PAGE_SIZE = 100
@@ -160,7 +159,7 @@ def resolve_delivery_proof_alias(api):
         page += 1
     matches = [
         row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)
-        and row["name"] in PROOF_ALIAS_NAMES
+        and PROOF_ALIAS_NAME.fullmatch(row["name"])
     ]
     if not matches:
         raise ProofFailure(
