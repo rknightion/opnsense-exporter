@@ -3,7 +3,7 @@ id: doc-0002
 title: Wave operating model
 type: guide
 created_date: '2026-08-14 14:04'
-updated_date: '2026-09-02 15:56'
+updated_date: '2026-09-05 22:47'
 ---
 This document carries **only what is specific to opnsense2otel**. The campaign model itself — run
 modes, the routing contract, authority and the thread pool, child lane briefs, external-contract
@@ -152,6 +152,17 @@ writes to it, and its `--decide-only` seam is the only part a lane exercises.
 **Grafana Cloud is live.** `just grafana-check` regenerates and diffs local artifacts and touches
 nothing remote. Pushing dashboards or rules to a stack is a main-thread action, not a lane's.
 
+**Loki cannot show you a historical record for up to two hours.** The querier does not send a query
+to ingesters beyond `query_ingesters_within` (3h), so a log entry stamped older than that reads only
+from the store, and it reaches the store when its ingester chunk flushes. A `configchange` diff
+replayed from a seeded cursor carries the retained revision's timestamp, hours or days old; three
+proof runs shipped one each, queried within a minute, and saw nothing, while the records were sitting
+unflushed. **A proof that asserts its own historical record within the run can never pass.** Assert on
+the previous instance's records instead, or report visibility-pending rather than absent, and read
+`logs_shipped_total`, `logs_dropped_total{reason}` and `partialSuccess` off the exporter for the
+drop-or-not question. Entries older than the tenant's `reject_old_samples_max_age` are rejected
+outright and now surface as `logs_dropped_total{reason="rejected"}`.
+
 ## Ownership — the append-only registries
 
 Adding a collector or an endpoint touches a fixed set of shared files that every lane wants to append
@@ -278,6 +289,11 @@ they are not the thing to hunt for. Tokens, IPs and account identifiers are.
 - **Finalize in one call** so an interrupted lane cannot leave finished work looking unfinished:
   `backlog task edit OPN-0007 --check-ac 1 --check-ac 2 -s Done`.
 - **Commits come from the campaign root only.** Lanes do not commit. `auto_commit` is off.
+- **The index is shared. A lane that stages files can put them into the root's next commit.** Wave 8
+  committed a half-finished console because the console lane ran `git add` while the root was staging
+  an unrelated batch and then committed bare. Lanes never stage; the root commits with an explicit
+  pathspec (`git commit -- <paths>`), and reviews `git diff --cached --stat` against the list of files
+  it meant to commit before every commit.
 - **Generated artifacts are regenerated, never hand-edited** — anything between `docgen` markers,
   `grafana/dashboard*.json`, the grafana-managed manifests, `opnsense/testdata/schemas/`. A lane that
   hand-edits one produces a diff that `just docs-check` or `just grafana-check` reverts on the next

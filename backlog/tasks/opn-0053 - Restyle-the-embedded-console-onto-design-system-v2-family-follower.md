@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-31 12:12'
-updated_date: '2026-09-05 22:22'
+updated_date: '2026-09-05 22:56'
 labels:
   - design-system
 dependencies: []
@@ -51,6 +51,8 @@ Wave 3 park: resume only after tailscale2otel TSO-0103 lands the family design-s
 Unparked 2026-09-05: tailscale2otel TSO-0103 is Done (family standard-setter landed, its final summary records shared token extension: none). Verified this repo's design/console-v2/implementation-spec.md section 1 is byte-identical to tailscale2otel's copy. Reference implementation for the self-hosted font route, CSP font-src and the negative guards (TestFamilyTokenBlockMatchesTheSpec, TestFontAllowsOnlyThePublishedConsoleFiles) is the tailscale2otel internal/ tree. Eligible for the next wave.
 
 Wave 8 whole-console verification: just check exit 0 on final corrected tree; TestFamilyTokenBlockMatchesSpec, TestConsoleFontsUseFixedAllowlistAndRoute, TestRenderedConsoleIsOfflineAndLightByDefault, TestThemeContrastPairsMeetAA and pipeline render guard passed (webui 0.255s). Twenty computed AA text pairs pass, minimum 4.84. DOM simulation exercised eight tabs, pipeline deep link, invalid hash fallback, keyboard navigation, lazy-load once, OS theme and stored toggle. Three embedded fonts byte-match the reference. Browser unavailable after two auth-token failures; no pixel/browser proof claimed. Devices/ifIndex and other tabs accepted using rendered-template, DOM and contrast evidence. GeoIP footer and three badges retained. Two completed nine-file CodeRabbit passes: unchanged deadline-bounded device-fetch cancellation suggestion left out of scope; final minor bounds check would improve only a failing test diagnostic (panic already fails closed), left. No critical/major findings. Root integration incident: concurrent lane staging entered local commit 4ab20cee before console review/gate; root failed to fence the shared index/use a commit pathspec. No remote publication occurred; final corrected console is now gated/reviewed before publication via a forward correction commit, without rewriting history. Follow-up questions: confirm eight-tab preservation and whether to specify a CSP in a future scoped change.
+
+Owner confirmation 2026-09-05: the repo spec's seven-tab count was wrong; the shipped console has eight tabs (overview, collectors, api, cardinality, pipeline, devices, ifindex, config) and all eight are preserved. The pipeline tab removal in the first lane pass was a regression, corrected in 7a34b51b. Browser pixel verification remains outstanding because the Browser runtime was unavailable during wave 8; acceptance rests on rendered-template tests, DOM simulation and measured AA pairs. Console CSP is tracked separately as OPN-0100.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
