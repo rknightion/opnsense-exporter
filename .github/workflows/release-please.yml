@@ -4,6 +4,22 @@ on:
   push:
     branches: [main]
 
+# One shared group for the whole repo, and NEVER cancel: this workflow derives the
+# next version from git tags plus commits and reconciles a single release PR, so two
+# runs in flight reach the same answer and then fight over it. Three overlapped on
+# 2026-09-05 during a burst of Renovate merges (835fdd51, e467076e, 20eaf345) with all
+# three release-please jobs running to completion against the same PR.
+#
+# Deliberately NOT the same group as the container-publish reusable this workflow
+# calls. A parent holding a group while its child waits for that same group is a
+# deadlock. The reusable keeps its own group and cancels superseded EDGE builds only
+# (`cancel-in-progress: inputs.release-tag == ''`), which is correct and left alone:
+# a stale :main manifest is fixed by the next push, and a release publish is never
+# cancelled there.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 # Default to read-only; each job requests only the write scopes it needs.
 permissions:
   contents: read
