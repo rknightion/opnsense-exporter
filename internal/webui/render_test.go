@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"io"
 	"maps"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +63,8 @@ func TestRenderPage_Status(t *testing.T) {
 	out := buf.String()
 	for _, want := range []string{
 		"opnsense2otel", "v1.2.3",
-		`data-tab="overview"`, `data-tab="collectors"`, `data-tab="api"`, `data-tab="cardinality"`,
+		`data-tab="overview"`, `data-tab="collectors"`, `data-tab="api"`, `data-tab="cardinality"`, `data-tab="pipeline"`,
+		`data-target="pipeline"`,
 		"opnsense-theme", "Next run",
 		`id="themeToggle"`, `id="pauseBtn"`, `id="staleBanner"`, `id="tabs"`, `id="collBody"`,
 		`id="healthBadge"`, `id="upstreamBadge"`, `id="captureBadge"`,
@@ -156,6 +159,172 @@ func TestConsoleFontsUseFixedAllowlistAndRoute(t *testing.T) {
 	}
 }
 
+func TestRenderedConsoleIsOfflineAndLightByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	if err := renderPage(&buf, view{Data: Status{}}); err != nil {
+		t.Fatalf("renderPage: %v", err)
+	}
+	out := buf.String()
+	for _, forbidden := range []string{
+		`<script src=`, `<link rel="stylesheet"`, `@import`,
+		`url(http://`, `url(https://`, `src="http://`, `src="https://`,
+		`fetch('http://`, `fetch('https://`, `fetch("http://`, `fetch("https://`,
+		"new WebSocket(",
+	} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("offline console contains external resource marker %q", forbidden)
+		}
+	}
+	if !strings.HasPrefix(out, "<!doctype html>\n<html lang=\"en\">") {
+		t.Fatalf("console does not start with a theme-neutral html element")
+	}
+	for _, want := range []string{
+		"localStorage.getItem('opnsense-theme')",
+		"localStorage.setItem('opnsense-theme',next)",
+		"window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches",
+		"function tabSection(id){",
+		"var valid=tabSection(initial);",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered console missing guarded theme/tab behavior %q", want)
+		}
+	}
+	if strings.Contains(out, `querySelector('section[data-tab="'+initial+'"]')`) ||
+		strings.Contains(out, `querySelector('section[data-tab="'+id+'"]')`) {
+		t.Fatal("tab hash is interpolated into a CSS selector")
+	}
+	for _, want := range []string{
+		":root:not([data-theme])",
+		":root[data-theme=\"light\"]",
+		":root[data-theme=\"dark\"]",
+		"--t2o-bg:#eef3f6",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered console missing light-default theme contract %q", want)
+		}
+	}
+}
+
+func TestConsoleThemeContrastPairsMeetAA(t *testing.T) {
+	var buf bytes.Buffer
+	if err := renderPage(&buf, view{Data: Status{}}); err != nil {
+		t.Fatalf("renderPage: %v", err)
+	}
+	css := renderedStyleBlock(t, buf.String())
+	pairs := []struct {
+		name       string
+		foreground string
+		background string
+		minimum    float64
+	}{
+		{"row marker accent", "--t2o-accent", "--t2o-surface", 3},
+		{"row marker failure", "--t2o-fail", "--t2o-surface", 3},
+		{"override warning", "--t2o-warn", "--t2o-surface", 4.5},
+		{"API failure", "--t2o-fail", "--t2o-surface", 4.5},
+		{"hover healthy", "--t2o-ok", "--t2o-raised", 4.5},
+		{"hover warning", "--t2o-warn", "--t2o-raised", 4.5},
+		{"hover failure", "--t2o-fail", "--t2o-raised", 4.5},
+		{"muted text", "--t2o-fg-muted", "--t2o-raised", 4.5},
+		{"selected text", "--t2o-fg", "--t2o-selected", 4.5},
+		{"selected accent", "--t2o-accent", "--t2o-selected", 4.5},
+	}
+	for _, theme := range []struct {
+		name     string
+		selector string
+	}{
+		{"light", ":root[data-theme=\"light\"]"},
+		{"dark", ":root[data-theme=\"dark\"]"},
+	} {
+		decls := cssDeclarations(t, css, theme.selector)
+		for _, pair := range pairs {
+			fg := cssToken(t, decls, pair.foreground)
+			bg := cssToken(t, decls, pair.background)
+			ratio := contrastRatio(t, fg, bg)
+			t.Logf("%s %s on %s = %.2f:1", theme.name, pair.name, pair.background, ratio)
+			if ratio < pair.minimum {
+				t.Errorf("%s %s contrast %.2f:1, want >= %.1f:1", theme.name, pair.name, ratio, pair.minimum)
+			}
+		}
+	}
+}
+
+func renderedStyleBlock(t *testing.T, html string) string {
+	t.Helper()
+	start := strings.Index(html, "<style>\n")
+	if start < 0 {
+		t.Fatal("rendered console has no style block")
+	}
+	start += len("<style>\n")
+	rest := html[start:]
+	end := strings.Index(rest, "\n</style>")
+	if end < 0 {
+		t.Fatal("rendered console style block is unterminated")
+	}
+	return rest[:end]
+}
+
+func cssDeclarations(t *testing.T, css, selector string) map[string]string {
+	t.Helper()
+	start := strings.Index(css, selector+"{")
+	if start < 0 {
+		t.Fatalf("CSS selector %q not found", selector)
+	}
+	start += len(selector) + 1
+	end := strings.Index(css[start:], "}")
+	if end < 0 {
+		t.Fatalf("CSS selector %q has no closing brace", selector)
+	}
+	decls := make(map[string]string)
+	for _, declaration := range strings.Split(css[start:start+end], ";") {
+		key, value, ok := strings.Cut(declaration, ":")
+		if !ok {
+			continue
+		}
+		decls[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return decls
+}
+
+func cssToken(t *testing.T, declarations map[string]string, name string) string {
+	t.Helper()
+	value, ok := declarations[name]
+	if !ok {
+		t.Fatalf("CSS token %q is not declared", name)
+	}
+	return value
+}
+
+func contrastRatio(t *testing.T, foreground, background string) float64 {
+	t.Helper()
+	fg := relativeLuminance(t, foreground)
+	bg := relativeLuminance(t, background)
+	if fg < bg {
+		fg, bg = bg, fg
+	}
+	return (fg + 0.05) / (bg + 0.05)
+}
+
+func relativeLuminance(t *testing.T, value string) float64 {
+	t.Helper()
+	if len(value) != 7 || value[0] != '#' {
+		t.Fatalf("CSS color %q is not a six-digit hex value", value)
+	}
+	channels := make([]float64, 3)
+	for i := range channels {
+		n, err := strconv.ParseUint(value[1+i*2:3+i*2], 16, 8)
+		if err != nil {
+			t.Fatalf("CSS color %q has invalid channel: %v", value, err)
+		}
+		linear := float64(n) / 255
+		if linear <= 0.03928 {
+			channels[i] = linear / 12.92
+		} else {
+			channels[i] = math.Pow((linear+0.055)/1.055, 2.4)
+		}
+	}
+	return 0.2126*channels[0] + 0.7152*channels[1] + 0.0722*channels[2]
+}
+
 func TestRenderPage_AuthCountersDescribeHistory(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -228,7 +397,7 @@ func TestHandler_StatusJSON(t *testing.T) {
 	}
 }
 
-// The trend block must be present in the JSON twin — the page's poll-and-patch
+// The trend block must be present in the JSON twin - the page's poll-and-patch
 // refresh reads its charts from there, so a missing key silently freezes them.
 func TestHandler_StatusJSONCarriesTrend(t *testing.T) {
 	srv := NewServer(testDeps())

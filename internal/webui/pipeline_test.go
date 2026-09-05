@@ -114,7 +114,7 @@ func TestHandler_StatusJSONCarriesPipelineFromPassiveCapture(t *testing.T) {
 	}
 }
 
-func TestRenderPage_OmitsPipelineTab(t *testing.T) {
+func TestRenderPage_PipelineTab(t *testing.T) {
 	var out strings.Builder
 	err := renderPage(&out, view{Data: Status{Pipeline: PipelineStats{
 		Rejects:     []ReceiverRejectRow{{Source: "syslog", Reason: "peer", Count: 3}},
@@ -124,12 +124,12 @@ func TestRenderPage_OmitsPipelineTab(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderPage: %v", err)
 	}
-	for _, forbidden := range []string{
-		`data-tab="pipeline"`, `data-target="pipeline"`,
-		"Input rejected", "Parse errors", "Correlator", "peer", "envelope",
+	for _, want := range []string{
+		`data-tab="pipeline"`, `data-target="pipeline"`, `id="panel-pipeline"`,
+		"Input rejected", "Parse errors", "Correlator", "Rollup", "peer", "envelope",
 	} {
-		if strings.Contains(out.String(), forbidden) {
-			t.Errorf("obsolete pipeline UI still rendered %q", forbidden)
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("pipeline tab missing %q", want)
 		}
 	}
 }
