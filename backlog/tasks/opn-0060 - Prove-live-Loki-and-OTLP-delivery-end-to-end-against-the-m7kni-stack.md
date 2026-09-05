@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: Parked
+status: To Do
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-05 19:17'
+updated_date: '2026-09-05 20:41'
 labels: []
 dependencies: []
 priority: high
@@ -115,6 +115,10 @@ Wave 6 final bounded run 33870791765 at 1cda1d2b failed at proof_stage=resolving
 Wave 7 run 33982574173 reached exporter startup and backend records, but configchange and configstate were absent under its instance. The configstate exporter-stream poll error identifies duplicate filter-rule identity (OPN-0085). No configchange poll error was observed. The proof discarded stderr, so sink rejection and state-load diagnostics were unobservable; add fixed-vocabulary in-memory stderr classification before the next changed-source dispatch. No raw local log line or credential may be retained or rendered.
 
 Added bounded concurrent JSON stderr classification without retaining or rendering raw log lines; only fixed counters identify state-load errors, configchange rebaseline/poll errors, terminal destination rejection and explicit historical-age/order markers. Unknown rejection remains unknown. Final source cursor is compared to the selected successor in memory before state-file removal. Offline proof suite: Ran 63 tests in 0.345s / OK; real nonblocking pipe framing included. These diagnostics do not replace Loki delivery/redaction assertions.
+
+Decisions by Rob 2026-09-05 (post wave 7): (1) The revised observation boundary is APPROVED for wave 8. Add fixed-schema, credential-free observations to the proof: per-source admission, emitted, shipped and dropped counts read from the exporter's own metrics or a bounded stderr classification, plus configchange diff length and diff count as numbers only; then ONE dispatch under one root-owned testbed hold. Distinguish empty source output, downstream discard after gateway acceptance, and arrival under another identity or time before concluding. No mutation trigger; nothing on the testbed is created, edited or deleted. Two same-shape missing-configchange results stop the approach again. (2) Release 4.2.0 (PR 679) is HELD on this task: it is not merged until the two remaining assertions are each answered yes or no with a query and result. Unparked to To Do because the blocker was a human decision and that decision is now taken.
+
+Authority granted by Rob 2026-09-05 for wave 8: if BOTH remaining assertions are answered yes with query and result recorded here, the campaign root may merge release PR 679 (4.2.0) unattended. Any no or unproven leaves the PR for Rob.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

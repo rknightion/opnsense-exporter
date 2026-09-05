@@ -1,11 +1,11 @@
 ---
 id: OPN-0053
 title: Restyle the embedded console onto design system v2 (family follower)
-status: Parked
+status: To Do
 assignee:
   - '@codex'
 created_date: '2026-08-31 12:12'
-updated_date: '2026-09-03 09:37'
+updated_date: '2026-09-05 19:53'
 labels:
   - design-system
 dependencies: []
@@ -39,4 +39,6 @@ Scope: Go html/template + inline CSS/vanilla JS + go:embed stays; no framework, 
 
 <!-- SECTION:NOTES:BEGIN -->
 Wave 3 park: resume only after tailscale2otel TSO-0103 lands the family design-system v2 standard. At resume, read its final shared token block and both committed specs, copy that block byte-for-byte, and treat design/console-v2 as reference rather than production-ready code. No implementation change was made in this wave.
+
+Unparked 2026-09-05: tailscale2otel TSO-0103 is Done (family standard-setter landed, its final summary records shared token extension: none). Verified this repo's design/console-v2/implementation-spec.md section 1 is byte-identical to tailscale2otel's copy. Reference implementation for the self-hosted font route, CSP font-src and the negative guards (TestFamilyTokenBlockMatchesTheSpec, TestFontAllowsOnlyThePublishedConsoleFiles) is the tailscale2otel internal/ tree. Eligible for the next wave.
 <!-- SECTION:NOTES:END -->

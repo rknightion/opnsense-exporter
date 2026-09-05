@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-05 18:34'
+updated_date: '2026-09-05 20:31'
 labels:
   - needs-triage
 milestone: m-4
@@ -62,6 +62,8 @@ Wave 4 feasibility result: no throughput trial ran. The testbed hold was release
 Wave 5 contract landed in 8c4d92ce. The fixed 256-byte, 5,000 packets/s, 60-second sender and fail-closed four-observation verifier passed 11 focused tests and the full just check gate. CodeRabbit completed three source-only passes: pass 1 found a major before/current socket-drop-scope gap plus a major non-JSON socket-failure path and a minor formatting issue; pass 2 found non-finite elapsed values could pass validation; pass 3 completed with zero findings after all were fixed. No traffic ran and no throughput number was observed. PARKED RESUME BOUNDARY: expose an ingress-accepted counter immediately after successful syslog UDP queue admission and a successful numeric getsockopt SO_RCVBUF read-back on each deployed receiver; provide immutable before/current deployments on the named isolated Linux and FreeBSD roles with the same instance and counter-capture method; then run the committed four-observation contract under one testbed hold and record buffer, accepted rate, socket drops, and queue drops. A CI-only API credential does not provide the missing FreeBSD binary deployment or receiver-local counters.
 
 Wave 6 implementation: added opnsense_exporter_syslog_udp_accepted_total at successful non-empty, allowlisted bounded-queue admission and opnsense_exporter_syslog_udp_receive_buffer_bytes from the positive getsockopt(SO_RCVBUF) read-back. The read-back is surfaced unchanged: Linux commonly reports roughly double the request while FreeBSD does not, and no equality assertion was added. Generated self-metric documentation and two dashboard panels; just gen and the complete just check gate passed. CodeRabbit source review completed for the syslog slice in one pass with zero findings; the dashboard-only pass raised one major slice-context false positive because the listener source that registers the gauge was excluded, and the combined four-file pass completed with zero findings. No traffic ran and no throughput, drop or buffer number was observed; acceptance criteria 1 through 4 remain unproven. PARKED RESUME BOUNDARY: provide the two isolated receiver host roles required by the committed contract, one Linux and one FreeBSD, then run that contract.
+
+Decision by Rob 2026-09-05 (post wave 7): stays Parked and is excluded from wave 8 and later waves until an approved direct guest-shell/deployment route for guest 105 and one OPNsense VM exists. No lane should pick this up on its own initiative; the resume boundary is unchanged.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

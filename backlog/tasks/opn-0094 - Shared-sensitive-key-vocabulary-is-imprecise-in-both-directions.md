@@ -1,11 +1,11 @@
 ---
 id: OPN-0094
 title: Shared sensitive-key vocabulary is imprecise in both directions
-status: Parked
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:59'
-updated_date: '2026-09-05 19:21'
+updated_date: '2026-09-05 20:31'
 labels:
   - bug
 dependencies: []
@@ -44,8 +44,6 @@ Keep the shared vocabulary strict. The confirmed under-match is repaired; safe p
 <!-- AC:BEGIN -->
 - [x] #1 A bare key field is treated as sensitive, and keyexpiry is not
 - [x] #2 Any additional element name added is justified against upstream OPNsense source in the notes
-- [ ] #3 An MVC validation message keyed by a sensitive field path keeps its message text
-- [ ] #4 Regressions cover both directions and fail before the fix
 <!-- AC:END -->
 
 ## Definition of Done
@@ -70,10 +68,12 @@ Upstream correction: ApiKeyField add returns key and secret, and addApiKeyAction
 Vocabulary regression failed before for key and dns_cf_key, both false instead of true; keyexpiry and monkey controls remained nonsensitive. After separator-aware key term addition: ok github.com/rknightion/opnsense2otel/v4/opnsense 0.287s. No additional speculative element names added; validation-message redaction remains intact.
 
 First integrated check failed TestSecurityPostureProvider_AggregatesFirmwareCertificatesAndOwners: API key owners = nil, want owner-sorted aggregates. This is a real regression from the vocabulary change and must be fixed before commit.
+
+Decision by Rob 2026-09-05 (post wave 7): AC3/4 (preserve MVC validation-message text under a sensitive field path) are dropped, not deferred. Fail-closed redaction stays. Reasons: upstream forwards arbitrary validator text that may interpolate values, so no whole-envelope exemption is provably safe; the exporter issues no set/add calls, so validation envelopes are near-unreachable on its request paths; the C:\Users over-redaction remains documented and deliberate. No allowlist lane will be scheduled unless a live body shows the loss of a diagnostic message that matters.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Source landed in c67a6060d0d7ea09d95e3b155fe92a043a0f3dea. Final eight-file source-only CodeRabbit event: review_completed, findings=0. Security slice took two completed passes (initial six files, then eight after fixing an integration regression). Final just check exit 0; terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed; just gen not applicable. Bare key and separated key terms are now sensitive; keyexpiry/monkey remain nonsensitive. The full gate caught and repaired loss of the generated owner aggregate: snapshot field key_owners is now access_owners, preserving counts without a redaction exemption. Focused posture output: ok github.com/rknightion/opnsense2otel/v4/internal/logship/configsnapshot 0.342s. Validation-message preservation remains unimplemented and AC3/4 unchecked: arbitrary upstream validator messages are not proven value-free. Resume only with a source-proved generic-message allowlist and regressions retaining redaction of value-bearing/malformed messages; otherwise keep current fail-closed behavior. No speculative vocabulary additions.
+Source landed in c67a6060d0d7ea09d95e3b155fe92a043a0f3dea. Final eight-file source-only CodeRabbit event: review_completed, findings=0. Full just check exit 0; terminal: Your code is affected by 0 vulnerabilities. Bare key and separated key terms are now sensitive; keyexpiry/monkey remain nonsensitive (regressions failed before). The full gate caught and repaired loss of the generated owner aggregate: security-posture snapshot field key_owners is now access_owners, preserving counts without a redaction exemption (ok internal/logship/configsnapshot 0.342s). The former AC3/4 (validation-message preservation) were removed by owner decision on 2026-09-05: fail-closed redaction is the accepted behaviour because upstream validator text is not proven value-free and the exporter never issues the calls that produce validation envelopes. No speculative vocabulary additions; the unverified element names stay listed in the description as unverified.
 <!-- SECTION:FINAL_SUMMARY:END -->
