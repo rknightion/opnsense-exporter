@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 21:28'
-updated_date: '2026-09-05 21:57'
+updated_date: '2026-09-05 22:22'
 labels:
   - needs-triage
 dependencies: []
@@ -49,4 +49,6 @@ Failing-before: TestBoundedInventory_AdmissionReclaimsExpiredEntries failed with
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Expired capacity is reclaimed before admission, with conservative next-expiry indexing and correct byte accounting. Deterministic failing-before regression: live = [current], want [current visitor]. Focused race tests passed in 1.455s. CodeRabbit two-file source slice complete/review_completed, zero findings, one completed pass. Integrated just check passed exit 0 in isolated exact-source worktree; just gen completed with no inventory-generated changes. Commit follows in the same root integration batch.
+
+Landed in 4ab20cee, published with whole-wave correction 7a34b51b. Final integrated just check also passed on the corrected publication tree.
 <!-- SECTION:FINAL_SUMMARY:END -->

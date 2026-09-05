@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-31 12:12'
-updated_date: '2026-09-05 22:16'
+updated_date: '2026-09-05 22:22'
 labels:
   - design-system
 dependencies: []
@@ -57,4 +57,6 @@ Wave 8 whole-console verification: just check exit 0 on final corrected tree; Te
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Implemented complete family-v2 console with self-hosted allowlisted fonts, original eight tabs, theme persistence, GeoIP attribution and three badges. Verified by final just check, rendered guards, DOM interaction simulation and 20 passing AA pairs. No browser visual claim. See notes for local precommit ordering violation and CSP follow-up.
+
+Landed across 4ab20cee and forward correction 7a34b51b; published only after final whole-console review and just check. Local precommit-order exception remains explicitly recorded above.
 <!-- SECTION:FINAL_SUMMARY:END -->
