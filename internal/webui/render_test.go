@@ -83,6 +83,35 @@ func TestRenderPage_Status(t *testing.T) {
 	}
 }
 
+func TestRenderPage_AuthCountersDescribeHistory(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		api  APIStats
+		want string
+	}{
+		{"no observations", APIStats{AuthOK: true}, "none recorded"},
+		// A recovered endpoint retains its earlier 403 in the lifetime counter.
+		// That history cannot establish that authentication is still failing.
+		{"historical rejection", APIStats{AuthOK: false, Requests: 101}, "errors recorded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := renderPage(&buf, view{Data: Status{API: tc.api}}); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			if !strings.Contains(out, `id="apiAuth">`+tc.want+`</span>`) {
+				t.Fatalf("auth badge does not describe recorded history as %q", tc.want)
+			}
+			for _, label := range []string{"Auth errors (lifetime)", "Requests (lifetime)", "Avg duration (lifetime)"} {
+				if !strings.Contains(out, label) {
+					t.Errorf("API card is missing counter scope %q", label)
+				}
+			}
+		})
+	}
+}
+
 func testDeps() Deps {
 	return Deps{
 		Version:           "test",

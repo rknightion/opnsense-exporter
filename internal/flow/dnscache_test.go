@@ -88,6 +88,34 @@ func TestDNSCache_AtCapRejectsNewKeepsExisting(t *testing.T) {
 	}
 }
 
+// A full cache must reclaim entries that have expired since their last Put,
+// even when no Lookup visited those keys. Breaks if Put rejects before
+// reclaiming expired entries.
+func TestDNSCache_ReclaimsExpiredEntriesForNewKey(t *testing.T) {
+	d := NewDNSCache(2, time.Minute)
+	t0 := time.Unix(3500, 0)
+
+	c1, a1 := netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("198.51.100.1")
+	c2, a2 := netip.MustParseAddr("192.0.2.2"), netip.MustParseAddr("198.51.100.2")
+	c3, a3 := netip.MustParseAddr("192.0.2.3"), netip.MustParseAddr("198.51.100.3")
+
+	d.Put(c1, a1, "one.example", t0)
+	d.Put(c2, a2, "two.example", t0)
+
+	// Neither old key is looked up before the new Put applies pressure at the
+	// cap. Both are expired at this caller time and must release their slots.
+	now := t0.Add(time.Minute + time.Nanosecond)
+	d.Put(c3, a3, "three.example", now)
+
+	if st := d.Stats(); st.Entries != 1 || st.Rejected != 0 {
+		t.Fatalf("after Put past TTL at cap: Stats() = %+v, want Entries=1 Rejected=0", st)
+	}
+	got, ok := d.Lookup(c3, a3, now)
+	if !ok || got != "three.example" {
+		t.Fatalf("Lookup(new key) = (%q, %v), want (\"three.example\", true)", got, ok)
+	}
+}
+
 // Control 4: size<=0 disables the cache outright — every Put is a no-op and
 // every Lookup reports absent. Breaks if a zero or negative size is treated as
 // "unbounded" instead of "off".

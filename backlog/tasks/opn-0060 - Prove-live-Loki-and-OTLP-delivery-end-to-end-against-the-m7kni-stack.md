@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: In Progress
+status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-05 18:24'
+updated_date: '2026-09-05 18:33'
 labels: []
 dependencies: []
 priority: high
@@ -27,8 +27,8 @@ The proof runs locally against the testbed rather than in CI, and the evidence i
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Each of the eight sources is observed arriving in the m7kni stack, identified by its opnsense.source value, with the query used and a redacted result recorded
-- [ ] #2 The promoted stream-label set observed in Loki matches the documented table in docs/log-shipping.md, and any divergence is written up rather than silently accepted
-- [ ] #3 OPN-0038 domain enrichment is confirmed present as structured metadata and confirmed ABSENT from the stream-label set, per its frozen contract
+- [x] #2 The promoted stream-label set observed in Loki matches the documented table in docs/log-shipping.md, and any divergence is written up rather than silently accepted
+- [x] #3 OPN-0038 domain enrichment is confirmed present as structured metadata and confirmed ABSENT from the stream-label set, per its frozen contract
 - [ ] #4 Config revision and config snapshot bodies are confirmed redacted in the delivered record, not merely in the unit test
 - [x] #5 No credential value appears in any commit, tracker entry, log or report; the run is identifiable by its instance label so the data can be pruned
 <!-- AC:END -->
@@ -123,4 +123,6 @@ Added bounded concurrent JSON stderr classification without retaining or renderi
 Partial proof only. Exporter and syslog delivery were observed, but configchange/configstate arrival, domain metadata placement, on-wire config redaction and the seven-key label contract all answered no. Three disabled proof accounts remain because the protected credential can create/search but cannot delete; the guarded final run stopped before another mutation. Resume at authorised cleanup plus configstate poll-error and label-promotion diagnosis.
 
 Wave 6 supersession: five assertions are discharged and were not rerun: end-to-end transport for merged/netflow/syslog/zenarmor; documented production stream-label set; no domain stream label; current build promotes nothing outside the documented seven; dst_domain is structured metadata rather than a stream label. Wave 6 final run 33870791765 stopped at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match before exporter startup. Therefore configchange/configstate arrival and on-wire config redaction remain unproven; their Loki queries were not executed and no configstate err attribute was observable. No alias was edited or restored, no account was created, and no m7kni telemetry was written. PARKED RESUME BOUNDARY: create or identify the dedicated throwaway firewall alias and record its exact safe name, then rerun without any user-account trigger.
+
+Wave 7 supersedes every alias/user cleanup prerequisite. Read-only harness 809ba1b9 and snapshot/diagnostic repair 6e39983a are committed. Runs 33982574173 and 33984106411 both selected penultimate retained revision config-1788506738.3272.xml from 100 revisions, with one expected successor diff and zero delivered configchange diffs. Final instance delivery-proof-33984106411: all three configstate families arrived; configchange remained source_absent_in_instance_window. Cursor advanced=yes; classified configchange poll, rebaseline, state-load, ingest-oversize, terminal-rejection and historical-rejection counts all zero. Therefore combined arrival assertion=no and combined delivered-redaction assertion=no, still unproven rather than evidence of clean absent bodies. Snapshot-only read-back observed 693 bodies, verifier configstate_bodies_redacted=true and configstate_sensitive_keys=0. Queries use service_name=opnsense2otel, service_instance_id=delivery-proof-33984106411 and opnsense_source=configchange or configstate; start_ns=1788507338130000128, workflow ends=1788633047338757325 and 1788633047740222317; broad instance end=1788633048943607574; snapshot-only verifier end=1788633173441104000. All reads used categorize-labels and per-entry structuredMetadata. First run shipped duplicate filter-rule identity error; OPN-0085 fixed it and all snapshot families now arrive. The five already discharged assertions were not redone; AC2/AC3 reconciled from authoritative attended evidence. No firewall object was created, edited or deleted. PARKED RESUME BOUNDARY: diagnose the emitted configchange record and sink outcome with source admission/shipped/drop counters plus a fixed-schema non-body diff-length/count observation; determine whether the existing historical record is empty, accepted but discarded downstream, or queried under another identity/time. Do not infer a timestamp rejection from absence or zero classified errors. Two same-shape missing-configchange results stop this brief: no third dispatch occurred. A revised proof approach is required; no mutation trigger is permitted.
 <!-- SECTION:FINAL_SUMMARY:END -->

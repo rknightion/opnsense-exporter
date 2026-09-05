@@ -60,7 +60,7 @@ func (o *pollRequestObserver) ObserveAPIRequestResult(endpoint string, statusCod
 }
 
 func (o *pollRequestObserver) isPluginAbsent(endpoint string, apiErr *opnsense.APICallError) bool {
-	if apiErr.StatusCode != 404 {
+	if apiErr.StatusCode != 404 || apiErr.Endpoint != endpoint {
 		return false
 	}
 	for _, name := range opnsense.PluginGatedEndpoints() {

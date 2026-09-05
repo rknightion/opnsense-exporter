@@ -303,6 +303,11 @@ func enrichRecord(r *Record, snap *enrich.Snapshot, cache *DNSCache, now time.Ti
 			r.Enrich.DstDomain = dom
 		}
 	}
+	metadataReady := snap != nil && len(snap.IfaceNames) > 0
+	if !metadataReady {
+		markColdInterface(&r.In)
+		markColdInterface(&r.Out)
+	}
 	if snap == nil {
 		// Geo is independent of the snapshot too: it needs only the addresses. A cold
 		// snapshot costs the country METRIC label (MetricCountry has no scope to read)
@@ -311,15 +316,9 @@ func enrichRecord(r *Record, snap *enrich.Snapshot, cache *DNSCache, now time.Ti
 		applyGeo(r)
 		return
 	}
-	if r.In.Name == "" && r.In.Device != "" {
-		if name, ok := snap.InterfaceName(r.In.Device); ok {
-			r.In.Name = name
-		}
-	}
-	if r.Out.Name == "" && r.Out.Device != "" {
-		if name, ok := snap.InterfaceName(r.Out.Device); ok {
-			r.Out.Name = name
-		}
+	if metadataReady {
+		resolveInterface(&r.In, snap)
+		resolveInterface(&r.Out, snap)
 	}
 	r.Enrich.SrcScope = snap.Scope(r.SrcAddr.String())
 	r.Enrich.DstScope = snap.Scope(r.DstAddr.String())
@@ -335,6 +334,27 @@ func enrichRecord(r *Record, snap *enrich.Snapshot, cache *DNSCache, now time.Ti
 		}
 	}
 	applyGeo(r)
+}
+
+func markColdInterface(iface *Iface) {
+	if iface.Name != "" {
+		iface.Unresolved = false
+		return
+	}
+	if iface.Device != "" {
+		iface.Unresolved = true
+	}
+}
+
+func resolveInterface(iface *Iface, snap *enrich.Snapshot) {
+	if iface.Device != "" && iface.Name == "" {
+		if name, ok := snap.InterfaceName(iface.Device); ok {
+			iface.Name = name
+		}
+	}
+	if iface.Device != "" || iface.Name != "" {
+		iface.Unresolved = false
+	}
 }
 
 // applyGeo runs the process-wide GeoIP enrichment (#520). It is called at the END of

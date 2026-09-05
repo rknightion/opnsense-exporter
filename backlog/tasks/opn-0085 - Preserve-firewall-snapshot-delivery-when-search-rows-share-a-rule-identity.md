@@ -1,11 +1,11 @@
 ---
 id: OPN-0085
 title: Preserve firewall snapshot delivery when search rows share a rule identity
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:04'
-updated_date: '2026-09-05 18:20'
+updated_date: '2026-09-05 18:33'
 labels:
   - needs-triage
 dependencies: []
@@ -22,15 +22,15 @@ Live proof run 33982574173 at 809ba1b9 reached m7kni and shipped a configstate p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The upstream producer branch allowing repeated rule identities is documented and fixtures represent only shapes it can produce
-- [ ] #2 Valid repeated-identity search rows produce a deterministic complete firewall snapshot without suppressing other families
-- [ ] #3 A regression fails before the repair and passes afterward, including order stability and no silent loss of distinct rows
+- [x] #1 The upstream producer branch allowing repeated rule identities is documented and fixtures represent only shapes it can produce
+- [x] #2 Valid repeated-identity search rows produce a deterministic complete firewall snapshot without suppressing other families
+- [x] #3 A regression fails before the repair and passes afterward, including order stability and no silent loss of distinct rows
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -46,3 +46,9 @@ Upstream source basis: opnsense/core stable/26.7 at 6fc5e865f1859f209a84016e6106
 
 Frozen implementation retains unique raw UUIDs and uses uuid plus producer sort_order only for repeated filter rules. Focused regression observed the duplicate-ID/missing-discriminator failures before repair; afterward: ok github.com/rknightion/opnsense2otel/v4/opnsense 0.367s. Response fixture uses upstream description (derived from descr), legacy, is_automatic, enabled and distinct sort_order. Reversed response order retains ID-to-row mapping and every NAT row. No canonical invariant changes.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed at 6e39983a4700ff7e2d505649a28a76dc09ff2a97. Valid upstream repeated generated-rule labels now use producer sort_order in the entity identity, with raw row data preserved and canonical duplicate rejection unchanged. Failing-before regression and just check passed; four-file CodeRabbit slice completed in one pass with zero findings. Live workflow 33984106411 then observed all three configstate families. Independent categorized Loki read-back observed 693 configuration snapshot bodies, all accepted by the shared-vocabulary delivered-body verifier with zero sensitive keys. No generated artifact changed; conditional generation DoD is not applicable.
+<!-- SECTION:FINAL_SUMMARY:END -->

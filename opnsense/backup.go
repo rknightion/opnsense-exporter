@@ -162,8 +162,10 @@ func (c *Client) FetchConfigBackupDiff(host, oldRevision, newRevision string) (s
 	if !ok {
 		return "", &APICallError{Endpoint: "backupDiff", Message: "endpoint not found in client endpoints"}
 	}
+	// BackupController::diffAction runs diff(backup2, backup1), so the newer
+	// revision must be the first route argument to produce old-to-new changes.
 	path := EndpointPath(strings.Join([]string{
-		string(base), url.PathEscape(host), url.PathEscape(oldRevision), url.PathEscape(newRevision),
+		string(base), url.PathEscape(host), url.PathEscape(newRevision), url.PathEscape(oldRevision),
 	}, "/"))
 	// The request path embeds revision names. Keep the operational request and
 	// duration metrics keyed by the static registered route, rather than growing

@@ -285,6 +285,9 @@ func BuildIfMap(in IfMapInput) *IfMap {
 	// are facts about the interface, not about its slot.
 	meta := make(map[string]enrich.IfaceInfo, len(in.Ifaces))
 	byName := make(map[string]Iface, len(in.Ifaces))
+	// The order and metadata fetches land independently. A named row is the
+	// availability signal; a populated table can still legitimately omit a device.
+	metadataReady := false
 	for _, info := range in.Ifaces {
 		if parent := parentOfIface(info); parent != "" {
 			m.parents[info.Device] = parent
@@ -294,6 +297,9 @@ func BuildIfMap(in IfMapInput) *IfMap {
 			continue
 		}
 		meta[info.Device] = info
+		if info.Name != "" {
+			metadataReady = true
+		}
 		if info.IsWAN {
 			m.wanDev[info.Device] = true
 		}
@@ -318,6 +324,9 @@ func BuildIfMap(in IfMapInput) *IfMap {
 
 		info := meta[device]
 		iface := Iface{Device: device, Name: info.Name, Index: idx}
+		if !metadataReady && iface.Name == "" {
+			iface.Unresolved = true
+		}
 		m.byIndex[idx] = iface
 		byDevice[device] = iface
 		if info.Name != "" {
@@ -392,6 +401,9 @@ func BuildIfMap(in IfMapInput) *IfMap {
 			resolved = Iface{Name: value}
 		}
 		resolved.Index = idx
+		if resolved.Name != "" {
+			resolved.Unresolved = false
+		}
 
 		// The two reasons are counted apart, not summed into one number: "the
 		// derivation put a different interface here" and "the derivation has

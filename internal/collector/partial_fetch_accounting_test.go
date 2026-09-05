@@ -61,6 +61,75 @@ func TestPartialFetchFailuresCountsSwallowedSubFetch(t *testing.T) {
 	}
 }
 
+func TestPartialFetchFailuresCountsToleratedZeroTierInfo404(t *testing.T) {
+	server, mux, client := newZeroTierCollectorTestClient(t)
+	defer server.Close()
+	client.Endpoints()["zerotierNetworks"] = "api/zerotier/network/search"
+	client.Endpoints()["zerotierNetworkInfo"] = "api/zerotier/network/info"
+
+	// This is the first row from the source-derived ZeroTier search fixture in
+	// opnsense/zerotier_test.go. The info route deliberately returns the stale
+	// UUID failure that the client tolerates while retaining the search result.
+	mux.HandleFunc("/api/zerotier/network/search", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"total":1,
+			"rowCount":1,
+			"current":1,
+			"rows":[{"uuid":"network-uuid-1","enabled":"1","networkId":"8056c2e21c000001","description":"primary mesh"}]
+		}`))
+	})
+	mux.HandleFunc("/api/zerotier/network/info/network-uuid-1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("info method = %s, want GET", r.Method)
+		}
+		http.NotFound(w, r)
+	})
+
+	c, err := New(client, promslog.NewNopLogger(), "test")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	var zeroTier *zeroTierCollector
+	for _, instance := range c.collectors {
+		if candidate, ok := instance.(*zeroTierCollector); ok {
+			zeroTier = candidate
+			break
+		}
+	}
+	if zeroTier == nil {
+		t.Fatal("zeroTier collector was not registered")
+	}
+
+	c.pollOnce(context.Background(), zeroTier)
+
+	if got := collectMetricValue(t, c, "opnsense_exporter_scrape_collector_success", "zerotier"); got != 1 {
+		t.Fatalf("scrape_collector_success{collector=zerotier} = %v, want 1", got)
+	}
+	if got := collectMetricValue(t, c, "opnsense_exporter_partial_fetch_failures_total", "zerotier"); got != 1 {
+		t.Fatalf("partial_fetch_failures_total{collector=zerotier} = %v, want 1", got)
+	}
+
+	// The dynamic UUID route is used for the request but must be collapsed to
+	// the registered endpoint in request metrics, keeping endpoint labels bounded.
+	observed := make(map[string]string)
+	requests := make(chan prometheus.Metric, 8)
+	c.apiRequests.Collect(requests)
+	close(requests)
+	for metric := range requests {
+		labels := getMetricLabels(metric)
+		observed[labels["endpoint"]] = labels["code"]
+	}
+	if got := observed["api/zerotier/network/search"]; got != "200" {
+		t.Errorf("search request endpoint/code = %q, want 200", got)
+	}
+	if got := observed["api/zerotier/network/info"]; got != "404" {
+		t.Errorf("info request endpoint/code = %q, want static endpoint with 404", got)
+	}
+	if _, ok := observed["api/zerotier/network/info/network-uuid-1"]; ok {
+		t.Errorf("dynamic ZeroTier info endpoint leaked into request metrics: %v", observed)
+	}
+}
+
 func TestPartialFetchFailuresExcludesCachedPluginAbsence(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/chrony/service/chronytracking" {

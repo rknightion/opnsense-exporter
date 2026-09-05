@@ -147,10 +147,12 @@ type CacheRow struct {
 // APIStats summarise the exporter's OPNsense API traffic from the last scrape.
 // AvgMs is the mean request duration (SampleSum/SampleCount), NOT a quantile.
 type APIStats struct {
+	// AuthOK is retained for JSON compatibility: true means no 401/403 was
+	// recorded in the process-lifetime counters, not proof of current access.
 	AuthOK   bool
 	Requests float64
 	AvgMs    float64
-	// AuthFailures lists every endpoint the last scrape saw a 401/403 from, with
+	// AuthFailures lists every endpoint the captured lifetime counters record a 401/403 for, with
 	// the collector behind it and the OPNsense privilege that would fix it (#442).
 	// AuthOK is the same signal collapsed to a badge; this is what makes it
 	// actionable. Empty whenever AuthOK is true.

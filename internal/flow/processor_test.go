@@ -317,6 +317,54 @@ func TestProcessor_SurvivesAColdIfMapAndSnapshot(t *testing.T) {
 	}
 }
 
+// A map can carry the device before the enrichment table arrives. The first record
+// must use the unresolved sentinel, and a later populated snapshot must resolve that
+// same interface and clear the transient mark before the record reaches the sink.
+func TestProcessor_ColdMetadataResolvesAndClearsUnresolved(t *testing.T) {
+	sink := &captureSink{}
+	cache := enrich.NewCache()
+	p := NewProcessor(sink, nil, cache)
+	p.SetIfMap(BuildIfMap(IfMapInput{Order: []string{"ixl0"}}))
+
+	datagram := func() *netflow.Datagram {
+		return &netflow.Datagram{
+			Version: netflow.V9,
+			Records: []netflow.Record{{
+				Proto: 6, Bytes: 100, Packets: 1,
+				SrcAddr: mustAddr(t, "10.0.0.5"), DstAddr: mustAddr(t, "93.184.216.34"),
+				SrcPort: 40000, DstPort: 443,
+				InIfIndex: 1, OutIfIndex: 0,
+			}},
+		}
+	}
+
+	p.ObserveDatagram(datagram(), time.Now())
+	if len(sink.recs) != 1 {
+		t.Fatalf("sink saw %d cold records, want 1", len(sink.recs))
+	}
+	cold := sink.recs[0]
+	if cold.In.Device != "ixl0" || !cold.In.Unresolved || cold.In.Label() != UnresolvedInterfaceLabel {
+		t.Fatalf("cold interface = %+v, want device ixl0 with unresolved label", cold.In)
+	}
+	if cold.Out.Name != LocalOriginName || cold.Out.Unresolved {
+		t.Errorf("cold local-origin interface = %+v, want authoritative %q without unresolved mark",
+			cold.Out, LocalOriginName)
+	}
+
+	cache.Store(&enrich.Snapshot{IfaceNames: map[string]string{"ixl0": "LAN"}})
+	p.ObserveDatagram(datagram(), time.Now())
+	if len(sink.recs) != 2 {
+		t.Fatalf("sink saw %d records after metadata, want 2", len(sink.recs))
+	}
+	resolved := sink.recs[1]
+	if resolved.In.Device != "ixl0" || resolved.In.Name != "LAN" || resolved.In.Unresolved {
+		t.Fatalf("resolved interface = %+v, want ixl0/LAN with Unresolved=false", resolved.In)
+	}
+	if got := resolved.In.Label(); got != "LAN" {
+		t.Errorf("resolved interface label = %q, want LAN", got)
+	}
+}
+
 func TestEnrichRecord_ResolvesNamesScopeAndService(t *testing.T) {
 	r := Record{
 		SrcAddr: mustAddr(t, "10.0.0.5"), DstAddr: mustAddr(t, "93.184.216.34"),

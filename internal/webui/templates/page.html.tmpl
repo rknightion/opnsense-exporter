@@ -221,9 +221,9 @@
   <!-- ═══ API ═══ -->
   <section data-tab="api">
     <div class="cards" style="margin-bottom:12px">
-      <div class="card"><div class="k">Auth</div><div class="v"><span class="badge badge-{{if .API.AuthOK}}ok{{else}}bad{{end}}" id="apiAuth">{{if .API.AuthOK}}ok{{else}}failing{{end}}</span></div></div>
-      <div class="card"><div class="k">Requests (last scrape)</div><div class="v" id="apiRequests">{{printf "%.0f" .API.Requests}}</div></div>
-      <div class="card"><div class="k">Avg duration</div><div class="v" id="apiAvg">{{printf "%.1f" .API.AvgMs}} ms</div></div>
+      <div class="card"><div class="k">Auth errors (lifetime)</div><div class="v"><span class="badge badge-{{if .API.AuthOK}}ok{{else}}bad{{end}}" id="apiAuth">{{if .API.AuthOK}}none recorded{{else}}errors recorded{{end}}</span></div></div>
+      <div class="card"><div class="k">Requests (lifetime)</div><div class="v" id="apiRequests">{{printf "%.0f" .API.Requests}}</div></div>
+      <div class="card"><div class="k">Avg duration (lifetime)</div><div class="v" id="apiAvg">{{printf "%.1f" .API.AvgMs}} ms</div></div>
     </div>
     <div class="sub-h">Permission failures (401/403)</div>
     <table>
@@ -513,7 +513,7 @@ function rebuildCollectors(rows){
 // ── API table ─────────────────────────────────────────────────────────────
 function rebuildAPI(api){
   if(!api) return;
-  var ab=document.getElementById('apiAuth'); if(ab){ ab.textContent=api.AuthOK?'ok':'failing'; ab.className='badge badge-'+(api.AuthOK?'ok':'bad'); }
+  var ab=document.getElementById('apiAuth'); if(ab){ ab.textContent=api.AuthOK?'none recorded':'errors recorded'; ab.className='badge badge-'+(api.AuthOK?'ok':'bad'); }
   setText('apiRequests', Math.round(api.Requests||0));
   setText('apiAvg', (api.AvgMs||0).toFixed(1)+' ms');
   var zb=document.getElementById('apiAuthzBody');

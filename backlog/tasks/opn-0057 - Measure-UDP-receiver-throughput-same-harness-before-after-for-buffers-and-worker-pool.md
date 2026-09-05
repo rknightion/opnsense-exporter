@@ -7,7 +7,7 @@ status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-04 18:22'
+updated_date: '2026-09-05 18:34'
 labels:
   - needs-triage
 milestone: m-4
@@ -48,6 +48,8 @@ Wave 4: in the same testbed hold but only after live-delivery traffic stops, run
 Wave 5: first commit a deterministic UDP throughput contract naming the sender command, fixed payload, packet size, offered rate, duration, immutable before/current binaries, isolated Linux and BSD receiver targets, successful numeric SO_RCVBUF read-back, and attributable socket plus worker-queue drop counters. Only after that contract lands may the root take the shared testbed hold and measure; otherwise re-park with the exact missing observation.
 
 Wave 6: expose opnsense_exporter_syslog_udp_accepted_total immediately after successful UDP queue admission and a positive opnsense_exporter_syslog_udp_receive_buffer_bytes gauge from the actual getsockopt read-back. Preserve Linux doubled and FreeBSD undoubled semantics without equality assertions. Regenerate owned docs/dashboard after source integration, but do not run the throughput harness; re-park on the two missing isolated host roles.
+
+Wave 7 D15 supersedes isolated-host provisioning: use guest 105 as Linux LXC receiver and an OPNsense FreeBSD VM as the other receiver, with a different guest as sender for each trial. Preserve the committed 256-byte, 5000 packets/s, 60-second method and require observed counters; report shared-host noise, host rmem_max ceiling, and Linux doubled versus FreeBSD undoubled SO_RCVBUF beside every number. Phase 1 released the root testbed hold before this disposition.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -68,4 +70,6 @@ Wave 6 implementation: added opnsense_exporter_syslog_udp_accepted_total at succ
 Committed the deterministic OPN-0057 measurement contract at 8c4d92ce; numeric measurement remains unproven and is parked at the exact missing receiver observations.
 
 Wave 6 supersession: observability shipped at b10ffbb5. opnsense_exporter_syslog_udp_accepted_total counts successful bounded-queue admission and opnsense_exporter_syslog_udp_receive_buffer_bytes exposes the positive getsockopt SO_RCVBUF read-back. Linux commonly reports roughly double the request while FreeBSD does not; no equality assertion was added. No traffic ran and no throughput, drop or buffer number was observed. PARKED RESUME BOUNDARY: provide the two isolated receiver host roles required by the committed contract, one Linux and one FreeBSD, then run it.
+
+Wave 7 measurement remains PARKED before sender/receiver startup. Isolation is no longer the prerequisite: the supplied shared guest roles are accepted with mandatory caveats. The missing prerequisite is an existing approved guest-shell and binary-deployment/counter-capture path. Repository and local SSH inventory documented only the allowed oli power script; the traffic-generator runbook identifies guest 105 as a jump host but no login/deployment path; protected-environment secret-name inventory has firewall API credentials but no guest SSH/deployment credential; local tailnet peer inventory found no matching documented nightly/traffic-generator peer. No alternative hypervisor guest execution or production-host substitution was used. No throughput, socket-drop, worker-queue-drop or effective-buffer value was observed; no zero or comparison is claimed and the verifier was not run with fabricated inputs. No guest filled a sender/receiver role. Linux receiver remains assigned to 105; the FreeBSD receiver and independent sender are pending access. PARKED RESUME BOUNDARY: document an approved direct guest-shell/deployment route for guest 105 and one OPNsense VM, plus the distinct sender guest; deploy immutable before/current binaries and capture actual receiver-socket and queue counters around the unchanged sender. Retain all three D15 caveats alongside any observed number; a shared-host FreeBSD system-wide drop counter cannot establish exporter-attributable loss.
 <!-- SECTION:FINAL_SUMMARY:END -->

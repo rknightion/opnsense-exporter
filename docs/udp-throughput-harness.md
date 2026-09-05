@@ -73,9 +73,12 @@ Prometheus series.
 `receiver_accepted` is an ingress counter incremented immediately after a UDP
 datagram enters the worker queue. Do not substitute
 `opnsense_exporter_logs_shipped_total`: it measures later OTLP acknowledgement,
-not UDP receiver throughput. The required ingress metric and a successful
-numeric read-back are not currently exposed, so live measurement remains
-blocked until they are observable.
+not UDP receiver throughput. The exporter exposes that ingress counter and
+`opnsense_exporter_syslog_udp_receive_buffer_bytes`, which reports the positive
+`getsockopt(SO_RCVBUF)` read-back from the listening UDP socket. The buffer metric
+is absent when UDP is disabled or the read-back fails; absence is not zero.
+Both observations must still be captured on each deployed receiver for a
+measurement to be valid. Their availability alone is not a throughput result.
 
 ## Verify both platforms and phases
 

@@ -75,10 +75,18 @@ func TestFetchConfigBackupRevisions(t *testing.T) {
 
 func TestFetchConfigBackupDiff(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.EscapedPath(); got != "/api/core/backup/diff/this/config-old.xml/config-new.xml" {
-			t.Errorf("escaped path = %q", got)
+		// BackupController::diffAction executes diff(backup2, backup1) on
+		// both stable/26.7 and stable/26.1. Model those operands rather
+		// than returning a forward diff regardless of the request path.
+		switch r.URL.EscapedPath() {
+		case "/api/core/backup/diff/this/config-new.xml/config-old.xml":
+			_, _ = w.Write([]byte(`{"items":["--- old","+++ new","+&lt;rule/&gt;"]}`))
+		case "/api/core/backup/diff/this/config-old.xml/config-new.xml":
+			_, _ = w.Write([]byte(`{"items":["--- new","+++ old","-&lt;rule/&gt;"]}`))
+		default:
+			t.Errorf("unexpected diff path %q", r.URL.EscapedPath())
+			http.Error(w, "unexpected diff operands", http.StatusBadRequest)
 		}
-		_, _ = w.Write([]byte(`{"items":["--- old","+++ new","+&lt;rule/&gt;"]}`))
 	})
 	defer server.Close()
 

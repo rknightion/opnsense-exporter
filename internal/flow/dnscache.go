@@ -32,7 +32,7 @@ type DNSCacheStats struct {
 	Size     int // configured insert cap; <=0 means the cache is disabled
 	Hits     uint64
 	Misses   uint64
-	Rejected uint64 // inserts refused because the cache was already at Size
+	Rejected uint64 // inserts refused because the cache remained at Size
 }
 
 // DNSCache maps (client, answer) -> the qname that produced the answer, so a
@@ -47,11 +47,12 @@ type DNSCacheStats struct {
 //     ktranslate's resolver-ceiling behaviour, chosen so a burst of novel
 //     lookups cannot evict the hot entries a busy client is actually about to
 //     match against. There is no LRU here on purpose.
-//   - ttl bounds entries by AGE, checked lazily on Lookup. An entry older than
-//     ttl is treated as absent (and counted as a miss) rather than returned
-//     stale: a DNS answer's address can be reused by an unrelated site well
-//     within a flow's own lifetime, so an unbounded cache would eventually
-//     hand out someone else's domain.
+//   - ttl bounds entries by AGE, checked lazily on Lookup and when a new key
+//     needs room at a full cache. An entry older than ttl is treated as absent
+//     (and counted as a miss on Lookup) rather than returned stale: a DNS
+//     answer's address can be reused by an unrelated site well within a flow's
+//     own lifetime, so an unbounded cache would eventually hand out someone
+//     else's domain.
 //
 // Put and Lookup are called from receiver goroutines (the syslog/DNS lane) and
 // must never block or perform I/O — same contract as Sink.Observe
@@ -59,13 +60,17 @@ type DNSCacheStats struct {
 // time.Now(), so tests can drive the TTL deterministically without a hidden
 // clock, matching Rollup and the rest of this package's accumulators.
 type DNSCache struct {
-	mu       sync.Mutex
-	entries  map[dnsKey]dnsEntry
-	size     int
-	ttl      time.Duration
-	hits     uint64
-	misses   uint64
-	rejected uint64
+	mu      sync.Mutex
+	entries map[dnsKey]dnsEntry
+	size    int
+	ttl     time.Duration
+	// nextExpiry is a conservative earliest expiry. Refreshing or looking up
+	// an entry may leave it early, but never late: a full scan is only needed
+	// once caller time has passed a possible expiry, not on every refused Put.
+	nextExpiry time.Time
+	hits       uint64
+	misses     uint64
+	rejected   uint64
 }
 
 // NewDNSCache returns a cache bounded by size entries and ttl age. size<=0
@@ -81,9 +86,10 @@ func NewDNSCache(size int, ttl time.Duration) *DNSCache {
 }
 
 // Put records that answer resolved from a query client made, naming qname.
-// Unmaps both addresses first (see dnsKey's comment). A brand-new key beyond
-// the configured cap is rejected and counted; a key already present keeps
-// updating regardless of the cap, since it costs no additional map slot.
+// Unmaps both addresses first (see dnsKey's comment). At capacity, expired
+// entries are reclaimed before a brand-new key is rejected and counted. A key
+// already present keeps updating regardless of the cap, since it costs no
+// additional map slot.
 func (d *DNSCache) Put(client, answer netip.Addr, qname string, now time.Time) {
 	if d.size <= 0 {
 		return
@@ -94,10 +100,29 @@ func (d *DNSCache) Put(client, answer netip.Addr, qname string, now time.Time) {
 	defer d.mu.Unlock()
 
 	if _, ok := d.entries[key]; !ok && len(d.entries) >= d.size {
-		d.rejected++
-		return
+		if now.After(d.nextExpiry) {
+			d.nextExpiry = time.Time{}
+			for existingKey, entry := range d.entries {
+				if now.Sub(entry.added) > d.ttl {
+					delete(d.entries, existingKey)
+					continue
+				}
+				expires := entry.added.Add(d.ttl)
+				if d.nextExpiry.IsZero() || expires.Before(d.nextExpiry) {
+					d.nextExpiry = expires
+				}
+			}
+		}
+		if len(d.entries) >= d.size {
+			d.rejected++
+			return
+		}
 	}
 	d.entries[key] = dnsEntry{qname: qname, added: now}
+	expires := now.Add(d.ttl)
+	if d.nextExpiry.IsZero() || expires.Before(d.nextExpiry) {
+		d.nextExpiry = expires
+	}
 }
 
 // Lookup returns the qname cached for (client, answer), or ("", false) if

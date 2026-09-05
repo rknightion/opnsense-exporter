@@ -342,6 +342,24 @@ func TestBuildIfMap_EmptyOrderingDerivesNothing(t *testing.T) {
 	}
 }
 
+// An ordering can arrive before the interface metadata. Keep the device so logs and
+// later diagnostics retain the source fact, but use the unresolved metric label until
+// a description is available.
+func TestBuildIfMap_ColdMetadataMarksDeviceOnlyInterfaceUnresolved(t *testing.T) {
+	m := BuildIfMap(IfMapInput{Order: []string{"ixl0"}})
+
+	got := m.Iface(1)
+	if got.Device != "ixl0" {
+		t.Fatalf("Iface(1).Device = %q, want ixl0", got.Device)
+	}
+	if !got.Unresolved {
+		t.Fatal("Iface(1).Unresolved = false, want true before interface metadata arrives")
+	}
+	if got.Label() != UnresolvedInterfaceLabel {
+		t.Errorf("Iface(1).Label() = %q, want %q", got.Label(), UnresolvedInterfaceLabel)
+	}
+}
+
 // The counter that must outlive the map.
 //
 // UnmappedLookups is the alarm for the whole class of fault this issue is about,
