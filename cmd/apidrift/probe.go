@@ -285,7 +285,15 @@ var getPathParamResolvers = map[string]func(p *prober) ([]string, error){
 // which infoAction requires as its positional path parameter. An installed but
 // unconfigured plugin is valid box state and leaves the info schema unprobed.
 func (p *prober) firstZeroTierNetworkUUID() (string, error) {
-	raw, _, err := p.probeSource("zerotierNetworks")
+	raw, status, err := p.probeSource("zerotierNetworks")
+	// The info endpoint depends on the os-zerotier search route to supply a
+	// configuration UUID. If that plugin route is absent, the standalone
+	// zerotierNetworks probe already records its expected 404; its dependent
+	// info probe has no parameter and must be skipped rather than reported as a
+	// second probe error.
+	if status == http.StatusNotFound {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}

@@ -35,6 +35,15 @@ type fakeSource struct {
 
 type apiErrorSource struct{ client opnsense.Client }
 
+type sourceLoggerSource struct{ log *slog.Logger }
+
+func (s sourceLoggerSource) Name() string { return "configchange" }
+
+func (s sourceLoggerSource) Poll(context.Context) ([]Record, error) {
+	s.log.Info("source-owned fixed diagnostic", "count", 1)
+	return nil, nil
+}
+
 func (s apiErrorSource) Name() string { return "configstate" }
 
 func (s apiErrorSource) Poll(context.Context) ([]Record, error) {
@@ -129,7 +138,9 @@ func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, 
 	if selfLog != nil {
 		deps.Logger = pipelineLog
 	}
-	sources, err := buildSources(deps)
+	sourceDeps := deps
+	sourceDeps.Logger = sourceLog
+	sources, err := buildSources(sourceDeps)
 	if err != nil {
 		t.Fatalf("buildSources: %v", err)
 	}
@@ -441,6 +452,25 @@ func TestPipeline_SourcePollErrorReachesTheLogBackend(t *testing.T) {
 	if got := shipped.Record.Attributes["err"]; got != "snapshot fetch failed" {
 		t.Errorf("shipped poll error reason = %q, want the underlying error", got)
 	}
+}
+
+func TestPipeline_SourceOwnedLogsReachTheLogBackend(t *testing.T) {
+	withRegistry(t, func(deps Deps) (Source, error) {
+		return sourceLoggerSource{log: deps.Logger}, nil
+	})
+
+	selfLog := NewSelfLogHandler(slog.NewTextHandler(io.Discard, nil))
+	sink := &fakeSink{}
+	stop := startWithSink(t, testCfg(), sink, Deps{Logger: slog.New(selfLog)}, prometheus.NewRegistry(), selfLog)
+	waitFor(t, func() bool {
+		for _, entry := range sink.got() {
+			if entry.Source == SelfLogSource && entry.Record.Body == "source-owned fixed diagnostic" {
+				return true
+			}
+		}
+		return false
+	})
+	_ = stop(context.Background())
 }
 
 func TestPipeline_SourcePollErrorRedactsAPICallErrorBeforeShipping(t *testing.T) {

@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: To Do
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-05 20:41'
+updated_date: '2026-09-05 21:54'
 labels: []
 dependencies: []
 priority: high
@@ -49,6 +49,8 @@ Wave 5: add a manual protected-environment workflow modelled on live-canary, bui
 Wave 6: replace the forbidden user-account trigger with a reversible description edit on the dedicated throwaway firewall alias; dispatch the protected live proof under one root-owned testbed hold; query the exporter stream first for the configstate poll-error err attribute; then diagnose and repair only from observed evidence, rerun as needed, and answer the two remaining arrival/redaction assertions. Do not retry through any user-account path.
 
 Wave 7 supersedes the alias prerequisite: delete all alias mutation and obsolete proof assertions, read retained revisions, seed the source cursor through the existing pipeline state-file envelope, then ship historical configchange and heartbeat configstate to m7kni and assert arrival before on-wire redaction. Use the shared sensitive-key vocabulary in a credential-safe delivered-body verifier; preserve categorized Loki metadata and bounded diagnostics. Root owns justfile integration, completed source-only CodeRabbit, just check, commit/push, serialized testbed hold and workflow dispatch. Two same-shape failures stop that approach. No firewall configuration object may be created, edited or deleted.
+
+Wave 8: root owns integration, tracker, all external writes and serial testbed holds. Terra/high delivery lane owns the proof helper and ConfigChangeSource diagnostics; record fixed-schema metrics before Loki, exercise Poll self-log read-back and historical unlabelled disambiguation, inspect existing partial-success attribution, then one reviewed fix-SHA dispatch. Luna/max independently owns internal/webui for OPN-0053. Root runs just check and source-only CodeRabbit before commits; Phase 2 testbed use follows Phase 1 release. No firewall object mutation. Session root route differs from Sol because of the explicit conversation model-switch instruction; prescribed child routes remain unchanged.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -119,6 +121,8 @@ Added bounded concurrent JSON stderr classification without retaining or renderi
 Decisions by Rob 2026-09-05 (post wave 7): (1) The revised observation boundary is APPROVED for wave 8. Add fixed-schema, credential-free observations to the proof: per-source admission, emitted, shipped and dropped counts read from the exporter's own metrics or a bounded stderr classification, plus configchange diff length and diff count as numbers only; then ONE dispatch under one root-owned testbed hold. Distinguish empty source output, downstream discard after gateway acceptance, and arrival under another identity or time before concluding. No mutation trigger; nothing on the testbed is created, edited or deleted. Two same-shape missing-configchange results stop the approach again. (2) Release 4.2.0 (PR 679) is HELD on this task: it is not merged until the two remaining assertions are each answered yes or no with a query and result. Unparked to To Do because the blocker was a human decision and that decision is now taken.
 
 Authority granted by Rob 2026-09-05 for wave 8: if BOTH remaining assertions are answered yes with query and result recorded here, the campaign root may merge release PR 679 (4.2.0) unattended. Any no or unproven leaves the PR for Rob.
+
+Wave 8 revised observation boundary implemented: exporter receives a numeric loopback web listen address, harness scrapes actual required log counters before any Loki read, preserves missing last-export gauges as missing, and reads fixed numeric Poll branch/count/body-length observations back through exporter selflogs. Body byte/line counts describe emitted redacted/capped records; raw diffs are not retained for observations. Existing OTLP protobuf partialSuccess handling already splits acknowledged/rejected records, increments dropped reason rejected and emits the terminal warning; focused existing tests passed (internal/logship 5.858s), so no sink rewrite. Root corrected realistic metrics and categorized Loki metadata parsing before live use; unrelated series/transport metadata are ignored but missing required counters never become zeros. Empty observation readback remains explicitly unavailable. Historical query separates matching, other and absent instance counts without exposing other identities. Whole offline testbed suite: Ran 74 tests in 0.559s, OK. CodeRabbit six-file source slice completed/review_completed with zero findings. Live dispatch pending isolated just check and fix-SHA push under the root hold.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -1055,6 +1055,21 @@ func setFRRRouteAndBFDSummaryEndpoints(client *Client) {
 	client.endpoints["quaggaBfdSummary"] = "api/quagga/diagnostics/bfdsummary"
 }
 
+// DiagnosticsController searchBgproute4/6 returns searchRecordsetBase's
+// bootgrid envelope. FRR totals are copied into rows, never into that envelope,
+// on master and both supported stable branches (26.7 and 26.1).
+func TestFRRBGPRouteSchemaAcceptsUpstreamEmptyEnvelope(t *testing.T) {
+	for _, endpoint := range []EndpointName{"quaggaBgpRoute4", "quaggaBgpRoute6"} {
+		res, err := ValidateResponseSchema(endpointSchema(t, endpoint), []byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`), SchemaExemption{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Missing) != 0 {
+			t.Errorf("%s: upstream envelope has missing schema fields: %v", endpoint, res.Missing)
+		}
+	}
+}
+
 func TestFetchFRRBGPRouteTables_HeaderTotalsAndAFs(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
@@ -1064,11 +1079,10 @@ func TestFetchFRRBGPRouteTables_HeaderTotalsAndAFs(t *testing.T) {
 		_, _ = w.Write([]byte(bgpRouteTableFixture4))
 	})
 	mux.HandleFunc("/api/quagga/diagnostics/searchBgproute6", func(w http.ResponseWriter, r *http.Request) {
-		// This deliberately uses envelope totals rather than row totals to
-		// keep the reader tolerant of a controller preserving FRR's header.
-		_, _ = w.Write([]byte(`{"totalRoutes":2,"totalPaths":2,"rows":[
-          {"network":"2001:db8:1::/64","path":"65001","peerId":"2001:db8::2"},
-          {"network":"2001:db8:2::/64","path":"65002","peerId":"2001:db8::3"}
+		// The supported PHP controllers repeat FRR totals in flattened rows.
+		_, _ = w.Write([]byte(`{"total":2,"rowCount":2,"current":1,"rows":[
+          {"network":"2001:db8:1::/64","path":"65001","peerId":"2001:db8::2","totalRoutes":2,"totalPaths":2},
+          {"network":"2001:db8:2::/64","path":"65002","peerId":"2001:db8::3","totalRoutes":2,"totalPaths":2}
         ]}`))
 	})
 

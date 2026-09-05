@@ -144,7 +144,13 @@ func Start(
 	reg = SelfMetricsRegisterer(reg, instance)
 	deps.Registerer = SelfMetricsRegisterer(deps.Registerer, instance)
 
-	sources, err := buildSources(deps)
+	// Source-owned observations describe the firewall side of the boundary, so
+	// they may use the forwarding logger. Delivery-path diagnostics retain
+	// pipelineLog above: forwarding a sink failure into the same sink would
+	// recurse indefinitely.
+	sourceDeps := deps
+	sourceDeps.Logger = sourceLog
+	sources, err := buildSources(sourceDeps)
 	if err != nil {
 		return nil, fmt.Errorf("build log sources: %w", err)
 	}

@@ -801,13 +801,10 @@ type frrBGPRouteRow struct {
 }
 
 // frrBGPRouteSearch is the bootgrid envelope returned by the two BGP route
-// endpoints. totalRoutes/totalPaths are normally row fields after the PHP
-// flattening step, but retaining envelope fields makes the reader tolerant of
-// a controller that preserves FRR's header at the top level.
+// endpoints. The PHP controller copies totalRoutes/totalPaths into rows; the
+// envelope contains only bootgrid metadata and optional GUI subtitle text.
 type frrBGPRouteSearch struct {
-	Rows        []frrBGPRouteRow `json:"rows"`
-	TotalRoutes flexString       `json:"totalRoutes"`
-	TotalPaths  flexString       `json:"totalPaths"`
+	Rows []frrBGPRouteRow `json:"rows"`
 }
 
 // FRRBGPRouteTable holds aggregate counts for one BGP address family. It does
@@ -875,13 +872,6 @@ func frrBGPRouteCounts(search frrBGPRouteSearch) (routeCount, pathCount float64,
 		headerRoutes, headerPaths       float64
 		hasHeaderRoutes, hasHeaderPaths bool
 	)
-	if v, ok := frrNonNegativeFloat(search.TotalRoutes.String()); ok {
-		headerRoutes, hasHeaderRoutes = v, true
-	}
-	if v, ok := frrNonNegativeFloat(search.TotalPaths.String()); ok {
-		headerPaths, hasHeaderPaths = v, true
-	}
-
 	routeKeys := make(map[string]struct{})
 	pathKeys := make(map[string]struct{})
 	for _, row := range search.Rows {

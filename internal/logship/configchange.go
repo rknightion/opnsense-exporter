@@ -25,6 +25,21 @@ const configChangeSourceName = "configchange"
 // one unexpectedly broad change must not consume the whole bounded queue.
 const configChangeMaxBodyBytes = 192 * 1024
 
+// The Poll observations are intentionally a closed, numeric-only schema. They
+// are self-logs, so unlike the config diff itself they must never carry an
+// upstream revision ID, a URI, or another value that the source did not define.
+// The live delivery proof reads these records back through the exporter source
+// to distinguish an empty Poll from a record that was later lost in delivery.
+const (
+	configChangePollSummaryMessage     = "config-change poll observation"
+	configChangeDiffObservationMessage = "config-change diff observation"
+
+	configChangePollBranchNoRevisions        = "no_revisions"
+	configChangePollBranchBaseline           = "baseline"
+	configChangePollBranchCursorNotInHistory = "cursor_not_in_history"
+	configChangePollBranchEmitted            = "emitted"
+)
+
 // configChangeTruncationMarker is included in the cap, so an operator can tell
 // a deliberately shortened diff from an upstream diff that happened to end.
 const configChangeTruncationMarker = "\n[config diff truncated at 192 KiB]"
@@ -110,6 +125,12 @@ type ConfigChangeSource struct {
 
 	mu           sync.Mutex
 	lastRevision string
+	pollSequence uint64
+}
+
+type configChangeDiffObservation struct {
+	bytes int
+	lines int
 }
 
 // NewConfigChangeSource exposes the source for tests and alternate embeddings.
@@ -129,11 +150,13 @@ func (s *ConfigChangeSource) Name() string { return configChangeSourceName }
 // needs a predecessor and replaying the retained backup window on enablement
 // would turn old changes into new events.
 func (s *ConfigChangeSource) Poll(ctx context.Context) ([]Record, error) {
+	pollSequence := s.nextPollSequence()
 	revisions, err := s.client.FetchConfigChangeRevisions(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if len(revisions) == 0 {
+		s.observePoll(configChangePollBranchNoRevisions, pollSequence, 0)
 		return nil, nil
 	}
 
@@ -150,6 +173,7 @@ func (s *ConfigChangeSource) Poll(ctx context.Context) ([]Record, error) {
 
 	if s.lastRevision == "" {
 		s.lastRevision = ordered[len(ordered)-1].ID
+		s.observePoll(configChangePollBranchBaseline, pollSequence, 0)
 		return nil, nil
 	}
 
@@ -164,13 +188,17 @@ func (s *ConfigChangeSource) Poll(ctx context.Context) ([]Record, error) {
 		// History has a retention bound. Without the prior revision the first
 		// unified diff cannot be reconstructed, and emitting retained rows risks
 		// replaying old changes after a restore, so safely re-baseline instead.
-		s.log.Warn("config-change log source cursor is no longer in backup history; re-baselining without replay",
-			"last_revision", s.lastRevision, "latest_revision", ordered[len(ordered)-1].ID)
+		// Revision IDs originate at the firewall. Keep this legacy stderr message
+		// for its fixed harness classifier, but do not attach either ID now that
+		// source diagnostics also ship through the self-log path.
+		s.log.Warn("config-change log source cursor is no longer in backup history; re-baselining without replay")
 		s.lastRevision = ordered[len(ordered)-1].ID
+		s.observePoll(configChangePollBranchCursorNotInHistory, pollSequence, 0)
 		return nil, nil
 	}
 
 	records := make([]Record, 0, len(ordered)-previousIndex-1)
+	diffObservations := make([]configChangeDiffObservation, 0, len(ordered)-previousIndex-1)
 	for i := previousIndex + 1; i < len(ordered); i++ {
 		previous, current := ordered[i-1], ordered[i]
 		diff, err := s.client.FetchConfigChangeDiff(ctx, "this", previous.ID, current.ID)
@@ -179,14 +207,61 @@ func (s *ConfigChangeSource) Poll(ctx context.Context) ([]Record, error) {
 			// sequence next poll preserves one record per observed revision.
 			return nil, fmt.Errorf("fetch config diff %q to %q: %w", previous.ID, current.ID, err)
 		}
-		records = append(records, configChangeRecord(current, diff))
+		record := configChangeRecord(current, diff)
+		records = append(records, record)
+		// Retain only the numeric observation until the complete batch is
+		// available. The Record above necessarily owns the diff for delivery;
+		// this side channel must not add a second raw copy of it.
+		diffObservations = append(diffObservations, configChangeDiffObservation{
+			bytes: len(record.Body), lines: configChangeDiffLineCount(record.Body),
+		})
 	}
 
 	// Advance only once every diff is available. The pipeline owns delivery and
 	// persistence; this cursor means this source will not fetch the same diff on
 	// a later successful poll.
 	s.lastRevision = ordered[len(ordered)-1].ID
+	s.observePoll(configChangePollBranchEmitted, pollSequence, len(records))
+	for index, observation := range diffObservations {
+		s.observeDiff(pollSequence, index+1, observation.bytes, observation.lines)
+	}
 	return records, nil
+}
+
+func (s *ConfigChangeSource) nextPollSequence() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pollSequence++
+	return s.pollSequence
+}
+
+func (s *ConfigChangeSource) observePoll(branch string, pollSequence uint64, emittedRecords int) {
+	s.log.Info(configChangePollSummaryMessage,
+		"branch", branch,
+		"poll_sequence", pollSequence,
+		"emitted_records", emittedRecords,
+	)
+}
+
+func (s *ConfigChangeSource) observeDiff(pollSequence uint64, recordIndex, diffBytes, diffLines int) {
+	s.log.Info(configChangeDiffObservationMessage,
+		"branch", configChangePollBranchEmitted,
+		"poll_sequence", pollSequence,
+		"record_index", recordIndex,
+		"diff_bytes", diffBytes,
+		"diff_lines", diffLines,
+	)
+}
+
+func configChangeDiffLineCount(diff string) int {
+	if diff == "" {
+		return 0
+	}
+	lines := strings.Count(diff, "\n")
+	if !strings.HasSuffix(diff, "\n") {
+		lines++
+	}
+	return lines
 }
 
 // LoadState implements StatefulSource. Corrupt, empty and incomplete state is

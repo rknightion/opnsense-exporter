@@ -82,6 +82,25 @@ func TestBoundedInventory_ExpiryFreesBudget(t *testing.T) {
 	}
 }
 
+// A device may be seen only once between snapshots. Expired entries must not
+// consume the admission budget until a later live() call discards them.
+func TestBoundedInventory_AdmissionReclaimsExpiredEntries(t *testing.T) {
+	inv := newBoundedInventory[string, string](2, 100*time.Second, cmp.Compare[string])
+	inv.seen("expired", "old", at(0))
+	inv.seen("current", "kept", at(80))
+	inv.seen("visitor", "new", at(100))
+	if got := keysOf(inv.live(at(100))); !slices.Equal(got, []string{"current", "visitor"}) {
+		t.Fatalf("live = %v, want [current visitor]; expired state must not reject a one-time sighting", got)
+	}
+	if inv.refused() != 0 {
+		t.Fatalf("refused = %v, want 0", inv.refused())
+	}
+	wantBytes, _ := retainedStringBytes("current", "kept", "visitor", "new")
+	if inv.bytes != wantBytes {
+		t.Fatalf("retained bytes = %d, want %d", inv.bytes, wantBytes)
+	}
+}
+
 // live() is emitted straight into Prometheus metrics, and a scrape that reorders its
 // series for no reason is noise in every diff.
 func TestBoundedInventory_LiveIsSorted(t *testing.T) {

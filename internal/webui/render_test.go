@@ -7,6 +7,9 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -61,6 +64,7 @@ func TestRenderPage_Status(t *testing.T) {
 		`data-tab="overview"`, `data-tab="collectors"`, `data-tab="api"`, `data-tab="cardinality"`,
 		"opnsense-theme", "Next run",
 		`id="themeToggle"`, `id="pauseBtn"`, `id="staleBanner"`, `id="tabs"`, `id="collBody"`,
+		`id="healthBadge"`, `id="upstreamBadge"`, `id="captureBadge"`,
 		`id="chGoroutines"`, "function showTab", "function toggleTheme", "Gateways",
 		// Trend charts: active series, emitted throughput, collector fleet.
 		`id="chCard"`, `id="chEmit"`, `id="chFailing"`, `id="chDuration"`,
@@ -80,6 +84,75 @@ func TestRenderPage_Status(t *testing.T) {
 	}
 	if strings.Contains(out, "data-collector=") || strings.Contains(out, "Run now") {
 		t.Errorf("Run-Now affordance still present after removal")
+	}
+	if strings.ContainsAny(out, "—–") {
+		t.Errorf("rendered console contains an em or en dash")
+	}
+}
+
+func TestConsoleFamilyTokenBlockMatchesSpec(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
+	spec, err := os.ReadFile(filepath.Join(root, "design", "console-v2", "implementation-spec.md"))
+	if err != nil {
+		t.Fatalf("read family implementation spec: %v", err)
+	}
+	const fence = "```css\n"
+	start := strings.Index(string(spec), fence)
+	if start < 0 {
+		t.Fatal("family implementation spec has no CSS token block")
+	}
+	start += len(fence)
+	rest := string(spec)[start:]
+	end := strings.Index(rest, "\n```")
+	if end < 0 {
+		t.Fatal("family implementation spec CSS token block is unterminated")
+	}
+	want := rest[:end]
+	tmpl, err := os.ReadFile(filepath.Join(root, "internal", "webui", "templates", "page.html.tmpl"))
+	if err != nil {
+		t.Fatalf("read console template: %v", err)
+	}
+	styleStart := strings.Index(string(tmpl), "<style>\n")
+	if styleStart < 0 {
+		t.Fatal("console template has no inline style block")
+	}
+	styleStart += len("<style>\n")
+	got := string(tmpl)[styleStart : styleStart+len(want)]
+	if got != want {
+		t.Fatalf("family token block differs from the canonical spec")
+	}
+}
+
+func TestConsoleFontsUseFixedAllowlistAndRoute(t *testing.T) {
+	for _, name := range []string{
+		"hanken-grotesk-latin.woff2",
+		"hanken-grotesk-latin-ext.woff2",
+		"JetBrainsMono-Variable.woff2",
+	} {
+		if data, ok := Font(name); !ok || len(data) == 0 {
+			t.Fatalf("embedded font %q is unavailable", name)
+		}
+	}
+	if _, ok := Font("../page.html.tmpl"); ok {
+		t.Fatal("font allowlist accepted a path traversal name")
+	}
+	srv := NewServer(testDeps())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/_static/fonts/hanken-grotesk-latin.woff2", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "font/woff2" {
+		t.Fatalf("font route want 200/font/woff2, got %d/%q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("font cache policy = %q", got)
+	}
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/_static/fonts/nope.woff2", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown font want 404, got %d", rec.Code)
 	}
 }
 

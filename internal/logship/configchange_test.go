@@ -1,8 +1,11 @@
 package logship
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +116,48 @@ func TestConfigChangeSource_EmitsNewRevisionExactlyOnce(t *testing.T) {
 	}
 	if got, want := strings.Join(fetcher.diffCalls, ","), "config-r1.xml->config-r2.xml"; got != want {
 		t.Fatalf("diff calls = %q, want %q", got, want)
+	}
+}
+
+func TestConfigChangeSource_PollEmitsFixedSchemaObservationWithoutDiffContent(t *testing.T) {
+	t0 := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	const diff = "- old secret-shaped but synthetic content\n+ changed content\n"
+	fetcher := &fakeConfigChangeFetcher{
+		revisions: []ConfigChangeRevision{
+			{ID: "config-r1.xml", Timestamp: t0},
+			{ID: "config-r2.xml", Timestamp: t0.Add(time.Minute)},
+		},
+		diffs: map[string]string{"config-r1.xml->config-r2.xml": diff},
+	}
+	var output bytes.Buffer
+	source := NewConfigChangeSource(fetcher, slog.New(slog.NewJSONHandler(&output, nil)))
+	source.LoadState([]byte(`{"last_revision":"config-r1.xml"}`))
+
+	if _, err := source.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+
+	var observations []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte("\n")) {
+		var record map[string]any
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("decode observation: %v", err)
+		}
+		if record["msg"] == configChangePollSummaryMessage || record["msg"] == configChangeDiffObservationMessage {
+			observations = append(observations, record)
+		}
+	}
+	if len(observations) != 2 {
+		t.Fatalf("observations = %#v, want one summary and one diff length", observations)
+	}
+	if got := observations[0]; got["branch"] != configChangePollBranchEmitted || got["emitted_records"] != float64(1) || got["poll_sequence"] != float64(1) {
+		t.Errorf("summary = %#v, want fixed emitted schema", got)
+	}
+	if got := observations[1]; got["diff_bytes"] != float64(len(diff)) || got["diff_lines"] != float64(2) || got["record_index"] != float64(1) {
+		t.Errorf("diff observation = %#v, want byte and line counts only", got)
+	}
+	if bytes.Contains(output.Bytes(), []byte(diff)) {
+		t.Fatal("poll observation leaked diff content")
 	}
 }
 

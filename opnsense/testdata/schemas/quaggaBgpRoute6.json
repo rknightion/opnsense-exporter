@@ -4,9 +4,7 @@
   "path": "api/quagga/diagnostics/searchBgproute6",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
-    "rows",
-    "totalPaths",
-    "totalRoutes"
+    "rows"
   ],
   "fields": [
     {
@@ -59,14 +57,6 @@
     },
     {
       "path": "rows[].weight",
-      "kind": "any"
-    },
-    {
-      "path": "totalPaths",
-      "kind": "any"
-    },
-    {
-      "path": "totalRoutes",
       "kind": "any"
     }
   ]

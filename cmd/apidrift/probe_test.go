@@ -449,6 +449,32 @@ func TestProbeOneParameterizedZeroTierNetworkInfoSkip(t *testing.T) {
 	}
 }
 
+// When os-zerotier is absent, resolving the configured-network UUID returns
+// the plugin route's 404. That is the same expected absence reported for the
+// source endpoint, not a failure to resolve a parameter for the dependent
+// info endpoint.
+func TestProbeOneParameterizedZeroTierNetworkInfoSkipsWhenPluginAbsent(t *testing.T) {
+	var infoHit bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/zerotier/network/search", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/api/zerotier/network/info", func(w http.ResponseWriter, r *http.Request) {
+		infoHit = true
+		http.NotFound(w, r)
+	})
+	p := newTestProber(t, mux)
+	s := opnsense.EndpointSchema{Endpoint: "zerotierNetworkInfo", Method: "GET", Path: "api/zerotier/network/info", TopLevelKind: opnsense.KindObject}
+
+	res := p.probeOne(s, opnsense.SchemaExemption{})
+	if !res.SkippedParam || res.ProbeErr != "" {
+		t.Errorf("expected plugin-absent ZeroTier info to be skipped, got %+v", res)
+	}
+	if infoHit {
+		t.Error("the dependent ZeroTier info route must not be requested when its plugin is absent")
+	}
+}
+
 func TestTrafficTopPathResolverUsesEnabledInterfaceIdentifiers(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, _ *http.Request) {

@@ -12,6 +12,7 @@ import re
 import secrets
 import select
 import signal
+import socket
 import ssl
 import subprocess
 import sys
@@ -33,6 +34,13 @@ REQUIRED_CONFIGSTATE_FAMILIES = {"firewall", "device_inventory", "security_postu
 STDERR_LINE_LIMIT_BYTES = 64 * 1024
 STATE_FILE_LIMIT_BYTES = 1024 * 1024
 STDERR_DRAIN_TIMEOUT_SECONDS = 2
+METRICS_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024
+METRICS_TIMEOUT_SECONDS = 10
+METRIC_SOURCES = ("configchange", "configstate", "exporter")
+DROP_REASONS = ("overflow", "ship_failed", "ship_failed_permanent", "record_too_large", "rejected")
+CONFIGCHANGE_POLL_SUMMARY_MESSAGE = "config-change poll observation"
+CONFIGCHANGE_DIFF_OBSERVATION_MESSAGE = "config-change diff observation"
+CONFIGCHANGE_POLL_BRANCHES = ("no_revisions", "baseline", "cursor_not_in_history", "emitted")
 
 # These are the source-owned messages emitted by the current pipeline. The
 # monitor deliberately matches the complete message and retains only counters;
@@ -415,7 +423,169 @@ def query_start_ns(successor, startup_time_ns):
     return min(successor_start_ns, startup_start_ns)
 
 
-def loki_query(query, user, token, start_ns, end_ns, attempts=12):
+def loopback_listen_address():
+    """Reserve a numeric loopback port long enough to configure the child."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    if not isinstance(port, int) or port <= 0:
+        raise ProofFailure("metrics_listen_address_invalid", "could not allocate loopback metrics listener")
+    return "127.0.0.1:" + str(port)
+
+
+def _metric_integer(value):
+    if isinstance(value, bool) or not isinstance(value, str) or not re.fullmatch(r"[0-9]+", value):
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+    return int(value)
+
+
+def _metric_number(value):
+    if isinstance(value, bool) or not isinstance(value, str):
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+    try:
+        number = float(value)
+    except ValueError as err:
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema") from err
+    if not math.isfinite(number) or number < 0:
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+    return number
+
+
+def _prometheus_labels(text):
+    labels, index = {}, 0
+    while index < len(text):
+        match = re.match(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:[^"\\]|\\.)*)"(?:,|$)', text[index:])
+        if match is None:
+            raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+        key, raw_value = match.groups()
+        if key in labels:
+            raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+        try:
+            labels[key] = bytes(raw_value, "utf-8").decode("unicode_escape")
+        except UnicodeDecodeError as err:
+            raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema") from err
+        index += match.end()
+    return labels
+
+
+def parse_logship_metrics(payload, instance):
+    """Extract only the proof's closed numeric /metrics schema.
+
+    The complete exposition may contain values from many collector labels. This
+    parser neither renders nor retains them; it accepts only the log-shipping
+    series and label values known to this proof.
+    """
+    if not isinstance(payload, bytes) or not isinstance(instance, str) or not instance:
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+    result = {
+        "shipped": {source: 0 for source in METRIC_SOURCES},
+        "dropped": {source: {reason: 0 for reason in DROP_REASONS} for source in ("configchange", "configstate")},
+        "poll_errors": {source: 0 for source in ("configchange", "configstate")},
+        # This GaugeVec is intentionally not pre-initialised by the exporter:
+        # before the first acknowledged export there is no honest timestamp to
+        # publish. Preserve that absence instead of manufacturing Unix epoch.
+        "last_exported": {source: None for source in ("configchange", "configstate")},
+        "ship_errors": 0,
+    }
+    seen = set()
+    try:
+        lines = payload.decode("utf-8").splitlines()
+    except UnicodeDecodeError as err:
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema") from err
+    metric_pattern = re.compile(r"^(opnsense_exporter_logs_(?:shipped_total|dropped_total|ship_errors_total|poll_errors_total|last_exported_timestamp_seconds))(?:\{([^}]*)\})?\s+([^\s]+)$")
+    for line in lines:
+        match = metric_pattern.fullmatch(line)
+        if match is None:
+            continue
+        name, encoded_labels, value = match.groups()
+        labels = _prometheus_labels(encoded_labels or "")
+        if "opnsense_instance" not in labels:
+            raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+        # The exposition can contain log-shipping series for every enabled
+        # source. This proof owns only configchange, configstate and the
+        # exporter self-log source; unrelated source labels must not turn a
+        # valid scrape into a schema failure. A missing or wrong instance is
+        # still unsafe for the closed proof schema, and a missing required
+        # series is caught below.
+        if labels["opnsense_instance"] != instance:
+            continue
+        if name == "opnsense_exporter_logs_ship_errors_total":
+            if set(labels) != {"opnsense_instance"} or name in seen:
+                raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+            result["ship_errors"] = _metric_integer(value)
+            seen.add(name)
+            continue
+        source = labels.get("source")
+        if source not in METRIC_SOURCES:
+            continue
+        if name == "opnsense_exporter_logs_shipped_total":
+            if set(labels) != {"opnsense_instance", "source"} or (name, source) in seen:
+                raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+            result["shipped"][source] = _metric_integer(value)
+            seen.add((name, source))
+        elif name == "opnsense_exporter_logs_dropped_total":
+            # The exporter self-log source is pre-initialised in the same
+            # CounterVec as the other sources. It is useful to the exporter,
+            # but is outside this proof's requested drop-reason table.
+            if source not in result["dropped"]:
+                continue
+            reason = labels.get("reason")
+            if (source not in result["dropped"] or reason not in DROP_REASONS or
+                    set(labels) != {"opnsense_instance", "source", "reason"} or (name, source, reason) in seen):
+                raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+            result["dropped"][source][reason] = _metric_integer(value)
+            seen.add((name, source, reason))
+        elif name == "opnsense_exporter_logs_poll_errors_total":
+            if source not in result["poll_errors"]:
+                continue
+            if (source not in result["poll_errors"] or set(labels) != {"opnsense_instance", "source"} or
+                    (name, source) in seen):
+                raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+            result["poll_errors"][source] = _metric_integer(value)
+            seen.add((name, source))
+        else:
+            if source not in result["last_exported"]:
+                continue
+            if (source not in result["last_exported"] or set(labels) != {"opnsense_instance", "source"} or
+                    (name, source) in seen):
+                raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+            result["last_exported"][source] = _metric_number(value)
+            seen.add((name, source))
+
+    missing = []
+    for source in METRIC_SOURCES:
+        if ("opnsense_exporter_logs_shipped_total", source) not in seen:
+            missing.append(("shipped", source))
+    if "opnsense_exporter_logs_ship_errors_total" not in seen:
+        missing.append(("ship_errors", "global"))
+    for source in ("configchange", "configstate"):
+        for reason in DROP_REASONS:
+            if ("opnsense_exporter_logs_dropped_total", source, reason) not in seen:
+                missing.append(("dropped", source, reason))
+        if ("opnsense_exporter_logs_poll_errors_total", source) not in seen:
+            missing.append(("poll_errors", source))
+    if missing:
+        raise ProofFailure("metrics_schema_invalid", "metrics scrape did not contain the fixed numeric schema")
+    return result
+
+
+def scrape_logship_metrics(listen_address, instance):
+    request = urllib.request.Request("http://" + listen_address + "/metrics")
+    try:
+        with urllib.request.urlopen(request, timeout=METRICS_TIMEOUT_SECONDS) as response:
+            if response.status // 100 != 2:
+                raise ProofFailure("metrics_scrape_non_2xx", "exporter metrics scrape failed")
+            payload = response.read(METRICS_RESPONSE_LIMIT_BYTES + 1)
+    except ProofFailure:
+        raise
+    except (urllib.error.URLError, TimeoutError, OSError) as err:
+        raise ProofFailure("metrics_scrape_failed", "exporter metrics scrape failed") from err
+    if len(payload) > METRICS_RESPONSE_LIMIT_BYTES:
+        raise ProofFailure("metrics_scrape_oversize", "exporter metrics scrape failed")
+    return parse_logship_metrics(payload, instance)
+
+
+def loki_query(query, user, token, start_ns, end_ns, attempts=12, extend_end=True):
     succeeded = False
     actual_end_ns = end_ns
     # Leave room for every query and the final summary within the workflow's
@@ -425,7 +595,7 @@ def loki_query(query, user, token, start_ns, end_ns, attempts=12):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
-        actual_end_ns = max(end_ns, time.time_ns())
+        actual_end_ns = max(end_ns, time.time_ns()) if extend_end else end_ns
         params = urllib.parse.urlencode({"query": query, "limit": "1000", "direction": "FORWARD",
                                          "start": str(start_ns), "end": str(actual_end_ns)})
         request = urllib.request.Request(
@@ -436,8 +606,8 @@ def loki_query(query, user, token, start_ns, end_ns, attempts=12):
             with urllib.request.urlopen(request, timeout=min(20, remaining)) as response:
                 payload = json.load(response)
             succeeded = payload.get("status") == "success"
-            result = payload.get("data", {}).get("result", [])
-            if result:
+            result = payload.get("data", {}).get("result", []) if succeeded else []
+            if succeeded and isinstance(result, list) and result:
                 return {"streams": result, "succeeded": succeeded,
                         "start_ns": start_ns, "end_ns": actual_end_ns}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
@@ -463,6 +633,91 @@ def records(streams):
             yield labels, value[1], metadata if isinstance(metadata, dict) else {}
 
 
+def has_records(streams):
+    return any(True for _ in records(streams))
+
+
+def _observation_integer(value):
+    if isinstance(value, bool) or not isinstance(value, str) or not re.fullmatch(r"[0-9]+", value):
+        raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+    return int(value)
+
+
+def extract_configchange_poll_observations(rows):
+    """Keep the exported configchange Poll observation's closed numeric schema."""
+    result = {"branches": {branch: 0 for branch in CONFIGCHANGE_POLL_BRANCHES},
+              "emitted_records": 0, "diffs": [], "observed": False}
+    summaries = {}
+    diff_keys = set()
+    for labels, body, metadata in rows:
+        if labels.get("opnsense_source") != "exporter" or body not in (
+                CONFIGCHANGE_POLL_SUMMARY_MESSAGE, CONFIGCHANGE_DIFF_OBSERVATION_MESSAGE):
+            continue
+        if not isinstance(metadata, dict):
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+        if body == CONFIGCHANGE_POLL_SUMMARY_MESSAGE:
+            # Loki adds transport-derived metadata to every categorized entry
+            # (service_version, observed_timestamp, severity, detected_level,
+            # and may add more later). Project only this record's closed
+            # source-owned fields; never reject or render unrelated metadata.
+            if not {"branch", "poll_sequence", "emitted_records"}.issubset(metadata):
+                raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+            branch = metadata.get("branch")
+            poll = _observation_integer(metadata.get("poll_sequence"))
+            emitted = _observation_integer(metadata.get("emitted_records"))
+            if branch not in CONFIGCHANGE_POLL_BRANCHES or poll == 0 or poll in summaries:
+                raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+            summaries[poll] = (branch, emitted)
+            result["branches"][branch] += 1
+            result["emitted_records"] += emitted
+            result["observed"] = True
+            continue
+        if not {"branch", "poll_sequence", "record_index", "diff_bytes", "diff_lines"}.issubset(metadata):
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+        if metadata.get("branch") != "emitted":
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+        poll = _observation_integer(metadata.get("poll_sequence"))
+        record = _observation_integer(metadata.get("record_index"))
+        bytes_count = _observation_integer(metadata.get("diff_bytes"))
+        line_count = _observation_integer(metadata.get("diff_lines"))
+        if poll == 0 or record == 0:
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+        if (poll, record) in diff_keys:
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+        diff_keys.add((poll, record))
+        result["diffs"].append({"poll": poll, "record": record, "bytes": bytes_count, "lines": line_count})
+    for observation in result["diffs"]:
+        summary = summaries.get(observation["poll"])
+        if summary is None or summary[0] != "emitted" or observation["record"] > summary[1]:
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+    for poll, (branch, emitted) in summaries.items():
+        if branch != "emitted":
+            continue
+        observed_records = sorted(record for observed_poll, record in diff_keys if observed_poll == poll)
+        if observed_records != list(range(1, emitted + 1)):
+            raise ProofFailure("poll_observation_invalid", "exporter poll observation was not fixed-schema")
+    result["diffs"].sort(key=lambda observation: (observation["poll"], observation["record"]))
+    return result
+
+
+def historical_record_counts(rows, instance):
+    """Count historical records by observed instance identity, never by total alone."""
+    counts = {"total": 0, "matching_instance": 0, "other_instance": 0, "without_instance": 0}
+    for labels, _, metadata in rows:
+        counts["total"] += 1
+        label_instance = labels.get("service_instance_id") if isinstance(labels, dict) else None
+        metadata_instance = metadata.get("service_instance_id") if isinstance(metadata, dict) else None
+        observed_instances = {value for value in (label_instance, metadata_instance)
+                               if isinstance(value, str) and value}
+        if instance in observed_instances:
+            counts["matching_instance"] += 1
+        elif observed_instances:
+            counts["other_instance"] += 1
+        else:
+            counts["without_instance"] += 1
+    return counts
+
+
 def safe_diagnostic(value):
     if not isinstance(value, str) or not value.strip():
         return "missing"
@@ -480,20 +735,24 @@ def exporter_poll_error_diagnostic(rows, source):
 
 def query_diagnostic(source, specific, broad=None):
     """Classify an empty source query using one same-window broad query."""
-    if specific["streams"]:
+    if not specific["succeeded"]:
+        return "query_failed"
+    if has_records(specific["streams"]):
         return "arrived"
     if broad is None:
-        return "query_failed" if not specific["succeeded"] else "instance_absent_in_explicit_window"
-    if not specific["succeeded"] or not broad["succeeded"]:
+        return "instance_absent_in_explicit_window"
+    if not broad["succeeded"]:
         return "query_failed"
     for stream in broad["streams"]:
+        if not has_records([stream]):
+            continue
         labels = stream.get("stream", {}) if isinstance(stream, dict) else {}
         if isinstance(labels, dict) and labels.get("opnsense_source") == source:
             return "arrived_with_unexpected_labels"
         for _, _, metadata in records([stream]):
             if metadata.get("opnsense_source") == source:
                 return "arrived_with_unexpected_labels"
-    if broad["streams"]:
+    if has_records(broad["streams"]):
         return "source_absent_in_instance_window"
     return "instance_absent_in_explicit_window"
 
@@ -580,6 +839,7 @@ def main(argv=None):
     query_window_start_ns = query_window_end_ns = None
     query_reports = []
     successor = None
+    metrics_address = None
     selector = 'service_name="opnsense2otel",service_instance_id="' + instance + '"'
     try:
         stage = "reading_retained_revisions"
@@ -591,6 +851,9 @@ def main(argv=None):
         facts["retained_revision_count"] = len(revisions)
         facts["expected_configchange_diffs"] = len(revisions) - cursor_index - 1
         diagnostics["seeded revision"] = revision_report_value(cursor, cursor_index + 1)
+        diagnostics["successor revision"] = revision_report_value(successor, cursor_index + 2)
+        facts["seeded_revision_timestamp_seconds"] = cursor.timestamp
+        facts["successor_revision_timestamp_seconds"] = successor.timestamp
         query_window_start_ns = query_start_ns(successor, startup_time_ns)
         stage = "seeding_configchange_cursor"
         state_path = seed_revision_state(cursor)
@@ -600,7 +863,9 @@ def main(argv=None):
                             "OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID": otlp_user,
                             "OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN": cap_token,
                             "OPN2OTEL_OTLP_GRAFANA_CLOUD_ENDPOINT": OTLP_ENDPOINT}
-        command = [args.exporter, "--log.format=json", "--logs.enabled", "--logs.sink=otlp", "--logs.poll-interval=5s",
+        metrics_address = loopback_listen_address()
+        command = [args.exporter, "--log.format=json", "--web.listen-address=" + metrics_address,
+                   "--logs.enabled", "--logs.sink=otlp", "--logs.poll-interval=5s",
                    "--logs.state-file=" + state_path, "--logs.configchange.enabled",
                    "--logs.config-snapshot.firewall.enabled", "--logs.config-snapshot.devices.enabled",
                    "--logs.config-snapshot.security-posture.enabled", "--logs.self.enabled"]
@@ -611,6 +876,18 @@ def main(argv=None):
         stderr_monitor.start()
         stage = "waiting_for_delivery"
         time.sleep(20)
+        stage = "scraping_exporter_metrics"
+        metrics = scrape_logship_metrics(metrics_address, instance)
+        facts["metrics_scraped"] = True
+        for source in ("configchange", "configstate"):
+            facts["logs_shipped_" + source] = metrics["shipped"][source]
+            for reason in DROP_REASONS:
+                facts["logs_dropped_" + source + "_" + reason] = metrics["dropped"][source][reason]
+            facts["logs_poll_errors_" + source] = metrics["poll_errors"][source]
+            last_exported = metrics["last_exported"][source]
+            facts["logs_last_exported_" + source] = "missing" if last_exported is None else last_exported
+        facts["logs_shipped_exporter"] = metrics["shipped"]["exporter"]
+        facts["logs_ship_errors"] = metrics["ship_errors"]
         query_window_end_ns = time.time_ns()
         stage = "querying_configchange_and_configstate"
         queries = {}
@@ -619,8 +896,8 @@ def main(argv=None):
             result = loki_query(query, loki_user, cap_token, query_window_start_ns, query_window_end_ns)
             queries[name] = result
             query_reports.append((name, query, result))
-        facts.update({name + "_arrived": bool(result["streams"]) for name, result in queries.items()})
-        missing_sources = [name for name in PROOF_SOURCES if not queries[name]["streams"]]
+        facts.update({name + "_arrived": has_records(result["streams"]) for name, result in queries.items()})
+        missing_sources = [name for name in PROOF_SOURCES if not has_records(queries[name]["streams"])]
         if missing_sources:
             broad_query_text = "{" + selector + "}"
             broad_query = loki_query(broad_query_text, loki_user, cap_token,
@@ -630,25 +907,56 @@ def main(argv=None):
                                 for name in missing_sources})
         diagnostics.update({name: "arrived" for name in PROOF_SOURCES if name not in missing_sources})
         configchange, configstate = list(records(queries["configchange"]["streams"])), list(records(queries["configstate"]["streams"]))
+        facts["configchange_arrived"] = bool(configchange)
+        facts["configstate_arrived"] = bool(configstate)
         facts["configchange_delivered_diffs"] = len(configchange)
         families = configstate_families(configstate)
         facts["configstate_families_arrived"] = REQUIRED_CONFIGSTATE_FAMILIES.issubset(families)
         family_summary = configstate_family_summary(configstate)
         diagnostics["configstate families"] = family_summary["families"]
         facts["configstate_unexpected_family_count"] = family_summary["unexpected_count"]
+        stage = "querying_exporter_poll_observation"
+        exporter_query_text = '{' + selector + ',opnsense_source="exporter"}'
+        exporter_query = loki_query(exporter_query_text, loki_user, cap_token,
+                                    query_window_start_ns, query_window_end_ns)
+        query_reports.append(("exporter poll observation", exporter_query_text, exporter_query))
+        exporter_rows = list(records(exporter_query["streams"]))
         if not facts["configstate_families_arrived"]:
-            stage = "querying_configstate_poll_error"
-            exporter_query_text = '{' + selector + ',opnsense_source="exporter"}'
-            exporter_query = loki_query(exporter_query_text, loki_user, cap_token,
-                                        query_window_start_ns, query_window_end_ns)
-            query_reports.append(("exporter diagnostic", exporter_query_text, exporter_query))
-            diagnostics["configstate shipped poll error"] = exporter_poll_error_diagnostic(records(exporter_query["streams"]), "configstate")
+            diagnostics["configstate shipped poll error"] = exporter_poll_error_diagnostic(exporter_rows, "configstate")
+        poll_observation = extract_configchange_poll_observations(exporter_rows)
+        facts["configchange_poll_observation_available"] = poll_observation["observed"]
+        if poll_observation["observed"]:
+            for branch, count in poll_observation["branches"].items():
+                facts["configchange_poll_" + branch + "_count"] = count
+            facts["configchange_poll_emitted_records"] = poll_observation["emitted_records"]
+            for index, diff in enumerate(poll_observation["diffs"], start=1):
+                facts["configchange_poll_diff_" + str(index) + "_bytes"] = diff["bytes"]
+                facts["configchange_poll_diff_" + str(index) + "_lines"] = diff["lines"]
+                facts["configchange_poll_diff_" + str(index) + "_poll"] = diff["poll"]
+                facts["configchange_poll_diff_" + str(index) + "_record"] = diff["record"]
+        else:
+            diagnostics["configchange poll observation"] = "not_observed"
+        stage = "querying_historical_configchange_disambiguation"
+        historical_query_text = '{service_name="opnsense2otel",opnsense_source="configchange"}'
+        historical_start_ns = int((successor.timestamp - 3600) * 1_000_000_000)
+        historical_end_ns = int((successor.timestamp + 3600) * 1_000_000_000)
+        historical_query = loki_query(historical_query_text, loki_user, cap_token,
+                                      historical_start_ns, historical_end_ns, extend_end=False)
+        query_reports.append(("historical configchange disambiguation", historical_query_text, historical_query))
+        historical_rows = list(records(historical_query["streams"]))
+        historical_counts = historical_record_counts(historical_rows, instance)
+        facts["historical_configchange_records"] = historical_counts["total"]
+        facts["historical_configchange_records_matching_instance"] = historical_counts["matching_instance"]
+        facts["historical_configchange_records_other_instance"] = historical_counts["other_instance"]
+        facts["historical_configchange_records_without_instance"] = historical_counts["without_instance"]
         stage = "verifying_delivered_redaction"
         redaction = verify_redaction(args.redaction_verifier, configchange, configstate)
         if redaction is None:
             diagnostics["redaction verifier"] = "unavailable_or_invalid"
             facts["delivered_bodies_redacted"] = False
         else:
+            facts["configchange_verified_bodies"] = redaction["configchange_bodies"]
+            facts["configstate_verified_bodies"] = redaction["configstate_bodies"]
             facts["configchange_sensitive_elements"] = redaction["configchange_sensitive_elements"]
             facts["configstate_sensitive_keys"] = redaction["configstate_sensitive_keys"]
             facts["delivered_bodies_redacted"] = redaction_assertion_passes(
@@ -686,7 +994,9 @@ def main(argv=None):
         print("- " + name.replace("_", " ") + ": " + (("yes" if value else "no") if isinstance(value, bool) else str(value)))
     for name in sorted(diagnostics):
         print("- " + name + " query result: " + diagnostics[name])
-    return 0 if all(facts.get(name) for name in ("configchange_arrived", "configstate_families_arrived", "delivered_bodies_redacted")) else 1
+    return 0 if all(facts.get(name) for name in (
+        "proof_completed", "configchange_arrived", "configstate_families_arrived",
+        "configchange_poll_observation_available", "delivered_bodies_redacted")) else 1
 
 
 if __name__ == "__main__":

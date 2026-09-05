@@ -35,7 +35,7 @@ var pageTmpl = template.Must(template.New("page.html.tmpl").Funcs(funcMap).Parse
 
 // view is the root value passed to the single-page console template. Data is the
 // poll-refreshed status snapshot; Config is the static, server-rendered
-// effective config (never re-fetched by the poll — EffectiveConfig reads secret
+// effective config (never re-fetched by the poll - EffectiveConfig reads secret
 // files from disk). RefreshMs is the client poll interval in milliseconds.
 type view struct {
 	Title          string
@@ -56,7 +56,7 @@ func renderPage(w io.Writer, v view) error {
 //
 // It is unconditional and it is a template FUNC rather than a view field on
 // purpose. Unconditional because the console cannot know which database answered
-// a lookup — an operator may have pointed the flags at MaxMind — and a credit
+// a lookup - an operator may have pointed the flags at MaxMind - and a credit
 // that appears only sometimes is one that is missing sometimes; crediting DB-IP
 // on an image that ships their data is correct whatever else is also loaded. A
 // func because it needs no state from the request, so no handler, no Deps field
@@ -192,10 +192,10 @@ func stateClass(state string) string {
 	}
 }
 
-// pct renders a success-rate percentage; -1 (never run) shows as an em dash.
+// pct renders a success-rate percentage; -1 (never run) shows as a spaced hyphen.
 func pct(v float64) string {
 	if v < 0 {
-		return "—"
+		return "-"
 	}
 	return fmt.Sprintf("%.0f%%", v)
 }

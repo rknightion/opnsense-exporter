@@ -65,6 +65,9 @@ type boundedInventory[K comparable, V any] struct {
 	// a float64 for the same reason cappedCounter's overflow is.
 	refusals float64
 	bytes    int
+	// Conservative earliest expiry avoids scanning a full, entirely live map
+	// on every rejected sighting. Refreshes may leave this earlier than reality.
+	nextExpiry time.Time
 }
 
 func newBoundedInventory[K comparable, V any](max int, ttl time.Duration, order func(a, b K) int) *boundedInventory[K, V] {
@@ -79,12 +82,41 @@ func newBoundedInventory[K comparable, V any](max int, ttl time.Duration, order 
 func (b *boundedInventory[K, V]) seen(k K, v V, now time.Time) {
 	old, exists := b.m[k]
 	cost, valid := retainedStringBytes(k, v)
-	if !valid || b.bytes-old.cost+cost > maxRetainedFamilyBytes || (!exists && b.max > 0 && len(b.m) >= b.max) {
+	if !valid {
+		b.refusals++
+		return
+	}
+	if b.bytes-old.cost+cost > maxRetainedFamilyBytes || (!exists && b.max > 0 && len(b.m) >= b.max) {
+		if !now.Before(b.nextExpiry) {
+			b.prune(now)
+			old, exists = b.m[k]
+		}
+	}
+	if b.bytes-old.cost+cost > maxRetainedFamilyBytes || (!exists && b.max > 0 && len(b.m) >= b.max) {
 		b.refusals++
 		return
 	}
 	b.bytes = b.bytes - old.cost + cost
 	b.m[k] = inventoryRecord[V]{val: v, last: now, cost: cost}
+	expiry := now.Add(b.ttl)
+	if b.nextExpiry.IsZero() || expiry.Before(b.nextExpiry) {
+		b.nextExpiry = expiry
+	}
+}
+
+func (b *boundedInventory[K, V]) prune(now time.Time) {
+	b.nextExpiry = time.Time{}
+	for k, rec := range b.m {
+		if now.Sub(rec.last) >= b.ttl {
+			b.bytes -= rec.cost
+			delete(b.m, k)
+			continue
+		}
+		expiry := rec.last.Add(b.ttl)
+		if b.nextExpiry.IsZero() || expiry.Before(b.nextExpiry) {
+			b.nextExpiry = expiry
+		}
+	}
 }
 
 // live prunes everything not seen within the TTL and returns what remains, ordered by
@@ -95,13 +127,9 @@ func (b *boundedInventory[K, V]) seen(k K, v V, now time.Time) {
 // from growing forever. Ordered output keeps a scrape's series order stable, so a diff
 // of two scrapes shows real changes only.
 func (b *boundedInventory[K, V]) live(now time.Time) []inventoryEntry[K, V] {
+	b.prune(now)
 	out := make([]inventoryEntry[K, V], 0, len(b.m))
 	for k, rec := range b.m {
-		if now.Sub(rec.last) >= b.ttl {
-			b.bytes -= rec.cost
-			delete(b.m, k)
-			continue
-		}
 		out = append(out, inventoryEntry[K, V]{key: k, val: rec.val})
 	}
 	slices.SortFunc(out, func(x, y inventoryEntry[K, V]) int { return b.order(x.key, y.key) })
