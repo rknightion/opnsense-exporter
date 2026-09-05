@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Product-specific additions to the central CodeRabbit defaults.
+# Keep inheritance enabled; shared review policy lives in the owner/coderabbit repository.
+inheritance: true
+reviews:
+  path_filters:
+  - '!vendor/**'
+  - '!grafana/dashboard.json'
+  - '!grafana/dashboard-health.json'
+  - '!grafana/dashboard-stats.json'
+  - '!grafana/sentinel-contract.json'
+  - '!grafana/alerts/grafana-managed/**'
+  - '!grafana/runbooks.md'
+  path_instructions:
+  - path: internal/collector/**/*.go
+    instructions: >-
+      Collectors update scheduled snapshots; /metrics and OTLP replay the latest snapshot and must not
+      trigger live firewall API calls. Assign volatility tiers from the signal shape, keep metric names/labels
+      in the catalog, and distinguish feature-absent plugin responses from collection failure. Receiver-derived
+      metric keys and process-lifetime maps need explicit cardinality bounds.
+  - path: opnsense/**/*.go
+    instructions: >-
+      Keep endpoint registration, response structs, schema registry and POST contract in lockstep. Plugin-gated
+      404 means feature absent and stays silent. A missing live key may be box state rather than API drift;
+      require upstream source evidence before changing compatibility. Fixtures must reflect a producible
+      branch, and structure-only schema goldens must not contain response values.
+  - path: internal/logship/**/*.go
+    instructions: >-
+      Review syslog, Zenarmor and NetFlow inputs as attacker-controlled network data. Bound frame/body
+      size, concurrent work, queues, retries and label cardinality; authenticate before expensive work
+      where configured; redact credential-bearing parse errors; increment accepted counters only after
+      successful queue admission. Preserve structured metadata versus Loki stream-label boundaries.
+  - path: internal/webui/**/*.go
+    instructions: >-
+      Web UI handlers read metricsnap, collector status and cached API views. They must not Gather the
+      live registry or cause independent firewall scrapes. Bound any route that can reach upstream work
+      and preserve passive snapshot semantics.
