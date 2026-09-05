@@ -21,6 +21,14 @@ type configSnapshotSearchResponse struct {
 	Rows []json.RawMessage `json:"rows"`
 }
 
+// FilterController::searchRuleAction merges MVC rows with the non-MVC rows
+// from scripts/filter/list_non_mvc_rules.php. On stable/26.7 (6fc5e865) and
+// stable/26.1 (8cc69b21), that producer maps a generated PF label to uuid but
+// emits every rule with its own sort_order. A repeated generated-rule UUID is
+// therefore valid, and this delimiter keeps its producer discriminator in the
+// internal entity identity without changing the source row.
+const configSnapshotDuplicateIDDelimiter = ":"
+
 // FetchFirewallConfigSnapshots returns the current filter and four NAT rule
 // sets. It intentionally reuses the already-registered search endpoints: no
 // endpoint registry or schema-contract expansion is required. The row bodies
@@ -65,7 +73,12 @@ func (c *Client) FetchFirewallConfigSnapshots() ([]ConfigSnapshotEntity, *APICal
 }
 
 func configSnapshotRows(kind string, rows []json.RawMessage) ([]ConfigSnapshotEntity, error) {
-	entities := make([]ConfigSnapshotEntity, 0, len(rows))
+	type decodedRow struct {
+		id     string
+		config map[string]any
+	}
+	decoded := make([]decodedRow, 0, len(rows))
+	uuidCounts := make(map[string]int, len(rows))
 	for _, row := range rows {
 		decoder := json.NewDecoder(bytes.NewReader(row))
 		decoder.UseNumber()
@@ -78,7 +91,21 @@ func configSnapshotRows(kind string, rows []json.RawMessage) ([]ConfigSnapshotEn
 			return nil, fmt.Errorf("%s configuration row has no uuid", kind)
 		}
 		redactConfigSnapshotFields(config)
-		entities = append(entities, ConfigSnapshotEntity{Kind: kind, ID: id, Config: config})
+		decoded = append(decoded, decodedRow{id: id, config: config})
+		uuidCounts[id]++
+	}
+
+	entities := make([]ConfigSnapshotEntity, 0, len(decoded))
+	for _, row := range decoded {
+		id := row.id
+		if kind == "filter_rule" && uuidCounts[row.id] > 1 {
+			sortOrder, ok := row.config["sort_order"].(string)
+			if !ok || strings.TrimSpace(sortOrder) == "" {
+				return nil, fmt.Errorf("%s configuration row with repeated uuid %q has no nonempty string sort_order", kind, row.id)
+			}
+			id += configSnapshotDuplicateIDDelimiter + sortOrder
+		}
+		entities = append(entities, ConfigSnapshotEntity{Kind: kind, ID: id, Config: row.config})
 	}
 	return entities, nil
 }

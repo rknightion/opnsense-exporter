@@ -3,17 +3,20 @@
 
 import argparse
 import base64
+import binascii
 import hashlib
 import json
 import math
 import os
 import re
 import secrets
+import select
 import signal
 import ssl
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -27,6 +30,44 @@ SENSITIVE_DIAGNOSTIC = re.compile(
 SAFE_REVISION_ID = re.compile(r"config-[0-9]+(?:\.[0-9]+)?\.xml\Z")
 PROOF_SOURCES = ("configchange", "configstate")
 REQUIRED_CONFIGSTATE_FAMILIES = {"firewall", "device_inventory", "security_posture"}
+STDERR_LINE_LIMIT_BYTES = 64 * 1024
+STATE_FILE_LIMIT_BYTES = 1024 * 1024
+STDERR_DRAIN_TIMEOUT_SECONDS = 2
+
+# These are the source-owned messages emitted by the current pipeline. The
+# monitor deliberately matches the complete message and retains only counters;
+# arbitrary JSON fields (including err, path and source values) never leave the
+# reader thread. Keep the values in sync with internal/logship/pipeline.go.
+STDERR_MESSAGES = {
+    "state_file_unreadable": "could not read log state file; resuming from now",
+    "state_file_corrupt": "log state file is corrupt; resuming from now",
+    "state_entry_corrupt": "log state entry is corrupt; resuming from now",
+    "configchange_rebaseline": "config-change log source cursor is no longer in backup history; re-baselining without replay",
+    "endpoint_terminal_rejection": "log endpoint terminally rejected records; they are lost and will NOT be retried (a permanent protocol response, or an OTLP partial-success rejection)",
+    "max_retries": "log sink refused a batch for the maximum number of attempts; dropping it so delivery of later batches continues; records lost",
+    "ingest_oversize": "log record exceeds the per-record size cap; rejected at ingest",
+    "source_poll_error": "log source poll error",
+}
+HISTORICAL_REJECTION_SUBSTRINGS = (
+    "greater_than_max_sample_age",
+    "too old",
+    "too far behind",
+    "out of order",
+)
+STDERR_DIAGNOSTIC_KEYS = (
+    "stderr_state_file_unreadable_count",
+    "stderr_state_file_corrupt_count",
+    "stderr_state_entry_corrupt_count",
+    "stderr_configchange_rebaseline_count",
+    "stderr_endpoint_terminal_rejection_count",
+    "stderr_endpoint_historical_rejection_count",
+    "stderr_max_retries_count",
+    "stderr_ingest_oversize_count",
+    "stderr_configchange_poll_error_count",
+    "stderr_oversized_line_count",
+    "stderr_reader_incomplete_count",
+)
+_OVERSIZED_LINE = object()
 
 
 class ProofFailure(RuntimeError):
@@ -34,6 +75,252 @@ class ProofFailure(RuntimeError):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
+
+
+def _read_bounded_line(stream, limit=STDERR_LINE_LIMIT_BYTES):
+    """Read one bounded line, draining but never retaining an oversized line."""
+    try:
+        line = stream.readline(limit + 1)
+    except (OSError, ValueError):
+        return None
+    if not line:
+        return None
+
+    if isinstance(line, bytes):
+        newline = b"\n"
+        byte_length = len(line)
+    elif isinstance(line, str):
+        newline = "\n"
+        byte_length = len(line.encode("utf-8", errors="replace"))
+    else:
+        return None
+
+    if byte_length <= limit:
+        return line
+
+    # readline(limit + 1) consumed at most the first bounded fragment. Drain
+    # through the delimiter so the next valid JSON line remains aligned, while
+    # retaining no part of this line.
+    if newline not in line:
+        while True:
+            try:
+                fragment = stream.readline(limit + 1)
+            except (OSError, ValueError):
+                break
+            if not fragment or not isinstance(fragment, type(line)) or newline in fragment:
+                break
+    return _OVERSIZED_LINE
+
+
+def classify_stderr_line(line):
+    """Return fixed diagnostic names recognized from one JSON log line.
+
+    This parser intentionally has no fallback text matching. In particular, a
+    terminal rejection with an unrecognized error remains only a terminal
+    rejection; it does not become a guessed historical rejection.
+    """
+    if isinstance(line, bytes):
+        try:
+            line = line.decode("utf-8")
+        except UnicodeDecodeError:
+            return ()
+    if not isinstance(line, str):
+        return ()
+    try:
+        record = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return ()
+    if not isinstance(record, dict):
+        return ()
+
+    message = record.get("msg")
+    if not isinstance(message, str):
+        return ()
+    events = []
+    for name in (
+            "state_file_unreadable", "state_file_corrupt", "state_entry_corrupt",
+            "configchange_rebaseline", "max_retries", "ingest_oversize"):
+        if message == STDERR_MESSAGES[name]:
+            events.append(name)
+
+    if message == STDERR_MESSAGES["source_poll_error"] and record.get("source") == "configchange":
+        events.append("configchange_poll_error")
+
+    if message == STDERR_MESSAGES["endpoint_terminal_rejection"]:
+        events.append("endpoint_terminal_rejection")
+        error = record.get("err")
+        if isinstance(error, str):
+            folded = error.casefold()
+            if any(marker in folded for marker in HISTORICAL_REJECTION_SUBSTRINGS):
+                events.append("endpoint_historical_rejection")
+    return tuple(events)
+
+
+class StderrDiagnostics:
+    """Thread-safe fixed counters for source-owned exporter diagnostics."""
+    def __init__(self):
+        self._counts = {key: 0 for key in STDERR_DIAGNOSTIC_KEYS}
+        self._lock = threading.Lock()
+
+    def increment(self, event):
+        key = "stderr_" + event + "_count"
+        if key not in self._counts:
+            return
+        with self._lock:
+            self._counts[key] += 1
+
+    def oversized_line(self):
+        self.increment("oversized_line")
+
+    def snapshot(self):
+        with self._lock:
+            return dict(self._counts)
+
+
+class StderrMonitor:
+    """Consume a child stderr pipe concurrently without retaining its contents."""
+    def __init__(self, stream):
+        self.stream = stream
+        self.diagnostics = StderrDiagnostics()
+        self._thread = None
+        self._closed = False
+        self._stop = threading.Event()
+        self._fd = self._stream_fd()
+
+    def _stream_fd(self):
+        if self.stream is None or not hasattr(self.stream, "fileno"):
+            return None
+        try:
+            fd = self.stream.fileno()
+            if not isinstance(fd, int) or fd < 0:
+                return None
+            os.set_blocking(fd, False)
+            return fd
+        except (OSError, ValueError, TypeError, AttributeError):
+            return None
+
+    def start(self):
+        if self.stream is None or not hasattr(self.stream, "readline"):
+            return
+        self._thread = threading.Thread(target=self._consume, name="live-proof-stderr", daemon=True)
+        self._thread.start()
+
+    def _consume(self):
+        if self._fd is not None:
+            self._consume_fd()
+            return
+        self._consume_lines()
+
+    def _consume_lines(self):
+        while True:
+            line = _read_bounded_line(self.stream)
+            if line is None:
+                return
+            if line is _OVERSIZED_LINE:
+                self.diagnostics.oversized_line()
+                continue
+            for event in classify_stderr_line(line):
+                self.diagnostics.increment(event)
+
+    def _consume_fd(self):
+        pending = bytearray()
+        oversized = False
+        while not self._stop.is_set():
+            try:
+                readable, _, _ = select.select([self._fd], [], [], 0.25)
+            except (OSError, ValueError):
+                break
+            if not readable:
+                continue
+            try:
+                chunk = os.read(self._fd, 64 * 1024)
+            except BlockingIOError:
+                continue
+            except (OSError, ValueError):
+                break
+            if not chunk:
+                break
+
+            while chunk:
+                delimiter = chunk.find(b"\n")
+                if delimiter < 0:
+                    if not oversized:
+                        pending.extend(chunk)
+                        if len(pending) > STDERR_LINE_LIMIT_BYTES:
+                            pending.clear()
+                            oversized = True
+                    break
+                fragment, chunk = chunk[:delimiter + 1], chunk[delimiter + 1:]
+                if oversized or len(pending) + len(fragment) > STDERR_LINE_LIMIT_BYTES:
+                    self.diagnostics.oversized_line()
+                else:
+                    pending.extend(fragment)
+                    for event in classify_stderr_line(bytes(pending)):
+                        self.diagnostics.increment(event)
+                pending.clear()
+                oversized = False
+
+        if oversized:
+            self.diagnostics.oversized_line()
+        elif pending:
+            for event in classify_stderr_line(bytes(pending)):
+                self.diagnostics.increment(event)
+
+    def _close_stream(self):
+        if self._closed or self.stream is None:
+            return
+        self._closed = True
+        try:
+            self.stream.close()
+        except (OSError, ValueError):
+            pass
+
+    def finish(self):
+        """Drain after process shutdown, then close a pipe that has no writer."""
+        if self._thread is None:
+            self._close_stream()
+            return self.diagnostics.snapshot()
+
+        # A normal child exit closes the pipe and lets the reader consume the
+        # final buffered line. If a descendant inherited the descriptor, signal
+        # the nonblocking reader after the bounded drain so cleanup cannot
+        # deadlock the proof.
+        self._thread.join(timeout=STDERR_DRAIN_TIMEOUT_SECONDS)
+        if self._thread.is_alive():
+            self._stop.set()
+            self._thread.join(timeout=STDERR_DRAIN_TIMEOUT_SECONDS)
+        if self._thread.is_alive():
+            self.diagnostics.increment("reader_incomplete")
+        else:
+            self._close_stream()
+        return self.diagnostics.snapshot()
+
+
+def state_cursor_advanced(path, expected_revision):
+    """Compare the final configchange cursor in memory without rendering it."""
+    if not isinstance(expected_revision, str) or not expected_revision:
+        return False
+    try:
+        with open(path, "rb") as state_file:
+            encoded_state = state_file.read(STATE_FILE_LIMIT_BYTES + 1)
+        if len(encoded_state) > STATE_FILE_LIMIT_BYTES:
+            return False
+        envelope = json.loads(encoded_state)
+        if not isinstance(envelope, dict):
+            return False
+        encoded_cursor = envelope.get("configchange")
+        if not isinstance(encoded_cursor, str):
+            return False
+        cursor_data = base64.b64decode(encoded_cursor, validate=True)
+        cursor = json.loads(cursor_data)
+        if not isinstance(cursor, dict):
+            return False
+        revision = cursor.get("last_revision")
+        if not isinstance(revision, str) or not revision or len(revision) > 512:
+            return False
+        return revision == expected_revision
+    except (OSError, ValueError, TypeError, binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
+        return False
 
 
 class RetainedRevision:
@@ -288,10 +575,11 @@ def main(argv=None):
     host, key, secret_value = required("DEVBOX_HOST"), required("DEVBOX_API_KEY"), required("DEVBOX_API_SECRET")
     otlp_user, loki_user, cap_token = required("GRAFANA_OTLP_USER"), required("GRAFANA_LOKI_USER"), required("GRAFANA_CAP_TOKEN")
     instance = "delivery-proof-" + os.environ.get("GITHUB_RUN_ID", secrets.token_hex(6))
-    api, process, state_path = API(host, key, secret_value), None, None
-    facts, diagnostics, stage = {}, {}, "initializing"
+    api, process, state_path, stderr_monitor = API(host, key, secret_value), None, None, None
+    facts, diagnostics, stage = {"cursor_advanced": False}, {}, "initializing"
     query_window_start_ns = query_window_end_ns = None
     query_reports = []
+    successor = None
     selector = 'service_name="opnsense2otel",service_instance_id="' + instance + '"'
     try:
         stage = "reading_retained_revisions"
@@ -312,13 +600,15 @@ def main(argv=None):
                             "OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID": otlp_user,
                             "OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN": cap_token,
                             "OPN2OTEL_OTLP_GRAFANA_CLOUD_ENDPOINT": OTLP_ENDPOINT}
-        command = [args.exporter, "--logs.enabled", "--logs.sink=otlp", "--logs.poll-interval=5s",
+        command = [args.exporter, "--log.format=json", "--logs.enabled", "--logs.sink=otlp", "--logs.poll-interval=5s",
                    "--logs.state-file=" + state_path, "--logs.configchange.enabled",
                    "--logs.config-snapshot.firewall.enabled", "--logs.config-snapshot.devices.enabled",
                    "--logs.config-snapshot.security-posture.enabled", "--logs.self.enabled"]
         stage = "starting_exporter"
-        process = subprocess.Popen(command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        process = subprocess.Popen(command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                    start_new_session=True)
+        stderr_monitor = StderrMonitor(process.stderr)
+        stderr_monitor.start()
         stage = "waiting_for_delivery"
         time.sleep(20)
         query_window_end_ns = time.time_ns()
@@ -375,7 +665,11 @@ def main(argv=None):
             if process:
                 stop_process_group(process)
         finally:
+            if stderr_monitor is not None:
+                facts.update(stderr_monitor.finish())
             if state_path is not None:
+                if successor is not None:
+                    facts["cursor_advanced"] = state_cursor_advanced(state_path, successor.id)
                 try:
                     os.unlink(state_path)
                 except FileNotFoundError:

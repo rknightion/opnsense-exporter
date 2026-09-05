@@ -2,8 +2,11 @@
 import base64
 import io
 import json
+import os
 import pathlib
 import sys
+import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -12,6 +15,100 @@ import live_delivery_proof as proof
 
 
 class TestLiveDeliveryProof(unittest.TestCase):
+    def test_stderr_monitor_keeps_only_fixed_counts_and_hides_arbitrary_fields(self):
+        secret = "arbitrary-api-key-secret"
+        lines = [
+            {"msg": proof.STDERR_MESSAGES["state_file_unreadable"], "path": secret, "err": secret},
+            {"msg": proof.STDERR_MESSAGES["state_file_corrupt"], "path": secret},
+            {"msg": proof.STDERR_MESSAGES["state_entry_corrupt"], "source": secret, "secret": secret},
+            {"msg": proof.STDERR_MESSAGES["configchange_rebaseline"], "last_revision": secret},
+            {"msg": proof.STDERR_MESSAGES["endpoint_terminal_rejection"], "count": 4, "err": secret},
+            {"msg": proof.STDERR_MESSAGES["max_retries"], "attempts": 10, "err": secret},
+            {"msg": proof.STDERR_MESSAGES["ingest_oversize"], "bytes": 99_999, "source": secret},
+            {"msg": proof.STDERR_MESSAGES["source_poll_error"], "source": "configchange", "err": secret},
+        ]
+        stream = io.BytesIO(b"".join(json.dumps(line).encode() + b"\n" for line in lines))
+        monitor = proof.StderrMonitor(stream)
+        monitor.start()
+        counts = monitor.finish()
+
+        self.assertEqual(counts["stderr_state_file_unreadable_count"], 1)
+        self.assertEqual(counts["stderr_state_file_corrupt_count"], 1)
+        self.assertEqual(counts["stderr_state_entry_corrupt_count"], 1)
+        self.assertEqual(counts["stderr_configchange_rebaseline_count"], 1)
+        self.assertEqual(counts["stderr_endpoint_terminal_rejection_count"], 1)
+        self.assertEqual(counts["stderr_endpoint_historical_rejection_count"], 0)
+        self.assertEqual(counts["stderr_max_retries_count"], 1)
+        self.assertEqual(counts["stderr_ingest_oversize_count"], 1)
+        self.assertEqual(counts["stderr_configchange_poll_error_count"], 1)
+        self.assertNotIn(secret, repr(counts))
+
+    def test_stderr_monitor_classifies_known_historical_rejection_and_leaves_unknown_unknown(self):
+        known = json.dumps({
+            "msg": proof.STDERR_MESSAGES["endpoint_terminal_rejection"],
+            "err": "greater_than_max_sample_age for historical data; bearer-secret-is-not-rendered",
+        }).encode() + b"\n"
+        unknown = json.dumps({
+            "msg": proof.STDERR_MESSAGES["endpoint_terminal_rejection"],
+            "err": "an unrecognized endpoint rejection; timestamp-cause-is-unknown",
+        }).encode() + b"\n"
+        monitor = proof.StderrMonitor(io.BytesIO(known + unknown))
+        monitor.start()
+        counts = monitor.finish()
+
+        self.assertEqual(counts["stderr_endpoint_terminal_rejection_count"], 2)
+        self.assertEqual(counts["stderr_endpoint_historical_rejection_count"], 1)
+        self.assertNotIn("timestamp-cause-is-unknown", repr(counts))
+
+    def test_stderr_monitor_discards_oversized_line_and_keeps_following_line_aligned(self):
+        oversized = b"{" + b"x" * proof.STDERR_LINE_LIMIT_BYTES + b"}\n"
+        valid = json.dumps({"msg": proof.STDERR_MESSAGES["state_file_corrupt"]}).encode() + b"\n"
+        monitor = proof.StderrMonitor(io.BytesIO(oversized + valid))
+        monitor.start()
+        counts = monitor.finish()
+
+        self.assertEqual(counts["stderr_oversized_line_count"], 1)
+        self.assertEqual(counts["stderr_state_file_corrupt_count"], 1)
+
+    def test_stderr_monitor_frames_a_real_nonblocking_pipe_and_finishes_after_writer_closes(self):
+        read_fd, write_fd = os.pipe()
+        read_stream = os.fdopen(read_fd, "rb")
+        monitor = proof.StderrMonitor(read_stream)
+        monitor.start()
+
+        payload = (b"{" + b"x" * proof.STDERR_LINE_LIMIT_BYTES + b"}\n" +
+                   json.dumps({"msg": proof.STDERR_MESSAGES["max_retries"]}).encode() + b"\n")
+
+        def write_pipe():
+            with os.fdopen(write_fd, "wb") as writer_stream:
+                writer_stream.write(payload)
+                writer_stream.flush()
+
+        writer = threading.Thread(target=write_pipe, daemon=True)
+        writer.start()
+        writer.join(timeout=2)
+        self.assertFalse(writer.is_alive(), "pipe writer blocked while stderr monitor was not consuming")
+        counts = monitor.finish()
+
+        self.assertEqual(counts["stderr_oversized_line_count"], 1)
+        self.assertEqual(counts["stderr_max_retries_count"], 1)
+        self.assertEqual(counts["stderr_reader_incomplete_count"], 0)
+
+    def test_state_cursor_compare_accepts_successor_and_rejects_missing_or_corrupt_envelopes(self):
+        successor = proof.RetainedRevision("config-2.xml", 2)
+        path = proof.seed_revision_state(successor)
+        self.addCleanup(pathlib.Path(path).unlink, missing_ok=True)
+        self.assertTrue(proof.state_cursor_advanced(path, successor.id))
+
+        with tempfile.NamedTemporaryFile() as missing:
+            missing_path = missing.name
+        self.assertFalse(proof.state_cursor_advanced(missing_path, successor.id))
+
+        with tempfile.NamedTemporaryFile() as corrupt:
+            corrupt.write(b'{"configchange":"not-base64"}')
+            corrupt.flush()
+            self.assertFalse(proof.state_cursor_advanced(corrupt.name, successor.id))
+
     def test_loki_query_stops_at_wall_clock_deadline(self):
         with mock.patch.object(proof.time, "monotonic", side_effect=[0, 0, 121]), \
                 mock.patch.object(proof.urllib.request, "urlopen", side_effect=proof.urllib.error.URLError("offline")) as request, \
@@ -160,10 +257,15 @@ class TestLiveDeliveryProof(unittest.TestCase):
             "GRAFANA_CAP_TOKEN": "not-rendered",
             "GITHUB_RUN_ID": "123",
         }
+        process = mock.Mock(stderr=io.BytesIO((json.dumps({
+            "msg": proof.STDERR_MESSAGES["source_poll_error"],
+            "source": "configchange",
+            "err": "arbitrary-secret-value",
+        }) + "\n").encode()))
         output = io.StringIO()
         with mock.patch.dict(proof.os.environ, environment, clear=False), \
                 mock.patch.object(proof, "API", FakeAPI), \
-                mock.patch.object(proof.subprocess, "Popen"), \
+                mock.patch.object(proof.subprocess, "Popen", return_value=process) as popen, \
                 mock.patch.object(proof, "stop_process_group"), \
                 mock.patch.object(proof.time, "sleep"), \
                 mock.patch.object(proof.time, "time_ns", side_effect=[1_000_000_000_000, 1_000_000_000_100]), \
@@ -172,6 +274,9 @@ class TestLiveDeliveryProof(unittest.TestCase):
                 mock.patch("sys.stdout", output):
             self.assertEqual(proof.main(["--exporter", "not-started", "--redaction-verifier", "verifier"]), 1)
 
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.kwargs["stderr"], proof.subprocess.PIPE)
+        self.assertIn("--log.format=json", popen.call_args.args[0])
         rendered = output.getvalue()
         self.assertIn('- query configchange: {service_name="opnsense2otel",service_instance_id="delivery-proof-123",opnsense_source="configchange"} start=10 end=201', rendered)
         self.assertIn('- query source disambiguation: {service_name="opnsense2otel",service_instance_id="delivery-proof-123"} start=10 end=203', rendered)
@@ -179,6 +284,9 @@ class TestLiveDeliveryProof(unittest.TestCase):
         self.assertIn("- delivered bodies redacted: no", rendered)
         self.assertIn("- configstate families query result: none", rendered)
         self.assertIn("- configstate unexpected family count: 0", rendered)
+        self.assertIn("- stderr configchange poll error count: 1", rendered)
+        self.assertIn("- cursor advanced: no", rendered)
+        self.assertNotIn("arbitrary-secret-value", rendered)
 
     def test_retained_revisions_match_go_timestamp_then_id_ordering(self):
         class FakeAPI:

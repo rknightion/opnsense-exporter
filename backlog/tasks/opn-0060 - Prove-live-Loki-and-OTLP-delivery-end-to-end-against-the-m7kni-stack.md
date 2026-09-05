@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-05 17:23'
+updated_date: '2026-09-05 18:24'
 labels: []
 dependencies: []
 priority: high
@@ -111,6 +111,10 @@ Wave 6 diagnostic run 33869285754 at 19b8625a failed at proof_stage=resolving_al
 Wave 6 run 33870211682 at 21a824b2 again failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match after allowing case variants of the exact delivery-proof stem. No exporter started, no alias was mutated, and no m7kni write occurred. Final bounded identification attempt: allow one safe prefix and/or suffix token around the exact stem while retaining exactly-one selection and near-collision rejection. If that still finds nothing, park at dedicated alias absent or differently named.
 
 Wave 6 final bounded run 33870791765 at 1cda1d2b failed at proof_stage=resolving_alias with proof_failure=alias_search_no_approved_match after allowing one safe prefix and/or suffix around the delivery-proof stem. This establishes that the dedicated alias is absent or differently named; no exporter started, no alias was mutated or restored, no m7kni write occurred, and no user account was created. The testbed hold was released at 2026-09-04T12:04:54Z. PARKED RESUME BOUNDARY: create or identify the dedicated throwaway firewall alias and record its exact safe name, then dispatch the current proof workflow; do not fall back to any user-account trigger.
+
+Wave 7 run 33982574173 reached exporter startup and backend records, but configchange and configstate were absent under its instance. The configstate exporter-stream poll error identifies duplicate filter-rule identity (OPN-0085). No configchange poll error was observed. The proof discarded stderr, so sink rejection and state-load diagnostics were unobservable; add fixed-vocabulary in-memory stderr classification before the next changed-source dispatch. No raw local log line or credential may be retained or rendered.
+
+Added bounded concurrent JSON stderr classification without retaining or rendering raw log lines; only fixed counters identify state-load errors, configchange rebaseline/poll errors, terminal destination rejection and explicit historical-age/order markers. Unknown rejection remains unknown. Final source cursor is compared to the selected successor in memory before state-file removal. Offline proof suite: Ran 63 tests in 0.345s / OK; real nonblocking pipe framing included. These diagnostics do not replace Loki delivery/redaction assertions.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
