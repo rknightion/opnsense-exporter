@@ -1,11 +1,11 @@
 ---
 id: OPN-0060
 title: Prove live Loki and OTLP delivery end to end against the m7kni stack
-status: Parked
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-03 18:47'
-updated_date: '2026-09-04 18:22'
+updated_date: '2026-09-05 17:23'
 labels: []
 dependencies: []
 priority: high
@@ -47,6 +47,8 @@ Wave 4: under one root-owned testbed hold, run the local exporter against the te
 Wave 5: add a manual protected-environment workflow modelled on live-canary, build the current tree, emit the four still-unproven source families under one unique instance label, perform one reversible secret-bearing testbed configuration change, and query the backend for per-source arrival, structured domain metadata, on-wire redaction, and the current-build promoted label set. The root alone dispatches the workflow and owns the testbed hold, backend writes, tracker updates, commit and push.
 
 Wave 6: replace the forbidden user-account trigger with a reversible description edit on the dedicated throwaway firewall alias; dispatch the protected live proof under one root-owned testbed hold; query the exporter stream first for the configstate poll-error err attribute; then diagnose and repair only from observed evidence, rerun as needed, and answer the two remaining arrival/redaction assertions. Do not retry through any user-account path.
+
+Wave 7 supersedes the alias prerequisite: delete all alias mutation and obsolete proof assertions, read retained revisions, seed the source cursor through the existing pipeline state-file envelope, then ship historical configchange and heartbeat configstate to m7kni and assert arrival before on-wire redaction. Use the shared sensitive-key vocabulary in a credential-safe delivered-body verifier; preserve categorized Loki metadata and bounded diagnostics. Root owns justfile integration, completed source-only CodeRabbit, just check, commit/push, serialized testbed hold and workflow dispatch. Two same-shape failures stop that approach. No firewall configuration object may be created, edited or deleted.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes

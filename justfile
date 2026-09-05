@@ -221,6 +221,12 @@ gen-oui:
 build:
     go build -tags osusergo,netgo -ldflags '-w -extldflags "-static" -X main.version=local-test' -v -o {{ binary_name }}
 
+# build the dispatched exporter and the delivered-body verifier for the live proof
+[group('build')]
+build-live-proof exporter verifier:
+    CGO_ENABLED=0 go build -o '{{ exporter }}' .
+    CGO_ENABLED=0 go build -o '{{ verifier }}' ./cmd/configredactionverify
+
 # build the container image locally (same required build-args the release build uses)
 [group('build')]
 image tag="opnsense2otel:dev":
@@ -255,6 +261,11 @@ run: build
 [group('dev')]
 capture args="":
     OPN2OTEL_OPS_API_KEY="${OPS_API_KEY:-}" OPN2OTEL_OPS_API_SECRET="${OPS_API_SECRET:-}" go run ./cmd/apicapture --base-url "{{ env('OPS_BASE_URL', 'https://' + env('OPS_ADDRESS', '')) }}" ${OPS_INSECURE:+--insecure} {{ args }}
+
+# ship read-only testbed configuration telemetry and verify delivered bodies in m7kni
+[group('dev')]
+live-delivery-proof exporter verifier:
+    python3 scripts/testbed/live_delivery_proof.py --exporter '{{ exporter }}' --redaction-verifier '{{ verifier }}'
 
 # report opnsense struct fields decoded from the API and then never read (#544)
 [group('dev')]

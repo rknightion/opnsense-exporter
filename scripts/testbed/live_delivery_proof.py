@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
-"""Run the bounded, secret-safe live-delivery proof from CI.
-
-The workflow owns credentials.  This program never prints an HTTP body, a
-credential, a generated password hash, or a Loki line: its only output is a
-yes/no summary suitable for a GitHub step summary.
-"""
+"""Run the bounded, read-only live-delivery proof from CI."""
 
 import argparse
 import base64
+import hashlib
 import json
+import math
 import os
 import re
 import secrets
 import signal
-import socket
 import ssl
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -24,20 +21,12 @@ import urllib.request
 
 OTLP_ENDPOINT = "https://otlp-gateway-prod-gb-south-1.grafana.net/otlp"
 LOKI_ENDPOINT = "https://logs-prod-035.grafana.net"
-SENSITIVE_KEY = re.compile(r"password|passphrase|secret|private.?key|privkey|shared.?key|token|api.?key|auth.?key|credential|^(prv|psk|pass)$", re.I)
 SENSITIVE_DIAGNOSTIC = re.compile(
     r"(?:password|passphrase|secret|private.?key|privkey|shared.?key|token|api.?key|auth.?key|credential|"
-    r"(?:basic|bearer)\s+\S+|\b[a-z][a-z0-9+.-]*://\S+)",
-    re.I,
-)
-PROOF_ALIAS_NAME = re.compile(
-    r"(?:[a-z0-9]+[-_])?delivery(?:[-_]?proof)(?:[-_][a-z0-9]+)?\Z",
-    re.I,
-)
-PROOF_SOURCES = ("configchange", "configstate", "exporter", "syslog", "zenarmor")
-SAFE_ALIAS_NAME = re.compile(r"[A-Za-z0-9_-]+\Z")
-ALIAS_SEARCH_PAGE_SIZE = 100
-ALIAS_SEARCH_MAX_ROWS = 10_000
+    r"(?:basic|bearer)\s+\S+|\b[a-z][a-z0-9+.-]*://\S+)", re.I)
+SAFE_REVISION_ID = re.compile(r"config-[0-9]+(?:\.[0-9]+)?\.xml\Z")
+PROOF_SOURCES = ("configchange", "configstate")
+REQUIRED_CONFIGSTATE_FAMILIES = {"firewall", "device_inventory", "security_posture"}
 
 
 class ProofFailure(RuntimeError):
@@ -45,6 +34,12 @@ class ProofFailure(RuntimeError):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
+
+
+class RetainedRevision:
+    def __init__(self, revision_id, timestamp):
+        self.id = revision_id
+        self.timestamp = timestamp
 
 
 def required(name):
@@ -62,262 +57,115 @@ class API:
     def __init__(self, host, key, secret_value):
         self.base = "https://" + host.rstrip("/")
         self.auth = basic(key, secret_value)
-        # The lab firewall uses the same private certificate contract as the
-        # canonical live-canary workflow, which runs over an authenticated
-        # tailnet path with certificate verification disabled. This is testbed
-        # only; neither the production firewall nor a public route is in scope.
         self.tls = ssl.create_default_context()
         self.tls.check_hostname = False
         self.tls.verify_mode = ssl.CERT_NONE
 
-    def request(self, method, path, payload=None):
-        data = json.dumps(payload).encode() if payload is not None else (b"" if method == "POST" else None)
-        request = urllib.request.Request(
-            self.base + path, data=data, method=method,
-            headers={"Authorization": self.auth, "Content-Type": "application/json"},
-        )
+    def get(self, path):
+        request = urllib.request.Request(self.base + path, headers={"Authorization": self.auth})
         try:
             with urllib.request.urlopen(request, timeout=20, context=self.tls) as response:
                 if response.status // 100 != 2:
                     raise ProofFailure("testbed_api_non_2xx", "testbed API returned non-2xx")
                 return json.load(response)
         except urllib.error.HTTPError as err:
-            raise ProofFailure(
-                "testbed_api_http_status_" + str(err.code),
-                "testbed API request failed without exposing its body",
-            ) from err
+            raise ProofFailure("testbed_api_http_status_" + str(err.code), "testbed API request failed") from err
         except urllib.error.URLError as err:
-            raise ProofFailure(
-                "testbed_api_unreachable",
-                "testbed API request failed without exposing its body",
-            ) from err
+            raise ProofFailure("testbed_api_unreachable", "testbed API request failed") from err
         except (json.JSONDecodeError, UnicodeDecodeError) as err:
-            raise ProofFailure(
-                "testbed_api_response_not_json",
-                "testbed API request failed without exposing its body",
-            ) from err
-
-    def get(self, path):
-        return self.request("GET", path)
-
-    def post(self, path, payload=None):
-        return self.request("POST", path, payload)
+            raise ProofFailure("testbed_api_response_not_json", "testbed API request failed") from err
 
 
-def resolve_delivery_proof_alias(api):
-    """Discover only the one pre-existing alias the proof is permitted to edit."""
-    rows = []
-    row_ids = set()
-    page = 1
-    while True:
-        payload = api.post(
-            "/api/firewall/alias/search_item",
-            {
-                "current": page,
-                "rowCount": ALIAS_SEARCH_PAGE_SIZE,
-                "sort": {"name": "asc"},
-            },
-        )
-        page_rows = payload.get("rows") if isinstance(payload, dict) else None
-        total = payload.get("total") if isinstance(payload, dict) else None
-        if not isinstance(page_rows, list):
-            raise ProofFailure(
-                "alias_search_rows_invalid",
-                "dedicated delivery-proof alias search did not return a complete page",
-            )
-        if (isinstance(total, bool) or not isinstance(total, int)
-                or total < 0 or total > ALIAS_SEARCH_MAX_ROWS):
-            raise ProofFailure(
-                "alias_search_total_invalid",
-                "dedicated delivery-proof alias search did not return a complete page",
-            )
-        page_ids = []
-        for row in page_rows:
-            row_id = row.get("uuid") if isinstance(row, dict) else None
-            if not isinstance(row_id, str) or not row_id:
-                raise ProofFailure(
-                    "alias_search_rows_invalid",
-                    "dedicated delivery-proof alias search did not return a complete page",
-                )
-            page_ids.append(row_id)
-        if len(set(page_ids)) != len(page_ids) or any(row_id in row_ids for row_id in page_ids):
-            raise ProofFailure(
-                "alias_search_pagination_no_progress",
-                "dedicated delivery-proof alias search pagination made no progress",
-            )
-        rows.extend(page_rows)
-        row_ids.update(page_ids)
-        if len(rows) > total:
-            raise ProofFailure(
-                "alias_search_total_invalid",
-                "dedicated delivery-proof alias search did not return a complete page",
-            )
-        if len(rows) == total:
-            break
-        if not page_rows:
-            raise ProofFailure(
-                "alias_search_pagination_no_progress",
-                "dedicated delivery-proof alias search pagination made no progress",
-            )
-        page += 1
-    matches = [
-        row for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)
-        and PROOF_ALIAS_NAME.fullmatch(row["name"])
-    ]
-    if not matches:
-        raise ProofFailure(
-            "alias_search_no_approved_match",
-            "dedicated delivery-proof alias search did not find exactly one match",
-        )
-    if len(matches) != 1:
-        raise ProofFailure(
-            "alias_search_multiple_approved_matches",
-            "dedicated delivery-proof alias search did not find exactly one match",
-        )
-    alias_uuid = matches[0].get("uuid")
-    alias_name = matches[0]["name"]
-    if not isinstance(alias_uuid, str) or not alias_uuid:
-        raise ProofFailure(
-            "alias_search_uuid_invalid",
-            "dedicated delivery-proof alias did not resolve to one UUID",
-        )
-    if not SAFE_ALIAS_NAME.fullmatch(alias_name):
-        raise ProofFailure(
-            "alias_search_name_unsafe",
-            "dedicated delivery-proof alias name is not safe to report",
-        )
-    return alias_uuid, alias_name
-
-
-def read_delivery_proof_alias(api, alias_uuid):
-    """Read the complete alias payload required for exact restoration."""
-    item = api.get("/api/firewall/alias/get_item/" + urllib.parse.quote(alias_uuid, safe=""))
-    alias = item.get("alias") if isinstance(item, dict) else None
-    if not isinstance(alias, dict) or "description" not in alias:
-        raise RuntimeError("dedicated delivery-proof alias did not return a restorable description")
-    return alias
-
-
-def delivery_proof_alias(api):
-    """Return the one pre-existing alias the proof is permitted to edit."""
-    alias_uuid, _ = resolve_delivery_proof_alias(api)
-    return alias_uuid, read_delivery_proof_alias(api, alias_uuid)
-
-
-def set_alias(api, alias_uuid, alias):
-    result = api.post("/api/firewall/alias/set_item/" + urllib.parse.quote(alias_uuid, safe=""), {"alias": alias})
-    if not isinstance(result, dict) or result.get("result") != "saved":
-        raise RuntimeError("dedicated delivery-proof alias was not saved")
-
-
-def edited_alias(alias, description):
-    updated = dict(alias)
-    updated["description"] = description
-    return updated
-
-
-class AliasDescriptionMutation:
-    """Write a temporary alias description and restore its original payload."""
-    def __init__(self, api, alias_uuid, original_alias, description):
-        self.api = api
-        self.alias_uuid = alias_uuid
-        self.original_alias = original_alias
-        self.description = description
-        self.restored = False
-
-    def __enter__(self):
-        self.apply()
-        return self
-
-    def apply(self):
-        set_alias(self.api, self.alias_uuid, edited_alias(self.original_alias, self.description))
-
-    def __exit__(self, _type, _value, _traceback):
-        self.restore()
-        return False
-
-    def restore(self):
-        set_alias(self.api, self.alias_uuid, self.original_alias)
-        self.restored = True
-
-
-def revision_ids(api):
+def retained_revisions(api):
+    """Read and order revisions exactly as ConfigChangeSource does in Go."""
     payload = api.get("/api/core/backup/backups/this")
     items = payload.get("items") if isinstance(payload, dict) else None
     if not isinstance(items, list):
-        raise RuntimeError("configuration revision list was not available")
-    result = set()
+        raise ProofFailure("retained_revisions_invalid", "configuration revision list was not available")
+    revisions, ids = [], set()
     for item in items:
         revision_id = item.get("id") if isinstance(item, dict) else None
-        if not isinstance(revision_id, str) or not revision_id:
-            raise RuntimeError("configuration revision list contained no revision identity")
-        result.add(revision_id)
-    return result
+        raw_time = item.get("time") if isinstance(item, dict) else None
+        if (not isinstance(revision_id, str) or not revision_id or len(revision_id) > 512 or
+                any(ord(char) < 32 for char in revision_id) or revision_id in ids):
+            raise ProofFailure("retained_revisions_invalid", "configuration revision list was not available")
+        try:
+            timestamp = float(raw_time)
+        except (TypeError, ValueError):
+            raise ProofFailure("retained_revisions_invalid", "configuration revision list was not available") from None
+        if not math.isfinite(timestamp) or timestamp <= 0:
+            raise ProofFailure("retained_revisions_invalid", "configuration revision list was not available")
+        ids.add(revision_id)
+        revisions.append(RetainedRevision(revision_id, timestamp))
+    revisions.sort(key=lambda revision: (revision.timestamp, revision.id))
+    return revisions
 
 
-def revision_list_grew(before, after):
-    return bool(after - before)
+def seed_revision_state(revision):
+    """Write the pipeline envelope whose configchange entry is its source blob."""
+    inner = json.dumps({"last_revision": revision.id}, separators=(",", ":")).encode()
+    encoded = base64.b64encode(inner).decode()
+    descriptor, path = tempfile.mkstemp(prefix="opnsense2otel-delivery-state-", suffix=".json")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as state_file:
+            json.dump({"configchange": encoded}, state_file, separators=(",", ":"))
+    except Exception:
+        os.unlink(path)
+        raise
+    return path
 
 
-def no_sensitive_keys(value):
-    if isinstance(value, dict):
-        return all(not SENSITIVE_KEY.search(str(key)) and no_sensitive_keys(item) for key, item in value.items())
-    if isinstance(value, list):
-        return all(no_sensitive_keys(item) for item in value)
-    return True
+def revision_report_value(revision, rank):
+    if SAFE_REVISION_ID.fullmatch(revision.id):
+        return revision.id
+    return "nonreportable-rank-" + str(rank) + "-sha256-" + hashlib.sha256(revision.id.encode()).hexdigest()[:12]
 
 
-def reject_duplicate_keys(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate JSON key")
-        result[key] = value
-    return result
+def query_start_ns(successor, startup_time_ns):
+    """Cover the successor event and anything emitted since this proof started."""
+    successor_start_ns = int((successor.timestamp - 60) * 1_000_000_000)
+    startup_start_ns = startup_time_ns - 60_000_000_000
+    return min(successor_start_ns, startup_start_ns)
 
 
-def loki_query(query, user, token, start_ns, attempts=12):
+def loki_query(query, user, token, start_ns, end_ns, attempts=12):
     succeeded = False
+    actual_end_ns = end_ns
+    # Leave room for every query and the final summary within the workflow's
+    # deadline even when both connection timeouts and backoff are exhausted.
+    deadline = time.monotonic() + 120
     for attempt in range(attempts):
-        params = urllib.parse.urlencode({
-            "query": query, "limit": "1000", "direction": "FORWARD",
-            "start": str(start_ns), "end": str(time.time_ns()),
-        })
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        actual_end_ns = max(end_ns, time.time_ns())
+        params = urllib.parse.urlencode({"query": query, "limit": "1000", "direction": "FORWARD",
+                                         "start": str(start_ns), "end": str(actual_end_ns)})
         request = urllib.request.Request(
             LOKI_ENDPOINT + "/loki/api/v1/query_range?" + params,
-            headers={
-                "Authorization": basic(user, token),
-                # Without this flag Loki MERGES structured metadata into each
-                # stream's label map and omits the per-entry metadata element
-                # entirely. Reading the default response therefore reports every
-                # structured-metadata key as a promoted stream label, and makes
-                # the "domain is structured metadata" assertion impossible to
-                # satisfy. Both are measurement artifacts, not exporter
-                # behaviour: Wave 5 recorded 202 phantom promoted labels this way.
-                "X-Loki-Response-Encoding-Flags": "categorize-labels",
-            },
-        )
+            headers={"Authorization": basic(user, token),
+                     "X-Loki-Response-Encoding-Flags": "categorize-labels"})
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with urllib.request.urlopen(request, timeout=min(20, remaining)) as response:
                 payload = json.load(response)
             succeeded = payload.get("status") == "success"
             result = payload.get("data", {}).get("result", [])
             if result:
-                return {"streams": result, "succeeded": succeeded}
-        except (urllib.error.URLError, json.JSONDecodeError):
+                return {"streams": result, "succeeded": succeeded,
+                        "start_ns": start_ns, "end_ns": actual_end_ns}
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
             succeeded = False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         if attempt + 1 < attempts:
-            time.sleep(10)
-    return {"streams": [], "succeeded": succeeded}
+            time.sleep(min(10, remaining))
+    return {"streams": [], "succeeded": succeeded,
+            "start_ns": start_ns, "end_ns": actual_end_ns}
 
 
 def records(streams):
-    """Yield labels, body and structured metadata without writing any of them.
-
-    Requires the categorize-labels response encoding: the per-entry third
-    element is then a category map whose "structuredMetadata" member holds the
-    non-promoted attributes, and "stream" holds only true stream labels.
-    """
+    """Yield labels, body and categorized structured metadata without output."""
     for stream in streams:
         labels = stream.get("stream", {})
         for value in stream.get("values", []):
@@ -325,129 +173,91 @@ def records(streams):
                 continue
             categories = value[2] if len(value) > 2 and isinstance(value[2], dict) else {}
             metadata = categories.get("structuredMetadata") or {}
-            if not isinstance(metadata, dict):
-                metadata = {}
-            yield labels, value[1], metadata
+            yield labels, value[1], metadata if isinstance(metadata, dict) else {}
 
 
 def safe_diagnostic(value):
-    """Return an error detail only when it cannot carry credentials or a URL."""
     if not isinstance(value, str) or not value.strip():
         return "missing"
     value = " ".join(value.split())
-    if len(value) > 240 or SENSITIVE_DIAGNOSTIC.search(value):
-        return "redacted"
-    return value
+    return "redacted" if len(value) > 240 or SENSITIVE_DIAGNOSTIC.search(value) else value
 
 
 def exporter_poll_error_diagnostic(rows, source):
-    """Find a shipped source-poll error without rendering arbitrary log bodies."""
     for labels, body, metadata in rows:
-        if (labels.get("opnsense_source") == "exporter" and
-                body == "log source poll error" and metadata.get("source") == source):
+        if (labels.get("opnsense_source") == "exporter" and body == "log source poll error" and
+                metadata.get("source") == source):
             return safe_diagnostic(metadata.get("err"))
     return "not_observed"
 
 
-def send_zenarmor_dns(source, destination):
-    """Seed the current process's bounded DNS cache through its real receiver."""
-    index = "zenarmor_0000000000_deliveryproof_dns_write"
-    action = json.dumps({"index": {"_index": index, "_id": secrets.token_hex(8)}})
-    document = json.dumps({
-        "ip_src_saddr": source, "query": "delivery-proof.example",
-        "answers": destination, "is_request": 1, "is_response": 1,
-        "resp_code": 0, "is_blocked": 0,
-    })
-    request = urllib.request.Request(
-        "http://127.0.0.1:9200/_bulk", data=(action + "\n" + document + "\n").encode(),
-        method="POST", headers={"Content-Type": "application/x-ndjson"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            if response.status // 100 != 2:
-                raise RuntimeError("local Zenarmor seed returned non-2xx")
-            payload = json.load(response)
-        if payload.get("errors") is not False:
-            raise RuntimeError("local Zenarmor seed was not accepted")
-    except (urllib.error.URLError, json.JSONDecodeError) as err:
-        raise RuntimeError("local Zenarmor seed failed without exposing its body") from err
-
-
-def filterlog_line(source, destination, epoch=None):
-    # This is the repository's real OPNsense 26.7 UDP filterlog capture with only
-    # the source/destination tuple substituted to match the live DNS-cache key.
-    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
-    return ("<134>1 " + timestamp + " proof filterlog 1 - - "
-            "16,115,,0,vtnet2,match,pass,out,4,0x0,,64,0,0,DF,17,udp,48,"
-            + source + "," + destination + ",55124,53,28")
-
-
-def send_filterlog(source, destination):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as conn:
-        conn.sendto(filterlog_line(source, destination).encode(), ("127.0.0.1", 5514))
-
-
-def query_diagnostic(source, specific, broad):
+def query_diagnostic(source, specific, broad=None):
+    """Classify an empty source query using one same-window broad query."""
     if specific["streams"]:
         return "arrived"
-    if not specific["succeeded"]:
+    if broad is None:
+        return "query_failed" if not specific["succeeded"] else "instance_absent_in_explicit_window"
+    if not specific["succeeded"] or not broad["succeeded"]:
         return "query_failed"
-    for labels, _, metadata in records(broad["streams"]):
-        if labels.get("opnsense_source") == source or metadata.get("opnsense_source") == source:
+    for stream in broad["streams"]:
+        labels = stream.get("stream", {}) if isinstance(stream, dict) else {}
+        if isinstance(labels, dict) and labels.get("opnsense_source") == source:
             return "arrived_with_unexpected_labels"
+        for _, _, metadata in records([stream]):
+            if metadata.get("opnsense_source") == source:
+                return "arrived_with_unexpected_labels"
     if broad["streams"]:
         return "source_absent_in_instance_window"
-    if broad["succeeded"]:
-        return "instance_absent_in_explicit_window"
-    return "broad_query_failed"
+    return "instance_absent_in_explicit_window"
 
 
-def bodies_have_no_sensitive_keys(rows):
-    if not rows:
+def configstate_families(rows):
+    return {
+        family for _, _, metadata in rows
+        for family in [metadata.get("snapshot_family")]
+        if isinstance(family, str) and family
+    }
+
+
+def configstate_family_summary(rows):
+    observed = configstate_families(rows)
+    expected = observed & REQUIRED_CONFIGSTATE_FAMILIES
+    return {
+        "families": "none" if not expected else ",".join(sorted(expected)),
+        "unexpected_count": len(observed - REQUIRED_CONFIGSTATE_FAMILIES),
+    }
+
+
+def redaction_assertion_passes(redaction, configchange_arrived, observed_families):
+    if not isinstance(redaction, dict) or not configchange_arrived:
         return False
-    for _, body, _ in rows:
-        try:
-            value = json.loads(body, object_pairs_hook=reject_duplicate_keys)
-        except (json.JSONDecodeError, ValueError):
-            return False
-        if not no_sensitive_keys(value):
-            return False
-    return True
+    if not REQUIRED_CONFIGSTATE_FAMILIES.issubset(observed_families):
+        return False
+    return (redaction.get("configchange_bodies_redacted") is True and
+            redaction.get("configstate_bodies_redacted") is True)
 
 
-def has_domain_metadata(rows, expected):
-    return any(
-        metadata.get("dst_domain") == expected and "dst_domain" not in labels
-        for labels, _, metadata in rows
-    )
-
-
-def poll_error_observed(metrics, source):
-    for line in metrics.splitlines():
-        if not line.startswith("opnsense_exporter_logs_poll_errors_total{"):
-            continue
-        labels, _, value = line.partition("} ")
-        if ('source="' + source + '"') not in labels:
-            continue
-        try:
-            return float(value.split(None, 1)[0]) > 0
-        except ValueError:
-            return False
-    return False
-
-
-def read_local_metrics():
+def verify_redaction(verifier, configchange, configstate):
+    request = json.dumps({"configchange": [body for _, body, _ in configchange],
+                          "configstate": [body for _, body, _ in configstate]}).encode()
     try:
-        with urllib.request.urlopen("http://127.0.0.1:8080/metrics", timeout=10) as response:
-            return response.read().decode("utf-8", "replace")
-    except urllib.error.URLError:
-        return ""
-
-
-def poll_error_diagnostic(metrics, source):
-    if not metrics:
-        return "unavailable"
-    return "yes" if poll_error_observed(metrics, source) else "no"
+        completed = subprocess.run([verifier], input=request, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                   timeout=30, check=False)
+        parsed = json.loads(completed.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        return None
+    keys = {"configchange_bodies", "configchange_sensitive_elements", "configchange_bodies_redacted",
+            "configstate_bodies", "configstate_sensitive_keys", "configstate_bodies_redacted"}
+    integer_keys = {"configchange_bodies", "configchange_sensitive_elements",
+                    "configstate_bodies", "configstate_sensitive_keys"}
+    boolean_keys = {"configchange_bodies_redacted", "configstate_bodies_redacted"}
+    if completed.returncode != 0 or not isinstance(parsed, dict) or set(parsed) != keys:
+        return None
+    if any(isinstance(parsed[key], bool) or not isinstance(parsed[key], int) for key in integer_keys):
+        return None
+    if any(not isinstance(parsed[key], bool) for key in boolean_keys):
+        return None
+    return parsed
 
 
 def stop_process_group(process):
@@ -472,137 +282,117 @@ def stop_process_group(process):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--exporter", required=True)
+    parser.add_argument("--redaction-verifier", required=True)
     args = parser.parse_args(argv)
+    startup_time_ns = time.time_ns()
     host, key, secret_value = required("DEVBOX_HOST"), required("DEVBOX_API_KEY"), required("DEVBOX_API_SECRET")
     otlp_user, loki_user, cap_token = required("GRAFANA_OTLP_USER"), required("GRAFANA_LOKI_USER"), required("GRAFANA_CAP_TOKEN")
     instance = "delivery-proof-" + os.environ.get("GITHUB_RUN_ID", secrets.token_hex(6))
-    api = API(host, key, secret_value)
-    alias_uuid = None
-    alias_name = None
-    original_alias = None
-    mutation = None
-    revisions_before = None
-    revisions_after_mutation = None
-    process = None
-    facts = {}
-    diagnostics = {}
-    stage = "initializing"
-    query_start_ns = time.time_ns() - 5 * 60 * 1_000_000_000
+    api, process, state_path = API(host, key, secret_value), None, None
+    facts, diagnostics, stage = {}, {}, "initializing"
+    query_window_start_ns = query_window_end_ns = None
+    query_reports = []
+    selector = 'service_name="opnsense2otel",service_instance_id="' + instance + '"'
     try:
-        stage = "resolving_alias"
-        alias_uuid, alias_name = resolve_delivery_proof_alias(api)
-        stage = "reading_alias"
-        original_alias = read_delivery_proof_alias(api, alias_uuid)
-        stage = "reading_revisions_before"
-        revisions_before = revision_ids(api)
-        env = os.environ | {
-            "OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key, "OPN2OTEL_OPS_API_SECRET": secret_value,
-            "OPN2OTEL_OPS_PROTOCOL": "https", "OPN2OTEL_OPS_INSECURE": "true",
-            "OPN2OTEL_INSTANCE_LABEL": instance,
-            "OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID": otlp_user,
-            "OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN": cap_token,
-            "OPN2OTEL_OTLP_GRAFANA_CLOUD_ENDPOINT": OTLP_ENDPOINT,
-        }
+        stage = "reading_retained_revisions"
+        revisions = retained_revisions(api)
+        if len(revisions) < 2:
+            raise ProofFailure("retained_revisions_insufficient", "configuration revision list has no predecessor")
+        cursor_index = len(revisions) - 2
+        cursor, successor = revisions[cursor_index], revisions[cursor_index + 1]
+        facts["retained_revision_count"] = len(revisions)
+        facts["expected_configchange_diffs"] = len(revisions) - cursor_index - 1
+        diagnostics["seeded revision"] = revision_report_value(cursor, cursor_index + 1)
+        query_window_start_ns = query_start_ns(successor, startup_time_ns)
+        stage = "seeding_configchange_cursor"
+        state_path = seed_revision_state(cursor)
+        env = os.environ | {"OPN2OTEL_OPS_API": host, "OPN2OTEL_OPS_API_KEY": key,
+                            "OPN2OTEL_OPS_API_SECRET": secret_value, "OPN2OTEL_OPS_PROTOCOL": "https",
+                            "OPN2OTEL_OPS_INSECURE": "true", "OPN2OTEL_INSTANCE_LABEL": instance,
+                            "OPN2OTEL_OTLP_GRAFANA_CLOUD_INSTANCE_ID": otlp_user,
+                            "OPN2OTEL_OTLP_GRAFANA_CLOUD_TOKEN": cap_token,
+                            "OPN2OTEL_OTLP_GRAFANA_CLOUD_ENDPOINT": OTLP_ENDPOINT}
         command = [args.exporter, "--logs.enabled", "--logs.sink=otlp", "--logs.poll-interval=5s",
-                   "--logs.configchange.enabled", "--logs.config-snapshot.firewall.enabled",
-                   "--logs.config-snapshot.devices.enabled", "--logs.config-snapshot.security-posture.enabled",
-                   "--logs.self.enabled", "--logs.syslog.enabled",
-                   "--logs.syslog.listen-udp=127.0.0.1:5514", "--logs.syslog.listen-tcp=",
-                   "--logs.syslog.allowed-peers=127.0.0.1/32", "--logs.zenarmor.enabled",
-                   "--logs.zenarmor.listen-http=127.0.0.1:9200",
-                   "--logs.zenarmor.allowed-peers=127.0.0.1/32", "--logs.zenarmor.families=dns",
-                   "--flow.enabled"]
+                   "--logs.state-file=" + state_path, "--logs.configchange.enabled",
+                   "--logs.config-snapshot.firewall.enabled", "--logs.config-snapshot.devices.enabled",
+                   "--logs.config-snapshot.security-posture.enabled", "--logs.self.enabled"]
         stage = "starting_exporter"
-        process = subprocess.Popen(
-            command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        stage = "baselining_configchange"
-        time.sleep(8)  # baselines configchange; initial configstate and exporter records ship.
-        stage = "mutating_alias"
-        mutation = AliasDescriptionMutation(api, alias_uuid, original_alias, "temporary live delivery proof " + instance)
-        mutation.apply()
-        stage = "reading_revisions_after_mutation"
-        revisions_after_mutation = revision_ids(api)
-        facts["alias_description_revision_written"] = revision_list_grew(revisions_before, revisions_after_mutation)
-        stage = "sending_inputs"
-        dns_source, dns_destination = "192.0.2.10", "192.0.2.20"
-        send_zenarmor_dns(dns_source, dns_destination)
-        send_filterlog(dns_source, dns_destination)
+        process = subprocess.Popen(command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   start_new_session=True)
         stage = "waiting_for_delivery"
         time.sleep(20)
-        selector = 'service_name="opnsense2otel",service_instance_id="' + instance + '"'
-        stage = "querying"
-        queries = {name: loki_query('{' + selector + ',opnsense_source="' + name + '"}', loki_user, cap_token, query_start_ns)
-                   for name in PROOF_SOURCES}
-        broad = loki_query('{' + selector + '}', loki_user, cap_token, query_start_ns)
-        stage = "processing_results"
-        diagnostics.update({name: query_diagnostic(name, result, broad) for name, result in queries.items()})
+        query_window_end_ns = time.time_ns()
+        stage = "querying_configchange_and_configstate"
+        queries = {}
+        for name in PROOF_SOURCES:
+            query = '{' + selector + ',opnsense_source="' + name + '"}'
+            result = loki_query(query, loki_user, cap_token, query_window_start_ns, query_window_end_ns)
+            queries[name] = result
+            query_reports.append((name, query, result))
         facts.update({name + "_arrived": bool(result["streams"]) for name, result in queries.items()})
-        configchange = list(records(queries["configchange"]["streams"]))
-        facts["configchange_redacted"] = any("<password>[redacted]</password>" in body for _, body, _ in configchange)
-        configstate = list(records(queries["configstate"]["streams"]))
-        families = {metadata.get("snapshot_family", "") for _, _, metadata in configstate}
-        facts["configstate_families_arrived"] = families == {"firewall", "device_inventory", "security_posture"}
-        facts["configstate_sensitive_fields_absent"] = bodies_have_no_sensitive_keys(configstate)
-        exporter_records = list(records(queries["exporter"]["streams"]))
-        diagnostics["configstate shipped poll error"] = exporter_poll_error_diagnostic(exporter_records, "configstate")
-        syslog_records = list(records(queries["syslog"]["streams"]))
-        facts["domain_structured_metadata"] = has_domain_metadata(syslog_records, "delivery-proof.example")
-        observed_labels = {key for labels, _, _ in records(broad["streams"]) for key in labels}
-        expected = {"opnsense_action", "opnsense_device_category", "opnsense_interface", "opnsense_source", "opnsense_subsystem", "service_instance_id", "service_name"}
-        unexpected_labels = sorted(observed_labels - expected)
-        diagnostics["unexpected promoted label keys"] = "none" if not unexpected_labels else ",".join(unexpected_labels)
-        diagnostics["configstate families"] = "none" if not families else ",".join(sorted(families))
-        facts["labels_outside_allowlist_absent"] = bool(broad["streams"]) and not unexpected_labels
-        stage = "reading_local_metrics"
-        metrics = read_local_metrics()
-        diagnostics["configchange poll errors"] = poll_error_diagnostic(metrics, "configchange")
-        diagnostics["configstate poll errors"] = poll_error_diagnostic(metrics, "configstate")
+        missing_sources = [name for name in PROOF_SOURCES if not queries[name]["streams"]]
+        if missing_sources:
+            broad_query_text = "{" + selector + "}"
+            broad_query = loki_query(broad_query_text, loki_user, cap_token,
+                                     query_window_start_ns, query_window_end_ns)
+            query_reports.append(("source disambiguation", broad_query_text, broad_query))
+            diagnostics.update({name: query_diagnostic(name, queries[name], broad_query)
+                                for name in missing_sources})
+        diagnostics.update({name: "arrived" for name in PROOF_SOURCES if name not in missing_sources})
+        configchange, configstate = list(records(queries["configchange"]["streams"])), list(records(queries["configstate"]["streams"]))
+        facts["configchange_delivered_diffs"] = len(configchange)
+        families = configstate_families(configstate)
+        facts["configstate_families_arrived"] = REQUIRED_CONFIGSTATE_FAMILIES.issubset(families)
+        family_summary = configstate_family_summary(configstate)
+        diagnostics["configstate families"] = family_summary["families"]
+        facts["configstate_unexpected_family_count"] = family_summary["unexpected_count"]
+        if not facts["configstate_families_arrived"]:
+            stage = "querying_configstate_poll_error"
+            exporter_query_text = '{' + selector + ',opnsense_source="exporter"}'
+            exporter_query = loki_query(exporter_query_text, loki_user, cap_token,
+                                        query_window_start_ns, query_window_end_ns)
+            query_reports.append(("exporter diagnostic", exporter_query_text, exporter_query))
+            diagnostics["configstate shipped poll error"] = exporter_poll_error_diagnostic(records(exporter_query["streams"]), "configstate")
+        stage = "verifying_delivered_redaction"
+        redaction = verify_redaction(args.redaction_verifier, configchange, configstate)
+        if redaction is None:
+            diagnostics["redaction verifier"] = "unavailable_or_invalid"
+            facts["delivered_bodies_redacted"] = False
+        else:
+            facts["configchange_sensitive_elements"] = redaction["configchange_sensitive_elements"]
+            facts["configstate_sensitive_keys"] = redaction["configstate_sensitive_keys"]
+            facts["delivered_bodies_redacted"] = redaction_assertion_passes(
+                redaction, facts["configchange_arrived"], families)
+        facts["proof_completed"] = True
         stage = "complete"
     except ProofFailure as err:
         diagnostics["proof failure"] = err.code
         facts["proof_completed"] = False
     except Exception:
-        # Do not render exception text: HTTP/library errors can include a response
-        # body and that body is outside this proof's redaction boundary.
         facts["proof_completed"] = False
     finally:
-        # Keep exporter teardown in a nested finally: a failed rollback must never
-        # leave its credential-bearing process alive on the runner.
         try:
-            if mutation is not None:
-                try:
-                    mutation.restore()
-                    facts["rollback"] = mutation.restored
-                except Exception:
-                    facts["rollback"] = False
-                    facts["alias_description_restore_revision_written"] = False
-                else:
-                    try:
-                        revisions_after_restore = revision_ids(api)
-                        revision_floor = revisions_after_mutation if revisions_after_mutation is not None else revisions_before
-                        facts["alias_description_restore_revision_written"] = revision_list_grew(revision_floor, revisions_after_restore)
-                    except Exception:
-                        facts["alias_description_restore_revision_written"] = False
-        finally:
             if process:
                 stop_process_group(process)
+        finally:
+            if state_path is not None:
+                try:
+                    os.unlink(state_path)
+                except FileNotFoundError:
+                    pass
     print("## Live delivery proof")
     print("- instance label: `" + instance + "`")
     print("- proof stage: " + stage)
-    if alias_name is not None:
-        print("- proof alias: " + alias_name)
+    for name, query, result in query_reports:
+        start = result.get("start_ns", query_window_start_ns)
+        end = result.get("end_ns", query_window_end_ns)
+        print("- query " + name + ": " + query + " start=" + str(start) + " end=" + str(end))
     for name in sorted(facts):
-        print("- " + name.replace("_", " ") + ": " + ("yes" if facts[name] else "no"))
+        value = facts[name]
+        print("- " + name.replace("_", " ") + ": " + (("yes" if value else "no") if isinstance(value, bool) else str(value)))
     for name in sorted(diagnostics):
         print("- " + name + " query result: " + diagnostics[name])
-    print("- configstate redaction exercise: no (the alias description trigger exercises configchange only)")
-    required_facts = ("configchange_arrived", "configchange_redacted", "configstate_families_arrived",
-                      "configstate_sensitive_fields_absent", "exporter_arrived", "syslog_arrived", "zenarmor_arrived",
-                      "domain_structured_metadata", "labels_outside_allowlist_absent",
-                      "alias_description_revision_written", "alias_description_restore_revision_written", "rollback")
-    return 0 if all(facts.get(name) for name in required_facts) else 1
+    return 0 if all(facts.get(name) for name in ("configchange_arrived", "configstate_families_arrived", "delivered_bodies_redacted")) else 1
 
 
 if __name__ == "__main__":
