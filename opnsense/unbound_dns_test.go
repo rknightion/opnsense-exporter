@@ -1487,3 +1487,37 @@ func TestFetchUnboundOverview_RecursionHistogramNonContiguous(t *testing.T) {
 			data.RecursionHistogram)
 	}
 }
+
+// TestFetchUnboundLocalData_FailedStatusIsAnError pins the OPN-0095 sweep result:
+// the diagnostics controller answers 200 {"status":"failed"} with no data key
+// when unbound-control is unreachable. Before, the three closures ranged over the
+// absent data and reported ZERO zones, records and insecure domains as if that
+// were the configuration. A failed call is a partial-fetch error, not a count.
+func TestFetchUnboundLocalData_FailedStatusIsAnError(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"status":"failed"}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocaldata", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[{"name":"router.lan.","ttl":"10800","type":"IN","rrtype":"A","value":"192.0.2.1"}]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"status":"failed"}`))
+	})
+
+	data, err := client.FetchUnboundLocalData()
+	if err == nil {
+		t.Fatal("expected an error for a failed diagnostics status, got nil")
+	}
+	if err.Endpoint != "unboundLocalZones" {
+		t.Errorf("expected the first failure (unboundLocalZones) to be reported, got %q", err.Endpoint)
+	}
+	if data.LocalDataRecords != 1 {
+		t.Errorf("the succeeding endpoint's data must still be returned, got %d records", data.LocalDataRecords)
+	}
+	if len(data.ZonesByType) != 0 {
+		t.Errorf("a failed zones call must not report zone counts, got %v", data.ZonesByType)
+	}
+}

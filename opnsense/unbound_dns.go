@@ -3,7 +3,9 @@ package opnsense
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"sort"
+	"strconv"
 )
 
 // unboundHistogramBucket is one bucket of unbound's reply-time histogram, in the
@@ -1117,6 +1119,24 @@ type UnboundLocalData struct {
 func (c *Client) FetchUnboundLocalData() (UnboundLocalData, *APICallError) {
 	data := UnboundLocalData{ZonesByType: make(map[string]int64)}
 
+	// DiagnosticsController answers 200 {"status":"failed"} with NO data key when
+	// unbound-control is unreachable: Unbound stopped, or mid-reload, which every
+	// DNS config edit triggers. Ranging over the absent data would report zero
+	// zones/records as though that were the configuration (OPN-0095 sweep). A
+	// failed call is a partial-fetch error, so the collector marks the poll
+	// degraded and the series stay at their last good value instead of dropping
+	// to 0. The cache never stores this body either (unboundDiagnosticsCacheable).
+	failed := func(endpoint EndpointName, status string) *APICallError {
+		if status == "ok" {
+			return nil
+		}
+		return &APICallError{
+			Endpoint:   string(endpoint),
+			Message:    "unbound diagnostics status " + strconv.Quote(status) + ": unbound-control unreachable",
+			StatusCode: http.StatusOK,
+		}
+	}
+
 	fetchZones := func() *APICallError {
 		url, ok := c.endpoints["unboundLocalZones"]
 		if !ok {
@@ -1124,6 +1144,9 @@ func (c *Client) FetchUnboundLocalData() (UnboundLocalData, *APICallError) {
 		}
 		var resp unboundLocalZonesResponse
 		if err := c.do("GET", url, nil, &resp); err != nil {
+			return err
+		}
+		if err := failed("unboundLocalZones", resp.Status); err != nil {
 			return err
 		}
 		for _, z := range resp.Data {
@@ -1141,6 +1164,9 @@ func (c *Client) FetchUnboundLocalData() (UnboundLocalData, *APICallError) {
 		if err := c.do("GET", url, nil, &resp); err != nil {
 			return err
 		}
+		if err := failed("unboundLocalData", resp.Status); err != nil {
+			return err
+		}
 		data.LocalDataRecords = int64(len(resp.Data))
 		return nil
 	}
@@ -1152,6 +1178,9 @@ func (c *Client) FetchUnboundLocalData() (UnboundLocalData, *APICallError) {
 		}
 		var resp unboundInsecureDomainsResponse
 		if err := c.do("GET", url, nil, &resp); err != nil {
+			return err
+		}
+		if err := failed("unboundInsecureDomains", resp.Status); err != nil {
 			return err
 		}
 		var count int64
@@ -1172,4 +1201,19 @@ func (c *Client) FetchUnboundLocalData() (UnboundLocalData, *APICallError) {
 	}
 
 	return data, nil
+}
+
+// unboundDiagnosticsCacheable is the response-cache admission rule shared by the
+// three unbound-control backed diagnostics endpoints (cacheAdmissionRules,
+// OPN-0095 sweep). Their controller answers 200 {"status":"failed"} with no data
+// when unbound-control is unreachable; only a body whose status is "ok" carries
+// the configuration and may be held for --exporter.cache-ttl.
+func unboundDiagnosticsCacheable(body []byte) bool {
+	var probe struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return false
+	}
+	return probe.Status == "ok"
 }

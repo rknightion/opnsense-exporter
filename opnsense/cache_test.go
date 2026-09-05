@@ -303,7 +303,7 @@ func TestCacheSnapshot(t *testing.T) {
 	defer server.Close()
 
 	client.SetEndpointCacheTTL("firmware", 30*time.Second)
-	withFakeClock(t, client)
+	clock := withFakeClock(t, client)
 
 	if _, err := client.FetchFirmwareStatus(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -316,6 +316,9 @@ func TestCacheSnapshot(t *testing.T) {
 	got := snap[0]
 	if got.StatusCode != http.StatusOK {
 		t.Errorf("expected StatusCode 200, got %d", got.StatusCode)
+	}
+	if !got.StoredAt.Equal(clock.Now()) {
+		t.Errorf("expected StoredAt to be the fetch time %v, got %v", clock.Now(), got.StoredAt)
 	}
 	if got.TTL != 30*time.Second {
 		t.Errorf("expected TTL 30s, got %v", got.TTL)
@@ -390,5 +393,151 @@ func TestPluginGatedIncludesVnstatGetJsonData(t *testing.T) {
 		if !gated[n] {
 			t.Errorf("%s is negative-cacheable but not plugin-gated; cacheable must be a subset of gated", n)
 		}
+	}
+}
+
+// TestClient_CacheRefusesFirmwareStatusWithoutLastCheck pins the fix for GitHub
+// issue 724 (OPN-0095): api/core/firmware/status answers 200 with an empty
+// last_check while a check is running or right after the stored status was
+// cleared. Such a body carries no check result, so caching it would make every
+// check-dependent series absent for the whole --exporter.firmware-cache-ttl
+// (12h by default) even though the box finishes its check seconds later. The
+// cache must refuse it and the next poll must fetch live; a body WITH a
+// last_check is still cached for the TTL as before.
+func TestClient_CacheRefusesFirmwareStatusWithoutLastCheck(t *testing.T) {
+	var requests atomic.Int64
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		n := requests.Add(1)
+		if n == 1 {
+			_, _ = w.Write([]byte(`{"last_check":"","product_id":"opnsense","product_version":"24.1.1","status":"none"}`))
+			return
+		}
+		_, _ = w.Write([]byte(firmwareStatusBody))
+	})
+	defer server.Close()
+
+	client.SetEndpointCacheTTL("firmware", 12*time.Hour)
+	withFakeClock(t, client)
+
+	first, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if first.CheckPresent {
+		t.Fatalf("fixture error: the first body must carry no check result, got %+v", first)
+	}
+	if snap := client.CacheSnapshot(); len(snap) != 0 {
+		t.Fatalf("a firmware body with an empty last_check must not be cached, got %+v", snap)
+	}
+
+	second, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("second call must go to the firewall, got %d upstream requests", got)
+	}
+	if !second.CheckPresent || second.UpgradePackages != 1 {
+		t.Fatalf("second call must decode the live body, got %+v", second)
+	}
+
+	if _, err := client.FetchFirmwareStatus(); err != nil {
+		t.Fatalf("third call: %v", err)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Errorf("a body with a last_check must still be cached, got %d upstream requests", got)
+	}
+}
+
+// TestCacheAdmissionRulesRefuseInterimBodies pins the sweep that followed GitHub
+// issue 724 (OPN-0095): every body-cached endpoint whose 200 can carry "no result
+// right now" instead of a result has an admission rule, and the rule refuses
+// exactly that interim body while admitting a real one. The interim shapes are
+// taken from upstream: Unbound's DiagnosticsController answers {"status":"failed"}
+// with no data key when unbound-control is unreachable (Unbound stopped or
+// mid-reload); FirmwareController::infoAction builds package[] from `firmware
+// local`, so an empty package list means pkg answered nothing (the base system is
+// itself a package); IDS SettingsController::listRulesetsAction returns empty rows
+// when `ids list installablerulesets` decoded to null, and the installable
+// catalogue ships with the core package so it is never legitimately empty.
+func TestCacheAdmissionRulesRefuseInterimBodies(t *testing.T) {
+	cases := []struct {
+		endpoint EndpointName
+		interim  string
+		real     string
+	}{
+		{"firmware", `{"last_check":"","product_id":"opnsense"}`, `{"last_check":"2024-01-15T10:30:00Z","product_id":"opnsense"}`},
+		{"firmwareInfo", `{"product_id":"opnsense","product_version":"24.1.1","package":[],"plugin":[]}`,
+			`{"product_id":"opnsense","product_version":"24.1.1","package":[{"name":"opnsense"}],"plugin":[]}`},
+		{"unboundLocalZones", `{"status":"failed"}`, `{"status":"ok","data":[]}`},
+		{"unboundLocalData", `{"status":"failed"}`, `{"status":"ok","data":[]}`},
+		{"unboundInsecureDomains", `{"status":"failed"}`, `{"status":"ok","data":[]}`},
+		{"idsRulesets", `{"rows":[],"rowCount":0,"total":0,"current":1}`,
+			`{"rows":[{"filename":"a.rules","enabled":"1","modified_local":null}],"rowCount":1,"total":1,"current":1}`},
+	}
+	for _, tc := range cases {
+		rule := cacheAdmissionRules[tc.endpoint]
+		if rule == nil {
+			t.Errorf("%s: no admission rule registered", tc.endpoint)
+			continue
+		}
+		if rule([]byte(tc.interim)) {
+			t.Errorf("%s: interim body must be refused: %s", tc.endpoint, tc.interim)
+		}
+		if !rule([]byte(tc.real)) {
+			t.Errorf("%s: real body must be admitted: %s", tc.endpoint, tc.real)
+		}
+		if rule([]byte(`not json`)) {
+			t.Errorf("%s: an undecodable body must be refused", tc.endpoint)
+		}
+	}
+
+	// Every body-cached endpoint that shells out to a daemon or pkg has a rule.
+	// Config reads (MVC model gets, certificate inventory, NAT/auth tables) do not
+	// need one: their 200 is always the current configuration.
+	for _, name := range []EndpointName{"firmware", "firmwareInfo", "unboundLocalZones", "unboundLocalData", "unboundInsecureDomains", "idsRulesets"} {
+		if _, ok := cacheAdmissionRules[name]; !ok {
+			t.Errorf("%s: expected an admission rule", name)
+		}
+	}
+}
+
+// TestClient_CacheRefusesFailedUnboundDiagnostics is the end-to-end form for the
+// most likely live occurrence: Unbound reloads on every DNS config edit, and a
+// poll landing inside that window sees {"status":"failed"}. Caching it would
+// report zero local zones for --exporter.cache-ttl after Unbound is back.
+func TestClient_CacheRefusesFailedUnboundDiagnostics(t *testing.T) {
+	var requests atomic.Int64
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			_, _ = w.Write([]byte(`{"status":"failed"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"ok","data":[{"zone":"home.arpa.","type":"static"}]}`))
+	})
+	defer server.Close()
+	client.endpoints = map[EndpointName]EndpointPath{"unboundLocalZones": "api/unbound/diagnostics/listlocalzones"}
+	client.SetEndpointCacheTTL("unboundLocalZones", 30*time.Minute)
+	withFakeClock(t, client)
+
+	var resp unboundLocalZonesResponse
+	if err := client.do("GET", client.endpoints["unboundLocalZones"], nil, &resp); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if snap := client.CacheSnapshot(); len(snap) != 0 {
+		t.Fatalf("a failed diagnostics body must not be cached, got %+v", snap)
+	}
+	resp = unboundLocalZonesResponse{}
+	if err := client.do("GET", client.endpoints["unboundLocalZones"], nil, &resp); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if got := requests.Load(); got != 2 || len(resp.Data) != 1 {
+		t.Fatalf("second call must fetch live, got %d requests and %d zones", got, len(resp.Data))
+	}
+	if err := client.do("GET", client.endpoints["unboundLocalZones"], nil, &resp); err != nil {
+		t.Fatalf("third call: %v", err)
+	}
+	if got := requests.Load(); got != 2 {
+		t.Errorf("the ok body must be cached, got %d requests", got)
 	}
 }

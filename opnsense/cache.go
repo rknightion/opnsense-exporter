@@ -37,14 +37,26 @@ type responseCache struct {
 	// while its 404 is a routing fact that changes only when an admin installs the
 	// plugin. Most endpoints on the negative list have no positive TTL at all.
 	absentTTLs map[EndpointPath]time.Duration
-	entries    map[EndpointPath]cacheEntry
-	order      *list.List
-	bytes      int
-	mu         sync.Mutex
+	// admit holds per-endpoint admission rules for SUCCESS bodies: put refuses to
+	// store a 2xx body the rule rejects, so the next call fetches live. It exists
+	// for endpoints whose 200 can carry "nothing to report yet" rather than a
+	// result — a firmware status mid-check (GitHub issue 724) — where caching the
+	// interim body would pin an absence for the whole TTL. Endpoints without a
+	// rule cache every 2xx body as before. Rules never apply to a 404: route
+	// absence is not a body property.
+	admit   map[EndpointPath]func(body []byte) bool
+	entries map[EndpointPath]cacheEntry
+	order   *list.List
+	bytes   int
+	mu      sync.Mutex
 }
 
 type cacheEntry struct {
-	expiresAt  time.Time
+	expiresAt time.Time
+	// storedAt is when the live fetch that produced this entry completed. It is
+	// what the api_cache_fetched_timestamp_seconds gauge and the console's
+	// freshness card report, so a replayed body can be told from a live one.
+	storedAt   time.Time
 	body       []byte
 	statusCode int
 	elem       *list.Element
@@ -56,6 +68,7 @@ func newResponseCache() *responseCache {
 		now:        time.Now,
 		ttls:       make(map[EndpointPath]time.Duration),
 		absentTTLs: make(map[EndpointPath]time.Duration),
+		admit:      make(map[EndpointPath]func([]byte) bool),
 		entries:    make(map[EndpointPath]cacheEntry),
 		order:      list.New(),
 	}
@@ -93,6 +106,22 @@ func (rc *responseCache) setAbsentTTL(path EndpointPath, ttl time.Duration) {
 		return
 	}
 	rc.absentTTLs[path] = ttl
+}
+
+// setAdmission installs rule as the success-body admission check for path; a nil
+// rule removes it. It does not evict an entry already held.
+func (rc *responseCache) setAdmission(path EndpointPath, rule func(body []byte) bool) {
+	if rc == nil {
+		return
+	}
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	if rule == nil {
+		delete(rc.admit, path)
+		return
+	}
+	rc.admit[path] = rule
 }
 
 // get returns the cached entry for path when one is held and unexpired.
@@ -149,6 +178,15 @@ func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) boo
 	if len(body) > maxResponseCacheEntryBytes {
 		return false
 	}
+	// A success body the endpoint's admission rule rejects is not stored, and
+	// not counted as a miss either: nothing populated the cache. Any entry already
+	// held stays until its own TTL runs out — an interim body must not evict a
+	// complete one.
+	if statusCode >= 200 && statusCode < 300 {
+		if rule := rc.admit[path]; rule != nil && !rule(body) {
+			return false
+		}
+	}
 	rc.remove(path)
 	for rc.bytes+len(body) > maxResponseCacheBytes {
 		back := rc.order.Back()
@@ -157,7 +195,8 @@ func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) boo
 		}
 		rc.remove(back.Value.(EndpointPath))
 	}
-	entry := cacheEntry{body: body, statusCode: statusCode, expiresAt: rc.now().Add(ttl), cost: len(body)}
+	now := rc.now()
+	entry := cacheEntry{body: body, statusCode: statusCode, storedAt: now, expiresAt: now.Add(ttl), cost: len(body)}
 	entry.elem = rc.order.PushFront(path)
 	rc.entries[path] = entry
 	rc.bytes += entry.cost
@@ -200,6 +239,22 @@ func (c *Client) SetEndpointCacheTTL(name EndpointName, ttl time.Duration) {
 		c.cache = newResponseCache()
 	}
 	c.cache.setTTL(path, ttl)
+	c.cache.setAdmission(path, cacheAdmissionRules[name])
+}
+
+// cacheAdmissionRules names the endpoints whose SUCCESS body must pass a check
+// before the response cache may hold it, and the check. Add an endpoint here when
+// its 200 can legitimately carry "no result yet" instead of a result — the shape
+// GitHub issue 724 reported for the firmware status — so that interim body is
+// re-fetched on the next poll rather than pinned for the TTL. An endpoint absent
+// from this map caches every 2xx body under its TTL as before.
+var cacheAdmissionRules = map[EndpointName]func(body []byte) bool{
+	"firmware":               firmwareStatusCacheable,
+	"firmwareInfo":           firmwareInfoCacheable,
+	"unboundLocalZones":      unboundDiagnosticsCacheable,
+	"unboundLocalData":       unboundDiagnosticsCacheable,
+	"unboundInsecureDomains": unboundDiagnosticsCacheable,
+	"idsRulesets":            idsRulesetsCacheable,
 }
 
 // SetEndpointAbsentTTL caches a 404 from the named endpoint for ttl, so a
@@ -362,6 +417,10 @@ type CacheEntryView struct {
 	Remaining time.Duration
 	// PluginGated reports whether this endpoint is in PluginGatedEndpoints().
 	PluginGated bool
+	// StoredAt is when the live fetch that produced this entry completed. The
+	// body a scrape replays is exactly this old, however fresh the poll clocks
+	// look.
+	StoredAt time.Time
 }
 
 // CacheSnapshot returns a read-only, point-in-time view of every entry
@@ -404,6 +463,7 @@ func (c *Client) CacheSnapshot() []CacheEntryView {
 			TTL:         ttl,
 			Remaining:   entry.expiresAt.Sub(now),
 			PluginGated: gated[name],
+			StoredAt:    entry.storedAt,
 		})
 	}
 

@@ -286,6 +286,11 @@ type Collector struct {
 	nextPollTs    *prometheus.Desc
 	snapshotTs    *prometheus.Desc
 	lastSuccessTs *prometheus.Desc
+	// apiCacheFetchedTs is the per-endpoint time the response cache's held body was
+	// fetched from the firewall (OPN-0095, GitHub issue 724). lastSuccessTs advances
+	// on a poll served from that cache, so it alone cannot tell a live fetch from a
+	// replay; this gauge is the clock that does not move on a replay.
+	apiCacheFetchedTs *prometheus.Desc
 
 	// seriesTotal backs opnsense_exporter_series_total (#494): the most recent
 	// total collector-registry series count observed by metricsnap's
@@ -1390,8 +1395,15 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	c.lastSuccessTs = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "collector_last_success_timestamp_seconds"),
-		"Unix timestamp of a collector's last fully successful poll. Unlike collector_snapshot_timestamp_seconds this does NOT advance on a partial-error poll, so the two together distinguish 'refreshed but degraded' from 'fully healthy'. Absent until the collector has succeeded at least once (#382)",
+		"Unix timestamp of a collector's last fully successful poll. Unlike collector_snapshot_timestamp_seconds this does NOT advance on a partial-error poll, so the two together distinguish 'refreshed but degraded' from 'fully healthy'. Absent until the collector has succeeded at least once (#382). A poll served from the API response cache is a successful poll and DOES advance this clock: the data behind it is as old as opnsense_exporter_api_cache_fetched_timestamp_seconds for the endpoints the collector reads, not as old as this timestamp.",
 		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.apiCacheFetchedTs = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "api_cache_fetched_timestamp_seconds"),
+		"Unix timestamp of the live firewall fetch that produced the response body the API response cache currently holds, by endpoint (api/* path). Present only while a success body is held under a configured TTL (--exporter.cache-ttl / --exporter.firmware-cache-ttl); a cached 404 and an uncached endpoint publish nothing. This is the clock that does NOT move when a poll is served from cache: time() minus this value is how stale the data behind a fresh-looking collector_last_success_timestamp_seconds can be, bounded by the endpoint's TTL. A firmware status body with an empty last_check is never cached, so it never appears here (OPN-0095).",
+		[]string{"endpoint", instanceLabelName},
 		nil,
 	)
 
@@ -1614,6 +1626,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.apiRequestDuration.Describe(ch)
 	c.apiCacheHits.Describe(ch)
 	c.apiCacheMisses.Describe(ch)
+	ch <- c.apiCacheFetchedTs
 	c.isUp.Describe(ch)
 	ch <- c.buildInfo
 	ch <- c.collectorEnabled
@@ -1696,6 +1709,20 @@ func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 	c.apiRequestDuration.Collect(ch)
 	c.apiCacheHits.Collect(ch)
 	c.apiCacheMisses.Collect(ch)
+	// Read from the cache's own snapshot rather than an observer callback: the
+	// gauge must describe what is HELD now, and an entry that expired or was
+	// evicted has no fetch time to report.
+	for _, entry := range c.Client.CacheSnapshot() {
+		// An expired entry lingers until the next get/put evicts it; nothing is
+		// served from it, so it has no fetch time worth reporting.
+		if entry.StatusCode < 200 || entry.StatusCode >= 300 || entry.StoredAt.IsZero() || entry.Remaining <= 0 {
+			continue
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.apiCacheFetchedTs, prometheus.GaugeValue, float64(entry.StoredAt.Unix()),
+			entry.Path, c.instanceLabel,
+		)
+	}
 	c.collectExporterInfo(ch)
 	if c.seriesTotal != nil {
 		ch <- prometheus.MustNewConstMetric(

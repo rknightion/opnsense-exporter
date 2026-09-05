@@ -463,6 +463,10 @@ NOT_ANNOTATED: dict = {
         "self-observability dashboard as a freshness panel, never as a marker.",
     "opnsense_exporter_collector_last_success_timestamp_seconds":
         "Same: advances on every successful poll. A freshness reading, not an event.",
+    "opnsense_exporter_api_cache_fetched_timestamp_seconds":
+        "When the response cache last read each cached endpoint off the firewall. A "
+        "freshness reading paired with collector_last_success (which advances on a "
+        "cache-served poll), read as an age on the API Response Cache row (OPN-0095).",
     "opnsense_exporter_collector_next_poll_timestamp_seconds":
         "Future-dated by construction, so any marker would sit ahead of now.",
     "opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds":

@@ -1423,10 +1423,6 @@ var Exemptions = map[string]string{
 	"opnsense.unboundInfraResponse.Status": "configd/MVC envelope status string. The client's failure signal is the transport " +
 		"result and the decode itself, never this field; decoded so the live-box schema " +
 		"canary keeps validating the envelope's shape.",
-	// opnsense/unbound_dns.go:747  json:"status"
-	"opnsense.unboundInsecureDomainsResponse.Status": "configd/MVC envelope status string. The client's failure signal is the transport " +
-		"result and the decode itself, never this field; decoded so the live-box schema " +
-		"canary keeps validating the envelope's shape.",
 	// opnsense/unbound_dns.go:732  json:"name"
 	"opnsense.unboundLocalDataResponse.Data.Name": "Per-record local DNS override (name, type, ttl, value). The collector exports the " +
 		"COUNT of local-data overrides; a series per record would grow with the box's host " +
@@ -1447,17 +1443,9 @@ var Exemptions = map[string]string{
 	"opnsense.unboundLocalDataResponse.Data.Value": "Per-record local DNS override (name, type, ttl, value). The collector exports the " +
 		"COUNT of local-data overrides; a series per record would grow with the box's host " +
 		"overrides and carry hostnames as labels.",
-	// opnsense/unbound_dns.go:730  json:"status"
-	"opnsense.unboundLocalDataResponse.Status": "configd/MVC envelope status string. The client's failure signal is the transport " +
-		"result and the decode itself, never this field; decoded so the live-box schema " +
-		"canary keeps validating the envelope's shape.",
 	// opnsense/unbound_dns.go:721  json:"zone"
 	"opnsense.unboundLocalZonesResponse.Data.Zone": "Per-zone override name. The collector exports the COUNT of local zones; one series " +
 		"per configured override name would grow with the box's blocklists.",
-	// opnsense/unbound_dns.go:719  json:"status"
-	"opnsense.unboundLocalZonesResponse.Status": "configd/MVC envelope status string. The client's failure signal is the transport " +
-		"result and the decode itself, never this field; decoded so the live-box schema " +
-		"canary keeps validating the envelope's shape.",
 	// opnsense/unbound_search_queries.go:20  json:"current"
 	"opnsense.unboundSearchQueriesResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +

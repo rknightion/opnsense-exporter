@@ -1,9 +1,11 @@
 ---
 id: OPN-0095
 title: Firmware-status cache pins a transient empty last_check for the full TTL
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-09-05 19:53'
+updated_date: '2026-09-05 20:58'
 labels:
   - bug
   - external-report
@@ -33,3 +35,17 @@ External report, GitHub issue 724 (2026-08-31). Confirmed against source 2026-09
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Client owns admission: responseCache gains a per-endpoint success-body admission rule (cacheAdmissionRules keyed by endpoint name, wired in SetEndpointCacheTTL); put() refuses a 2xx body the rule rejects and stores nothing, so the next poll fetches live. firmware: refuse when last_check is empty. 2. Freshness: cache entries record storedAt; CacheSnapshot exposes StoredAt; the collector emits opnsense_exporter_api_cache_fetched_timestamp_seconds{endpoint} for every held success body (skipping expired entries); collector_last_success help text states it advances on a cache-served poll and names the pairing. Dashboard: API Cache Body Age table on the API Response Cache row; annotation ledger NOT_ANNOTATED entry. 3. Sweep every body-cached endpoint for the same shape against upstream controller source; add rules where a 200 can mean 'no result now': firmwareInfo (empty package list = pkg answered nothing), unboundLocalZones/LocalData/InsecureDomains (status failed = unbound-control unreachable), idsRulesets (empty rows = metadata call decoded to null). FetchUnboundLocalData also returns a partial-fetch error on status failed instead of counting zero. 4. Regressions failing-before for each; just check; source CodeRabbit; commit to main.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Failing-before evidence: TestClient_CacheRefusesFirmwareStatusWithoutLastCheck failed at 'a firmware body with an empty last_check must not be cached' (snapshot held the entry); TestCacheFetchedTimestampGaugeReportsHeldBodiesOnly failed with an empty series map; TestCacheAdmissionRulesRefuseInterimBodies failed 'no admission rule registered' for firmwareInfo, the three unbound diagnostics and idsRulesets; TestClient_CacheRefusesFailedUnboundDiagnostics failed with the status-failed body held in the cache; TestFetchUnboundLocalData_FailedStatusIsAnError failed 'expected an error ... got nil'. After: ok opnsense 3.990s, ok internal/collector 8.602s. First full gate failed only on the Grafana annotation ledger (new instant-valued metric needed a NOT_ANNOTATED entry); fixed. First CodeRabbit pass: 2 minor. Fixed: skip expired entries (Remaining <= 0) in the fetched-timestamp loop. Left: README metric-count wording is generated docgen text unrelated to this change.
+
+Cache sweep (Rob 2026-09-05: validate no other issues like 724). Verified against upstream opnsense/core master controllers via WebFetch. Same shape, fixed here: firmwareInfo (FirmwareController::infoAction builds package[] and installed flags from firmware local; empty package list means pkg answered nothing), unboundLocalZones/unboundLocalData/unboundInsecureDomains (DiagnosticsController returns 200 {status: failed} without data when unbound-control is unreachable, which every Unbound reload triggers), idsRulesets (SettingsController::listRulesetsAction returns empty rows when the configd list decoded to null; the installable catalogue ships with core so it is never legitimately empty). Reviewed and left uncached-rule-free with reason: cpuType, systemInformation, dmidecodeInfo, certificates, caCertificates, acmeCertificates, unboundBlocklistPolicies, backupHistory, auth*, nat*, idsSettings, kea*/dnsmasqRanges, captivePortalVoucherProviders, netflowGetConfig/IsEnabled are configuration or inventory reads whose 200 is always the current state; snapshotsIsSupported/snapshotsSearch and torHiddenServices are static per box; clamavVersion and crowdsecVersion read version strings independent of the daemon state; firewallGeoIP reads a stats file that is legitimately absent until the first cron update, a real state rather than a transient one; interfacesOverview (60s) and firewallRuleIDs (1m) have TTLs too short for the class to matter.
+<!-- SECTION:NOTES:END -->

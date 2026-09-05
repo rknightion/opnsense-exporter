@@ -483,7 +483,10 @@ services:
       # How long to cache firmware API responses (status and, when enabled, package
       # details). The firmware data OPNsense serves is the stored result of the box's
       # own update check, which it refreshes roughly daily, so re-fetching it on every
-      # poll only costs firewall CPU. Set to 0 to fetch on every poll.
+      # poll only costs firewall CPU. A status body whose last_check is empty (no check
+      # stored yet, or one in progress) is never cached, so it cannot pin the
+      # check-dependent series absent for the TTL; the next poll fetches live. Set to 0
+      # to fetch on every poll.
       # OPN2OTEL_FIRMWARE_CACHE_TTL: "12h0m0s"
       # Lookback window over which opnsense_ids_recent_alerts counts Suricata eve alerts
       # (a gauge). Only used when --exporter.enable-ids-alerts is set. Counts are a

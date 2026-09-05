@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
@@ -358,6 +359,26 @@ func parseLastCheckTimestamp(raw string) float64 {
 	return 0
 }
 
+// firmwareStatusCacheable is the response-cache admission rule for the firmware
+// status endpoint (cacheAdmissionRules). The box answers 200 with an empty
+// last_check while an update check is running and right after the stored status
+// is cleared; that body carries no check result, and FetchFirmwareStatus's
+// LastCheck gate below turns it into "every check-dependent series absent".
+// Caching it would hold that absence for the full --exporter.firmware-cache-ttl
+// (12h by default) while the box finished its check seconds later — GitHub issue
+// 724. So a body without a last_check is decoded and served but never stored;
+// the next poll asks the firewall again. Anything that does not decode is
+// refused too: put() must never hold a body do() would not have accepted.
+func firmwareStatusCacheable(body []byte) bool {
+	var probe struct {
+		LastCheck string `json:"last_check"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return false
+	}
+	return strings.TrimSpace(probe.LastCheck) != ""
+}
+
 func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 	var resp firmwareStatusResponse
 	data := NewFirmwareStatus()
@@ -590,6 +611,23 @@ type FirmwareInfo struct {
 // catalogue in the response is deliberately not decoded — only the plugin
 // list (~100 entries, ~15 installed on a typical box) is used, filtered to
 // installed == "1", to keep metric cardinality bounded.
+// firmwareInfoCacheable is the response-cache admission rule for the firmware
+// info endpoint (cacheAdmissionRules, OPN-0095 sweep). FirmwareController::
+// infoAction builds package[] from `firmware local` and marks a plugin installed
+// only from that same result, so an empty package list means pkg answered
+// nothing (the pkg database is locked or configd timed out during an upgrade or
+// check): the base system is itself a package and is never absent. Caching that
+// body would report zero installed plugins for --exporter.firmware-cache-ttl.
+func firmwareInfoCacheable(body []byte) bool {
+	var probe struct {
+		Package []json.RawMessage `json:"package"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return false
+	}
+	return len(probe.Package) > 0
+}
+
 func (c *Client) FetchFirmwareInfo() (FirmwareInfo, *APICallError) {
 	var resp firmwareInfoResponse
 	var data FirmwareInfo

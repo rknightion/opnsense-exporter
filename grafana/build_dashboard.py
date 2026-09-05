@@ -1204,6 +1204,24 @@ def build_diagnostics(b: Builder):
              'certificate inventory, CPU/system identity). kind="absent": a replayed 404 from a '
              'plugin-gated endpoint — the plugin is not installed on this firewall, and the '
              'exporter is no longer re-asking on every scheduled poll.')
+    # OPN-0095 (GitHub issue 724). collector_last_success_timestamp_seconds advances on a
+    # poll served from this cache, so the freshness row on Scrape & Poll cannot tell a
+    # live fetch from a replay. This is the clock that does not move on a replay: how
+    # long ago the body each cached endpoint is serving was actually read off the
+    # firewall. Bounded by the endpoint's TTL when the cache is healthy; an age past
+    # the TTL means the entry should have expired and did not.
+    cache_age = b.table(
+        "API Cache Body Age (by endpoint)",
+        [f'sort_desc(time() - {sel("opnsense_exporter_api_cache_fetched_timestamp_seconds")})'],
+        renames={"Value": "Age", "endpoint": "Endpoint", "opnsense_instance": "Instance"},
+        unit_overrides={"Age": "s"},
+        w=9, h=7,
+        desc="How long ago the response body each cached endpoint is currently serving was "
+             "fetched from the firewall. A collector poll served from cache still reports a "
+             "fresh collector_last_success_timestamp_seconds; this is the age of the data "
+             "behind it. Expect values up to --exporter.cache-ttl, and up to "
+             "--exporter.firmware-cache-ttl (12h) for the two firmware endpoints. A firmware "
+             "status body with an empty last_check is never cached, so it never appears here.")
     cache_by_ep = b.table(
         "API Cache Hits (by endpoint)",
         [f'sort_desc(sum {grp("endpoint", "kind")} ({sel("opnsense_exporter_api_cache_hits_total")}))'],
@@ -1333,7 +1351,7 @@ def build_diagnostics(b: Builder):
     ])
     b.tab("OPNsense API", [
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
-        b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
+        b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep, cache_age]),
     ])
     b.tab("Metrics & OTLP", [
         b.row("OTLP Delivery Health", [otlp_on, otlp_fails, otlp_age, otlp_rate],

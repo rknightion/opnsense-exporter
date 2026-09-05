@@ -443,6 +443,10 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 		"opnsense_exporter_collector_last_success_timestamp_seconds", "help",
 		[]string{"collector", instanceLabelName}, nil,
 	)
+	c.apiCacheFetchedTs = prometheus.NewDesc(
+		"opnsense_exporter_api_cache_fetched_timestamp_seconds", "help",
+		[]string{"endpoint", instanceLabelName}, nil,
+	)
 	c.isUp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_up_test", Help: "h"})
 	c.firewallHealthStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_firewall_status_test", Help: "h"})
 	c.crashReporterStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_crash_reporter_status_test", Help: "h"})
@@ -1312,4 +1316,80 @@ func TestScrapeViewIgnoresContextDeadline(t *testing.T) {
 	if got := collectNames(cancelled); !reflect.DeepEqual(got, live) {
 		t.Errorf("a cancelled context changed the replay:\n got %v\nwant %v", got, live)
 	}
+}
+
+// TestCacheFetchedTimestampGaugeReportsHeldBodiesOnly pins the freshness half of
+// GitHub issue 724 (OPN-0095): collector_last_success_timestamp_seconds advances on
+// every clean poll, INCLUDING one served from the response cache, so on its own it
+// cannot tell a live fetch from a 12h-old replay. The per-endpoint
+// api_cache_fetched_timestamp_seconds gauge carries the time the held body was
+// actually fetched from the firewall. It is emitted only while a success body is
+// held: a negative (404) entry and an uncached endpoint publish nothing.
+func TestCacheFetchedTimestampGaugeReportsHeldBodiesOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "haproxy") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"last_check":"2024-01-15T10:30:00Z","product_version":"24.1.1",
+			"product":{"product_check":{"upgrade_needs_reboot":"0"}},"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	client.SetEndpointCacheTTL("firmware", time.Hour)
+	client.SetEndpointAbsentTTL("haproxyServiceStatus", time.Hour)
+	c := newScrapeTestCollector(t, client)
+
+	if got := collectCacheFetched(t, c); len(got) != 0 {
+		t.Fatalf("nothing is cached yet, expected no fetched-timestamp series, got %v", got)
+	}
+
+	before := time.Now().Add(-time.Second)
+	if _, err := client.FetchFirmwareStatus(); err != nil {
+		t.Fatalf("firmware: %v", err)
+	}
+	if _, _, err := client.FetchServiceStatusOptional("haproxyServiceStatus"); err != nil {
+		t.Fatalf("haproxy: %v", err)
+	}
+
+	got := collectCacheFetched(t, c)
+	if len(got) != 1 {
+		t.Fatalf("expected exactly one fetched-timestamp series (the held firmware body), got %v", got)
+	}
+	ts, ok := got["api/core/firmware/status"]
+	if !ok {
+		t.Fatalf("expected the series to be labelled with the firmware path, got %v", got)
+	}
+	if ts < float64(before.Unix()) || ts > float64(time.Now().Unix()) {
+		t.Errorf("fetched timestamp %v is not the fetch time (expected within [%d, now])", ts, before.Unix())
+	}
+	if _, ok := got["api/haproxy/service/status"]; ok {
+		t.Error("a cached 404 is not a fetched body and must not publish a fetched timestamp")
+	}
+}
+
+func collectCacheFetched(t *testing.T, c *Collector) map[string]float64 {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 256)
+	c.collect(context.Background(), ch, nil)
+	close(ch)
+	out := map[string]float64{}
+	for m := range ch {
+		if !strings.Contains(m.Desc().String(), "exporter_api_cache_fetched_timestamp_seconds") {
+			continue
+		}
+		d := &dto.Metric{}
+		if err := m.Write(d); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		endpoint := ""
+		for _, l := range d.GetLabel() {
+			if l.GetName() == "endpoint" {
+				endpoint = l.GetValue()
+			}
+		}
+		out[endpoint] = d.GetGauge().GetValue()
+	}
+	return out
 }

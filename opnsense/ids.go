@@ -373,3 +373,20 @@ func parseIDSLocalTime(s string) (float64, bool) {
 	}
 	return float64(t.Unix()), true
 }
+
+// idsRulesetsCacheable is the response-cache admission rule for the IDS
+// installable-ruleset list (cacheAdmissionRules, OPN-0095 sweep).
+// SettingsController::listRulesetsAction returns empty rows when `ids list
+// installablerulesets` decoded to null, and the installable catalogue ships with
+// the core package, so an empty list is the metadata call failing, not a box
+// with no rulesets. Caching it would hide every ruleset's enabled/last-updated
+// series for --exporter.cache-ttl.
+func idsRulesetsCacheable(body []byte) bool {
+	var probe struct {
+		Rows []json.RawMessage `json:"rows"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return false
+	}
+	return len(probe.Rows) > 0
+}
