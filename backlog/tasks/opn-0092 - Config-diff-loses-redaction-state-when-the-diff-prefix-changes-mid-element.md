@@ -1,11 +1,11 @@
 ---
 id: OPN-0092
 title: Config diff loses redaction state when the diff prefix changes mid-element
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:59'
-updated_date: '2026-09-05 19:15'
+updated_date: '2026-09-05 19:20'
 labels:
   - bug
 dependencies: []
@@ -45,15 +45,15 @@ Reachability: the code defect is certain. Whether OPNsense's config.xml writer e
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A sensitive element spanning a prefix change stays suppressed to its closing tag
-- [ ] #2 Regressions cover the minus-to-space, minus-to-plus-to-space and blank-line-interrupted shapes, each failing before the fix
-- [ ] #3 A hunk header still clears the state
+- [x] #1 A sensitive element spanning a prefix change stays suppressed to its closing tag
+- [x] #2 Regressions cover the minus-to-space, minus-to-plus-to-space and blank-line-interrupted shapes, each failing before the fix
+- [x] #3 A hunk header still clears the state
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -69,3 +69,9 @@ Root adversarial integration found that simply retaining one open tag still leak
 <!-- SECTION:NOTES:BEGIN -->
 Original three synthetic mixed-prefix cases failed before repair. Additional common-opening/deleted-closing/added-continuation case also failed against the first one-state repair, so that approach was replaced before review.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Source landed in c67a6060d0d7ea09d95e3b155fe92a043a0f3dea. Final eight-file source-only CodeRabbit event: review_completed, findings=0. Security slice took two completed passes (initial six files, then eight after fixing an integration regression). Final just check exit 0; terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed; just gen not applicable. Old/new diff sides now keep independent sensitive-element state; context uses both views and hunk headers reset both. Four synthetic cases failed during development, including one that disproved the initial one-state repair. Focused final output: ok github.com/rknightion/opnsense2otel/v4/internal/logship 0.428s. Standard upstream Trust writes are single-line base64; no real wrapped credential delivery is claimed.
+<!-- SECTION:FINAL_SUMMARY:END -->

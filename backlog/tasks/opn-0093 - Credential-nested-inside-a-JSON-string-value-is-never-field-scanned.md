@@ -1,11 +1,11 @@
 ---
 id: OPN-0093
 title: Credential nested inside a JSON string value is never field-scanned
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:59'
-updated_date: '2026-09-05 19:16'
+updated_date: '2026-09-05 19:20'
 labels:
   - bug
 dependencies: []
@@ -41,16 +41,16 @@ Reachability: the code defect is certain. Whether an OPNsense box emits a body o
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A sensitive field nested inside a JSON string value is redacted
-- [ ] #2 Benign prose containing a sensitive word inside a string value is preserved
-- [ ] #3 Regressions cover the single-quoted, escaped-double-quoted, unquoted-key and whole-body-quoted shapes, each failing before the fix
-- [ ] #4 The existing overlapping-quote regressions still pass
+- [x] #1 A sensitive field nested inside a JSON string value is redacted
+- [x] #2 Benign prose containing a sensitive word inside a string value is preserved
+- [x] #3 Regressions cover the single-quoted, escaped-double-quoted, unquoted-key and whole-body-quoted shapes, each failing before the fix
+- [x] #4 The existing overlapping-quote regressions still pass
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -64,3 +64,9 @@ Wave 7 triage confirms complete quoted values bypass field scanning. Extend the 
 <!-- SECTION:NOTES:BEGIN -->
 Synthetic nested-field regression failed before for all four valid enclosing JSON forms (after correcting a missing test import). Both field scanners now run on decoded object-shaped strings, including tolerant detection views that replace uncertain malformed tokens wholesale. Focused TestTruncateBody and vocabulary checks passed: ok github.com/rknightion/opnsense2otel/v4/opnsense 0.326s. No real-firewall response occurrence asserted.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Source landed in c67a6060d0d7ea09d95e3b155fe92a043a0f3dea. Final eight-file source-only CodeRabbit event: review_completed, findings=0. Security slice took two completed passes (initial six files, then eight after fixing an integration regression). Final just check exit 0; terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed; just gen not applicable. Four synthetic nested JSON-string forms failed before and pass afterward with valid JSON and benign prose preserved. Existing truncateBody controls pass. Focused output: ok github.com/rknightion/opnsense2otel/v4/opnsense 0.326s. No live-firewall occurrence or final live redaction proof claimed.
+<!-- SECTION:FINAL_SUMMARY:END -->

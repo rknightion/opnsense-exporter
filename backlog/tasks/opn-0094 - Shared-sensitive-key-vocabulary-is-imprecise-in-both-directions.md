@@ -1,11 +1,11 @@
 ---
 id: OPN-0094
 title: Shared sensitive-key vocabulary is imprecise in both directions
-status: In Progress
+status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:59'
-updated_date: '2026-09-05 19:17'
+updated_date: '2026-09-05 19:21'
 labels:
   - bug
 dependencies: []
@@ -22,7 +22,7 @@ Under-matching. SensitiveConfigKey("key") is false, while apikey, secret and prv
 
     {"key":"SYNTH-APIKEY-5","id":"12345"}  -> unchanged
 
-That is not academic. POST /api/auth/user/add_api_key returns an object whose id and key members are the two halves of an API credential, so key is OPNsense's own name for the bearer half. Verified against the OPNsense docs, not from memory.
+That is not academic. Upstream ApiKeyField add returns key and secret, which addApiKeyAction returns with result/hostname. The key field is API credential material. searchApiKeyAction separately exposes key/id; the original brief conflated those response shapes. This client does not invoke add_api_key.
 
 Adding key to the word-segment map rather than the substring list also covers dns_cf_key and the apikeys item shape, without matching keyexpiry or monkey.
 
@@ -33,25 +33,25 @@ Over-matching. OPNsense MVC validation failures key their messages by field path
     {"validations":{"general.password":"This field is required"}}
       -> {"validations":{"general.password":"[REDACTED]"}}
 
-The redacted content is the message, never a credential, and it is the entire diagnostic value of that body. Same effect on dnscrypt_shared_secret in opnsense/unbound_dns.go:349, where the secret is a cache-entry count.
+The redacted content is a validator message. The illustrated generic message is value-free, but upstream forwards arbitrary validator text, which may interpolate values; a whole-envelope exemption is not proven safe. dnscrypt_shared_secret in opnsense/unbound_dns.go is a numeric cache-entry count, but normal decoded responses there do not traverse SensitiveConfigKey, so it does not justify a vocabulary exemption.
 
 The C:\Users over-redaction is documented and deliberate and is NOT in scope here.
 
-Both directions are one function, so fix them together or the second regresses the first.
+Keep the shared vocabulary strict. The confirmed under-match is repaired; safe preservation of validation messages is a separate policy boundary recorded below.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A bare key field is treated as sensitive, and keyexpiry is not
-- [ ] #2 Any additional element name added is justified against upstream OPNsense source in the notes
+- [x] #1 A bare key field is treated as sensitive, and keyexpiry is not
+- [x] #2 Any additional element name added is justified against upstream OPNsense source in the notes
 - [ ] #3 An MVC validation message keyed by a sensitive field path keeps its message text
 - [ ] #4 Regressions cover both directions and fail before the fix
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -71,3 +71,9 @@ Vocabulary regression failed before for key and dns_cf_key, both false instead o
 
 First integrated check failed TestSecurityPostureProvider_AggregatesFirmwareCertificatesAndOwners: API key owners = nil, want owner-sorted aggregates. This is a real regression from the vocabulary change and must be fixed before commit.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Source landed in c67a6060d0d7ea09d95e3b155fe92a043a0f3dea. Final eight-file source-only CodeRabbit event: review_completed, findings=0. Security slice took two completed passes (initial six files, then eight after fixing an integration regression). Final just check exit 0; terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed; just gen not applicable. Bare key and separated key terms are now sensitive; keyexpiry/monkey remain nonsensitive. The full gate caught and repaired loss of the generated owner aggregate: snapshot field key_owners is now access_owners, preserving counts without a redaction exemption. Focused posture output: ok github.com/rknightion/opnsense2otel/v4/internal/logship/configsnapshot 0.342s. Validation-message preservation remains unimplemented and AC3/4 unchecked: arbitrary upstream validator messages are not proven value-free. Resume only with a source-proved generic-message allowlist and regressions retaining redaction of value-bearing/malformed messages; otherwise keep current fail-closed behavior. No speculative vocabulary additions.
+<!-- SECTION:FINAL_SUMMARY:END -->
