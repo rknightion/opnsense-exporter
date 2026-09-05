@@ -277,17 +277,16 @@ const configChangeRedactionMarker = "[redacted]"
 // had its secrets removed, and so the truncation bound is measured against what
 // is actually shipped.
 //
-// The scanner tracks an element left open at the end of a line, because a
-// base64 certificate or key routinely wraps. That state is dropped at a hunk
-// header and whenever the diff prefix changes, which bounds how far an
-// unterminated element can suppress output to a single contiguous run of
-// same-side lines. Over-redaction is the safe direction here.
+// The scanner tracks an element left open at the end of a line to handle
+// multiline XML values. Diff prefixes may change while the element remains
+// open. Each side has its own state: a removed closing tag does not close the
+// added value. Context lines are scrubbed against both sides, and a hunk header
+// clears both. Over-redaction is the safe direction here.
 func redactConfigChangeDiff(diff string) string {
 	lines := strings.Split(diff, "\n")
 	var (
-		b          strings.Builder
-		openTag    string
-		openPrefix byte
+		b              strings.Builder
+		oldTag, newTag string
 	)
 	b.Grow(len(diff))
 	for i, line := range lines {
@@ -295,7 +294,7 @@ func redactConfigChangeDiff(diff string) string {
 			b.WriteByte('\n')
 		}
 		if strings.HasPrefix(line, "@@") {
-			openTag = ""
+			oldTag, newTag = "", ""
 			b.WriteString(line)
 			continue
 		}
@@ -304,12 +303,27 @@ func redactConfigChangeDiff(diff string) string {
 		if len(line) > 0 && (line[0] == '+' || line[0] == '-' || line[0] == ' ') {
 			prefix, body = line[0], line[1:]
 		}
-		if openTag != "" && prefix != openPrefix {
-			openTag = ""
-		}
 		var redacted string
-		redacted, openTag = redactConfigDiffBody(body, openTag)
-		openPrefix = prefix
+		switch prefix {
+		case '-':
+			redacted, oldTag = redactConfigDiffBody(body, oldTag)
+		case '+':
+			redacted, newTag = redactConfigDiffBody(body, newTag)
+		default:
+			var oldBody, newBody string
+			oldBody, oldTag = redactConfigDiffBody(body, oldTag)
+			newBody, newTag = redactConfigDiffBody(body, newTag)
+			switch {
+			case oldBody == newBody, newBody == body:
+				redacted = oldBody
+			case oldBody == body:
+				redacted = newBody
+			default:
+				// Both sides removed different spans. Their intersection is not
+				// safe to infer from rewritten offsets, so suppress this line.
+				redacted = configChangeRedactionMarker
+			}
+		}
 		if prefix != 0 {
 			b.WriteByte(prefix)
 		}

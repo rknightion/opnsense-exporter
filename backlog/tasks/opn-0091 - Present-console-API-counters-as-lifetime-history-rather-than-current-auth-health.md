@@ -3,11 +3,11 @@ id: OPN-0091
 title: >-
   Present console API counters as lifetime history rather than current auth
   health
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:58'
-updated_date: '2026-09-05 19:07'
+updated_date: '2026-09-05 19:10'
 labels:
   - needs-triage
 dependencies: []
@@ -24,14 +24,14 @@ The console derives AuthOK from cumulative API 401/403 counters. Once any endpoi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Initial render and polling updates describe observed lifetime auth-error history without claiming current auth success or failure
-- [ ] #2 API request count and duration labels state their process-lifetime scope and the underlying counters are preserved
+- [x] #1 Initial render and polling updates describe observed lifetime auth-error history without claiming current auth success or failure
+- [x] #2 API request count and duration labels state their process-lifetime scope and the underlying counters are preserved
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -45,3 +45,9 @@ Add a failing rendered-output regression for no recorded errors and historical e
 <!-- SECTION:NOTES:BEGIN -->
 Both rendered history cases failed before wording repair and passed afterward. Server and polling update use none recorded/errors recorded; counters and AuthOK JSON compatibility preserved. Rendered HTML verified; no browser layout exercise or live-auth claim.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Landed in d2549a5dd314f40bdfaf6ad56f056dcde4821e0a. Targeted evidence recorded above; full just check passed (exit 0), terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed, so just gen not applicable. Source-only CodeRabbit completed review_completed across 13 files, findings=1; one pass. The sole minor finding concerned the intentionally reversed backup test-server branch and was retained with the regression rationale recorded on OPN-0086. No critical or major findings.
+<!-- SECTION:FINAL_SUMMARY:END -->

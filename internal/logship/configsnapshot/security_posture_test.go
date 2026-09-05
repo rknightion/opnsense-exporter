@@ -60,7 +60,7 @@ func TestSecurityPostureProvider_AggregatesFirmwareCertificatesAndOwners(t *test
 			UpgradePackages []securityPosturePackageVersion `json:"upgrade_packages"`
 		} `json:"firmware"`
 		CertificateExpiry securityPostureCertificateExpiry `json:"certificate_expiry"`
-		APIKeyOwners      []securityPostureAPIKeyOwner     `json:"key_owners"`
+		APIKeyOwners      []securityPostureAPIKeyOwner     `json:"access_owners"`
 		ListeningSockets  int                              `json:"listening_sockets"`
 	}
 	if err := json.Unmarshal(encoded, &got); err != nil {

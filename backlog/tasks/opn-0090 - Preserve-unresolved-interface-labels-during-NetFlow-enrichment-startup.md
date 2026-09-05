@@ -1,11 +1,11 @@
 ---
 id: OPN-0090
 title: Preserve unresolved interface labels during NetFlow enrichment startup
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:55'
-updated_date: '2026-09-05 19:07'
+updated_date: '2026-09-05 19:10'
 labels:
   - needs-triage
 dependencies: []
@@ -22,15 +22,15 @@ The refresher publishes interface order before metadata. BuildIfMap can therefor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A NetFlow interface with a device but unavailable metadata uses the unresolved metric label while retaining its device metadata
-- [ ] #2 A populated table that lacks a device preserves the honest raw-device fallback and an explicit interface name remains authoritative
-- [ ] #3 Arrival of a resolved name clears Unresolved before metric rollup
+- [x] #1 A NetFlow interface with a device but unavailable metadata uses the unresolved metric label while retaining its device metadata
+- [x] #2 A populated table that lacks a device preserves the honest raw-device fallback and an explicit interface name remains authoritative
+- [x] #3 Arrival of a resolved name clears Unresolved before metric rollup
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -44,3 +44,9 @@ Add failing-before regressions at BuildIfMap and Processor enrichment seams for 
 <!-- SECTION:NOTES:BEGIN -->
 Both cold-label and cold-to-resolved regressions failed before repair. Focused flow race tests passed after: ok github.com/rknightion/opnsense2otel/v4/internal/flow 1.409s. Both ends handled; explicit names retained, populated missing-device fallback preserved.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Landed in d2549a5dd314f40bdfaf6ad56f056dcde4821e0a. Targeted evidence recorded above; full just check passed (exit 0), terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed, so just gen not applicable. Source-only CodeRabbit completed review_completed across 13 files, findings=1; one pass. The sole minor finding concerned the intentionally reversed backup test-server branch and was retained with the regression rationale recorded on OPN-0086. No critical or major findings.
+<!-- SECTION:FINAL_SUMMARY:END -->

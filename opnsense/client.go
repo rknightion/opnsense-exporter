@@ -1755,8 +1755,8 @@ func looselyDecodeJSONStringToken(token []byte, complete bool) string {
 
 // redactSensitiveURLsInJSONStrings decodes each JSON string token, or builds a
 // conservative detection view when malformed escapes prevent decoding, before
-// applying the URL scrubbers. Looking only at the wire encoding is not enough:
-// JSON may escape any URL punctuation, key character or credential byte.
+// applying the URL and nested object-field scrubbers. Looking only at the wire
+// encoding is not enough: JSON may escape punctuation or credential bytes.
 func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
 	out := make([]byte, 0, len(b))
 	cursor := 0
@@ -1778,6 +1778,9 @@ func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
 		if err := json.Unmarshal(token, &value); err == nil {
 			decoded := html.UnescapeString(value)
 			redacted := redactSensitiveURLValue(decoded)
+			if strings.Contains(decoded, "{") {
+				redacted = string(redactSensitiveJSONLikeFields(redactSensitiveJSONFields([]byte(redacted))))
+			}
 			if !complete && bodyTruncated {
 				// The body limit may cut an otherwise valid userinfo URL before its
 				// trailing @. Classify the decoded prefix at EOF so JSON-escaped
@@ -1809,6 +1812,9 @@ func redactSensitiveURLsInJSONStrings(b []byte, bodyTruncated bool) []byte {
 			shadow := looselyDecodeJSONStringToken(token, true)
 			decoded := html.UnescapeString(shadow)
 			redacted := redactSensitiveURLValue(decoded)
+			if strings.Contains(decoded, "{") {
+				redacted = string(redactSensitiveJSONLikeFields(redactSensitiveJSONFields([]byte(redacted))))
+			}
 			if !complete && bodyTruncated {
 				// A cut inside an encoded escape (for example the @ in userinfo)
 				// makes the temporary JSON token undecodable. Apply the same EOF

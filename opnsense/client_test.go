@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -635,6 +636,28 @@ func TestTruncateBody_LeavesBenignJSONLikeFieldsAlone(t *testing.T) {
 		if got != body {
 			t.Errorf("expected benign JSON-like fields to remain unchanged, got: %s", got)
 		}
+	}
+}
+
+func TestTruncateBody_RedactsFieldsInsideJSONString(t *testing.T) {
+	// Synthetic backend diagnostics: live OPNsense occurrence is not established.
+	for _, body := range []string{
+		`{"message":"configd: {'password': 'SYNTH-NESTED'}"}`,
+		`{"message":"backend: {\"password\":\"SYNTH-NESTED\"}"}`,
+		`{"errorMessage":"cmd '{password:\"SYNTH-NESTED\"}' failed"}`,
+		`"{'password':'SYNTH-NESTED'}"`,
+	} {
+		got := string(truncateBody([]byte(body)))
+		if strings.Contains(got, "SYNTH-NESTED") {
+			t.Errorf("nested credential survived: %s", got)
+		}
+		if !json.Valid([]byte(got)) {
+			t.Errorf("valid JSON became invalid: %s", got)
+		}
+	}
+	const benign = `{"message":"the password: field is required"}`
+	if got := string(truncateBody([]byte(benign))); got != benign {
+		t.Errorf("benign prose changed: %s", got)
 	}
 }
 

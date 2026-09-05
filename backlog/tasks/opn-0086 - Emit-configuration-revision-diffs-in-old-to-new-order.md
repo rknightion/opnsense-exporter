@@ -1,11 +1,11 @@
 ---
 id: OPN-0086
 title: Emit configuration revision diffs in old-to-new order
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-09-05 18:35'
-updated_date: '2026-09-05 19:09'
+updated_date: '2026-09-05 19:10'
 labels:
   - needs-triage
 dependencies: []
@@ -22,14 +22,14 @@ FetchConfigBackupDiff names its arguments oldRevision and newRevision but puts t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Configchange fetches the upstream diff with the old revision as diff input and the new revision as diff output on both supported source contracts
-- [ ] #2 A source-derived regression fails for the reversed orientation before repair and passes afterward while static observer endpoint attribution is preserved
+- [x] #1 Configchange fetches the upstream diff with the old revision as diff input and the new revision as diff output on both supported source contracts
+- [x] #2 A source-derived regression fails for the reversed orientation before repair and passes afterward while static observer endpoint attribution is preserved
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -45,3 +45,9 @@ Wave 7 targeted regression failed before with reversed diff headers and deletion
 
 CodeRabbit source review raised a minor request to exercise or remove the reverse-route fixture branch. Retained deliberately: this branch models the actual upstream response to the pre-fix request and made the regression fail for reversed diff semantics rather than an artificial route rejection. A second test of the test server adds no production contract coverage. Awaiting terminal review event and full gate.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Landed in d2549a5dd314f40bdfaf6ad56f056dcde4821e0a. Targeted evidence recorded above; full just check passed (exit 0), terminal: Your code is affected by 0 vulnerabilities. No generated artifacts changed, so just gen not applicable. Source-only CodeRabbit completed review_completed across 13 files, findings=1; one pass. The sole minor finding concerned the intentionally reversed backup test-server branch and was retained with the regression rationale recorded on OPN-0086. No critical or major findings.
+<!-- SECTION:FINAL_SUMMARY:END -->

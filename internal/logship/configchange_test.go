@@ -347,8 +347,8 @@ func TestRedactConfigChangeDiff_RemovesCredentials(t *testing.T) {
 }
 
 // TestRedactConfigChangeDiff_RedactsWrappedValues covers the shape that made a
-// line-local regex insufficient: base64 certificate and key material wraps, so a
-// sensitive element routinely opens on one line and closes several lines later.
+// line-local regex insufficient. This is synthetic multiline material; standard
+// OPNsense Trust writes encode private material as single-line base64.
 func TestRedactConfigChangeDiff_RedactsWrappedValues(t *testing.T) {
 	diff := strings.Join([]string{
 		"@@ -10,4 +10,6 @@",
@@ -369,6 +369,24 @@ func TestRedactConfigChangeDiff_RedactsWrappedValues(t *testing.T) {
 	}
 	if !strings.Contains(got, "the certificate description") {
 		t.Errorf("redaction ran past the closing element into unrelated content:\n%s", got)
+	}
+}
+
+func TestRedactConfigChangeDiff_MixedPrefixSensitiveElement(t *testing.T) {
+	// Synthetic XML text-node continuations exercise unified-diff prefix changes.
+	for _, diff := range []string{
+		"-<privatekey>SYNTH-FIRST\n SYNTH-LAST</privatekey>",
+		"-<privatekey>SYNTH-OLD\n+<privatekey>SYNTH-NEW\n SYNTH-LAST</privatekey>",
+		"+<privatekey>SYNTH-FIRST\n\n+SYNTH-LAST</privatekey>",
+		" <privatekey>SYNTH-FIRST\n-SYNTH-OLD</privatekey>\n+SYNTH-NEW\n SYNTH-LAST</privatekey>",
+	} {
+		got := redactConfigChangeDiff(diff + "\n <descr>ordinary</descr>")
+		if strings.Contains(got, "SYNTH-") {
+			t.Errorf("sensitive continuation survived: %q", got)
+		}
+		if !strings.Contains(got, "</privatekey>") || !strings.Contains(got, "<descr>ordinary</descr>") {
+			t.Errorf("closing tag or following ordinary content lost: %q", got)
+		}
 	}
 }
 

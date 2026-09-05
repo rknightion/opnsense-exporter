@@ -147,6 +147,9 @@ var (
 	// it is too short to match at an arbitrary position.
 	sensitiveConfigTerms = map[string]struct{}{
 		"prv": {},
+		// Auth ApiKeyField stores the public credential half as key. Match
+		// separated terms too, without treating keyexpiry or monkey as secrets.
+		"key": {},
 	}
 	sensitiveConfigExact = map[string]struct{}{
 		"psk": {}, "pass": {},

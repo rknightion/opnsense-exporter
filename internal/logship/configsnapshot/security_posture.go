@@ -53,9 +53,9 @@ func (p securityPostureProvider) Snapshot(ctx context.Context) ([]Entity, error)
 			UpgradePackages:       securityPosturePackageVersions(posture.Firmware.UpgradePackageDetails),
 		},
 		"certificate_expiry": securityPostureCertificateExpirySummary(posture.Certificates, now().UTC()),
-		// The shared redactor correctly treats api_key as sensitive; use the
+		// The shared redactor treats key terms as sensitive; use the
 		// enclosing posture schema to give this safe aggregate its meaning.
-		"key_owners":        securityPostureAPIKeyOwners(posture.APIKeyOwners),
+		"access_owners":     securityPostureAPIKeyOwners(posture.APIKeyOwners),
 		"listening_sockets": posture.ListeningSockets,
 	}
 	// Keep this call immediately before Entity construction: configuration-shaped

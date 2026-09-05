@@ -236,6 +236,10 @@ func TestSensitiveConfigKey(t *testing.T) {
 		want bool
 	}{
 		{key: "password", want: true},
+		{key: "key", want: true},
+		{key: "dns_cf_key", want: true},
+		{key: "keyexpiry", want: false},
+		{key: "monkey", want: false},
 		{key: "apiKey", want: true},
 		{key: "otp_seed", want: true},
 		{key: "ldap_bindpw", want: true},
