@@ -43,6 +43,7 @@ DEFAULT_HOLD_SECONDS=28800      # 8h — one working day, then it lapses by itse
 READY_TIMEOUT=600               # 10 min; the canary dispatch waits on this unit
 SHUTDOWN_TIMEOUT=180            # per guest, before falling back to a hard stop
 ADDRESS_TIMEOUT=90              # per container interface, before remediating
+GUEST_EXEC_TIMEOUT=300          # qm guest-agent command timeout
 
 # DHCP interfaces the traffgen container must hold before the lab counts as up.
 # eth0 is its TESTLAN address (leased by VM 102, and the jump path to both
@@ -134,6 +135,135 @@ guest_kind() {
     [ "$id" = "$ct" ] && { echo ct; return; }
   done
   echo vm
+}
+
+# decode_qm_guest_exec validates and decodes the JSON envelope returned by
+# `qm guest exec`. A successful qm process only means that the guest-agent RPC
+# completed; the guest command's exitcode is inside this envelope. Keep the
+# decoded streams in files so command output remains byte-for-byte intact,
+# including missing or multiple trailing newlines. QGA omits empty streams;
+# those absent fields become empty output, while present fields must be strings.
+decode_qm_guest_exec() {
+  local envelope=$1 guest_stdout=$2 guest_stderr=$3 guest_exit=$4
+
+  if ! jq -e '
+    def valid_exit:
+      if type == "number" then (. == floor and . >= 0 and . <= 255) else false end;
+    if type != "object" then false
+    else
+      has("exitcode")
+      and (.exitcode | valid_exit)
+      and ((has("out-data") | not) or (.["out-data"] | type == "string"))
+      and ((has("err-data") | not) or (.["err-data"] | type == "string"))
+    end
+  ' "$envelope" >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! jq -j 'if has("out-data") then .["out-data"] else "" end' \
+      "$envelope" >"$guest_stdout" 2>/dev/null; then
+    return 1
+  fi
+  if ! jq -j 'if has("err-data") then .["err-data"] else "" end' \
+      "$envelope" >"$guest_stderr" 2>/dev/null; then
+    return 1
+  fi
+  if ! jq -er '.exitcode | tostring' "$envelope" >"$guest_exit" 2>/dev/null; then
+    return 1
+  fi
+}
+
+cleanup_qm_guest_exec() {
+  local directory=$1
+  rm -f "$directory/envelope.json" "$directory/qm.stderr" \
+    "$directory/guest.stdout" "$directory/guest.stderr" "$directory/guest.exit"
+  rmdir "$directory" 2>/dev/null || true
+}
+
+# qm_guest_exec returns the guest command's exit code, not qm's RPC status.
+# qm's stderr is retained separately so a valid guest err-data stream is
+# returned plainly on stderr. A missing, malformed, or timed-out envelope is a
+# hard failure and never gets interpreted as a successful guest command.
+qm_guest_exec() {
+  local id=$1
+  shift
+  local directory envelope qm_stderr guest_stdout guest_stderr guest_exit
+  local qm_status guest_status
+
+  directory=$(mktemp -d "${TMPDIR:-/tmp}/opnsense-qm-exec.XXXXXX") \
+    || die "exec: could not create a temporary directory"
+  envelope=$directory/envelope.json
+  qm_stderr=$directory/qm.stderr
+  guest_stdout=$directory/guest.stdout
+  guest_stderr=$directory/guest.stderr
+  guest_exit=$directory/guest.exit
+
+  if qm guest exec "$id" --timeout "$GUEST_EXEC_TIMEOUT" -- "$@" \
+      >"$envelope" 2>"$qm_stderr"; then
+    qm_status=0
+  else
+    qm_status=$?
+  fi
+  if [ "$qm_status" -ne 0 ]; then
+    log "ERROR: exec: qm guest exec for guest $id failed (status $qm_status); no valid JSON envelope" >&2
+    cat "$qm_stderr" >&2
+    cleanup_qm_guest_exec "$directory"
+    return "$qm_status"
+  fi
+
+  if ! decode_qm_guest_exec "$envelope" "$guest_stdout" "$guest_stderr" "$guest_exit"; then
+    if [ -s "$qm_stderr" ]; then cat "$qm_stderr" >&2; fi
+    cleanup_qm_guest_exec "$directory"
+    die "exec: guest $id returned no valid JSON envelope (malformed, missing, or timed-out)"
+  fi
+
+  cat "$guest_stdout"
+  cat "$guest_stderr" >&2
+  guest_status=$(cat "$guest_exit")
+  cleanup_qm_guest_exec "$directory"
+  case "$guest_status" in
+    ''|*[!0-9]*) die "exec: guest $id returned an invalid exit code" ;;
+  esac
+  return "$guest_status"
+}
+
+# guest_exec is the one command route for an allowlisted guest. Containers
+# expose pct's plain stream and status directly. VMs expose qm's JSON envelope
+# only to this decoder, so callers always see guest stdout/stderr and status.
+guest_exec() {
+  local id=$1
+  shift
+  if [ "$(guest_kind "$id")" = ct ]; then
+    pct exec "$id" -- "$@"
+  else
+    qm_guest_exec "$id" "$@"
+  fi
+}
+
+cmd_exec() {
+  local id
+  [ "$#" -ge 1 ] || die "exec: guest id is required"
+  id=$1
+  assert_allowed "$id"
+  shift
+  [ "${1-}" = "--" ] || die "exec: expected '--' before command"
+  shift
+  [ "$#" -gt 0 ] || die "exec: command is required"
+  guest_exec "$id" "$@"
+}
+
+cmd_put() {
+  local id local_path remote_path
+  [ "$#" -ge 1 ] || die "put: guest id is required"
+  id=$1
+  assert_allowed "$id"
+  shift
+  [ "$#" -eq 2 ] || die "put: expected <local-path> <remote-path>"
+  local_path=$1
+  remote_path=$2
+  if [ "$(guest_kind "$id")" != ct ]; then
+    die "put: refusing VM $id — qm has no guest file-write; use 'exec $id -- fetch -o <tmp> <release-url>' and verify the in-guest sha256 against release checksums.txt"
+  fi
+  pct push "$id" "$local_path" "$remote_path"
 }
 
 guest_state() {
@@ -379,6 +509,10 @@ Usage: opnsense-testbed-power.sh <command>
   hold [seconds] Suppress the scheduled shutdown (default 8h). Auto-expires.
   release        Clear an active hold.
   status         Show hold state and every guest's power state.
+  exec <id> -- <command...>
+                 Run a command in an allowlisted guest and return its status.
+  put <id> <local-path> <remote-path>
+                 Push a file to an allowlisted container (VMs have no put route).
 EOF
 }
 
@@ -388,6 +522,8 @@ case "${1-}" in
   hold)    shift; cmd_hold "${1-}" ;;
   release) cmd_release ;;
   status)  cmd_status ;;
+  exec)    shift; cmd_exec "$@" ;;
+  put)     shift; cmd_put "$@" ;;
   -h|--help|help) usage ;;
   *)       usage >&2; exit 2 ;;
 esac

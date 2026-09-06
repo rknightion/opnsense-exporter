@@ -1,9 +1,10 @@
 ---
 id: OPN-0097
 title: Bound config revision diff input before redaction to cap transient allocation
-status: To Do
+status: Parked
 assignee: []
 created_date: '2026-09-05 19:54'
+updated_date: '2026-09-06 11:07'
 labels:
   - enhancement
   - security
@@ -29,3 +30,9 @@ Independent redaction review 2026-09-05 (codex/findings-2026-09-05-redaction-rev
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Wave 9 Phase 6 not started: higher-priority OPN-0099 remains Parked at the delivered flushed-instance redaction assertion, so the frozen only-if-nothing-above-is-open entry condition is not satisfied. No diff-bound source, test or documentation change was made; no acceptance criterion is claimed. PARKED RESUME BOUNDARY: close the higher-priority live-proof gap (and any OPN-0057 observation park), then implement the frozen 4 MiB client-side line-safe bound and visible marker with a failing-before straddling-credential regression, preserving redact-before-output-truncate order. D7 remains a batched planner-default question.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -23,6 +23,35 @@ ms of the fixed duration. Preserve its JSON stdout in that observation.
 `python3 scripts/testbed/udp_throughput.py shape` prints the immutable payload
 digest and load without sending traffic.
 
+## Guest access route
+
+Guest access for this measurement uses the host-side
+`scripts/testbed/opnsense-testbed-power.sh` allowlist. The route does not change
+guest power state. `exec <id> -- <command...>` runs an allowlisted command and
+returns the guest's exit status, stdout, and stderr. It uses `pct exec` for the
+Linux container and `qm guest exec --timeout <n> --` for the VM. The VM route
+decodes and validates a completed integer `exitcode` in the JSON envelope.
+QEMU Guest Agent may omit empty `out-data` or `err-data`, which the route
+returns as empty streams; present stream fields must be strings. A successful
+`qm` call without a valid completed envelope is a failure.
+
+`put <id> <local-path> <remote-path>` is available for the container only and
+uses `pct push`. VMs have no `qm` guest file-write route. Fetch a release inside
+the VM with `exec <id> -- fetch -o <tmp> <release-url>`, then verify its
+in-guest SHA-256 against `checksums.txt`. The root operator removes temporary
+guest directories before releasing the testbed hold; this procedure installs no
+packages.
+
+The role assignment is frozen for both binary phases:
+
+| receiver role | receiver guest | sender guest | binary phase |
+| --- | ---: | ---: | --- |
+| Linux receiver | 105 | 112 | before `v4.1.0` / current `v4.2.0` |
+| FreeBSD receiver | 102 | 105 (LAN) | before `v4.1.0` / current `v4.2.0` |
+
+Use the same receiver and sender roles for the before/current pair, while
+keeping the sender command and packet method from this document unchanged.
+
 Supply generic role names such as `udp-throughput-linux-receiver` and
 `udp-throughput-freebsd-receiver`; do not commit instance data. Observations
 carry evidence and instance SHA-256 digests instead of raw private captures.

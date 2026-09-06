@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Tests for opnsense-testbed-power.sh's decision logic (#625).
+"""Tests for opnsense-testbed-power.sh's decision logic and guest routes (#625).
 
-Everything here drives the script's `--decide-only` seam, which answers a
+The decision tests drive the script's `--decide-only` seam, which answers a
 question from its arguments alone and exits before touching Proxmox, the
-network or the hold file. So these run anywhere — no oli, no root, no qm.
+network or the hold file. The route tests use temporary mock `qm` and `pct`
+executables, so these run anywhere — no oli, no root, no real guest tools.
 
 What is deliberately NOT covered: the actual start/stop calls and the readiness
-gate. Those need a host, and mocking `qm` would test the mock. They are
-exercised by hand at deploy time per the issue's acceptance criteria.
+gate. Those need a host and are exercised by hand at deploy time per the issue's
+acceptance criteria.
 """
 
+import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -38,6 +41,22 @@ def decide(*args: str) -> str:
             f"decide-only {args} exited {result.returncode}: {result.stderr}"
         )
     return result.stdout.strip()
+
+
+def run_script(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run a production command without allowing it to touch a real guest."""
+    process_env = os.environ.copy()
+    if env is not None:
+        process_env.update(env)
+    return subprocess.run(
+        [str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        env=process_env,
+        check=False,
+    )
 
 
 class TestAllowlist(unittest.TestCase):
@@ -131,6 +150,238 @@ class TestHold(unittest.TestCase):
     def test_empty_file_is_free(self):
         path = self._write("")
         self.assertEqual(decide("hold", path, "1000"), "free")
+
+
+class TestGuestRoutes(unittest.TestCase):
+    @staticmethod
+    def _tool(directory: Path, name: str, body: str) -> None:
+        path = directory / name
+        path.write_text(body)
+        path.chmod(0o755)
+
+    @staticmethod
+    def _tool_env(directory: Path, **extra: str) -> dict[str, str]:
+        env = {"PATH": f"{directory}{os.pathsep}{os.environ['PATH']}"}
+        env.update(extra)
+        return env
+
+    def test_exec_refuses_disallowed_guest_with_allowlist_message(self):
+        result = run_script("exec", "100", "--", "id")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "refusing to touch guest 100 — not in the testbed allowlist",
+            result.stderr,
+        )
+
+    def test_exec_routes_ct_with_plain_output_and_guest_exit_code(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            args_file = directory / "pct.args"
+            self._tool(
+                directory,
+                "pct",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n"
+                "printf 'ct stdout\\n'\n"
+                "printf 'ct stderr\\n' >&2\n"
+                "exit 7\n",
+            )
+            result = run_script(
+                "exec",
+                "105",
+                "--",
+                "printf",
+                "hello",
+                env=self._tool_env(directory, ARGS_FILE=str(args_file)),
+            )
+            self.assertEqual(result.returncode, 7)
+            self.assertEqual(result.stdout, "ct stdout\n")
+            self.assertEqual(result.stderr, "ct stderr\n")
+            self.assertEqual(
+                args_file.read_text().splitlines(),
+                ["exec", "105", "--", "printf", "hello"],
+            )
+
+    def test_exec_routes_vm_with_qm_timeout_and_decoded_envelope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            args_file = directory / "qm.args"
+            self._tool(
+                directory,
+                "qm",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n"
+                "printf '%s' '{\"exitcode\":0,\"out-data\":\"vm stdout\",\"err-data\":\"vm stderr\"}'\n",
+            )
+            result = run_script(
+                "exec",
+                "110",
+                "--",
+                "uname",
+                "-a",
+                env=self._tool_env(
+                    directory,
+                    ARGS_FILE=str(args_file),
+                    TMPDIR=str(directory),
+                ),
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "vm stdout")
+            self.assertEqual(result.stderr, "vm stderr")
+            self.assertEqual(
+                args_file.read_text().splitlines(),
+                [
+                    "guest",
+                    "exec",
+                    "110",
+                    "--timeout",
+                    "300",
+                    "--",
+                    "uname",
+                    "-a",
+                ],
+            )
+
+    def test_exec_returns_vm_guest_failure_from_envelope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            self._tool(
+                directory,
+                "qm",
+                "#!/bin/sh\n"
+                "printf '%s' '{\"exitcode\":23,\"out-data\":\"guest out\\n\",\"err-data\":\"guest err\\n\"}'\n",
+            )
+            result = run_script(
+                "exec",
+                "102",
+                "--",
+                "false",
+                env=self._tool_env(directory, TMPDIR=str(directory)),
+            )
+            self.assertEqual(result.returncode, 23)
+            self.assertEqual(result.stdout, "guest out\n")
+            self.assertEqual(result.stderr, "guest err\n")
+
+    def test_exec_treats_omitted_vm_streams_as_empty(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            self._tool(
+                directory,
+                "qm",
+                "#!/bin/sh\n"
+                "printf '%s' '{\"exitcode\":0}'\n",
+            )
+            result = run_script(
+                "exec",
+                "102",
+                "--",
+                "true",
+                env=self._tool_env(directory, TMPDIR=str(directory)),
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(result.stderr, "")
+
+    def test_exec_rejects_empty_command(self):
+        result = run_script("exec", "105", "--")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exec: command is required", result.stderr)
+
+    def test_exec_rejects_missing_separator(self):
+        result = run_script("exec", "105", "id")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exec: expected '--' before command", result.stderr)
+
+    def test_put_routes_only_ct_through_pct_push(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            args_file = directory / "pct.args"
+            self._tool(
+                directory,
+                "pct",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+            )
+            result = run_script(
+                "put",
+                "105",
+                "/tmp/local",
+                "/tmp/remote",
+                env=self._tool_env(directory, ARGS_FILE=str(args_file)),
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(
+                args_file.read_text().splitlines(),
+                ["push", "105", "/tmp/local", "/tmp/remote"],
+            )
+
+    def test_put_refuses_vm_and_explains_fetch_checksum_route(self):
+        result = run_script("put", "102", "/tmp/local", "/tmp/remote")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("qm has no guest file-write", result.stderr)
+        self.assertIn("exec 102 -- fetch -o <tmp> <release-url>", result.stderr)
+        self.assertIn("sha256", result.stderr)
+        self.assertIn("checksums.txt", result.stderr)
+
+    def test_exec_rejects_malformed_or_missing_vm_envelope(self):
+        envelopes = [
+            "{}",
+            '{"exitcode":0,"out-data":null}',
+            "not-json",
+        ]
+        for envelope in envelopes:
+            with self.subTest(envelope=envelope):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    directory = Path(temporary_directory)
+                    self._tool(
+                        directory,
+                        "qm",
+                        "#!/bin/sh\n"
+                        "printf '%s' \"$ENVELOPE\"\n",
+                    )
+                    result = run_script(
+                        "exec",
+                        "102",
+                        "--",
+                        "true",
+                        env=self._tool_env(
+                            directory,
+                            ENVELOPE=envelope,
+                            TMPDIR=str(directory),
+                        ),
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("valid JSON envelope", result.stderr)
+
+    def test_exec_fails_closed_when_qm_times_out_without_envelope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            self._tool(
+                directory,
+                "qm",
+                "#!/bin/sh\n"
+                "printf 'timed out\\n' >&2\n"
+                "exit 124\n",
+            )
+            result = run_script(
+                "exec",
+                "102",
+                "--",
+                "true",
+                env=self._tool_env(directory, TMPDIR=str(directory)),
+            )
+            self.assertEqual(result.returncode, 124)
+            self.assertEqual(result.stdout, "")
+            self.assertIn("timed out", result.stderr)
+
+    def test_put_refuses_disallowed_guest_with_allowlist_message(self):
+        result = run_script("put", "100", "/tmp/local", "/tmp/remote")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "refusing to touch guest 100 — not in the testbed allowlist",
+            result.stderr,
+        )
 
 
 if __name__ == "__main__":

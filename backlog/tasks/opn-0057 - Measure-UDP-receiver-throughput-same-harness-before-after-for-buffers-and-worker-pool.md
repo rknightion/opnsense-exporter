@@ -3,11 +3,11 @@ id: OPN-0057
 title: >-
   Measure UDP receiver throughput: same-harness before/after for buffers and
   worker pool
-status: Parked
+status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-05 20:31'
+updated_date: '2026-09-06 11:08'
 labels:
   - needs-triage
 milestone: m-4
@@ -50,6 +50,8 @@ Wave 5: first commit a deterministic UDP throughput contract naming the sender c
 Wave 6: expose opnsense_exporter_syslog_udp_accepted_total immediately after successful UDP queue admission and a positive opnsense_exporter_syslog_udp_receive_buffer_bytes gauge from the actual getsockopt read-back. Preserve Linux doubled and FreeBSD undoubled semantics without equality assertions. Regenerate owned docs/dashboard after source integration, but do not run the throughput harness; re-park on the two missing isolated host roles.
 
 Wave 7 D15 supersedes isolated-host provisioning: use guest 105 as Linux LXC receiver and an OPNsense FreeBSD VM as the other receiver, with a different guest as sender for each trial. Preserve the committed 256-byte, 5000 packets/s, 60-second method and require observed counters; report shared-host noise, host rmem_max ceiling, and Linux doubled versus FreeBSD undoubled SO_RCVBUF beside every number. Phase 1 released the root testbed hold before this disposition.
+
+Wave 9 D3 supersedes the former access-route park. Implement and test allowlisted power-script exec and CT-only put, including guest exit-envelope decoding; root commits and deploys with timestamped backup, then measures the four frozen guest-role/version observations under the hold opened for OPN-0099. Missing prerequisites park at the exact observation; no packages or firewall configuration objects are changed; guest temporary directories are removed before root releases its hold.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -64,6 +66,8 @@ Wave 5 contract landed in 8c4d92ce. The fixed 256-byte, 5,000 packets/s, 60-seco
 Wave 6 implementation: added opnsense_exporter_syslog_udp_accepted_total at successful non-empty, allowlisted bounded-queue admission and opnsense_exporter_syslog_udp_receive_buffer_bytes from the positive getsockopt(SO_RCVBUF) read-back. The read-back is surfaced unchanged: Linux commonly reports roughly double the request while FreeBSD does not, and no equality assertion was added. Generated self-metric documentation and two dashboard panels; just gen and the complete just check gate passed. CodeRabbit source review completed for the syslog slice in one pass with zero findings; the dashboard-only pass raised one major slice-context false positive because the listener source that registers the gauge was excluded, and the combined four-file pass completed with zero findings. No traffic ran and no throughput, drop or buffer number was observed; acceptance criteria 1 through 4 remain unproven. PARKED RESUME BOUNDARY: provide the two isolated receiver host roles required by the committed contract, one Linux and one FreeBSD, then run that contract.
 
 Decision by Rob 2026-09-05 (post wave 7): stays Parked and is excluded from wave 8 and later waves until an approved direct guest-shell/deployment route for guest 105 and one OPNsense VM exists. No lane should pick this up on its own initiative; the resume boundary is unchanged.
+
+Wave 9 route source: allowlisted exec and CT-only put are implemented. VM execution decodes integer guest exitcode and optional QGA stdout/stderr; absent streams mean empty, malformed fields or incomplete/time-out envelopes fail. Two original refusal regressions failed before dispatch existed; the optional-stream regression also failed before its correction after current Proxmox source verification. 12 route tests and 25 complete power tests pass; bash -n and shellcheck pass. CodeRabbit completed the source slice with no power-route findings. Deployment and guest observations remain pending under the existing root hold.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

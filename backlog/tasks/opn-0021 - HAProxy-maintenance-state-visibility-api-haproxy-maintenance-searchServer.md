@@ -1,11 +1,11 @@
 ---
 id: OPN-0021
 title: HAProxy maintenance-state visibility (api/haproxy/maintenance/searchServer)
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-08-30 09:08'
-updated_date: '2026-09-06 11:03'
+updated_date: '2026-09-06 11:08'
 labels: []
 milestone: m-3
 dependencies: []
@@ -22,14 +22,14 @@ Servers in maintenance vs actually down are indistinguishable today. `api/haprox
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Maintenance state exported per backend server, joinable with existing haproxy series
-- [ ] #2 AGENTS.md new-collector steps complete; gates clean
+- [x] #1 Maintenance state exported per backend server, joinable with existing haproxy series
+- [x] #2 AGENTS.md new-collector steps complete; gates clean
 <!-- AC:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -51,3 +51,9 @@ CORRECTION to the preceding Wave 4 note: the omitted command names are template 
 
 Wave 9 counters audit verdict PURE: released plugins 26.7.3 StatisticsController countersAction -> actions_haproxy.conf statistics -> queryStats.php showStat/socketCmd; core Backend configdRun/configdStream only transports the read-only command. HAProxy 3.2 show stat emits MAINT, inherited/resolution MAINT forms and existing UP/DOWN/DRAIN/NOLB/no-check vocabulary. Implementation uses MAINT prefix on the existing decoded row, identical server_status labels, no new endpoint, JSON schema or flag. AGENTS steps 1-5 do not apply to this existing collector; generated docs/dashboard satisfy steps 8-9. Source-only CodeRabbit completed six files, zero findings.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Wave 9 completed at d55d99707867ef6dd749678c14d2760d78b11d56: server_maintenance is 1 for MAINT-prefixed counters rows and 0 otherwise, with the exact server_status labels. Released upstream audit is PURE; no new endpoint, schema or flag. Test-first failure: expected 5 server_maintenance series, got 0. Final HAProxy race subset passed; just gen and just check passed including 427 Grafana tests; source-only CodeRabbit six files completed with zero findings. Added maintenance timeline and explicit no-annotation state-gauge reason. AGENTS new-collector steps 1-5 are inapplicable to this existing collector; regenerated docs/dashboard cover steps 8-9. Completing this final milestone task closes m-3.
+<!-- SECTION:FINAL_SUMMARY:END -->
