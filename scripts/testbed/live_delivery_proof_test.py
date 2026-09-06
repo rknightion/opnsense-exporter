@@ -685,8 +685,9 @@ opnsense_exporter_logs_poll_errors_total{opnsense_instance="delivery-proof-1",so
             self.assertTrue(proof.stop_process_group(process))
         self.assertEqual([call.args[1] for call in killpg.call_args_list], [proof.signal.SIGTERM, proof.signal.SIGKILL])
 
-    def test_newest_delivered_instance_uses_entry_metadata_and_newest_timestamp(self):
-        streams = [{"stream": {"service_instance_id": "delivery-proof-wrong"}, "values": [
+    def test_newest_delivered_instance_falls_back_to_entry_metadata_and_newest_timestamp(self):
+        # A stream that did not promote the instance label: per-entry metadata decides.
+        streams = [{"stream": {}, "values": [
             ["100", "old", {"structuredMetadata": {"service_instance_id": "delivery-proof-9",
                                                     "observed_timestamp": "2026-09-06T00:00:00Z"}}],
             ["100", "new", {"structuredMetadata": {"service_instance_id": "delivery-proof-10",
@@ -698,8 +699,29 @@ opnsense_exporter_logs_poll_errors_total{opnsense_instance="delivery-proof-1",so
         self.assertEqual(selected["instances"], 2)
         self.assertEqual(selected["records"], 2)
         self.assertEqual(selected["rows"], [
-            ({"service_instance_id": "delivery-proof-wrong"}, "new",
+            ({}, "new",
              {"service_instance_id": "delivery-proof-10", "observed_timestamp": "2026-09-06T00:01:00Z"}),
+        ])
+
+    def test_newest_delivered_instance_reads_the_stream_label_first(self):
+        # service_instance_id is one of the seven documented stream labels, so a
+        # real categorized response carries it on the stream, not per entry.
+        streams = [
+            {"stream": {"service_instance_id": "delivery-proof-9"}, "values": [
+                ["100", "old", {"structuredMetadata": {"observed_timestamp": "2026-09-06T00:00:00Z"}}],
+            ]},
+            {"stream": {"service_instance_id": "delivery-proof-10"}, "values": [
+                ["100", "new", {"structuredMetadata": {"observed_timestamp": "2026-09-06T00:01:00Z"}}],
+            ]},
+        ]
+        selected = proof.newest_delivered_configchange_instance(streams)
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected["instance"], "delivery-proof-10")
+        self.assertEqual(selected["instances"], 2)
+        self.assertEqual(selected["records"], 2)
+        self.assertEqual(selected["rows"], [
+            ({"service_instance_id": "delivery-proof-10"}, "new",
+             {"observed_timestamp": "2026-09-06T00:01:00Z"}),
         ])
 
     def test_newest_delivered_instance_uses_numeric_run_id_when_timestamps_tie(self):

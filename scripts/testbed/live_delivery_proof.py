@@ -746,7 +746,12 @@ def newest_delivered_configchange_instance(streams):
             metadata = value[2].get("structuredMetadata") or {}
             if not isinstance(metadata, dict):
                 continue
-            instance = metadata.get("service_instance_id")
+            # service_instance_id is one of the documented stream labels, so a
+            # categorized response carries it on the stream; per-entry metadata
+            # is only a fallback for a stream that did not promote it.
+            instance = labels.get("service_instance_id") if isinstance(labels, dict) else None
+            if not isinstance(instance, str):
+                instance = metadata.get("service_instance_id")
             if not isinstance(instance, str) or not PROOF_INSTANCE_LABEL.fullmatch(instance):
                 continue
             entry_timestamp_ns = int(value[0])
