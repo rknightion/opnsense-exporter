@@ -81,6 +81,8 @@ When the metrics path is not `/`, set `--web.ui-enabled=true` to serve the built
 
 The console is read-only. It reads only cached/last-scrape data, so the auto-refresh never triggers an extra scrape of the firewall; the Devices tab is the only view that reaches the firewall (ARP/DHCP), and only when you open it.
 
+Every console response carries a Content-Security-Policy that authorizes the page's inline scripts and styles with a fresh request nonce, allows self-hosted fonts and same-origin polling, and blocks external resources, framing, form submissions and base-URL overrides. Responses also use `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`; bundled fonts retain their immutable caching. The console has no TLS listener of its own, so it does not send HSTS. Normal operation is unchanged; embedding the console in a frame or injecting an operator-supplied script now fails.
+
 It is off by default. When enabled, it is served without authentication, so expose the exporter's port only on a trusted network. Controls:
 
 - `--web.ui-enabled` - set to true to serve the console instead of the default minimal landing page.

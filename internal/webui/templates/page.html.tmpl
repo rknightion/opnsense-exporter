@@ -6,7 +6,7 @@
 <link rel="preload" href="/_static/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
 <title>{{.Title}} · opnsense2otel</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232f81f7'/><path d='M4 11 L7 5 L9 9 L12 5' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
-<style>
+<style nonce="{{.Nonce}}">
 /* ─────────────────────────────────────────────────────────────────────────────
    m7kni Design System v2 - 2otel console family token block.
    SHARED VERBATIM across tailscale2otel, opnsense2otel, graph2otel,
@@ -230,7 +230,7 @@ svg.spark polyline{fill:none;stroke:var(--t2o-series-1);stroke-width:1.5;vector-
 .rollup .rc .rv{font:var(--t2o-fw-medium) var(--t2o-fs-xl)/1.2 var(--t2o-mono);font-variant-numeric:tabular-nums;color:var(--t2o-fg)}
 .rollup .rc .rk{font:var(--t2o-fw-semibold) var(--t2o-fs-2xs)/1.2 var(--t2o-sans);letter-spacing:var(--t2o-tracking-label);text-transform:uppercase;color:var(--t2o-fg-muted)}
 .reasons{display:flex;align-items:center;gap:8px;padding:7px 20px;background:var(--t2o-accent-soft);color:var(--t2o-fg-soft);font:var(--t2o-fs-xs)/1.4 var(--t2o-mono);border-bottom:1px solid var(--t2o-line)}
-.reasons svg{color:var(--t2o-fail);flex:0 0 auto}
+.reasons svg{flex:0 0 auto}
 #staleBanner{display:none;padding:8px 20px;background:var(--t2o-surface);color:var(--t2o-fg-soft);font:var(--t2o-fs-sm)/1.4 var(--t2o-sans);border-bottom:1px solid var(--t2o-line)}
 #staleBanner.show{display:block}
 #staleBanner svg{color:var(--t2o-warn);vertical-align:-2px;margin-right:6px}
@@ -297,14 +297,22 @@ section[data-tab].active{display:block}
 }
 @keyframes t2o-pulse{0%,100%{opacity:1}50%{opacity:.45}}
 @keyframes t2o-arrive{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
+.cards--compact{margin-bottom:12px}
+.config-table--spaced{margin-bottom:18px}
+.growth-positive{color:var(--warn)}
+.growth-nonpositive{color:var(--ok)}
+.note--links{margin-top:12px;color:var(--muted)}
+.reasons-icon-ok{color:var(--t2o-ok)}
+.reasons-icon-warn{color:var(--t2o-warn)}
+.reasons-icon-bad{color:var(--t2o-fail)}
 </style>
-<script>
+<script nonce="{{.Nonce}}">
   // Apply the persisted theme BEFORE first paint to avoid a flash of the wrong
   // theme. Falls back silently to the prefers-color-scheme media query.
   (function(){try{var t=localStorage.getItem('opnsense-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 </script>
-<script>window.__refreshMs = {{if .RefreshMs}}{{.RefreshMs}}{{else}}5000{{end}};</script>
-<noscript><style>
+<script nonce="{{.Nonce}}">window.__refreshMs = {{if .RefreshMs}}{{.RefreshMs}}{{else}}5000{{end}};</script>
+<noscript><style nonce="{{.Nonce}}">
   section[data-tab]{display:block!important;margin-bottom:34px}
   nav.tabs{display:none}
 </style></noscript>
@@ -321,7 +329,7 @@ section[data-tab].active{display:block}
   <span class="badge badge-{{captureClass .Capture.State}}" id="captureBadge" title="Passive metric capture: {{.Capture.State}}{{if .Capture.ErrorCount}} · {{.Capture.ErrorCount}} erroring gathers, last {{.Capture.LastErrorAgo}}{{end}}">capture {{.Capture.State}}</span>
   <span class="ver" id="scrapeAge" data-scrape-age>as of {{.ScrapeAge}}</span>
 </header>
-<div class="reasons" id="healthReasons" role="status"{{if not .Reasons}} style="display:none"{{end}}><svg viewBox="0 0 256 256" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/></svg><span class="reasons-text">{{range .Reasons}}{{.}} · {{end}}</span></div>
+<div class="reasons" id="healthReasons" role="status"{{if not .Reasons}} hidden{{end}}><svg class="reasons-icon reasons-icon-{{healthClass .Health}}" viewBox="0 0 256 256" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z"/></svg><span class="reasons-text">{{range .Reasons}}{{.}} · {{end}}</span></div>
 {{end}}
 <div id="staleBanner" role="alert"></div>
 <nav class="tabs" id="tabs" role="tablist" aria-label="Status sections">
@@ -382,7 +390,7 @@ section[data-tab].active{display:block}
 
   <!-- ═══ COLLECTORS ═══ -->
   <section data-tab="collectors" id="panel-collectors" role="tabpanel" aria-labelledby="tab-collectors" tabindex="0">
-    <input class="filter" type="text" placeholder="Filter collectors…" oninput="filterTable(this,'collTable')">
+    <input class="filter" type="text" placeholder="Filter collectors…" data-filter-table="collTable">
     <table id="collTable">
       <thead><tr>
         <th>Collector</th><th>State</th><th class="num">Interval</th><th class="num">Success</th>
@@ -417,7 +425,7 @@ section[data-tab].active{display:block}
 
   <!-- ═══ API ═══ -->
   <section data-tab="api" id="panel-api" role="tabpanel" aria-labelledby="tab-api" tabindex="0">
-    <div class="cards" style="margin-bottom:12px">
+    <div class="cards cards--compact">
       <div class="card"><div class="k">Auth errors (lifetime)</div><div class="v"><span class="badge badge-{{if .API.AuthOK}}ok{{else}}bad{{end}}" id="apiAuth">{{if .API.AuthOK}}none recorded{{else}}errors recorded{{end}}</span></div></div>
       <div class="card"><div class="k">Requests (lifetime)</div><div class="v" id="apiRequests">{{printf "%.0f" .API.Requests}}</div></div>
       <div class="card"><div class="k">Avg duration (lifetime)</div><div class="v" id="apiAvg">{{printf "%.1f" .API.AvgMs}} ms</div></div>
@@ -448,14 +456,14 @@ section[data-tab].active{display:block}
 
   <!-- ═══ CARDINALITY ═══ -->
   <section data-tab="cardinality" id="panel-cardinality" role="tabpanel" aria-labelledby="tab-cardinality" tabindex="0">
-    <div class="cards" style="margin-bottom:12px">
+    <div class="cards cards--compact">
       <div class="card"><div class="k">Total series</div><div class="v" id="cardTotal">{{.Cardinality.TotalSeries}}</div><div class="sub">across <span id="cardFamilies">{{.Cardinality.TotalFamilies}}</span> families</div></div>
       <div class="card"><div class="k">Review (≥ warn)</div><div class="v" id="cardWarn">{{.Cardinality.Warn}}</div><div class="sub">warn ≥ {{.Cardinality.WarnThreshold}}</div></div>
       <div class="card"><div class="k">Alerts (≥ crit)</div><div class="v" id="cardCrit">{{.Cardinality.Crit}}</div><div class="sub">crit ≥ {{.Cardinality.CritThreshold}}</div></div>
       <div class="card"><div class="k">Series budget</div><div class="v" id="cardBudget">{{if .Cardinality.SeriesBudget}}{{printf "%.0f%%" .Cardinality.BudgetPercent}}{{else}}off{{end}}</div><div class="sub" id="cardBudgetSub">{{if .Cardinality.SeriesBudget}}{{.Cardinality.TotalSeries}} of {{.Cardinality.SeriesBudget}}{{if .Cardinality.OverBudget}} <span class="badge badge-bad">over</span>{{end}}{{else}}disabled{{end}}</div></div>
     </div>
     <div class="sub-h">Top metrics by series</div>
-    <input class="filter" type="text" placeholder="Filter metrics…" oninput="filterTable(this,'cardMetrics')">
+    <input class="filter" type="text" placeholder="Filter metrics…" data-filter-table="cardMetrics">
     <div class="scroll"><table id="cardMetrics">
       <thead><tr><th>Metric</th><th>Level</th><th class="num">Series</th><th class="num">Labels</th></tr></thead>
       <tbody id="cardMetricsBody">
@@ -483,12 +491,12 @@ section[data-tab].active{display:block}
       <thead><tr><th>Metric</th><th class="num">Series</th><th class="num">Per min</th></tr></thead>
       <tbody>
       {{range .Cardinality.Growth}}
-        <tr><td class="mono">{{.Name}}</td><td class="num">{{.Series}}</td><td class="num">{{if gt .PerMin 0.0}}<span style="color:var(--warn)">+{{printf "%.1f" .PerMin}}</span>{{else}}<span style="color:var(--ok)">{{printf "%.1f" .PerMin}}</span>{{end}}</td></tr>
+        <tr><td class="mono">{{.Name}}</td><td class="num">{{.Series}}</td><td class="num">{{if gt .PerMin 0.0}}<span class="growth-positive">+{{printf "%.1f" .PerMin}}</span>{{else}}<span class="growth-nonpositive">{{printf "%.1f" .PerMin}}</span>{{end}}</td></tr>
       {{end}}
       </tbody>
     </table></div>
     {{end}}
-    <p class="note" style="margin-top:12px;color:var(--muted)">Full export: <a href="/cardinality/export.json"><code>/cardinality/export.json</code></a> · <a href="/api/cardinality.json"><code>/api/cardinality.json</code></a></p>
+    <p class="note note--links">Full export: <a href="/cardinality/export.json"><code>/cardinality/export.json</code></a> · <a href="/api/cardinality.json"><code>/api/cardinality.json</code></a></p>
   </section>
 
 
@@ -523,7 +531,7 @@ section[data-tab].active{display:block}
     </table></div>
 
     <div class="sub-h">Flow Rollup</div>
-    <div class="cards" style="margin-bottom:12px">
+    <div class="cards cards--compact">
       <div class="card"><div class="k">Tracked keys</div><div class="v" id="pipelineRollupKeys">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupKeys}}{{else}} - {{end}}</div><div class="sub">live accumulator entries</div></div>
       <div class="card"><div class="k">Max keys</div><div class="v" id="pipelineRollupKeysMax">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupKeysMax}}{{else}} - {{end}}</div><div class="sub">configured memory ceiling</div></div>
       <div class="card"><div class="k">Top-N</div><div class="v" id="pipelineRollupTopN">{{if .Pipeline.Flow.RollupAvailable}}{{printf "%.0f" .Pipeline.Flow.RollupTopN}}{{else}} - {{end}}</div><div class="sub">emitted-series ceiling</div></div>
@@ -553,7 +561,7 @@ section[data-tab].active{display:block}
       <div class="info-actions"><button class="ctl" id="devReload" type="button"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,1,1-30.53-73.54,8,8,0,0,1-11.33,11.31A88,88,0,1,0,216,128a8,8,0,0,1,16,0Z"/><path d="M232,48V96a8,8,0,0,1-8,8H176a8,8,0,0,1,0-16h40V48a8,8,0,0,1,16,0Z"/></svg> Reload</button></div>
     </div>
     <div id="devError" class="failure-callout" role="alert" hidden></div>
-    <input class="filter" type="text" placeholder="Filter devices…" oninput="filterTable(this,'devTable')">
+    <input class="filter" type="text" placeholder="Filter devices…" data-filter-table="devTable">
     <div class="scroll"><table id="devTable">
       <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Interface</th><th>Manufacturer</th><th>Source</th><th>Expiry</th></tr></thead>
       <tbody id="devBody"><tr><td colspan="7" class="empty">Open this tab to load devices.</td></tr></tbody>
@@ -570,7 +578,7 @@ section[data-tab].active{display:block}
       <div class="info-actions"><button class="ctl" id="ifxReload" type="button"><svg viewBox="0 0 256 256" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M232,128a104,104,0,1,1-30.53-73.54,8,8,0,0,1-11.33,11.31A88,88,0,1,0,216,128a8,8,0,0,1,16,0Z"/><path d="M232,48V96a8,8,0,0,1-8,8H176a8,8,0,0,1,0-16h40V48a8,8,0,0,1,16,0Z"/></svg> Reload</button></div>
     </div>
     <div id="ifxError" class="failure-callout" role="alert" hidden></div>
-    <div class="cards" style="margin-bottom:12px">
+    <div class="cards cards--compact">
       <div class="card"><div class="k">Entries</div><div class="v" id="ifxEntries"> - </div><div class="sub">resolved ifIndex rows</div></div>
       <div class="card value-accent"><div class="k">Overridden</div><div class="v" id="ifxOverridden"> - </div><div class="sub">from the operator override</div></div>
       <div class="card value-warn"><div class="k">Conflicts</div><div class="v" id="ifxConflicts"> - </div><div class="sub">overrides that contradicted the derivation</div></div>
@@ -578,7 +586,7 @@ section[data-tab].active{display:block}
       <div class="card value-warn"><div class="k">Unmapped lookups</div><div class="v" id="ifxUnmapped"> - </div><div class="sub">flows whose ifIndex resolved to nothing</div></div>
       <div class="card"><div class="k">Built</div><div class="v" id="ifxBuilt"> - </div><div class="sub">when the map was last resolved</div></div>
     </div>
-    <input class="filter" type="text" placeholder="Filter interfaces…" oninput="filterTable(this,'ifxTable')">
+    <input class="filter" type="text" placeholder="Filter interfaces…" data-filter-table="ifxTable">
     <div class="scroll"><table id="ifxTable">
       <thead><tr><th class="num">ifIndex</th><th>Device</th><th>Description</th><th>Source</th><th class="num">API states</th><th>Notes</th></tr></thead>
       <tbody id="ifxBody"><tr><td colspan="6" class="empty">Open this tab to load the resolved ifIndex map.</td></tr></tbody>
@@ -590,7 +598,7 @@ section[data-tab].active{display:block}
   <section data-tab="config" id="panel-config" role="tabpanel" aria-labelledby="tab-config" tabindex="0">
     {{range .Config}}
     <div class="sub-h">{{.Title}}</div>
-    <table class="config-table" style="margin-bottom:18px">
+    <table class="config-table config-table--spaced">
       <thead><tr><th>Setting</th><th>Value</th></tr></thead>
       <tbody>
       {{range .Items}}
@@ -622,7 +630,7 @@ section[data-tab].active{display:block}
   <br>
   <span class="attribution">{{geoipCredit}}</span>
 </footer>
-<script>
+<script nonce="{{.Nonce}}">
 var SVGNS='http://www.w3.org/2000/svg';
 var lastOkMs=Date.now(), pollTimer=null, paused=false, lastData=null, devicesLoaded=false, ifIndexLoaded=false;
 
@@ -667,7 +675,8 @@ function currentTheme(){ var t=document.documentElement.getAttribute('data-theme
 function toggleTheme(){ var next=currentTheme()==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme',next); try{localStorage.setItem('opnsense-theme',next);}catch(e){} redrawCharts(); }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-function filterTable(input,tableId){ var q=input.value.toLowerCase(), rows=document.querySelectorAll('#'+tableId+' tbody tr'), visible=0,total=0; for(var i=0;i<rows.length;i++){ if(rows[i].classList.contains('empty')) continue; total++; var match=rows[i].textContent.toLowerCase().indexOf(q)>-1; rows[i].style.display=match?'':'none'; if(match) visible++; } if(tableId==='devTable') setText('devMatch',visible+' of '+total); }
+function initFilters(){ var inputs=document.querySelectorAll('input[data-filter-table]'); for(var i=0;i<inputs.length;i++){ inputs[i].addEventListener('input',function(){ filterTable(this,this.getAttribute('data-filter-table')); }); } }
+function filterTable(input,tableId){ var q=input.value.toLowerCase(), rows=document.querySelectorAll('#'+tableId+' tbody tr'), visible=0,total=0; for(var i=0;i<rows.length;i++){ if(rows[i].classList.contains('empty')) continue; total++; var match=rows[i].textContent.toLowerCase().indexOf(q)>-1; rows[i].hidden=!match; if(match) visible++; } if(tableId==='devTable') setText('devMatch',visible+' of '+total); }
 function setText(id,v){ var e=document.getElementById(id); if(e!=null && v!=null) e.textContent=v; }
 function el(tag,attrs,text){ var e=document.createElement(tag); if(attrs){ for(var k in attrs){ if(attrs.hasOwnProperty(k)) e.setAttribute(k,attrs[k]); } } if(text!=null) e.textContent=text; return e; }
 function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim()||'#4493f8'; }
@@ -855,7 +864,7 @@ function upstreamClass(s){ if(s==='ok') return 'ok'; if(s==='unreachable'||s==='
 function captureClass(s){ if(s==='full') return 'ok'; if(s==='partial') return 'warn'; return 'pending'; }
 function setHealth(d){
   var b=document.getElementById('healthBadge'); if(b){ b.textContent=d.Health; b.className='badge badge-'+healthClass(d.Health); b.title=(d.Reasons||[]).join('\n'); }
-  var rb=document.getElementById('healthReasons'); if(rb){ var reasonText=rb.querySelector('.reasons-text'), icon=rb.querySelector('svg'); if(d.Reasons && d.Reasons.length){ if(reasonText) reasonText.textContent=d.Reasons.join(' · '); rb.style.display=''; } else { if(reasonText) reasonText.textContent=''; rb.style.display='none'; } if(icon) icon.style.color='var(--t2o-'+(healthClass(d.Health)==='bad'?'fail':healthClass(d.Health)==='ok'?'ok':'warn')+')'; }
+  var rb=document.getElementById('healthReasons'); if(rb){ var reasonText=rb.querySelector('.reasons-text'), icon=rb.querySelector('svg'); if(d.Reasons && d.Reasons.length){ if(reasonText) reasonText.textContent=d.Reasons.join(' · '); rb.hidden=false; } else { if(reasonText) reasonText.textContent=''; rb.hidden=true; } if(icon){ icon.classList.remove('reasons-icon-ok','reasons-icon-warn','reasons-icon-bad'); icon.classList.add('reasons-icon-'+healthClass(d.Health)); } }
   var age=document.getElementById('scrapeAge'); if(age && d.ScrapeAge){ age.textContent='as of '+d.ScrapeAge; age.classList.toggle('capture-warn',!d.Capture || d.Capture.State!=='full'); }
   // Upstream reachability is a separate signal from collector history: during a
   // transport outage the scheduler skips collector polls entirely, so the
@@ -969,6 +978,7 @@ function tickFreshness(){ setText('updatedAgo', relMs(lastOkMs)); var b=document
   registerChart('chFailing', function(d){ return d&&d.Trend ? [{name:'failing', color:cssVar('--err'), points:d.Trend.FailingSeries||[]}] : []; });
   registerChart('chDuration', function(d){ return d&&d.Trend ? [{name:'mean', points:d.Trend.MeanDurationMsSeries||[]}] : []; }, function(v){ return v.toFixed(0)+'ms'; });
   initTabs();
+  initFilters();
   var tt=document.getElementById('themeToggle'); if(tt) tt.addEventListener('click',toggleTheme);
   var p=document.getElementById('pauseBtn'); if(p) p.addEventListener('click',togglePause);
   var rn=document.getElementById('refreshNow'); if(rn) rn.addEventListener('click',function(ev){ ev.preventDefault(); refresh(); });

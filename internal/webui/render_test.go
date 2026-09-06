@@ -119,11 +119,11 @@ func TestConsoleFamilyTokenBlockMatchesSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read console template: %v", err)
 	}
-	styleStart := strings.Index(string(tmpl), "<style>\n")
+	styleStart := strings.Index(string(tmpl), "<style nonce=\"{{.Nonce}}\">\n")
 	if styleStart < 0 {
 		t.Fatal("console template has no inline style block")
 	}
-	styleStart += len("<style>\n")
+	styleStart += len("<style nonce=\"{{.Nonce}}\">\n")
 	got := string(tmpl)[styleStart : styleStart+len(want)]
 	if got != want {
 		t.Fatalf("family token block differs from the canonical spec")
@@ -250,11 +250,15 @@ func TestConsoleThemeContrastPairsMeetAA(t *testing.T) {
 
 func renderedStyleBlock(t *testing.T, html string) string {
 	t.Helper()
-	start := strings.Index(html, "<style>\n")
+	start := strings.Index(html, "<style")
 	if start < 0 {
 		t.Fatal("rendered console has no style block")
 	}
-	start += len("<style>\n")
+	tagEnd := strings.Index(html[start:], ">\n")
+	if tagEnd < 0 {
+		t.Fatal("rendered console style tag is unterminated")
+	}
+	start += tagEnd + len(">\n")
 	rest := html[start:]
 	end := strings.Index(rest, "\n</style>")
 	if end < 0 {

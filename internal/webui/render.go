@@ -39,6 +39,7 @@ var pageTmpl = template.Must(template.New("page.html.tmpl").Funcs(funcMap).Parse
 // files from disk). RefreshMs is the client poll interval in milliseconds.
 type view struct {
 	Title          string
+	Nonce          string
 	RefreshMs      int
 	Data           Status
 	Config         []options.ConfigSection

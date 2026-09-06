@@ -207,7 +207,7 @@ func (s *Server) Handler() http.Handler {
 	for _, reg := range routeRegistrars {
 		reg(s, mux)
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case s.admission <- struct{}{}:
 			defer func() { <-s.admission }()
@@ -232,6 +232,7 @@ func (s *Server) Handler() http.Handler {
 		w.WriteHeader(status)
 		_, _ = w.Write(buffer.body.Bytes())
 	})
+	return s.securityHeaders(handler)
 }
 
 type boundedResponse struct {

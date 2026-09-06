@@ -28,8 +28,9 @@ func (s *Server) registerHealth(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 }
 
-func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	v := s.pageView()
+	v.Nonce = nonceFromContext(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := renderPage(w, v); err != nil {
 		http.Error(w, "render error", http.StatusInternalServerError)

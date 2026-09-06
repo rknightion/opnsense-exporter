@@ -1,9 +1,11 @@
 ---
 id: OPN-0100
 title: Define a Content-Security-Policy for the embedded console
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-09-05 22:56'
+updated_date: '2026-09-06 10:59'
 labels:
   - webui
   - security
@@ -31,3 +33,15 @@ Wave 8 (OPN-0053) restyled the console onto design system v2 and self-hosted the
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 9: exclusive webui execution lane reads the family adminheaders reference, applies nonce middleware over the mux, moves inline handlers/styles, and proves render/header/no-external contracts. Root supplies the documentation paragraph, runs just check, source-only CodeRabbit and REVIEW before the phase-ordered commit. D6 nonce choice is frozen and batched for the report.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 9: nonce middleware wraps the entire console mux, including JSON, lazy fragments, fonts and errors; script/style elements receive the per-response crypto/rand nonce, inline handlers/style attributes are moved, and HTML/JSON are no-store. Fonts retain immutable caching. Embedded data favicon requires img-src data:. No HSTS because the listener has no TLS. Render/header/offline-resource tests passed and independent REVIEW found no blocking or material findings. Source-only CodeRabbit completed with no CSP findings. D6 nonce-versus-family-unsafe-inline choice remains a batched question, not a runtime fork.
+<!-- SECTION:NOTES:END -->
