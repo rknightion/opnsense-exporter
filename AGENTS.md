@@ -23,11 +23,12 @@ Tasks are `OPN-NNNN` in `backlog/`. Read the **Agent fan-out protocol (canonical
 designing a wave, and the **Wave operating model** doc for this project's own rules, exclusive
 resources and recurring defects.
 
-Any `#NNN` in code comments, task text or docs is a retired GitHub issue, not a task: the tracker was
-migrated and the 524 issues were deleted from GitHub, so `gh issue view <N>` 404s. Bodies and replies
-live in `archive/github-issues-2026-08-14.json` (redacted; `archive/README.md` has the placeholder
-mapping) and the **Pre-backlog issue numbers** doc explains the load-bearing ones. The two ID spaces
-do not overlap.
+Any `#NNN` **below 656** in code comments, task text or docs is a retired GitHub issue, not a task:
+the 524 pre-migration issues were deleted, so `gh issue view <N>` 404s on those. Numbers at or above
+656 are live GitHub issues and resolve normally. Bodies and replies for the deleted set live in
+`archive/github-issues-2026-08-14.json` (redacted; `archive/README.md` has the placeholder mapping)
+and the **Pre-backlog issue numbers** doc explains the load-bearing ones. The two ID spaces do not
+overlap.
 
 **The GitHub issue tracker stays enabled deliberately** - external contributors file there and
 Renovate's dependency dashboard lives there. Anything arriving that way becomes an `OPN-NNNN` task;
