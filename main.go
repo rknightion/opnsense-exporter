@@ -582,6 +582,7 @@ func startGeoIP(cfg options.GeoIPConfig, logsGeoIPEnabled bool, logger *slog.Log
 		DB:               db,
 		Fetcher:          fetcher,
 		Editions:         cfg.DownloadEditions,
+		DownloadDir:      cfg.DownloadDir,
 		DownloadInterval: cfg.DownloadInterval,
 		ReloadInterval:   cfg.ReloadInterval,
 		Logger:           logger,

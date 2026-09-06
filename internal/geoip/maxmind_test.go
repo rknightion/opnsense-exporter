@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -52,6 +53,8 @@ type maxmindServer struct {
 	gotPass      string
 	// unauthorized makes every request 401, for the credential-failure path.
 	unauthorized bool
+	// rateLimited makes every request 429, the exhausted-daily-limit path.
+	rateLimited bool
 }
 
 func (m *maxmindServer) handler(t *testing.T) http.HandlerFunc {
@@ -61,6 +64,10 @@ func (m *maxmindServer) handler(t *testing.T) http.HandlerFunc {
 		m.gotUser, m.gotPass, _ = r.BasicAuth()
 		if m.unauthorized {
 			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if m.rateLimited {
+			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
 		switch r.URL.Query().Get("suffix") {
@@ -179,6 +186,25 @@ func TestFetchOnHTTPErrorInstallsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "GeoLite2-Country.mmdb")); err == nil {
 		t.Error("a database was installed after a 401")
+	}
+}
+
+// A 429 is its own error, not one more "HTTP nnn" string: it is the one failure that
+// says the account's daily limit is spent rather than that the key or the network is
+// broken, and the caller defers on it instead of retrying.
+func TestFetchReportsAnExhaustedDownloadLimit(t *testing.T) {
+	srv := &maxmindServer{rateLimited: true}
+	ts := httptest.NewServer(srv.handler(t))
+	defer ts.Close()
+
+	dir := t.TempDir()
+	d := &Downloader{Endpoint: ts.URL, Dir: dir}
+	_, err := d.Fetch(t.Context(), "GeoLite2-Country")
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("Fetch error = %v, want one wrapping ErrRateLimited", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "GeoLite2-Country.mmdb")); err == nil {
+		t.Error("a database was installed after a 429")
 	}
 }
 

@@ -42,6 +42,14 @@ const (
 	maxArchiveOverheadBytes int64 = 8 << 20
 )
 
+// ErrRateLimited reports an HTTP 429 from the download API: the account's daily
+// download limit is exhausted. It is deliberately its own error rather than one more
+// "HTTP nnn" string, because it is the one failure a retry cannot fix and the one
+// that says nothing about the license key or about egress. GeoLite2 limits are per
+// account per day, so a key shared between deployments exhausts faster than any one
+// of them expects.
+var ErrRateLimited = errors.New("MaxMind download limit reached")
+
 // Downloader fetches MaxMind databases over the official download API and installs
 // them, one file per edition, into Dir.
 //
@@ -204,6 +212,9 @@ func (d *Downloader) get(ctx context.Context, edition, suffix string, since time
 	case http.StatusNotModified:
 		_ = resp.Body.Close()
 		return nil, time.Time{}, true, nil
+	case http.StatusTooManyRequests:
+		_ = resp.Body.Close()
+		return nil, time.Time{}, false, fmt.Errorf("fetch geoip database %s: %w", edition, ErrRateLimited)
 	default:
 		_ = resp.Body.Close()
 		// Deliberately does not include the response body: MaxMind's own error bodies

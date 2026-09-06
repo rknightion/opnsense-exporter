@@ -233,6 +233,7 @@ type stats struct {
 	downloadsUpdated           int64
 	downloadsUnmodified        int64
 	downloadsFailed            int64
+	downloadsRateLimited       int64
 }
 
 // Stats is an absolute snapshot of the counters and the loaded databases' identity.
@@ -247,6 +248,10 @@ type Stats struct {
 	DownloadsUpdated    int64
 	DownloadsUnmodified int64
 	DownloadsFailed     int64
+	// DownloadsRateLimited counts HTTP 429s, kept apart from DownloadsFailed because
+	// it is the one failure that says the account's daily limit is spent rather than
+	// that anything is broken.
+	DownloadsRateLimited int64
 
 	// Loaded database identity. A zero build time means the database is not loaded,
 	// and the collector omits the gauge entirely rather than publishing a zero — a
@@ -485,10 +490,11 @@ func (d *DB) Reload() (bool, error) {
 	return changed, errors.Join(errs...)
 }
 
-// ObserveDownload records the outcome of one edition's download attempt, so the three
+// ObserveDownload records the outcome of one edition's download attempt, so the four
 // download counters move whether or not anything was installed. A 304 is the healthy
 // steady state of a daily updater and is worth telling apart from an update that
-// actually replaced a file.
+// actually replaced a file; an exhausted download limit is worth telling apart from a
+// failure, because nothing is broken and nothing but waiting will fix it.
 func (d *DB) ObserveDownload(res DownloadResult, err error) {
 	if d == nil {
 		return
@@ -496,6 +502,8 @@ func (d *DB) ObserveDownload(res DownloadResult, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	switch {
+	case errors.Is(err, ErrRateLimited):
+		d.stats.downloadsRateLimited++
 	case err != nil:
 		d.stats.downloadsFailed++
 	case res.Updated:
@@ -514,19 +522,20 @@ func (d *DB) Stats() Stats {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	s := Stats{
-		CountryHits:         d.stats.countryHits,
-		CountryMisses:       d.stats.countryMisses,
-		ASNHits:             d.stats.asnHits,
-		ASNMisses:           d.stats.asnMisses,
-		Skipped:             d.stats.skipped,
-		CountryReloads:      d.stats.countryReloads,
-		ASNReloads:          d.stats.asnReloads,
-		ReloadFailures:      d.stats.reloadFailures,
-		DownloadsUpdated:    d.stats.downloadsUpdated,
-		DownloadsUnmodified: d.stats.downloadsUnmodified,
-		DownloadsFailed:     d.stats.downloadsFailed,
-		CountryPath:         d.countryPath,
-		ASNPath:             d.asnPath,
+		CountryHits:          d.stats.countryHits,
+		CountryMisses:        d.stats.countryMisses,
+		ASNHits:              d.stats.asnHits,
+		ASNMisses:            d.stats.asnMisses,
+		Skipped:              d.stats.skipped,
+		CountryReloads:       d.stats.countryReloads,
+		ASNReloads:           d.stats.asnReloads,
+		ReloadFailures:       d.stats.reloadFailures,
+		DownloadsUpdated:     d.stats.downloadsUpdated,
+		DownloadsUnmodified:  d.stats.downloadsUnmodified,
+		DownloadsFailed:      d.stats.downloadsFailed,
+		DownloadsRateLimited: d.stats.downloadsRateLimited,
+		CountryPath:          d.countryPath,
+		ASNPath:              d.asnPath,
 	}
 	if d.country != nil {
 		md := d.country.db.Metadata

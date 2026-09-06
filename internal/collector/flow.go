@@ -536,8 +536,13 @@ func (c *flowCollector) registerGeoIP() {
 		"MaxMind database downloads, by result: \"updated\" (a newer build was fetched, verified "+
 			"against its published SHA-256, and installed), \"unmodified\" (the conditional request "+
 			"returned 304 - the healthy steady state, and what keeps a daily updater inside MaxMind's "+
-			"download limit), or \"failure\". Emitted only when --geoip.download.enabled is set; an "+
-			"operator-managed deployment leaves this at zero forever, which is correct.",
+			"download limit), \"rate_limited\" (HTTP 429, the account's daily download limit is spent - "+
+			"nothing is broken and the edition is not retried before the next interval), or "+
+			"\"failure\" (everything else: expired credentials, blocked egress, a checksum mismatch). "+
+			"A check skipped because MaxMind was already asked inside --geoip.download.interval is "+
+			"counted under no result at all, since no request was made. Emitted only when "+
+			"--geoip.download.enabled is set; an operator-managed deployment leaves this at zero "+
+			"forever, which is correct.",
 		resultLabel,
 	)
 	c.geoBuildTime = buildPrometheusDesc(c.subsystem, "geoip_database_build_timestamp_seconds",
@@ -609,6 +614,7 @@ func (c *flowCollector) collectGeoIP(ch chan<- prometheus.Metric) {
 
 	counter(c.geoDownloads, st.DB.DownloadsUpdated, "updated")
 	counter(c.geoDownloads, st.DB.DownloadsUnmodified, "unmodified")
+	counter(c.geoDownloads, st.DB.DownloadsRateLimited, "rate_limited")
 	counter(c.geoDownloads, st.DB.DownloadsFailed, "failure")
 
 	counter(c.geoEnriched, int64(st.Flow.Enriched)) //nolint:gosec // a counter, never near 2^63

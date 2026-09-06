@@ -1768,7 +1768,7 @@ max by (opnsense_instance, database) (time() - opnsense_flow_geoip_database_buil
 **Absent / no-data semantics:** Default noDataState (Ok). The gauge is omitted entirely for a database that is not loaded (a zero would read as "built in 1970" and fire permanently), so a deployment with --geoip.enabled off has no series here and cannot false-fire.
 
 **First checks:**
-- Check opnsense_flow_geoip_downloads_total: a rising result="failure" rate is a fetch problem, while a flat counter with --geoip.download.enabled set means the updater goroutine is not running at all
+- Check opnsense_flow_geoip_downloads_total: a rising result="failure" rate is a fetch problem, result="rate_limited" is the account daily download limit rather than anything broken, and a flat counter with --geoip.download.enabled set means the updater goroutine is not running at all
 - With the built-in downloader: verify the MaxMind license key has not expired and that the exporter has egress to download.maxmind.com
 - With operator-managed files: confirm the geoipupdate cron / sidecar is still running and writing to the configured --geoip.country-database and --geoip.asn-database paths
 - On a stock deployment using the database bundled in the image, no updater exists to fix - the image is what is old, so pull a current one

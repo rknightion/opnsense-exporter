@@ -188,6 +188,45 @@ question, worth asking daily since GeoLite2 rebuilds twice a week.
 `--geoip.reload-interval` is "has the file on disk changed?"; a local `stat`, and
 the only thing that makes the operator-managed path work at all.
 
+### What happens at startup
+
+A start does **not** always fetch. For each configured edition, the exporter asks
+MaxMind only when there is no installed database, or when the last check MaxMind
+actually answered is older than `--geoip.download.interval`. A skip is logged with
+the edition, when it was last checked, that check's result, and how long until the
+next one:
+
+```
+geoip database download skipped; MaxMind was already asked inside the download
+interval and the database is installed  edition=GeoLite2-City
+last_checked=... last_result=unmodified next_check_in=22h14m0s
+```
+
+That deferral is not a permanent skip: the first scheduled check is due at
+`last_checked + --geoip.download.interval`, not a whole interval after the process
+started, so a container that restarts more often than the interval still updates.
+
+The "last checked" time is kept in `download-state.json` inside
+`--geoip.download.dir`, beside the databases. It cannot be the database file's
+mtime, which the downloader deliberately stamps with MaxMind's `Last-Modified` so
+its conditional requests are exact - that mtime is the **build** time, and a
+current database checked five minutes ago routinely carries one several days old.
+Delete the file and the next start simply re-checks; a hand-replaced database is
+unaffected, because the record only ever defers a network check and never a load.
+
+**Persist `--geoip.download.dir`.** Without a volume, every start has no database
+and no record, so every start downloads - which on a deployment that redeploys
+often is the fastest way to exhaust the account's daily limit.
+
+**An HTTP 429 on start means the quota is spent, not that the key is broken.**
+GeoLite2 download limits are per account per day, so a license key shared between
+deployments exhausts sooner than any one of them expects. The exporter counts it as
+`opnsense_flow_geoip_downloads_total{result="rate_limited"}` rather than `failure`,
+keeps the installed database serving, and does not ask again before the next
+interval - retrying is what exhausted the quota in the first place. Nothing is
+broken and there is nothing to fix: enrichment carries on with the database already
+installed.
+
 ## Which MaxMind editions to download
 
 Applies to `--geoip.download.enabled` only; the bundled DB-IP copies are covered
@@ -398,7 +437,7 @@ why these exist:
 | `opnsense_flow_geoip_enriched_records_total` | is this feature doing anything at all? |
 | `opnsense_flow_geoip_database_build_timestamp_seconds{database}` | how old is the data? Absent, never zero, when a database is not loaded |
 | `opnsense_flow_geoip_reloads_total{database,result}` | did a hot-swap happen, or fail? |
-| `opnsense_flow_geoip_downloads_total{result}` | `unmodified` is the healthy steady state |
+| `opnsense_flow_geoip_downloads_total{result}` | `unmodified` is the healthy steady state; `rate_limited` is an exhausted daily quota, `failure` is everything else |
 | `opnsense_flow_geoip_country_comparisons_total{result}` | what is ours-wins costing? |
 
 The build timestamp is the database's own **build** date, read from its metadata,

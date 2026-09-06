@@ -67,8 +67,9 @@ to the pipeline's normal sanitisation; they are not promoted to Loki labels.
 
 #### Console quiet mode (`--log.console`)
 
-By default both copies of every record ship: stderr keeps its full output and
-the OTLP path gets a duplicate. On a host where something **already** collects
+With `--logs.self.enabled` on and the console in its default `full` mode, both
+copies of every record ship: stderr keeps its full output and the OTLP path
+gets a duplicate. On a host where something **already** collects
 the container's stderr - a Docker or Kubernetes log integration, journald, a
 node agent - that is the same line stored twice, in two streams that do not
 share labels.
@@ -89,8 +90,11 @@ accepted**. These still print:
 - sink, retry and delivery diagnostics, which never enter this adapter at all -
   an OTLP outage stays visible on the console.
 
-So the console never goes silent about records the OTLP stream did not get.
-Only the queue-refused ones are also counted on
+So the console never goes silent about a record the pipeline refused to take.
+A record it accepted can still be lost later - evicted by queue overflow, or
+dropped after `--logs.ship-max-attempts` - and those are reported by the drop
+counters and the delivery diagnostics, not by a stderr copy. Only the
+queue-refused ones are also counted on
 `opnsense_exporter_logs_dropped_total{source="exporter"}`; a record evicted from
 the startup buffer is announced by the overflow diagnostic, and a record emitted
 after unbind is printed and nothing more. Shutdown still drains the self-log
