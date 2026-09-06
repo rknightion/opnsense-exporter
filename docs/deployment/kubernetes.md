@@ -62,7 +62,7 @@ spec:
       # working pod. --config.check performs no API call and binds no listener.
       initContainers:
         - name: config-check
-          image: ghcr.io/rknightion/opnsense2otel:4.2.0 # x-release-please-version
+          image: ghcr.io/rknightion/opnsense2otel:5.0.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           args:
             - "--log.level=info"
@@ -107,7 +107,7 @@ spec:
           # each release by release-please via the x-release-please-version marker below;
           # keep that marker on the image line or the tag stops updating. Published tags
           # carry no leading "v" (the git tag is v2.2.1, the image tag is 2.2.1).
-          image: ghcr.io/rknightion/opnsense2otel:4.2.0 # x-release-please-version
+          image: ghcr.io/rknightion/opnsense2otel:5.0.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           # In pod, mount OPNSense API credentials as files
           volumeMounts:
