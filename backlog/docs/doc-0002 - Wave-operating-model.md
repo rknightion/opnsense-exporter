@@ -3,7 +3,7 @@ id: doc-0002
 title: Wave operating model
 type: guide
 created_date: '2026-08-14 14:04'
-updated_date: '2026-09-05 22:47'
+updated_date: '2026-09-06 13:19'
 ---
 This document carries **only what is specific to opnsense2otel**. The campaign model itself — run
 modes, the routing contract, authority and the thread pool, child lane briefs, external-contract
@@ -57,6 +57,16 @@ The heavy CI-only gates — race-detector matrix, docker build, helm-in-kind, de
 cross-compilation — are not a lane's job. `just ci` adds the subset that needs Docker or
 cross-compilation locally. Do not skip a gate by claiming it is CI-only; say the change is untested
 against it and let CI answer.
+
+**auto-rc classifies only the head commit of a push.** Its `shipped-change` job diffs `HEAD^..HEAD`,
+so a push whose last commit touches only `scripts/`, `docs/` or `backlog/` cuts no release candidate
+even when the commits under it changed shipped Go. Push the shipped-code commit last, or on its own,
+when a lane needs a candidate build (the FreeBSD receiver can only take a binary from a release URL).
+
+**A major release needs the module path moved first.** `TestModulePathMatchesReleaseVersion` turns
+the release-please PR red the moment the manifest passes the module's major; `just bump-module-major
+major=<N>` is the repo's own rewrite and is a `[confirm]` recipe, so ask before running it. It also
+rewrites `backlog/` task notes that quote old import paths; restore those, they are history.
 
 ### CodeRabbit: review the source, not the generated tree
 
@@ -162,6 +172,20 @@ the previous instance's records instead, or report visibility-pending rather tha
 `logs_shipped_total`, `logs_dropped_total{reason}` and `partialSuccess` off the exporter for the
 drop-or-not question. Entries older than the tenant's `reject_old_samples_max_age` are rejected
 outright and now surface as `logs_dropped_total{reason="rejected"}`.
+
+**Guest access is through the power script's `exec` and `put` subcommands** (since wave 9), never
+`qm` or `pct` directly. `put` is container-only because `qm` has no guest file-write; a VM fetches a
+release archive itself with `exec <id> -- fetch -o <tmp> <release-url>` and verifies the sha256
+in-guest against `checksums.txt`. Both testbed firewalls run the QEMU guest agent, and 105 and 112
+carry `python3` and `curl`. The exporter starts on a guest with no real credential: `--opnsense.api-key`
+is a presence check only, and with `--exporter.instance-label` set startup makes no API call, so
+`--opnsense.address 127.0.0.1:1` plus a dummy key and secret gives a receiver whose collectors merely
+fail. Bind receivers on the LAN-side segment (105 eth1 with 112, 102 vtnet2 with 105 eth0); the WAN
+side is behind pf and would measure the firewall, not the receiver.
+
+**v4.2.0 cannot start with the syslog receiver on a stock FreeBSD `kern.ipc.maxsockbuf`.** The
+kernel refuses a 4 MiB `SO_RCVBUF` with ENOBUFS instead of clamping (OPN-0101, fixed at a86cbb65).
+Any FreeBSD trial of the receiver needs a binary at or after that fix.
 
 ## Ownership — the append-only registries
 

@@ -3,11 +3,11 @@ id: OPN-0057
 title: >-
   Measure UDP receiver throughput: same-harness before/after for buffers and
   worker pool
-status: Parked
+status: Done
 assignee:
-  - '@codex'
+  - '@claude'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-06 11:18'
+updated_date: '2026-09-06 13:39'
 labels:
   - needs-triage
 milestone: m-4
@@ -28,10 +28,10 @@ Deferred deliberately at wave 1 closeout (decision by Rob 2026-09-02): the clamp
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Before and after come from the SAME harness at the SAME offered load and packet size - a better number produced by a changed measurement method is a false pass, not a result
-- [ ] #2 Effective SO_RCVBUF is read back on a deployed Linux target (accounting for the kernel doubling the requested value) and on a BSD target, and both are reported as numbers
-- [ ] #3 Drop counts at the socket and at the worker queue are reported alongside throughput, so a throughput gain that is really a drop is visible
-- [ ] #4 The measured numbers are recorded on this task; no throughput claim is made anywhere in docs or release notes that this task has not measured
+- [x] #1 Before and after come from the SAME harness at the SAME offered load and packet size - a better number produced by a changed measurement method is a false pass, not a result
+- [x] #2 Effective SO_RCVBUF is read back on a deployed Linux target (accounting for the kernel doubling the requested value) and on a BSD target, and both are reported as numbers
+- [x] #3 Drop counts at the socket and at the worker queue are reported alongside throughput, so a throughput gain that is really a drop is visible
+- [x] #4 The measured numbers are recorded on this task; no throughput claim is made anywhere in docs or release notes that this task has not measured
 <!-- AC:END -->
 
 ## Definition of Done
@@ -52,6 +52,8 @@ Wave 6: expose opnsense_exporter_syslog_udp_accepted_total immediately after suc
 Wave 7 D15 supersedes isolated-host provisioning: use guest 105 as Linux LXC receiver and an OPNsense FreeBSD VM as the other receiver, with a different guest as sender for each trial. Preserve the committed 256-byte, 5000 packets/s, 60-second method and require observed counters; report shared-host noise, host rmem_max ceiling, and Linux doubled versus FreeBSD undoubled SO_RCVBUF beside every number. Phase 1 released the root testbed hold before this disposition.
 
 Wave 9 D3 supersedes the former access-route park. Implement and test allowlisted power-script exec and CT-only put, including guest exit-envelope decoding; root commits and deploys with timestamped backup, then measures the four frozen guest-role/version observations under the hold opened for OPN-0099. Missing prerequisites park at the exact observation; no packages or firewall configuration objects are changed; guest temporary directories are removed before root releases its hold.
+
+Attended 2026-09-06: api-key must be set is a presence check; with --exporter.instance-label set startup makes no API call, so a dummy key/secret starts the receiver with no real credential and no firewall change. Run the four-observation contract under one hold after the OPN-0099 proof.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -70,6 +72,12 @@ Decision by Rob 2026-09-05 (post wave 7): stays Parked and is excluded from wave
 Wave 9 route source: allowlisted exec and CT-only put are implemented. VM execution decodes integer guest exitcode and optional QGA stdout/stderr; absent streams mean empty, malformed fields or incomplete/time-out envelopes fail. Two original refusal regressions failed before dispatch existed; the optional-stream regression also failed before its correction after current Proxmox source verification. 12 route tests and 25 complete power tests pass; bash -n and shellcheck pass. CodeRabbit completed the source slice with no power-route findings. Deployment and guest observations remain pending under the existing root hold.
 
 Final Wave 9 power read-back after release and down: hold none; all six allowlisted guests stopped. The only guest temporary directory and the oli binary transport directory were both removed and absence verified before the hold was released. Final tracker closeout just check passed.
+
+Attended trial 2026-09-06, Linux receiver role (guest 105 eth1, sender guest 112, contract sender 256 B at 5000 pps for 60 s, 300000 packets, both runs elapsed 59.9999 s, stdout sink, API unreachable by design with a dummy key and explicit --exporter.instance-label). before v4.1.0 (executable sha256 b0c07a16...c1fc8519): effective SO_RCVBUF 212992 read from ss skmem rb (the OS default; v4.1.0 requests nothing), per-socket sk_drops 0 to 0, pipeline overflow drops 0 to 0, legacy accepted counter logs_shipped_total{source=syslog} 0 to 300000. current v4.2.0 (0dedbbe0...6dd6ff... see evidence): effective SO_RCVBUF 8388608 read from ss skmem rb and equal to the exporter gauge (4194304 requested, Linux doubled read-back, host net.core.rmem_max 4194304 so the request fits exactly), sk_drops 0 to 0, queue_full rejections 0 to 0, syslog_udp_accepted_total 0 to 300000. Verdict at this offered load: no loss in either phase; the buffer change bought 39x headroom (212992 to 8388608 bytes) with no measurable throughput difference because 5000 pps does not stress a 212 KiB buffer on this host. Caveats carried: shared hypervisor host, host rmem_max ceiling, Linux doubled read-back. The pre-worker-pool binary has no udp_accepted_total or queue_full series, so its accepted and loss counters are the documented legacy predecessors (logs_shipped_total{source=syslog}, logs_dropped_total{reason=overflow}); the verifier now accepts those for the before phase only and marks counter_source=legacy.
+
+Attended trial 2026-09-06, FreeBSD receiver role before phase (guest 102 vtnet2 LAN side, sender guest 105 eth0, same contract sender, 300000 packets in 59.9999 s). v4.1.0 (executable sha256 23381839...eac582b, archive verified against checksums.txt in-guest): effective SO_RCVBUF 42080 read from netstat -x R-HIWA (the net.inet.udp.recvspace default; v4.1.0 requests nothing), host-wide dropped-due-to-full-socket-buffers 0 to 0, pipeline overflow 0 to 0, legacy accepted counter logs_shipped_total{source=syslog} 0 to 300000, host-wide datagrams received moved 300098 so background UDP during the trial was 98 datagrams (recorded as the shared-host caveat). FreeBSD current phase is blocked on OPN-0101: v4.2.0 exits at startup on this box (setsockopt ENOBUFS at 4 MiB against kern.ipc.maxsockbuf 4262144), so the current binary for FreeBSD must be the first release candidate carrying the fallback (a86cbb65), verified against its checksums.txt; the Linux current stays v4.2.0. Guest temporary directories still present under the live hold; removed before release.
+
+Attended trial 2026-09-06, FreeBSD receiver role current phase: v5.0.0-rc.3 (first candidate carrying the OPN-0101 fallback; archive sha256 6ce41819...9c4df2 verified in-guest against the release checksums.txt, executable e1863937...5a8153). Startup logged the fallback: kernel refused 4194304, accepted 2097152, limit_setting kern.ipc.maxsockbuf. Effective SO_RCVBUF 2097152 read from netstat -x R-HIWA, host-wide full-socket-buffer drops 0 to 0, queue_full rejections 0 to 0, syslog_udp_accepted_total 0 to 300000, background UDP 113 datagrams. Verifier over all four observations: status accepted, zero violations (linux before 212992 bytes legacy counters, linux current 8388608, freebsd before 42080 legacy counters, freebsd current 2097152; every phase 300000 accepted at 5000 pps with 0 socket and 0 queue drops). Cleanup verified: /tmp/opn57 absent on 105, 112 and 102, no exporter process left, oli transport directory removed, hold released 13:37:30Z and the lab powered down 13:38:48Z. Evidence files stay in the ignored session scratch area; guest addresses never reached the tracker.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -92,4 +100,6 @@ Linux archive/executable verification against each release checksums.txt (archiv
 The only guest temporary directory, on 105, was removed and its absence verified through exec before release. The oli transport directory was removed and absence verified. No package was installed and no firewall configuration object was created, edited or deleted. Root hold was released after cleanup. Guest addresses remain only in ignored evidence, not in this tracker.
 
 RESUME BOUNDARY: provide an approved way for the immutable before/current receivers to pass required API authentication validation without exposing credentials or changing firewall configuration; then repeat startup proof on Linux and FreeBSD and run the unchanged four-observation contract with actual OS/exporter counters. No performance claim is made. Acceptance criteria 1-4 remain unproven; only route deployment and validation are complete.
+
+Measured 2026-09-06 with the committed harness (256 B, 5000 pps, 60 s, 300000 packets) through the wave 9 guest route. Linux (guest 105): before v4.1.0 effective SO_RCVBUF 212992, current v4.2.0 8388608 (4 MiB requested, doubled read-back); FreeBSD (guest 102): before v4.1.0 42080, current v5.0.0-rc.3 2097152 after the OPN-0101 fallback. All four phases: 300000 accepted, 0 socket drops, 0 queue drops, so at this offered load neither change altered throughput and the buffer change bought 39x (Linux) and 50x (FreeBSD) headroom. Caveats recorded beside every number: shared hypervisor host, host rmem_max ceiling, Linux doubled versus FreeBSD undoubled read-back, FreeBSD system-wide drop counter with measured background UDP (98 and 113 datagrams), legacy counters for the pre-worker-pool binary. Verifier accepted with zero violations (19fc9129 verifier). No throughput claim is made in docs or release notes.
 <!-- SECTION:FINAL_SUMMARY:END -->
