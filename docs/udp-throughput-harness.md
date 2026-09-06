@@ -109,6 +109,40 @@ is absent when UDP is disabled or the read-back fails; absence is not zero.
 Both observations must still be captured on each deployed receiver for a
 measurement to be valid. Their availability alone is not a throughput result.
 
+## Binaries that predate the receiver counters
+
+A `before` binary older than v4.2.0 exposes neither
+`opnsense_exporter_syslog_udp_accepted_total` nor the `queue_full` rejection
+series. For the `before` phase only, an observation may add a `legacy_metric`
+field beside `metric` naming the documented predecessor that counts the same
+event one stage later: `opnsense_exporter_logs_shipped_total{source="syslog"}`
+for accepted datagrams (every datagram that reached the pipeline is shipped to
+the stdout sink) and
+`opnsense_exporter_logs_dropped_total{source="syslog",reason="overflow"}` for
+receiver-side loss. The verifier rejects `legacy_metric` in the `current`
+phase and rejects any other name, and an accepted result carries
+`counter_source: legacy` so the substitution is never silent.
+
+## Shared-host FreeBSD receivers
+
+FreeBSD has no per-socket drop counter; `netstat -s -p udp` reports
+"dropped due to full socket buffers" for the whole host. On a dedicated host
+the observation claims `dedicated-host-and-exclusive-udp-traffic`. On a shared
+host, such as an OPNsense VM that also carries its own DNS, NTP and syslog, the
+isolation scope is `shared-host-background-udp-observed` and the observation
+must record `background_udp_datagrams`: the host-wide "datagrams received"
+delta minus the 300,000 offered. The accepted result then carries a
+`socket_drop_attribution` caveat naming that background volume; a system-wide
+drop delta on a shared host bounds the receiver's loss, it does not attribute it.
+
+Read the effective FreeBSD buffer from `netstat -an -x -p udp` (`R-HIWA`,
+`so_rcv.sb_hiwat`) and the Linux one from `ss -ulnpm` (`skmem rb`,
+`sk_rcvbuf`, which Linux reports doubled). Both are kernel read-backs of the
+socket, not the requested value. Note that v4.2.0 cannot start on a stock
+FreeBSD `kern.ipc.maxsockbuf` because the kernel refuses a 4 MiB `SO_RCVBUF`
+outright rather than clamping it (OPN-0101); the `current` FreeBSD binary must
+carry that fallback.
+
 ## Verify both platforms and phases
 
 This performs no network I/O. Retain accepted JSON as measurement evidence, then

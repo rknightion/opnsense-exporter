@@ -97,6 +97,36 @@ class TestHarnessContract(unittest.TestCase):
         _, errors = harness.validate_observation(sample, "freebsd", "before")
         self.assertIn("a system_udp counter requires dedicated-host-and-exclusive-udp-traffic isolation", errors)
 
+    def test_before_phase_may_cite_the_pre_worker_pool_counters(self):
+        # A pre-OPN-0035 binary has no udp_accepted_total or queue_full series; the
+        # contract accepts its documented predecessors, and only for "before".
+        sample = observation("linux", "before")
+        sample["receiver_accepted"]["legacy_metric"] = harness.RECEIVER_ACCEPTED_LEGACY_METRIC
+        sample["worker_queue_drop"]["legacy_metric"] = harness.QUEUE_DROP_LEGACY_METRIC
+        value, errors = harness.validate_observation(sample, "linux", "before")
+        self.assertEqual(errors, [])
+        self.assertEqual(value["counter_source"], "legacy")
+
+    def test_current_phase_rejects_legacy_counters_and_unknown_names(self):
+        sample = observation("linux", "current")
+        sample["receiver_accepted"]["legacy_metric"] = harness.RECEIVER_ACCEPTED_LEGACY_METRIC
+        _, errors = harness.validate_observation(sample, "linux", "current")
+        self.assertIn("receiver_accepted.legacy_metric is only valid for the before phase", errors)
+        sample = observation("linux", "before")
+        sample["worker_queue_drop"]["legacy_metric"] = "opnsense_exporter_logs_dropped_total"
+        _, errors = harness.validate_observation(sample, "linux", "before")
+        self.assertIn("worker_queue_drop.legacy_metric must name the documented pre-worker-pool counter", errors)
+
+    def test_bsd_shared_host_system_counter_needs_background_udp_delta(self):
+        sample = observation("freebsd", "current")
+        sample["isolation"]["scope"] = "shared-host-background-udp-observed"
+        _, errors = harness.validate_observation(sample, "freebsd", "current")
+        self.assertIn("shared-host isolation must record isolation.background_udp_datagrams as an integer", errors)
+        sample["isolation"]["background_udp_datagrams"] = 412
+        value, errors = harness.validate_observation(sample, "freebsd", "current")
+        self.assertEqual(errors, [])
+        self.assertEqual(value["socket_drop_attribution"], "system-wide on a shared host; background UDP datagrams 412")
+
     def test_changed_method_and_same_binary_reject_pair_without_partial_result(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = write_observations(directory)

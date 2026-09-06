@@ -24,6 +24,14 @@ MAX_SEND_OVERRUN_SECONDS = 0.250
 QUEUE_DROP_METRIC = 'opnsense_exporter_logs_rejected_total{source="syslog",reason="queue_full"}'
 # Deliberately not logs_shipped_total: that counts later OTLP acknowledgement.
 RECEIVER_ACCEPTED_METRIC = "opnsense_exporter_syslog_udp_accepted_total"
+# A binary that predates OPN-0035/OPN-0036 (v4.1.x and earlier) exposes neither
+# series above. Its documented predecessors count the same events one stage
+# later: every datagram that reached the pipeline was shipped (stdout sink), and
+# the only receiver-side loss point was the pipeline overflow reason. They are
+# accepted for the "before" phase only, and the result names the substitution.
+RECEIVER_ACCEPTED_LEGACY_METRIC = 'opnsense_exporter_logs_shipped_total{source="syslog"}'
+QUEUE_DROP_LEGACY_METRIC = 'opnsense_exporter_logs_dropped_total{source="syslog",reason="overflow"}'
+SHARED_HOST_ISOLATION_SCOPE = "shared-host-background-udp-observed"
 _PREFIX = b"<134>1 2026-09-04T00:00:00Z udp-throughput opnsense2otel - - - OPN-0057 "
 PAYLOAD = _PREFIX + b"x" * (PACKET_SIZE_BYTES - len(_PREFIX))
 PAYLOAD_SHA256 = hashlib.sha256(PAYLOAD).hexdigest()
@@ -110,6 +118,7 @@ def validate_observation(observation, target_os, phase):
         _digest(buffer.get("evidence_sha256"), "socket_buffer.evidence_sha256", errors)
 
     isolation = observation.get("isolation") if isinstance(observation.get("isolation"), dict) else {}
+    background_udp = None
     if isolation.get("state") != "observed":
         errors.append("isolation must be observed")
     else:
@@ -117,6 +126,12 @@ def validate_observation(observation, target_os, phase):
             errors.append("isolation.receiver_role must equal receiver.role")
         _string(isolation.get("statement"), "isolation.statement", errors)
         _digest(isolation.get("evidence_sha256"), "isolation.evidence_sha256", errors)
+        if isolation.get("scope") == SHARED_HOST_ISOLATION_SCOPE:
+            # A shared host cannot prove exclusive UDP traffic; the contract instead
+            # requires the background volume to be measured and carried as a caveat.
+            background_udp = isolation.get("background_udp_datagrams")
+            if isinstance(background_udp, bool) or not isinstance(background_udp, int):
+                errors.append("shared-host isolation must record isolation.background_udp_datagrams as an integer")
 
     socket_drop = observation.get("socket_drop")
     socket_delta = _counter(socket_drop, "socket_drop", errors)
@@ -126,16 +141,30 @@ def validate_observation(observation, target_os, phase):
             errors.append("Linux socket_drop.scope must be receiver_socket")
         if target_os == "freebsd" and scope not in {"receiver_socket", "system_udp"}:
             errors.append("FreeBSD socket_drop.scope must be receiver_socket or system_udp")
-        if scope == "system_udp" and isolation.get("scope") != "dedicated-host-and-exclusive-udp-traffic":
+        if scope == "system_udp" and isolation.get("scope") not in {"dedicated-host-and-exclusive-udp-traffic", SHARED_HOST_ISOLATION_SCOPE}:
             errors.append("a system_udp counter requires dedicated-host-and-exclusive-udp-traffic isolation")
         _string(socket_drop.get("method"), "socket_drop.method", errors)
         _digest(socket_drop.get("evidence_sha256"), "socket_drop.evidence_sha256", errors)
+
+    counter_source = "current"
+
+    def legacy_counter(section, path, expected, description):
+        nonlocal counter_source
+        if "legacy_metric" not in section:
+            return
+        if phase != "before":
+            errors.append(f"{path}.legacy_metric is only valid for the before phase")
+        elif section.get("legacy_metric") != expected:
+            errors.append(f"{path}.legacy_metric must name the documented {description}")
+        else:
+            counter_source = "legacy"
 
     queue_drop = observation.get("worker_queue_drop")
     queue_delta = _counter(queue_drop, "worker_queue_drop", errors)
     if isinstance(queue_drop, dict):
         if queue_drop.get("metric") != QUEUE_DROP_METRIC:
             errors.append("worker_queue_drop.metric must identify syslog queue_full")
+        legacy_counter(queue_drop, "worker_queue_drop", QUEUE_DROP_LEGACY_METRIC, "pre-worker-pool counter")
         _digest(queue_drop.get("evidence_sha256"), "worker_queue_drop.evidence_sha256", errors)
 
     accepted = observation.get("receiver_accepted")
@@ -143,6 +172,7 @@ def validate_observation(observation, target_os, phase):
     if isinstance(accepted, dict):
         if accepted.get("metric") != RECEIVER_ACCEPTED_METRIC:
             errors.append("receiver_accepted.metric must be the receiver ingress counter")
+        legacy_counter(accepted, "receiver_accepted", RECEIVER_ACCEPTED_LEGACY_METRIC, "pre-worker-pool counter")
         _digest(accepted.get("evidence_sha256"), "receiver_accepted.evidence_sha256", errors)
 
     sender = observation.get("sender") if isinstance(observation.get("sender"), dict) else {}
@@ -171,10 +201,15 @@ def validate_observation(observation, target_os, phase):
 
     if errors:
         return None, errors
+    attribution = "per-socket"
+    if socket_drop["scope"] == "system_udp":
+        attribution = ("system-wide on a shared host; background UDP datagrams " + str(background_udp)
+                       if background_udp is not None else "system-wide with exclusive UDP traffic")
     return {"receiver_role": role, "receiver_instance_identity_sha256": instance,
             "receiver_method_identity_sha256": method, "binary_sha256": binary_id,
             "effective_socket_buffer_bytes": buffer["effective_bytes"],
-            "socket_drop_scope": socket_drop["scope"],
+            "socket_drop_scope": socket_drop["scope"], "socket_drop_attribution": attribution,
+            "counter_source": counter_source,
             "socket_drop_delta": socket_delta, "worker_queue_drop_delta": queue_delta,
             "receiver_accepted_delta": accepted_delta,
             "receiver_accepted_packets_per_second": accepted_delta / DURATION_SECONDS,
