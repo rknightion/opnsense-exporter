@@ -1,5 +1,40 @@
 # Changelog
 
+## [5.0.0](https://github.com/rknightion/opnsense2otel/compare/v4.2.0...v5.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* 60 current-count gauges lose the _total suffix and 8 Unix timestamp gauges gain _timestamp_seconds. The full old-to-new table is in docs/upgrading.md (Upgrading to v5.0 from v4.x) and is enforced by the metric-naming lint. Shipped dashboards and alert rules are migrated in this release; recording-rule references were checked and need no changes.
+
+### Features
+
+* **haproxy:** export per-server maintenance state from the counters row ([d55d997](https://github.com/rknightion/opnsense2otel/commit/d55d99707867ef6dd749678c14d2760d78b11d56))
+* rename current-count gauges and Unix timestamp metrics for 5.0 ([dbfbbe5](https://github.com/rknightion/opnsense2otel/commit/dbfbbe57c0695101610e6fb82a32822c0dd9475a))
+* **testbed:** accept legacy receiver counters and shared-host FreeBSD drops in the UDP verifier ([19fc912](https://github.com/rknightion/opnsense2otel/commit/19fc9129a7daf1a6dd84419f4b69f298ea5fb1e7))
+* **testbed:** add allowlisted guest execution and container file placement ([aae0b72](https://github.com/rknightion/opnsense2otel/commit/aae0b728ada8a407efe683cb6c55aa0c9162e770))
+* **webui:** enforce a nonce-based console content security policy ([f968453](https://github.com/rknightion/opnsense2otel/commit/f968453f829792592bc8736281fddab1c1e293d2))
+
+
+### Bug Fixes
+
+* **logship:** bound the config revision diff at the client before redaction ([a274e92](https://github.com/rknightion/opnsense2otel/commit/a274e9284e21a406c07fcc3fc755b3a5ba3332cf))
+* **syslog:** fall back when the kernel refuses the UDP receive buffer ([a86cbb6](https://github.com/rknightion/opnsense2otel/commit/a86cbb65b4bd498b935240959505f2df192e93f7))
+* **testbed:** distinguish historical Loki visibility from delivery loss ([0d2e6b5](https://github.com/rknightion/opnsense2otel/commit/0d2e6b567d7b88b36ffbd6d621f5d7592b534ed8))
+* **testbed:** select the flushed proof instance from the stream label ([d2da32f](https://github.com/rknightion/opnsense2otel/commit/d2da32fbf98ce023de2340b1ee51017c52c55055))
+
+
+### Documentation
+
+* **backlog:** close OPN-0057, OPN-0097, OPN-0099 and OPN-0101 on attended evidence ([dfd241e](https://github.com/rknightion/opnsense2otel/commit/dfd241eb402a46ef12e34f49c2f19cd9b0464725))
+* **backlog:** close OPN-0060 on attended Loki evidence and file follow-ups ([2c78c07](https://github.com/rknightion/opnsense2otel/commit/2c78c073975321cc53896f9345bf7050c1ba5144))
+* **backlog:** record wave 9 deployment and exact observation parks ([c404230](https://github.com/rknightion/opnsense2otel/commit/c404230687013e6cd080511bf60462769aa0c284))
+
+
+### Build & Infrastructure
+
+* move the Go module path to /v5 for the 5.0.0 release ([696e847](https://github.com/rknightion/opnsense2otel/commit/696e84723da9dc3e1af251dd9e25adc67d384bd0))
+
 ## [4.2.0](https://github.com/rknightion/opnsense2otel/compare/v4.1.0...v4.2.0) (2026-09-05)
 
 
