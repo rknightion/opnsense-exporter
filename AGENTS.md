@@ -57,7 +57,8 @@ Tracker traps:
 ## Design invariants
 
 - **Collection is decoupled from the scrape.** A poll scheduler (`internal/collector/scheduler.go`)
-  runs each sub-collector's `Update()` on its own volatility tier
+  runs each of the 82 sub-collectors' `Update()` on its own volatility tier (docgen keeps that
+  figure current; do not hand-edit it)
   (`internal/collector/interval_tiers.go`: fast 15s / medium 60s / slow 5m / cold 15m) into an
   in-memory snapshot (`snapshot.go`). Serving `/metrics` and the OTLP bridge both *replay* that
   snapshot; the request path makes no live API call. Never reintroduce a fetch on the request path.
