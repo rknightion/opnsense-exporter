@@ -1,11 +1,11 @@
 ---
 id: OPN-0102
 title: Skip the GeoIP startup fetch when the installed database is fresh
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus'
 created_date: '2026-09-06 14:30'
-updated_date: '2026-09-06 15:09'
+updated_date: '2026-09-06 15:27'
 labels: []
 dependencies: []
 priority: medium
@@ -92,4 +92,6 @@ Gate: 'just check' exit 0 (fmt-check, golangci-lint, go test -race ./..., metric
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 A start no longer asks MaxMind for an edition it already has and already checked inside --geoip.download.interval. A new per-edition record in <--geoip.download.dir>/download-state.json (checked_at + result, written temp+rename) carries the last answered check across restarts; it cannot be the .mmdb mtime, which Fetch stamps with the server Last-Modified and is therefore the BUILD time. HTTP 429 became its own error (geoip.ErrRateLimited), its own counter value (opnsense_flow_geoip_downloads_total{result="rate_limited"}) and its own log line, and it defers like a successful check because the quota is already spent. The download ticker became a timer aimed at last_checked+interval, so a container restarting more often than the interval still updates instead of deferring forever. Verified by seven new tests in internal/geoip (skip, the three still-fetch cases, restart persistence against a deliberately old mtime, 429 counting and deferral, the 429 fetch path, and the schedule), written test-first and confirmed red with the deferral disabled; 'just check' exits 0 and 'just gen' left only the regenerated help text and runbook line.
+
+Updater keeps download-state.json in --geoip.download.dir recording when MaxMind last answered per edition (200/304/429); a start with an installed edition checked inside --geoip.download.interval makes no request and logs why. Repeat is a timer aimed at last_checked+interval so restart-heavy deployments still download. Transport/401/5xx record nothing and retry next start. HTTP 429 is ErrRateLimited, counted as opnsense_flow_geoip_downloads_total{result="rate_limited"}, deferred like a successful check; docs/geoip.md gained a startup section and the 429-means-quota note. Verified: 7 new updater/maxmind tests red-then-green, just check exit 0, CodeRabbit no findings on the geoip code. Landed as 015a2f10 on main.
 <!-- SECTION:FINAL_SUMMARY:END -->

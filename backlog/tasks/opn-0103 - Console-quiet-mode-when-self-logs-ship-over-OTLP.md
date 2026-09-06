@@ -1,11 +1,11 @@
 ---
 id: OPN-0103
 title: Console quiet mode when self-logs ship over OTLP
-status: In Progress
+status: Done
 assignee:
   - '@claude-opus'
 created_date: '2026-09-06 14:30'
-updated_date: '2026-09-06 15:07'
+updated_date: '2026-09-06 15:27'
 labels: []
 dependencies: []
 priority: high
@@ -31,7 +31,7 @@ OPN2OTEL_LOGS_SELF_ENABLED tees the slog stream: SelfLogHandler wraps the promsl
 ## Definition of Done
 <!-- DOD:BEGIN -->
 - [x] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -67,3 +67,9 @@ Gate: just check EXIT=0. Tail: 'validated 1248 Prometheus targets, 125 variable 
 
 DoD #2 left unchecked deliberately: just gen ran (just docs, just dashboard, and build_rules.py via grafana-check) and every regenerated artifact is in the worktree diff, but the commit is the main thread's - check it with the SHA.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added --log.console (OPN2OTEL_LOG_CONSOLE, full|quiet). In quiet mode SelfLogHandler submits first and writes stderr only for records the pipeline refused (pre-Bind, post-Unbind, full queue); startup-overflow and delivery diagnostics bypass it. ValidateLogConsole rejects quiet without --logs.self.enabled from --config.check and a real start. Health dashboard Log Shipping tab gained an Exporter Self-Logs panel behind a has_self_logs Loki sentinel on {opnsense_source="exporter", opnsense_subsystem="self"}; grep proved no existing panel or runbook read the docker stream. docs/log-shipping.md documents the mode. Verified: 12 new handler/option/main tests red-then-green, just check exit 0, CodeRabbit two minors fixed (docs loss wording, explicit OPN2OTEL_LOGS_SELF_ENABLED=false in the negative test). Landed as 6bab2500 on main.
+<!-- SECTION:FINAL_SUMMARY:END -->
