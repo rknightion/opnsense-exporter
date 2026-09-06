@@ -428,7 +428,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_zenarmor_metrics` | `collector` | existence (series presence) | opnsense2otel > Security > Zenarmor; opnsense2otel > Security > Zenarmor > Overview | `label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_zerotier` | `collector` | existence (series presence) | opnsense2otel > VPN & remote access > VPN > ZeroTier | `label_values(opnsense_zerotier_networks_configured{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 
-### Loki sentinels — 10 total (scope: `stream_selector`)
+### Loki sentinels — 11 total (scope: `stream_selector`)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -438,6 +438,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_flow_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > Flow Volume > Flow Record Drilldown | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source=~"netflow\|merged"}, opnsense_source)` |
 | `has_ids_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Security > IDS/IPS > Alert Records | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="ids"}, opnsense_source)` |
 | `has_routing_change_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Config > Routing Changes | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="routingchange", opnsense_subsystem="routing"}, opnsense_source)` |
+| `has_self_logs` | `stream_selector` | existence (series presence) | opnsense2otel Health > Delivery > Log Shipping > Exporter Self-Logs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="exporter", opnsense_subsystem="self"}, opnsense_source)` |
 | `has_syslog_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Services; opnsense2otel > Services > Syslog; opnsense2otel > Services > Syslog > Shipped Syslog Logs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog"}, opnsense_source)` |
 | `has_unbound_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="unbound"}, opnsense_source)` |
 | `has_unbound_syslog_logs` | `stream_selector` | existence (series presence) | opnsense2otel > Network > DNS - Unbound Lists > Per-Query Log (syslog route) | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog", opnsense_subsystem="dns"}, opnsense_subsystem)` |

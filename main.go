@@ -438,6 +438,13 @@ func resolveOptions() (*startupConfig, []error) {
 	if err := options.ValidateLogsSelf(options.LogsSelfEnabled(), cfg.LogsOn, logsSink); err != nil {
 		errs = append(errs, fmt.Errorf("invalid self-log configuration: %w", err))
 	}
+	// --log.console=quiet hands the console copy to the OTLP self-log path, so it
+	// is only a mode change while that path exists; without it the same flag is a
+	// mute switch. Validated beside the self-log rule so the preflight and a real
+	// start reject it identically.
+	if err := options.ValidateLogConsole(options.LogConsole(), options.LogsSelfEnabled()); err != nil {
+		errs = append(errs, fmt.Errorf("invalid console logging configuration: %w", err))
+	}
 	if cfg.LogsOn && cfg.Logs.Sink == "otlp" {
 		// Resolved WITHOUT the --otlp.enabled gate so logs can ship even when metrics
 		// OTLP export is off. A resolution error names the offending --otlp.* flag.
@@ -634,7 +641,8 @@ func main() {
 	logger := baseLogger
 	var selfLogHandler *logship.SelfLogHandler
 	if options.LogsSelfEnabled() {
-		selfLogHandler = logship.NewSelfLogHandler(baseLogger.Handler())
+		selfLogHandler = logship.NewSelfLogHandler(baseLogger.Handler(),
+			logship.WithQuietConsole(options.LogConsoleIsQuiet()))
 		logger = slog.New(selfLogHandler)
 	}
 

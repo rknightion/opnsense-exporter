@@ -550,6 +550,11 @@ settings:
   # ---- HTTP server and logging ----
   # The metrics listener and process logging.
   #
+  # How much of the exporter's own log stream stays on stderr: full (default) writes every
+  # record, quiet writes only records the OTLP self-log path could not take. Requires
+  # --logs.self.enabled.
+  # log.console: "full"
+  #
   # Output format of log messages. One of: [logfmt, json]
   # log.format: "logfmt"
   #

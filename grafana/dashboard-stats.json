@@ -1,6 +1,6 @@
 {
   "metrics": 1091,
-  "panels": 967,
+  "panels": 968,
   "tabs": 57,
   "tab_names": [
     "Overview",
@@ -132,7 +132,7 @@
     {
       "uid": "opnsense-exporter-health",
       "title": "opnsense2otel Health",
-      "panels": 109,
+      "panels": 110,
       "tabs": 8,
       "tab_names": [
         "Overview",

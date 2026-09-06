@@ -1308,7 +1308,7 @@
     ]
   },
   "loki": {
-    "total": 10,
+    "total": 11,
     "sentinels": [
       {
         "name": "has_config_snapshot_logs",
@@ -1372,6 +1372,16 @@
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"routingchange\", opnsense_subsystem=\"routing\"}, opnsense_source)",
         "gates": [
           "opnsense2otel > Config > Routing Changes"
+        ]
+      },
+      {
+        "name": "has_self_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"exporter\", opnsense_subsystem=\"self\"}, opnsense_source)",
+        "gates": [
+          "opnsense2otel Health > Delivery > Log Shipping > Exporter Self-Logs"
         ]
       },
       {

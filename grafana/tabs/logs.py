@@ -18,9 +18,16 @@ pure alias of `sel()` that expressed an intent it did not implement, and #466
 removed it.
 """
 
-from builder import Builder, grp, sel, RATE
+from builder import Builder, grp, sel, loki_sel, RATE
 from tabs import log_events
 from uids import HEALTH_UID, to_tab
+
+# The exporter's own slog stream, admitted to this pipeline by
+# --logs.self.enabled. The selector is the OTLP path deliberately: a container
+# runtime's log collector can ship the same lines off stderr, but only this one
+# carries the exporter's resource identity, so only this one can be scoped to
+# the instance picker.
+SELF_LOGS = loki_sel('opnsense_source="exporter", opnsense_subsystem="self"')
 
 
 def build(b: Builder):
@@ -45,6 +52,12 @@ def build(b: Builder):
     # zero for a transport that does not exist.
     b.sentinel("has_syslog_udp", metric="opnsense_exporter_syslog_udp_receive_buffer_bytes",
                scope="self_labeled")
+    # Self-logs are their own opt-in (--logs.self.enabled) on top of the pipeline,
+    # so the row rides its own Loki sentinel rather than has_logs: with shipping on
+    # and self-logs off the stream does not exist at all.
+    b.loki_sentinel("has_self_logs",
+                    matchers='opnsense_source="exporter", opnsense_subsystem="self"',
+                    label="opnsense_source")
 
     shipped = b.ts(
         "Records Shipped (rate)",
@@ -270,6 +283,21 @@ def build(b: Builder):
              "is not keeping up. Capture never blocks ingest, so none of these cost log records.",
     )
 
+    self_logs = b.logs(
+        "Exporter Self-Logs",
+        SELF_LOGS,
+        desc=(
+            "The exporter's own log records, shipped over OTLP by --logs.self.enabled and scoped "
+            "to the selected instance. Read this stream rather than the container runtime's stderr "
+            "collector: only these records carry service_instance_id, opnsense_source=exporter and "
+            "opnsense_subsystem=self, so only these can follow the instance picker. Where a node "
+            "log collector already ships the container's stderr, --log.console=quiet leaves this as "
+            "the only copy - and stderr then keeps just the records this pipeline could not take "
+            "(emitted before it was ready, after shutdown began, or refused by a full queue)."
+        ),
+        w=24,
+    )
+
     # ---- drilldowns (#419) ------------------------------------------------
     # This tab is the pipeline's own health; the two questions it raises point
     # elsewhere. "Is anything arriving?" is the Loki-backed syslog stream, and "what did
@@ -297,6 +325,9 @@ def build(b: Builder):
         b.row("Syslog UDP", [udp_accepted, udp_receive_buffer], present="has_syslog_udp"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale, enrich_seam], present="has_logs"),
         b.row("Debug Capture", [debug_captured, debug_dropped], present="has_debug_capture"),
+        # Collapsed: it is raw log lines on a tab of rate panels, and it answers a
+        # different question ("what did the exporter say?") from the rest of the tab.
+        b.row("Exporter Self-Logs", [self_logs], present="has_self_logs", collapse=True),
         # #523: the derived-metric budget. It belongs to this pipeline — these are the
         # counters that say whether a received line became a metric observation or was
         # folded into an overflow bucket — and it is the one row of the retired

@@ -65,6 +65,59 @@ The fixed resource dimensions are `opnsense.source=exporter` and
 `opnsense.subsystem=self`. Logger attributes remain structured metadata, subject
 to the pipeline's normal sanitisation; they are not promoted to Loki labels.
 
+#### Console quiet mode (`--log.console`)
+
+By default both copies of every record ship: stderr keeps its full output and
+the OTLP path gets a duplicate. On a host where something **already** collects
+the container's stderr - a Docker or Kubernetes log integration, journald, a
+node agent - that is the same line stored twice, in two streams that do not
+share labels.
+
+`--log.console=quiet` makes the OTLP copy the only one. It requires
+`--logs.self.enabled`; on its own it would be a mute switch, so the exporter
+refuses it at startup and under `--config.check` with an error naming both
+flags.
+
+Quiet suppresses stderr **per record, and only for records the pipeline
+accepted**. These still print:
+
+- records emitted before the pipeline is bound (startup: configuration,
+  credential loading, client construction),
+- records emitted after the pipeline is unbound (shutdown),
+- records a full queue refused, and the bounded "self-log startup buffer
+  overflow" diagnostic that reports startup-buffer eviction,
+- sink, retry and delivery diagnostics, which never enter this adapter at all -
+  an OTLP outage stays visible on the console.
+
+So the console never goes silent about records the OTLP stream did not get.
+Only the queue-refused ones are also counted on
+`opnsense_exporter_logs_dropped_total{source="exporter"}`; a record evicted from
+the startup buffer is announced by the overflow diagnostic, and a record emitted
+after unbind is printed and nothing more. Shutdown still drains the self-log
+path before the process exits.
+
+Choosing between the two paths:
+
+| Situation | Setting |
+| --- | --- |
+| Nothing else collects the container's stderr | leave `--log.console=full` (the default) |
+| A node/container log collector already ships stderr, and you want the exporter's own identity on its logs | `--logs.self.enabled` **and** `--log.console=quiet` |
+| You want stderr only, no OTLP self-logs | leave `--logs.self.enabled` off |
+
+The OTLP copy is the richer one: it carries `service.instance.id`,
+`opnsense.source=exporter` and `opnsense.subsystem=self`, so it can be scoped to
+one appliance. A container-runtime log stream is labelled by container, not by
+firewall, which is why the Log Shipping tab's **Exporter Self-Logs** panel reads
+the OTLP stream.
+
+In compose, quiet mode is one added environment line beside the self-log switch:
+
+```yaml
+environment:
+  OPN2OTEL_LOGS_SELF_ENABLED: "true"
+  OPN2OTEL_LOG_CONSOLE: "quiet"
+```
+
 ### Syslog receiver (`--logs.syslog.enabled`)
 
 The receiver is a **push** source: OPNsense forwards its logs to the exporter and

@@ -43,6 +43,27 @@ type SelfLogHandler struct {
 	state *selfLogState
 	attrs []slog.Attr
 	group []string
+	// quiet makes the OTLP copy authoritative: stderr then carries only the
+	// records the pipeline did not take. It is per-handler rather than per-state
+	// because it never changes after construction, and WithAttrs/WithGroup clones
+	// must carry it (a clone that forgot it would put most of the exporter's
+	// logging back on stderr).
+	quiet bool
+}
+
+// SelfLogOption configures the adapter at construction. Console behaviour is
+// the only thing it currently selects.
+type SelfLogOption func(*SelfLogHandler)
+
+// WithQuietConsole suppresses the stderr copy of every record the log pipeline
+// accepted (--log.console=quiet). Records the pipeline could not take - those
+// emitted before Bind, those emitted after Unbind, and those the queue refuses
+// - still reach stderr, so quiet mode moves the console copy rather than
+// discarding it. The startup-overflow diagnostic and DiagnosticLogger bypass
+// this entirely: both describe records the OTLP path did NOT receive, so
+// routing them there would hide exactly the loss they report.
+func WithQuietConsole(quiet bool) SelfLogOption {
+	return func(h *SelfLogHandler) { h.quiet = quiet }
 }
 
 type selfLogState struct {
@@ -63,16 +84,20 @@ type selfLogState struct {
 // to selfLogPendingLimit. A nil next is replaced with a discard handler, which
 // keeps tests and defensive callers from panicking while preserving the sink
 // path's behaviour.
-func NewSelfLogHandler(next slog.Handler) *SelfLogHandler {
+func NewSelfLogHandler(next slog.Handler, opts ...SelfLogOption) *SelfLogHandler {
 	if next == nil {
 		next = slog.NewTextHandler(io.Discard, nil)
 	}
 	state := &selfLogState{}
 	state.drained = sync.NewCond(&state.mu)
-	return &SelfLogHandler{
+	h := &SelfLogHandler{
 		next:  next,
 		state: state,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // DiagnosticLogger returns a logger using the wrapped stderr handler without
@@ -140,7 +165,20 @@ func (h *SelfLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 // Handle writes to stderr first, then submits a converted logship record. The
 // stderr write remains authoritative when the optional remote path is absent
 // or unavailable.
+//
+// Quiet console inverts that order, because the decision it makes is per
+// record and only the pipeline can answer it: submit first, and write to
+// stderr only when the pipeline did not accept the record. Suppressing on the
+// mode alone would lose every record emitted before Bind or after Unbind, and
+// every record the queue refused - which is precisely the set an operator
+// still needs to see.
 func (h *SelfLogHandler) Handle(ctx context.Context, record slog.Record) error {
+	if h.quiet {
+		if h.submit(selfLogRecord(record, h.attrs, h.group)) {
+			return nil
+		}
+		return h.next.Handle(ctx, record)
+	}
 	err := h.next.Handle(ctx, record)
 	h.submit(selfLogRecord(record, h.attrs, h.group))
 	return err
@@ -159,6 +197,7 @@ func (h *SelfLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		state: h.state,
 		attrs: append([]slog.Attr(nil), h.attrs...),
 		group: append([]string(nil), h.group...),
+		quiet: h.quiet,
 	}
 	c.attrs = append(c.attrs, groupedSelfLogAttrs(h.group, attrs)...)
 	return c
@@ -175,6 +214,7 @@ func (h *SelfLogHandler) WithGroup(name string) slog.Handler {
 		state: h.state,
 		attrs: append([]slog.Attr(nil), h.attrs...),
 		group: append(append([]string(nil), h.group...), name),
+		quiet: h.quiet,
 	}
 }
 
@@ -184,14 +224,19 @@ func (h *SelfLogHandler) WithGroup(name string) slog.Handler {
 // never re-enter this handler. A process-wide re-entrancy flag cannot tell
 // re-entry from concurrency, so it would silently drop a record logged by an
 // unrelated goroutine while another goroutine was inside enqueue.
-func (h *SelfLogHandler) submit(record Record) {
+//
+// It reports whether the pipeline ACCEPTED the record. Buffering a record for
+// a pipeline that does not exist yet is not acceptance: the record has not been
+// counted, cannot be delivered from here, and may still be evicted by the
+// startup ring, so a quiet console must keep its stderr copy.
+func (h *SelfLogHandler) submit(record Record) bool {
 	if h == nil {
-		return
+		return false
 	}
 	h.state.mu.Lock()
 	if h.state.closed {
 		h.state.mu.Unlock()
-		return
+		return false
 	}
 	enqueue := h.state.enqueue
 	if enqueue == nil {
@@ -209,13 +254,13 @@ func (h *SelfLogHandler) submit(record Record) {
 		if reportOverflow {
 			h.reportStartupOverflow()
 		}
-		return
+		return false
 	}
 	h.state.inFlight++
 	h.state.mu.Unlock()
 
 	defer h.finishSubmit()
-	_ = enqueue(Entry{Source: SelfLogSource, Record: record})
+	return enqueue(Entry{Source: SelfLogSource, Record: record})
 }
 
 // reportStartupOverflow writes directly to the wrapped non-forwarding handler.

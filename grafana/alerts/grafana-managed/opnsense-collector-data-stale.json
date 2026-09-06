@@ -26,7 +26,7 @@
       "description": "Collector {{ $labels.collector }} has not replaced its stored metric buffer for more than 3 of its own poll intervals ({{ $values.A.Value | printf \"%.1f\" }} missed intervals and counting), so every scrape and every OTLP export is replaying retained last-good values of that age. Tolerance is expressed in MISSED INTERVALS, so it scales with the collector's tier (fast 15s / medium 60s / slow 5m / cold 15m, or a --collector.poll-interval-override): 3 missed intervals plus a 120s scrape-lag allowance plus the 5m pending period, which is ~8m on the fast tier and ~52m on the cold tier. One failed poll followed by recovery peaks at ~2 missed intervals and cannot fire. The data is NOT blanked \u2014 retention is deliberate (#336 D8) \u2014 so the dashboard still shows values; they are just old. Check opnsense_exporter_scrape_collector_success and the endpoint-error panels for the cause. NOTE the last-poll clock is useless here: it advances on every failed attempt too (#382).",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensecollectordatastale",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "72"
+      "__panelId__": "73"
     },
     "expressions": {
       "A": {

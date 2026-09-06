@@ -533,6 +533,16 @@ func TestResolveOptionsReportsEveryProblem(t *testing.T) {
 			want: "--web.config.file",
 		},
 		{
+			// Quiet console with no OTLP self-log path is a mute switch, not a mode:
+			// the preflight must name both flags rather than start a silent exporter.
+			name: "console quiet without the self-log path",
+			env: map[string]string{
+				"OPN2OTEL_LOG_CONSOLE":       "quiet",
+				"OPN2OTEL_LOGS_SELF_ENABLED": "false",
+			},
+			want: "--log.console=quiet requires --logs.self.enabled",
+		},
+		{
 			name: "unknown collector and invalid duration in poll-interval overrides",
 			env: map[string]string{
 				"OPN2OTEL_COLLECTOR_POLL_INTERVAL_OVERRIDE": "gatways=10s\ngateways=10sec",

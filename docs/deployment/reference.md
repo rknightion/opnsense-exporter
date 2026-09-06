@@ -441,6 +441,10 @@ services:
       # HTTP server and logging
       # The metrics listener and process logging.
       # ==========================================================================
+      # How much of the exporter's own log stream stays on stderr: full (default) writes
+      # every record, quiet writes only records the OTLP self-log path could not take.
+      # Requires --logs.self.enabled.
+      # OPN2OTEL_LOG_CONSOLE: "full"
       # --log.format has no env var - see the flag-only settings note above command:.
       # --log.level has no env var - see the flag-only settings note above command:.
       # --web.config.file has no env var - see the flag-only settings note above command:.

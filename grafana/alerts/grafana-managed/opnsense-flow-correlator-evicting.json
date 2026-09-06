@@ -26,7 +26,7 @@
       "description": "The flow correlator has evicted entries for 15m because --flow.correlate.max-entries is binding under current flow volume. NetFlow-bearing entries are force-emitted without losing bytes; a Zenarmor-only entry already shipped separately but loses its future join opportunity. Raise the cap so the accumulator can hold a full correlate window; sustained eviction lowers the merged hit-rate.",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsenseflowcorrelatorevicting",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "37"
+      "__panelId__": "38"
     },
     "expressions": {
       "A": {

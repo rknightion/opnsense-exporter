@@ -26,7 +26,7 @@
       "description": "Collector {{ $labels.collector }} is still refreshing its stored metrics, but no poll has completed CLEANLY for more than 6 of its own poll intervals ({{ $values.A.Value | printf \"%.1f\" }} missed intervals). That is the persistent-partial-failure signature: one endpoint of a multi-endpoint collector erroring every poll while the rest keep updating, so part of its metric set is silently absent or frozen while everything looks fresh. Tolerance is in MISSED INTERVALS so it scales with the collector's tier, and the rule deliberately excludes collectors already covered by OPNsenseCollectorDataStale (fully frozen data), which would otherwise fire both. Severity is info, not warning: data is still flowing, and the endpoint-error panels name the failing endpoint (#382).",
       "runbook_url": "https://github.com/rknightion/opnsense2otel/blob/main/grafana/runbooks.md#opnsensecollectordegraded",
       "__dashboardUid__": "opnsense-exporter-health",
-      "__panelId__": "73"
+      "__panelId__": "74"
     },
     "expressions": {
       "A": {
