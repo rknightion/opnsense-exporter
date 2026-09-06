@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,10 +26,25 @@ type fakeUDPBufferSocket struct {
 	effective int
 	setErr    error
 	readErr   error
+
+	// refuseAbove, when > 0, makes SetReadBuffer fail (returning setErr, or a
+	// default error if setErr is nil) for any size greater than refuseAbove,
+	// emulating a kernel (FreeBSD) that rejects an oversized SO_RCVBUF outright
+	// instead of silently clamping it. attempts records every size passed to
+	// SetReadBuffer, in order, so a fallback/retry loop can be asserted on.
+	refuseAbove int
+	attempts    []int
 }
 
 func (f *fakeUDPBufferSocket) SetReadBuffer(size int) error {
 	f.requested = size
+	f.attempts = append(f.attempts, size)
+	if f.refuseAbove > 0 && size > f.refuseAbove {
+		if f.setErr != nil {
+			return f.setErr
+		}
+		return errors.New("setsockopt: no buffer space available")
+	}
 	return f.setErr
 }
 
@@ -82,6 +98,42 @@ func TestConfigureUDPReceiveBufferReturnsSetError(t *testing.T) {
 	socket := &fakeUDPBufferSocket{setErr: errors.New("set failed")}
 	if err := configureUDPReceiveBuffer(socket, 4*1024*1024, testLogger()); err == nil {
 		t.Fatal("configureUDPReceiveBuffer succeeded after SetReadBuffer failed")
+	}
+}
+
+func TestConfigureUDPReceiveBufferFallsBackWhenKernelRefusesRequest(t *testing.T) {
+	socket := &fakeUDPBufferSocket{refuseAbove: 3 << 20, effective: 2 << 20}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	effective, err := configureUDPReceiveBufferObserved(socket, 4<<20, logger)
+	if err != nil {
+		t.Fatalf("configureUDPReceiveBufferObserved: %v", err)
+	}
+	if effective != 2<<20 {
+		t.Fatalf("effective receive buffer = %d, want %d", effective, 2<<20)
+	}
+	wantAttempts := []int{4 << 20, 2 << 20}
+	if !slices.Equal(socket.attempts, wantAttempts) {
+		t.Fatalf("SetReadBuffer attempts = %v, want %v", socket.attempts, wantAttempts)
+	}
+	if !strings.Contains(logs.String(), "requested_bytes=4194304") {
+		t.Fatalf("fallback warning = %q, want requested_bytes=4194304", logs.String())
+	}
+	if !strings.Contains(logs.String(), "accepted_bytes=2097152") {
+		t.Fatalf("fallback warning = %q, want accepted_bytes=2097152", logs.String())
+	}
+}
+
+func TestConfigureUDPReceiveBufferFallsBackToFloorThenFails(t *testing.T) {
+	socket := &fakeUDPBufferSocket{refuseAbove: 1}
+	_, err := configureUDPReceiveBufferObserved(socket, 4<<20, testLogger())
+	if err == nil {
+		t.Fatal("configureUDPReceiveBufferObserved succeeded when even the floor size was refused")
+	}
+	wantAttempts := []int{4 << 20, 2 << 20, 1 << 20, 512 << 10, 256 << 10, 128 << 10, 64 << 10}
+	if !slices.Equal(socket.attempts, wantAttempts) {
+		t.Fatalf("SetReadBuffer attempts = %v, want %v", socket.attempts, wantAttempts)
 	}
 }
 

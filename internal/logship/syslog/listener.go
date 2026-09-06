@@ -141,19 +141,54 @@ func configureUDPReceiveBufferObserved(socket udpBufferSocket, requested int, lo
 	if requested <= 0 {
 		requested = defaultUDPReceiveBuffer
 	}
-	if err := socket.SetReadBuffer(requested); err != nil {
-		return 0, fmt.Errorf("set UDP receive buffer to %d bytes: %w", requested, err)
+	if log == nil {
+		log = slog.Default()
 	}
+
+	accepted := requested
+	setErr := socket.SetReadBuffer(accepted)
+	if setErr != nil {
+		// FreeBSD (and other BSDs) reject a SO_RCVBUF request above the kernel's
+		// adjusted maximum with ENOBUFS instead of silently clamping it the way
+		// Linux does, so the original request can make the receiver fail to
+		// start outright. Retry with progressively smaller sizes, halving each
+		// time, down to a 64 KiB floor; the first size the kernel accepts wins.
+		// If even the floor is refused, surface the ORIGINAL refusal unchanged.
+		originalErr := setErr
+		fellBack := false
+		for size := accepted / 2; size >= minUDPReceiveBufferFallback; size /= 2 {
+			accepted = size
+			if err := socket.SetReadBuffer(accepted); err != nil {
+				continue
+			}
+			fellBack = true
+			break
+		}
+		if !fellBack {
+			return 0, fmt.Errorf("set UDP receive buffer to %d bytes: %w", requested, originalErr)
+		}
+
+		attrs := []any{
+			"requested_bytes", requested,
+			"accepted_bytes", accepted,
+			"err", originalErr,
+		}
+		switch runtime.GOOS {
+		case "freebsd":
+			attrs = append(attrs, "limit_setting", "kern.ipc.maxsockbuf")
+		case "linux":
+			attrs = append(attrs, "limit_setting", "net.core.rmem_max")
+		}
+		log.Warn("kernel refused requested UDP receive buffer; falling back to a smaller size", attrs...)
+	}
+
 	effective, err := socket.ReadBuffer()
 	if err != nil {
 		return 0, fmt.Errorf("read effective UDP receive buffer after requesting %d bytes: %w", requested, err)
 	}
-	if effective < minimumEffectiveUDPReceiveBuffer(requested, runtime.GOOS) {
-		if log == nil {
-			log = slog.Default()
-		}
+	if effective < minimumEffectiveUDPReceiveBuffer(accepted, runtime.GOOS) {
 		attrs := []any{
-			"requested_bytes", requested,
+			"requested_bytes", accepted,
 			"effective_bytes", effective,
 		}
 		if runtime.GOOS == "linux" {
@@ -163,6 +198,11 @@ func configureUDPReceiveBufferObserved(socket udpBufferSocket, requested int, lo
 	}
 	return effective, nil
 }
+
+// minUDPReceiveBufferFallback is the smallest SO_RCVBUF size the fallback loop
+// in configureUDPReceiveBufferObserved will try before giving up and returning
+// the kernel's original refusal.
+const minUDPReceiveBufferFallback = 64 * 1024
 
 func minimumEffectiveUDPReceiveBuffer(requested int, goos string) int {
 	if goos != "linux" {
