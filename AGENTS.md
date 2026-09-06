@@ -69,7 +69,9 @@ Tracker traps:
   there would trigger a firewall scrape from an unrelated page load.
 - **`internal/logship` and `internal/flow` are push-based.** OPNsense, Zenarmor and NetFlow send to
   us; nothing there polls.
-- Every env var is prefixed `OPN2OTEL_`. The `*_FILE` secret vars also accept legacy unprefixed
+- Every env var is prefixed `OPN2OTEL_`, except the standard OTel SDK pair
+  `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, which the log shipper
+  honours unprefixed (`docs/log-shipping.md`). The `*_FILE` secret vars also accept legacy unprefixed
   aliases (`OPS_API_KEY_FILE`, `OPS_API_SECRET_FILE`, `PYROSCOPE_AUTH_USER_FILE`,
   `PYROSCOPE_AUTH_PASSWORD_FILE`) for backwards compatibility, with the prefixed form winning.
 
