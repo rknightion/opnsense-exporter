@@ -3,11 +3,11 @@ id: OPN-0057
 title: >-
   Measure UDP receiver throughput: same-harness before/after for buffers and
   worker pool
-status: In Progress
+status: Parked
 assignee:
   - '@codex'
 created_date: '2026-09-02 05:20'
-updated_date: '2026-09-06 11:08'
+updated_date: '2026-09-06 11:18'
 labels:
   - needs-triage
 milestone: m-4
@@ -36,8 +36,8 @@ Deferred deliberately at wave 1 closeout (decision by Rob 2026-09-02): the clamp
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 just check
-- [ ] #2 just gen (if any generated artifact changed) and the diff committed
+- [x] #1 just check
+- [x] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
 
 ## Implementation Plan
@@ -68,6 +68,8 @@ Wave 6 implementation: added opnsense_exporter_syslog_udp_accepted_total at succ
 Decision by Rob 2026-09-05 (post wave 7): stays Parked and is excluded from wave 8 and later waves until an approved direct guest-shell/deployment route for guest 105 and one OPNsense VM exists. No lane should pick this up on its own initiative; the resume boundary is unchanged.
 
 Wave 9 route source: allowlisted exec and CT-only put are implemented. VM execution decodes integer guest exitcode and optional QGA stdout/stderr; absent streams mean empty, malformed fields or incomplete/time-out envelopes fail. Two original refusal regressions failed before dispatch existed; the optional-stream regression also failed before its correction after current Proxmox source verification. 12 route tests and 25 complete power tests pass; bash -n and shellcheck pass. CodeRabbit completed the source slice with no power-route findings. Deployment and guest observations remain pending under the existing root hold.
+
+Final Wave 9 power read-back after release and down: hold none; all six allowlisted guests stopped. The only guest temporary directory and the oli binary transport directory were both removed and absence verified before the hold was released. Final tracker closeout just check passed.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -78,4 +80,16 @@ Committed the deterministic OPN-0057 measurement contract at 8c4d92ce; numeric m
 Wave 6 supersession: observability shipped at b10ffbb5. opnsense_exporter_syslog_udp_accepted_total counts successful bounded-queue admission and opnsense_exporter_syslog_udp_receive_buffer_bytes exposes the positive getsockopt SO_RCVBUF read-back. Linux commonly reports roughly double the request while FreeBSD does not; no equality assertion was added. No traffic ran and no throughput, drop or buffer number was observed. PARKED RESUME BOUNDARY: provide the two isolated receiver host roles required by the committed contract, one Linux and one FreeBSD, then run it.
 
 Wave 7 measurement remains PARKED before sender/receiver startup. Isolation is no longer the prerequisite: the supplied shared guest roles are accepted with mandatory caveats. The missing prerequisite is an existing approved guest-shell and binary-deployment/counter-capture path. Repository and local SSH inventory documented only the allowed oli power script; the traffic-generator runbook identifies guest 105 as a jump host but no login/deployment path; protected-environment secret-name inventory has firewall API credentials but no guest SSH/deployment credential; local tailnet peer inventory found no matching documented nightly/traffic-generator peer. No alternative hypervisor guest execution or production-host substitution was used. No throughput, socket-drop, worker-queue-drop or effective-buffer value was observed; no zero or comparison is claimed and the verifier was not run with fabricated inputs. No guest filled a sender/receiver role. Linux receiver remains assigned to 105; the FreeBSD receiver and independent sender are pending access. PARKED RESUME BOUNDARY: document an approved direct guest-shell/deployment route for guest 105 and one OPNsense VM, plus the distinct sender guest; deploy immutable before/current binaries and capture actual receiver-socket and queue counters around the unchanged sender. Retain all three D15 caveats alongside any observed number; a shared-host FreeBSD system-wide drop counter cannot establish exporter-attributable loss.
+
+Wave 9 route source landed at aae0b728ada8a407efe683cb6c55aa0c9162e770 and was deployed to oli. Timestamped backup retained at /usr/local/bin/opnsense-testbed-power.sh.bak-20260906T111114Z; deployed SHA-256 66f7262466314ac69913da217dc05dfcdcf245a5a6640aab4257383efb85b76c equals the committed local script. Before/after status showed the same active hold expiry. CodeRabbit completed with no power-route findings; 12 focused route and 25 complete power tests, bash -n, shellcheck and just check passed.
+
+Observed prerequisite results: sender guests 112 and 105 each report Python 3.13.5. The immutable current Linux executable was placed through CT-only put in a temporary directory and its in-guest SHA-256 matched the locally verified archive. pct push did not retain execute permission; the first help call exited 126, then chmod on the temporary file made help succeed. The binary's actual flags are opnsense.protocol/opnsense.address, not the goal's older ops spelling. Credential-free startup exited 1 with api-key must be set before a receiver was available.
+
+PARKED at the Linux current receiver startup prerequisite. No sender ran; none of the four throughput observations ran. Effective SO_RCVBUF, receiver accepted rate, socket drops and worker-queue drops are UNOBSERVED, not zero; the four-file verifier was not run with fabricated data. No FreeBSD executable was fetched or started. The before binary's wave-6 self-metrics remain absent by contract; future before buffer/drop values must be OS-sourced and labelled accordingly. Every future number must retain shared-host noise, host rmem_max ceiling and Linux doubled versus FreeBSD undoubled read-back caveats; FreeBSD system-wide UDP drops cannot establish receiver-attributable loss on a shared host.
+
+Linux archive/executable verification against each release checksums.txt (archive then executable): v4.1.0 5bb96d1b47386f3430b2be7dd6f2b7767b26bb8c3405a5eafff00526c6f6612c / b0c07a16315509e46a03d69c64757bd0a41a5abdebc645729ef0d998c1fc8519; v4.2.0 7dc4ee1ec2049ca96485674db629fb4811eb68ec6be2c8d3af34dbb6f7c211fa / 0dedbbe05b232358b2406b83c07ccadbf51d200c12ba345f4a89a5365b6dd4e7. These are integrity observations, not throughput measurements. Only the current executable was additionally verified inside the guest.
+
+The only guest temporary directory, on 105, was removed and its absence verified through exec before release. The oli transport directory was removed and absence verified. No package was installed and no firewall configuration object was created, edited or deleted. Root hold was released after cleanup. Guest addresses remain only in ignored evidence, not in this tracker.
+
+RESUME BOUNDARY: provide an approved way for the immutable before/current receivers to pass required API authentication validation without exposing credentials or changing firewall configuration; then repeat startup proof on Linux and FreeBSD and run the unchanged four-observation contract with actual OS/exporter counters. No performance claim is made. Acceptance criteria 1-4 remain unproven; only route deployment and validation are complete.
 <!-- SECTION:FINAL_SUMMARY:END -->
