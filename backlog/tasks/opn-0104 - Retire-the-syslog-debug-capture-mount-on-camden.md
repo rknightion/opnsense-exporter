@@ -1,11 +1,17 @@
 ---
 id: OPN-0104
 title: Retire the syslog debug-capture mount on camden
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-09-06 14:30'
+updated_date: '2026-09-06 17:33'
 labels: []
 dependencies: []
+references:
+  - >-
+    backlog/docs/doc-0004 -
+    Camden-capture-parser-and-pass-through-review-OPN-0104.md
 priority: low
 type: chore
 ordinal: 58000
@@ -30,3 +36,17 @@ The camden compose bind-mounts /opt/opnsense2otel/capture and sets OPN2OTEL_LOGS
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Download a private, complete snapshot of the existing Camden receiver captures without altering the running deployment. Inventory every receiver, program and message shape; compare with current parser and known-unstructured handling. Record evidence-backed parser candidates and narrow never-parse dispositions, with implementation and tests where justified. Review NetFlow capture bounds and usefulness. Preserve the one-week observation prerequisite before any deployment retirement.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-09-06 full retained-capture investigation is recorded in doc-0004. Private snapshot and replay evidence: ~/capture-reviews/opn-0104-20260906/ (archives, manifest, replay harness, replay.jsonl and test log). At source SHA 6406f359195b2a1768933d682ba0d2269fdd4106, all 4,082 debug envelopes parsed; 1,077 messages now have structured parser coverage and 3,005 remain generic across a total census of 36 programs. The task description is stale: dhclient already has a parser and tests deliberately leave the two script notices generic; two other packet diagnostics were also captured. The separate raw syslog archive is UniFi traffic and is excluded from OPNsense parser decisions. doc-0004 records candidate grammars and known pass-through families without publishing raw values. No runtime classifier or new parser was implemented in this investigation. NetFlow has no retained unidentified payloads, current decode/unidentified/drop counters show healthy intake, and the default shared cap has headroom; retain unidentified capture. AC3 conflicts with retaining NetFlow capture because the directory and mount are shared. Resolve that storage contract before retiring anything. Remaining work: implement or explicitly settle candidate grammars, add a narrowly tested known-pass-through classifier if wanted, then observe one week with no new unclassified shapes. No deployment settings or retained remote files were changed.
+
+Investigation validation: the complete corpus replay passed via just test TestCaptureAuditScratch; the temporary harness was archived with private evidence and is not part of the repository change. The documented 36-program census was checked programmatically against all 4,082 replay results. just check passed on 2026-09-06 with the final documentation content (log in the private evidence directory). No new regression tests or CodeRabbit review were added for this documentation-only delivery. No acceptance criterion is claimed complete for the unimplemented parser/classifier and deployment work.
+<!-- SECTION:NOTES:END -->
