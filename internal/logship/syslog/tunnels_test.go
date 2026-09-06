@@ -3,7 +3,7 @@ package syslog
 import (
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // Real UUIDs and names from a live OPNsense 26.7 box: the UUID charon logs is the

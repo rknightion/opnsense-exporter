@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/capture"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 // TestSourceFreeRADIUSMalformedEnvelopesShipOneSafeGenericShape guards the

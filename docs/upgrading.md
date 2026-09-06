@@ -20,6 +20,11 @@ change in an inventory count. Unix timestamps now use `_timestamp_seconds`, whic
 distinguish an absolute instant from a duration measured in seconds. This release contains 68
 migrations: 60 current-count gauges and 8 timestamp gauges.
 
+- **Go module path** - `github.com/rknightion/opnsense2otel/v4` becomes
+  `github.com/rknightion/opnsense2otel/v5`, as Go's semantic import versioning requires
+  for a v5 tag. Relevant only if you import packages from this module directly rather
+  than running the binary or image.
+
 <!-- docgen:begin:metric-renames -->
 | Source file | Old metric | New metric | Release |
 |-------------|------------|------------|---------|
@@ -125,7 +130,7 @@ Grafana dashboard UIDs are the exception - see the last item below.
 - **Docs site** - `https://m7kni.io/opnsense-exporter/` becomes
   `https://m7kni.io/opnsense2otel/`.
 - **Go module path** - `github.com/rknightion/opnsense-exporter` becomes
-  `github.com/rknightion/opnsense2otel/v4`. Relevant only if you import packages
+  `github.com/rknightion/opnsense2otel/v5`. Relevant only if you import packages
   from this module directly rather than running the binary or image.
 - **Telemetry identities change with the project name.** Three default identities
   become `opnsense2otel`: the OTLP resource `service.name` used by metrics and
@@ -385,7 +390,7 @@ Grafana dashboard UIDs are the exception - see the last item below.
 In addition to the items above:
 
 - **Image and module path** - pull `ghcr.io/rknightion/opnsense2otel`; the Go
-  module is `github.com/rknightion/opnsense2otel/v4`.
+  module is `github.com/rknightion/opnsense2otel/v5`.
 - **`--runtime.gomaxprocs` removed** - Go now auto-detects CPUs; delete the flag from
   any unit files or manifests.
 - **`/debug/pprof/*` endpoints removed** - replaced by optional authenticated push

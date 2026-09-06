@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/flow"
-	"github.com/rknightion/opnsense2otel/v4/internal/flow/netflow"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/flowlog"
+	"github.com/rknightion/opnsense2otel/v5/internal/flow"
+	"github.com/rknightion/opnsense2otel/v5/internal/flow/netflow"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/flowlog"
 )
 
 // TestShutdownFlowQuiescesBeforeFinalFlush releases a held NetFlow record at the

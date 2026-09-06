@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/syslog"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/zenarmor"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/syslog"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/zenarmor"
 )
 
 // This file lives in package logship_test (an EXTERNAL test package) so it can

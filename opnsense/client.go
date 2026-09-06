@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 // MaxRetries is the default maximum number of attempts for a failed request to the

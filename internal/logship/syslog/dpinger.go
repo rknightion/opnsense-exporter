@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // dpinger emits an alarm transition when a monitored gateway changes state. The

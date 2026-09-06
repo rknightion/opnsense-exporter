@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // LogEvents is the process-wide store of counters derived from received syslog

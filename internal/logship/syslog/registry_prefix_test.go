@@ -3,8 +3,8 @@ package syslog
 import (
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // OpenVPN names one syslog program PER CONFIGURED INSTANCE — openvpn_server40,

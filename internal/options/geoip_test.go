@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v5/internal/geoip"
 )
 
 func TestGeoIPValidate(t *testing.T) {

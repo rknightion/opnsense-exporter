@@ -8,7 +8,7 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/annotations"
+	"github.com/rknightion/opnsense2otel/v5/internal/annotations"
 )
 
 var (

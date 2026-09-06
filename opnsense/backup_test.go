@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 func TestFetchConfigBackupHistory_Success(t *testing.T) {

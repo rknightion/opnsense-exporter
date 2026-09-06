@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // countingServer answers every request with body and counts how many it received,

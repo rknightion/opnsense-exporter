@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // The interfaces below are the ones ifmap_test.go's fixture describes, at the

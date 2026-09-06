@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // These are normalized values returned by the current opnsense package models,

@@ -62,7 +62,7 @@ import (
 // Finding.Key with the package name so opnsense.* and flow.* keys don't
 // collide) remains open for whoever picks it up next, once those lanes have
 // settled.
-const opnsensePkg = "github.com/rknightion/opnsense2otel/v4/opnsense"
+const opnsensePkg = "github.com/rknightion/opnsense2otel/v5/opnsense"
 
 // Finding is one struct field that is populated by unmarshalling an OPNsense API
 // response and read nowhere in the module's non-test code.
@@ -233,7 +233,7 @@ func auditModule(moduleRoot string) (map[string]bool, []Finding, error) {
 }
 
 func isFirstParty(importPath string) bool {
-	const mod = "github.com/rknightion/opnsense2otel/v4"
+	const mod = "github.com/rknightion/opnsense2otel/v5"
 	if strings.Contains(importPath, "/vendor/") {
 		return false
 	}

@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/syslog"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/syslog"
 )
 
 // TestEndToEnd_SyslogTransport_RealCaptureShapes is the Task 9 end-to-end smoke test.

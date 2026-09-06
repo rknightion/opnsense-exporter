@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v5/internal/collector"
 )
 
 // TestAgentsMDCollectorCount guards #117: the agent instructions' "N sub-collectors" figure must

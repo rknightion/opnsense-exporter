@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/healthprobe"
+	"github.com/rknightion/opnsense2otel/v5/internal/healthprobe"
 )
 
 // The probe exists because the runtime image is distroless (#438): there is no

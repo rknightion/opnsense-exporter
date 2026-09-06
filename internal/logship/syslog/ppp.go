@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"regexp"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // ppp is mpd5, the PPPoE dialler that brings the WAN up on OPNsense (#631). It logs

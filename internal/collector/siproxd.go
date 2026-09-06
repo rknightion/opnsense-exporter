@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // siproxdCollector surfaces the count of active SIP registrations tracked by

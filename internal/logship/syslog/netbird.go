@@ -3,8 +3,8 @@ package syslog
 import (
 	"strings"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // NetBird is the fifth backend of the derived `vpn` family's ATTRIBUTE contract, and

@@ -9,8 +9,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/capture"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/capture"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // counterValue reads the current value of a prometheus.Counter without

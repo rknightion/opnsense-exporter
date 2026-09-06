@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 const securityPostureHeartbeat = 7 * 24 * time.Hour

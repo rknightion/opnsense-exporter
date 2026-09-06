@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 // flakySink fails its first failN Emit calls (or every call, when always is set) then

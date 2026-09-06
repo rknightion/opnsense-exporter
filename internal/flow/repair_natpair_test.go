@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // Repair 5 (#623): a NAT'd conversation is exported twice, and only the post-NAT

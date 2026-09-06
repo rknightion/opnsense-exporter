@@ -3,7 +3,7 @@ package opnsense
 import (
 	"net/http"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v5/internal/fetchshare"
 )
 
 // dhcpv4LeaseRow mirrors the JSON fields returned by the ISC DHCPv4

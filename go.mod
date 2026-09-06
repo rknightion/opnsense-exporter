@@ -1,9 +1,10 @@
-module github.com/rknightion/opnsense2otel/v4
+module github.com/rknightion/opnsense2otel/v5
 
 go 1.27.0
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
+	github.com/google/uuid v1.6.0
 	github.com/grafana/pyroscope-go v1.4.2
 	github.com/oschwald/maxminddb-golang/v2 v2.5.0
 	github.com/prometheus/client_golang v1.24.1
@@ -35,7 +36,6 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect

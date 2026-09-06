@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
 )
 
 // fakeSink records every Observe* call it receives so a test can assert both

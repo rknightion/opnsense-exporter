@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // SelfLogSource and SelfLogSubsystem are the fixed resource dimensions for

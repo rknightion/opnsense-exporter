@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v5/internal/geoip"
 )
 
 // fakeGeoLookup is a scripted geoip.Lookup for tests, so they never touch a real

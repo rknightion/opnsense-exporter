@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 // TestNewClient_InsecureWarns covers #159: NewClient must emit a Warn when TLS

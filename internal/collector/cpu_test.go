@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/cpustream"
+	"github.com/rknightion/opnsense2otel/v5/internal/cpustream"
 )
 
 // collectCPU registers a cpu collector against a fixed stream snapshot and returns

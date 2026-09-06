@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/metriclint"
+	"github.com/rknightion/opnsense2otel/v5/internal/metriclint"
 )
 
 // renderMetricRenames renders the operator-facing v5.0 metric migration table

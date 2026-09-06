@@ -21,7 +21,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
 )
 
 // selfSignedCert mints an ephemeral in-test CA/leaf (one and the same — it is its

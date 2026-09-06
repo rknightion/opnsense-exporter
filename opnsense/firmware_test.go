@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v5/internal/fetchshare"
 )
 
 func TestFetchFirmwareStatus_Success(t *testing.T) {

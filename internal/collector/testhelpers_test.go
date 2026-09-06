@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // assertNoDuplicateSeries fails if any two metrics share the same descriptor and

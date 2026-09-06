@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/geoip"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/geoip"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
 )
 
 // A real (reduced) EVE alert as it arrives over syslog when the box's syslog_eve

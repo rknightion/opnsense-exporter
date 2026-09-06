@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // OPNsense's cron logs one line per job invocation, in one of three shapes.

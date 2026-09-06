@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/secureio"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/secureio"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // captureResult records the outcome of capturing one endpoint's response.

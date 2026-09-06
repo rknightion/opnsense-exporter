@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 const (

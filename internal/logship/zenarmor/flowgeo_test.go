@@ -3,7 +3,7 @@ package zenarmor
 import (
 	"testing"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/flow"
+	"github.com/rknightion/opnsense2otel/v5/internal/flow"
 )
 
 // A conn document carrying Zenarmor's own geo block. Anonymised like every other

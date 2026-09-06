@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v5/internal/metricsnap"
 )
 
 func TestMetricsHandler_RecorderCapturesUnfilteredOnly(t *testing.T) {

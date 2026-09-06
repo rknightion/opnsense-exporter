@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/rknightion/opnsense2otel/v4/internal/collector"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/collector"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 func TestCollectorFlagsCoverAllSwitchFlags(t *testing.T) {

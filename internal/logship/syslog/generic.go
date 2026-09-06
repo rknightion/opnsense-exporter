@@ -3,8 +3,8 @@ package syslog
 import (
 	"strconv"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship/enrich"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship/enrich"
 )
 
 // BuildRecord turns one parsed syslog Envelope into a logship.Record.

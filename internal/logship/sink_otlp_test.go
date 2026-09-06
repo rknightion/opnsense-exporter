@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	collogpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
@@ -342,7 +342,7 @@ func TestBaseLogAttributesAreIdentityOnly(t *testing.T) {
 // OTLP handler appends it as structured metadata verbatim on every record, gated only
 // on it being non-empty (pkg/loghttp/push/otlplabels/labels.go: `if scopeName :=
 // scope.Name(); scopeName != ""`). The old value —
-// "github.com/rknightion/opnsense2otel/v4/logship" — measured 57 B/line on the wire
+// "github.com/rknightion/opnsense2otel/v5/logship" — measured 57 B/line on the wire
 // at exactly one distinct value across every family, which on the Zenarmor stream
 // alone is ~140 MB/day of the same 46 bytes.
 //

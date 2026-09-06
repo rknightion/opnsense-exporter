@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/promslog"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
 )
 
 func probeClient(t *testing.T, h http.Handler) Client {

@@ -10,7 +10,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v5/internal/metricsnap"
 )
 
 // fakeFamilies builds a []*dto.MetricFamily where each named family carries the

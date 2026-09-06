@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 const redactionMarker = "[redacted]"

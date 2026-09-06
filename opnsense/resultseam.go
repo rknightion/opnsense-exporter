@@ -1,7 +1,7 @@
 package opnsense
 
 import (
-	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v5/internal/fetchshare"
 )
 
 // SetResultSeam makes this client publish the decoded result of the Fetch* methods

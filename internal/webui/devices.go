@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // init registers the devices page area's routes. See server.go's extension docs

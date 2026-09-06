@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rknightion/opnsense2otel/v4/internal/collector"
-	"github.com/rknightion/opnsense2otel/v4/internal/options"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/collector"
+	"github.com/rknightion/opnsense2otel/v5/internal/options"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 var fqNameRe = regexp.MustCompile(`fqName: "([^"]+)"`)

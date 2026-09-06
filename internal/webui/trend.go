@@ -6,7 +6,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v5/internal/collector"
 )
 
 // TrendStats holds the bounded ~10-minute trend series behind three Overview

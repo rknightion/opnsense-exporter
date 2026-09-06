@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/metriclint"
+	"github.com/rknightion/opnsense2otel/v5/internal/metriclint"
 )
 
 func main() {

@@ -3,8 +3,8 @@ package enrich
 import (
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/fetchshare"
-	"github.com/rknightion/opnsense2otel/v4/opnsense"
+	"github.com/rknightion/opnsense2otel/v5/internal/fetchshare"
+	"github.com/rknightion/opnsense2otel/v5/opnsense"
 )
 
 // The refresher's inputs that a metrics collector also fetches (#571). Before the

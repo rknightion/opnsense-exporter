@@ -3,7 +3,7 @@ package syslog
 import (
 	"strconv"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
 )
 
 // attrHTTPResponseStatusCode is the attribute key haproxy.go's httplog parser

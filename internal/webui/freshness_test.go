@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v5/internal/collector"
 )
 
 // TestCollectorRow_FreshnessIsDataAgeNotAttemptAge is the #382 regression. A

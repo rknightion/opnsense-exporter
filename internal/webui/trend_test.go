@@ -6,9 +6,9 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v5/internal/metricsnap"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/collector"
+	"github.com/rknightion/opnsense2otel/v5/internal/collector"
 )
 
 func TestPerSecond_NormalDelta(t *testing.T) {

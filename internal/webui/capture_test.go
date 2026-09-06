@@ -12,7 +12,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/metricsnap"
+	"github.com/rknightion/opnsense2otel/v5/internal/metricsnap"
 )
 
 // captureFamilies is a small family set standing in for a real gather result.

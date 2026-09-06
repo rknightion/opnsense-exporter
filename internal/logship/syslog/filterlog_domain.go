@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/rknightion/opnsense2otel/v4/internal/flow"
-	"github.com/rknightion/opnsense2otel/v4/internal/logship"
+	"github.com/rknightion/opnsense2otel/v5/internal/flow"
+	"github.com/rknightion/opnsense2otel/v5/internal/logship"
 )
 
 // filterlogDomainObserver is the optional root-owned metric seam for resolved
