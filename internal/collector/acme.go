@@ -39,8 +39,8 @@ func (c *acmeCollector) Register(namespace, instanceLabel string, log *slog.Logg
 
 	certLabels := []string{"name", "description"}
 
-	c.certificatesTotal = buildPrometheusDesc(c.subsystem, "certificates_total",
-		"Total number of ACME-managed certificates",
+	c.certificatesTotal = buildPrometheusDesc(c.subsystem, "certificates",
+		"Current number of ACME-managed certificates",
 		nil,
 	)
 	c.lastUpdate = buildPrometheusDesc(c.subsystem, "certificate_last_update_timestamp_seconds",
@@ -80,7 +80,7 @@ func (c *acmeCollector) Update(ctx context.Context, client *opnsense.Client, ch 
 		return err
 	}
 
-	// os-acme-client absent → Present=false; stay silent so certificates_total=0
+	// os-acme-client absent → Present=false; stay silent so certificates=0
 	// (plugin absent) is not confused with a present-but-empty ACME config (#87).
 	if !data.Present {
 		return nil

@@ -43,7 +43,7 @@ def build(b: Builder):
     # went missing in #615, so a decode-error panel gated on it would hide
     # exactly when it is needed. devices_total comes from the list call, before
     # any per-device info decode, so it survives that failure mode.
-    b.sentinel("has_smart_plugin", metric="opnsense_smart_devices_total")
+    b.sentinel("has_smart_plugin", metric="opnsense_smart_devices")
     b.sentinel("has_hardware_dmi", metric="opnsense_hardware_dmi_info")
     b.sentinel("has_hardware_psu", metric="opnsense_hardware_psu_status")
 
@@ -126,13 +126,13 @@ def build(b: Builder):
 
     config_change = b.stat(
         "Config Last Changed",
-        epoch_ms(sel("opnsense_system_config_last_change")),
+        epoch_ms(sel("opnsense_system_config_last_change_timestamp_seconds")),
         unit="dateTimeAsIso",
         w=4,
         h=4,
         graph="none",
         instant=True,
-        desc="opnsense_system_config_last_change: Unix timestamp of last configuration "
+        desc="opnsense_system_config_last_change_timestamp_seconds: Unix timestamp of last configuration "
              "change, and the source of the Config change annotation on every tab (#421).",
     )
 
@@ -280,10 +280,10 @@ def build(b: Builder):
 
     threads_total = b.stat(
         "Threads Total",
-        sel("opnsense_activity_threads_total"),
+        sel("opnsense_activity_threads"),
         w=3,
         h=4,
-        desc="opnsense_activity_threads_total: instantaneous total thread count (RAW, not rate).",
+        desc="opnsense_activity_threads: instantaneous total thread count (RAW, not rate).",
     )
 
     threads_running = b.stat(
@@ -840,11 +840,11 @@ def build(b: Builder):
 
     snapshots_total = b.stat(
         "Boot Environments",
-        sel("opnsense_snapshots_total"),
+        sel("opnsense_snapshots_boot_environments"),
         w=4,
         h=4,
         graph="none",
-        desc="opnsense_snapshots_total: number of ZFS boot environments currently present.",
+        desc="opnsense_snapshots_boot_environments: number of ZFS boot environments currently present.",
     )
 
     snapshots_active_created = b.stat(
@@ -897,10 +897,10 @@ def build(b: Builder):
     # =========================================================================
     smart_total = b.stat(
         "SMART Devices",
-        sel("opnsense_smart_devices_total"),
+        sel("opnsense_smart_devices"),
         w=4,
         h=4,
-        desc="opnsense_smart_devices_total: number of SMART-monitored devices.",
+        desc="opnsense_smart_devices: number of SMART-monitored devices.",
     )
 
     smart_health = b.statetimeline(
@@ -1150,7 +1150,7 @@ def build(b: Builder):
         [
             (sel("opnsense_mbuf_current"), "Current"),
             (sel("opnsense_mbuf_cache"), "Cache"),
-            (sel("opnsense_mbuf_total"), "Total"),
+            (sel("opnsense_mbuf_mbufs"), "Total"),
             (sel("opnsense_mbuf_max"), "Max"),
         ],
         unit="short",
@@ -1169,7 +1169,7 @@ def build(b: Builder):
         [
             (sel("opnsense_mbuf_cluster_current"), "Current"),
             (sel("opnsense_mbuf_cluster_cache"), "Cache"),
-            (sel("opnsense_mbuf_cluster_total"), "Total"),
+            (sel("opnsense_mbuf_cluster"), "Total"),
             (sel("opnsense_mbuf_cluster_max"), "Max"),
         ],
         unit="short",
@@ -1182,7 +1182,7 @@ def build(b: Builder):
         "mbuf Memory",
         [
             (sel("opnsense_mbuf_bytes_in_use"), "In Use"),
-            (sel("opnsense_mbuf_bytes_total"), "Total"),
+            (sel("opnsense_mbuf_bytes"), "Total"),
             (sel("opnsense_mbuf_bytes_in_cache"), "In Cache"),
         ],
         unit="bytes",
@@ -1268,7 +1268,7 @@ def build(b: Builder):
     mbuf_pool_capacity_ts = b.ts(
         "mbuf Secondary Pool Capacity",
         [
-            (sel("opnsense_mbuf_pool_total"), "{{pool}} total"),
+            (sel("opnsense_mbuf_pool"), "{{pool}} total"),
             (sel("opnsense_mbuf_pool_max"), "{{pool}} max"),
         ],
         unit="short",

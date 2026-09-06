@@ -9,7 +9,7 @@
           "opnsense_hasync_remote_reachable",
           "opnsense_hasync_remote_version_match",
           "opnsense_hasync_remote_version_info",
-          "opnsense_hasync_remote_services_total",
+          "opnsense_hasync_remote_services",
           "opnsense_hasync_remote_service_running"
         ],
         "exercise": "Two OPNsense boxes on the isolated testbed bridge with hasync pointed at each other (System > High Availability > Settings: synchronize-to-IP = the peer, plus a shared XML-RPC account holding page-all on BOTH nodes - the account is authenticated on the box being CALLED, so it has to exist on both or the endpoint answers {\"response\":\"Authentication failed\"} rather than throwing). This endpoint makes a LIVE XML-RPC call to the peer on every poll, so the peer must be up: stop the second VM, or drop its bridge link, and \"response\" disappears entirely - the controller returns the exception envelope {\"status\":\"error\",\"message\":\"fetch error. remote host down? ...\"} instead. Boot the second VM before treating a regression here as drift.",
@@ -52,7 +52,7 @@
         "path": "rows[].address",
         "metrics": [
           "opnsense_kea_dhcp6_lease_info",
-          "opnsense_kea_dhcp6_leases_total"
+          "opnsense_kea_dhcp6_leases"
         ],
         "exercise": "Bring up a DHCPv6 client on a Kea-served VLAN of the testbed and let it take an IA_NA lease, so leases6/search returns at least one row.",
         "verified": "LIVE-VERIFIED 2026-07-25: a Debian VM on the isolated testbed bridge took DHCPv6 addresses via Kea, and leases6/search returned total=2 with rows[] populated. The client renews (delegated prefix re-solicited each cycle), so the rows persist while that VM runs."
@@ -281,7 +281,7 @@
         "opaque": true,
         "metrics": [
           "opnsense_hasync_remote_service_running",
-          "opnsense_hasync_remote_services_total"
+          "opnsense_hasync_remote_services"
         ],
         "exercise": "Two OPNsense boxes on the isolated testbed bridge with hasync pointed at each other (System > High Availability > Settings: synchronize-to-IP = the peer, plus a shared XML-RPC account holding page-all on BOTH nodes - the account is authenticated on the box being CALLED, so it has to exist on both or the endpoint answers {\"response\":\"Authentication failed\"} rather than throwing). This endpoint serves the CACHED remote service list, so it stays an empty bootgrid ({\"total\":0,\"rows\":[]}) until a peer is configured and has been contacted at least once. With a peer up it returns one row per service running on the OTHER node.",
         "verified": "LIVE-VERIFIED 2026-07-28 (#460): 38 rows seen from one box and 48 from the other - the lists are legitimately different lengths because the two nodes run different plugin sets and different releases. First time this endpoint has ever returned a non-empty rows array on the testbed, so nothing under rows[] had previously been checked by the canary at all."
@@ -438,7 +438,7 @@
         "path": "rows[].address",
         "metrics": [
           "opnsense_kea_dhcp4_lease_info",
-          "opnsense_kea_dhcp4_leases_total",
+          "opnsense_kea_dhcp4_leases",
           "opnsense_kea_dhcp4_leases_by_interface",
           "opnsense_kea_dhcp4_pool_used"
         ],
@@ -495,8 +495,8 @@
         "path": "rows[].is_reserved",
         "opaque": true,
         "metrics": [
-          "opnsense_kea_dhcp4_leases_reserved_total",
-          "opnsense_kea_dhcp4_leases_dynamic_total"
+          "opnsense_kea_dhcp4_leases_reserved",
+          "opnsense_kea_dhcp4_leases_dynamic"
         ],
         "exercise": "Same as rows[].address. Note the traffgen lease IS reserved, so it exercises the reserved branch only; the dynamic branch of the reserved/dynamic split still needs a second, unreserved DHCPv4 client.",
         "verified": "LIVE-VERIFIED 2026-07-28 (#460): served as an ARRAY naming the matching criteria, NOT a boolean - so a reader that treats it as a bool would be wrong even though it reads truthy."
@@ -572,7 +572,7 @@
       {
         "path": "rows[].latest-handshake",
         "metrics": [
-          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_last_handshake_timestamp_seconds",
           "opnsense_wireguard_peer_handshake_age_seconds"
         ],
         "exercise": "Enable WireGuard on the box (Services > WireGuard > general, enabled=1). Both testbeds carry the same self-contained pair from the #460 clone - two local instances wgtest1/wgtest2 peering each other over the loopback with a short persistent-keepalive - so no external peer is needed and a handshake re-establishes within seconds of enabling. These three keys exist ONLY on type=\"peer\" rows. CORRECTION 2026-07-31: an earlier version of this recipe claimed a box with WireGuard DISABLED still returns its type=\"interface\" rows, so that an EMPTY rows array would prove the instances had been deleted rather than merely switched off. That is WRONG and the distinction does not exist. Upstream builds every record from `wg show all dump` (/usr/local/opnsense/scripts/wireguard/wg_show.py), so a stopped instance has no kernel wg interface and contributes NO row of either type - a disabled box and a never-configured box both answer with an empty rows array. An empty rows array therefore says nothing about which of the two it is; only looking at the box does.",
@@ -622,7 +622,7 @@
           "opnsense_wireguard_peer_status",
           "opnsense_wireguard_peer_received_bytes_total",
           "opnsense_wireguard_peer_transmitted_bytes_total",
-          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_last_handshake_timestamp_seconds",
           "opnsense_wireguard_peer_handshake_age_seconds"
         ],
         "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. type is the device_type label on every series AND the interface/peer discriminator: a row is sorted into the interface or the peer list purely on this field, and a row matching neither is dropped. A rename therefore empties every WireGuard series at once.",
@@ -642,7 +642,7 @@
           "opnsense_wireguard_peer_status",
           "opnsense_wireguard_peer_received_bytes_total",
           "opnsense_wireguard_peer_transmitted_bytes_total",
-          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_last_handshake_timestamp_seconds",
           "opnsense_wireguard_peer_handshake_age_seconds"
         ],
         "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. The device label on every interface and peer series.",
@@ -662,7 +662,7 @@
           "opnsense_wireguard_peer_status",
           "opnsense_wireguard_peer_received_bytes_total",
           "opnsense_wireguard_peer_transmitted_bytes_total",
-          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_last_handshake_timestamp_seconds",
           "opnsense_wireguard_peer_handshake_age_seconds"
         ],
         "exercise": "The type=\"interface\" rows, which the box serves for every configured WireGuard instance. The wgtest1/wgtest2 pair from the #460 clone (two local instances peering each other over the loopback with a short persistent-keepalive) is what provides them on both testbeds, so this resolves together with the already-ledgered latest-handshake/transfer-rx/transfer-tx paths. The device_name label on every interface and peer series.",
@@ -696,7 +696,7 @@
           "opnsense_wireguard_peer_status",
           "opnsense_wireguard_peer_received_bytes_total",
           "opnsense_wireguard_peer_transmitted_bytes_total",
-          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_last_handshake_timestamp_seconds",
           "opnsense_wireguard_peer_handshake_age_seconds"
         ],
         "exercise": "The peer_name label on every peer series, from type=\"peer\" rows only. The wgtest1/wgtest2 loopback pair provides them. Note peer_name is free-form user config that OPNsense does not force to be unique per interface, so the collector skips a peer whose (device, device_type, device_name, peer_name) tuple repeats (#85) rather than failing the scrape - two identically named peers on one device silently lose one.",
@@ -736,7 +736,7 @@
           "opnsense_captiveportal_zone_sessions"
         ],
         "exercise": "Configure one captive-portal zone (Services > Captive Portal > Administration: add a zone, enable it, bind it to the interface the traffgen LXC sits on) and then authenticate one client through the portal, so api/captiveportal/session/search returns a row. BOTH steps are needed and the second is the easy one to skip: a configured portal with nobody logged in still answers {total:0,rows:[]}, and because captiveportal.go emits a zero-valued zone_sessions series for every configured zone, the metric reads a perfectly correct 0 while this path stays unexercised.",
-        "blocker": "no captive-portal zone exists on either testbed and no client has ever authenticated through one. This is the field the per-zone attribution turns on: if zoneid is renamed upstream, every session falls into the synthetic \"unknown\" zone, so every configured zone's series silently reads 0 while opnsense_captiveportal_sessions_total stays correct (it comes from the envelope's own count, not from these rows) - a drift that looks like an idle portal rather than a bug."
+        "blocker": "no captive-portal zone exists on either testbed and no client has ever authenticated through one. This is the field the per-zone attribution turns on: if zoneid is renamed upstream, every session falls into the synthetic \"unknown\" zone, so every configured zone's series silently reads 0 while opnsense_captiveportal_sessions stays correct (it comes from the envelope's own count, not from these rows) - a drift that looks like an idle portal rather than a bug."
       }
     ],
     "note": "AUDITED 2026-07-31 (#599). rows[] itself is the array element container, not a value: it carries no metric and its warning would resolve with the leaf above, so it is left informational - the same treatment carpStatus's rows[] already gets alongside nine ledgered children. Per-session PII (userName/macAddress/ipAddress) is deliberately not modelled at all (D10), so it cannot appear here."
@@ -747,7 +747,7 @@
         "path": "[]",
         "metrics": [
           "opnsense_captiveportal_vouchers",
-          "opnsense_captiveportal_voucher_group_next_expiry_seconds"
+          "opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds"
         ],
         "exercise": "Create one voucher-type authentication server (System > Access > Servers, type \"Voucher\"). api/captiveportal/voucher/list_providers IS the list of those servers, so one is enough to make the array non-empty. Configuration only: no voucher needs to be generated and none needs to be redeemed.",
         "blocker": "no voucher auth server exists on either testbed, so list_providers returns [] and the whole voucher fetch short-circuits before it ever calls list_voucher_groups or list_vouchers - which is also why captivePortalVoucherGroups and captivePortalVouchers sit in the canary's skipped-parameterized list. Note this path is the ELEMENT of a bare string array, so unlike a rows[] container it is the value itself: each element becomes the provider label on both metrics and the path segment of the two downstream calls.",
@@ -1249,7 +1249,7 @@
         "path": "rows[].is_client",
         "opaque": true,
         "metrics": [
-          "opnsense_openvpn_sessions_total",
+          "opnsense_openvpn_current_sessions",
           "opnsense_openvpn_sessions_by_instance",
           "opnsense_openvpn_instance_received_bytes_total",
           "opnsense_openvpn_instance_transmitted_bytes_total",
@@ -1264,7 +1264,7 @@
       {
         "path": "rows[].description",
         "metrics": [
-          "opnsense_openvpn_sessions_total",
+          "opnsense_openvpn_current_sessions",
           "opnsense_openvpn_sessions_by_instance",
           "opnsense_openvpn_instance_received_bytes_total",
           "opnsense_openvpn_instance_transmitted_bytes_total",
@@ -1434,8 +1434,8 @@
         "path": "items[].type",
         "opaque": true,
         "metrics": [
-          "opnsense_trafficshaper_pipes_total",
-          "opnsense_trafficshaper_queues_total"
+          "opnsense_trafficshaper_pipes",
+          "opnsense_trafficshaper_queues"
         ],
         "exercise": "Configure the shaper and then put traffic through it: one pipe with a bandwidth limit, one queue on that pipe, and one shaper RULE attaching them to an interface (Firewall > Shaper > Pipes / Queues / Rules), apply, then generate traffic across that interface from the traffgen LXC on the isolated bridge is the only traffic source available (the Proxmox host is booted with ipv6.disable=1, so that LXC can never hold an IPv6 lease or terminate a v6 tunnel - only a VM can; see the keaLeases6 note). api/trafficshaper/service/statistics answers {status:ok,items:[]} when the shaper is unconfigured, which is the current state of both testbeds. type is the pipe/queue discriminator: it decides which entity list a row joins, so it directly values both totals AND gates the existence of every opnsense_trafficshaper_pipe_* and queue_* series. An item whose type is neither is skipped outright, so a rename empties the whole subsystem rather than mislabelling it.",
         "blocker": "CORRECTED 2026-08-01 (#621): the previous text here claimed the shaper is not configured on either testbed and that items[] is empty. Both were FALSE and cost a hunt for a configuration that was already there - pipe 10000 @ 200 Mbit/s and rule 'shape TESTLAN' on opt1, which had passed 1.13M packets. items[] has never been empty. What was empty is items[].flows[], because dnctl reports LIVE flows and this pipe has 0 ms delay, so a packet is dequeued almost on arrival and the row lapses between packets; traffgen.sh runs once a MINUTE from cron, so the canary usually polled between bursts. Held open now by shaper-keepalive@.service on the traffgen LXC (a continuous 100 pps / 500-byte ping to each firewall's TESTLAN address - one host covers both, since TESTLAN is a shared segment), measured 12/12 populated where a 2-second interval was 3/5. flex type (KindAny), so even a populated run can only ever prove the key exists; the value evidence is trafficshaper_test.go's fixtures, which are derived from ServiceController.php::statisticsAction and scripts/shaper/lib/__init__.py rather than from a capture."

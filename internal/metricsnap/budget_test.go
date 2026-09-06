@@ -178,7 +178,7 @@ func TestRecorder_SeriesBudgetUnderBudgetNeverLogs(t *testing.T) {
 
 // TestRecorder_SeriesBudgetObservedCallback pins that Observed fires with the
 // current total on every real Gather, independent of whether a budget is even
-// configured — it feeds the opnsense_exporter_series_total self-metric.
+// configured — it feeds the opnsense_exporter_series self-metric.
 func TestRecorder_SeriesBudgetObservedCallback(t *testing.T) {
 	var mu sync.Mutex
 	var last int

@@ -164,8 +164,8 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Whether the FRR (quagga) service is running (1 = running, 0 = stopped/disabled)", nil)
 
 	// BGP per-family
-	c.bgpPeersTotal = buildPrometheusDesc(c.subsystem, "bgp_peers_total",
-		"Total number of configured BGP peers for this address family", afLabels)
+	c.bgpPeersTotal = buildPrometheusDesc(c.subsystem, "bgp_peers",
+		"Current number of configured BGP peers for this address family", afLabels)
 	c.bgpFailedPeers = buildPrometheusDesc(c.subsystem, "bgp_failed_peers",
 		"Number of BGP peers in a failed state for this address family", afLabels)
 	c.bgpRibEntries = buildPrometheusDesc(c.subsystem, "bgp_rib_entries",
@@ -222,8 +222,8 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		bgpRouteLabels)
 
 	// OSPF summary
-	c.ospfNeighborsTotal = buildPrometheusDesc(c.subsystem, "ospf_neighbors_total",
-		"Total number of OSPF neighbors", nil)
+	c.ospfNeighborsTotal = buildPrometheusDesc(c.subsystem, "ospf_neighbors",
+		"Current number of OSPF neighbors", nil)
 
 	// OSPF per-neighbor
 	c.ospfNeighborAdjacency = buildPrometheusDesc(c.subsystem, "ospf_neighbor_adjacency",
@@ -333,8 +333,8 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		areaLabels)
 
 	// BFD summary
-	c.bfdPeersTotal = buildPrometheusDesc(c.subsystem, "bfd_peers_total",
-		"Total number of configured BFD peers", nil)
+	c.bfdPeersTotal = buildPrometheusDesc(c.subsystem, "bfd_peers",
+		"Current number of configured BFD peers", nil)
 	c.bfdSummaryPeerInfo = buildPrometheusDesc(c.subsystem, "bfd_summary_peer_info",
 		"BFD summary peer information (value is always 1)",
 		[]string{"id", "local", "peer", "status"})

@@ -103,7 +103,7 @@ services:
       # blanket switch.
       # OPN2OTEL_ENABLE_ALL_AVAILABLE: "false"
       # Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning
-      # cardinality). Off by default; the low-cardinality entries_total aggregate is
+      # cardinality). Off by default; the low-cardinality table_entries aggregate is
       # always emitted.
       # OPN2OTEL_ENABLE_ARP_DETAILS: "false"
       # Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large
@@ -149,7 +149,7 @@ services:
       # OPN2OTEL_ENABLE_KEA_DETAILS: "false"
       # Enable per-entry NDP metrics (ip/mac labels - high, churning cardinality from
       # IPv6 privacy-address rotation). Off by default; the low-cardinality
-      # entries_total aggregate is always emitted.
+      # table_entries aggregate is always emitted.
       # OPN2OTEL_ENABLE_NDP_DETAILS: "false"
       # Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN
       # labels)

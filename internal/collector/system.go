@@ -68,7 +68,7 @@ func (c *systemCollector) Register(namespace, instanceLabel string, log *slog.Lo
 		"System load average",
 		[]string{"interval"},
 	)
-	c.configLastChange = buildPrometheusDesc(c.subsystem, "config_last_change",
+	c.configLastChange = buildPrometheusDesc(c.subsystem, "config_last_change_timestamp_seconds",
 		"Unix timestamp of last configuration change",
 		nil,
 	)
@@ -182,7 +182,7 @@ func (c *systemCollector) Update(ctx context.Context, client *opnsense.Client, c
 	}
 
 	// Gated on a positive value, not on Time.Available, exactly like
-	// config_last_change below: an unparseable boottime leaves it zero, and an
+	// config_last_change_timestamp_seconds below: an unparseable boottime leaves it zero, and an
 	// epoch-0 sample would place the reboot annotation at 1970 (#421).
 	if data.Time.BootTimestamp > 0 {
 		ch <- prometheus.MustNewConstMetric(

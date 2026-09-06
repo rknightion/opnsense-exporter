@@ -1457,7 +1457,7 @@ func main() {
 	// scrape's/OTLP export's family set through the Tee/TeeLane it is about to
 	// wrap below, so the check rides along there rather than adding a timer or
 	// a Gather() of its own — see metricsnap.SeriesBudget's doc comment.
-	// Observed feeds opnsense_exporter_series_total (collectorInstance's own
+	// Observed feeds opnsense_exporter_series (collectorInstance's own
 	// self-metric) on every real capture, independent of whether a budget is
 	// even configured. The same number reaches the console's /cardinality report
 	// via webui.Deps.SeriesBudget below.

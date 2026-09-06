@@ -1164,10 +1164,10 @@ opnsense_firmware_update_check_success
 
 **Expression:**
 ```promql
-(opnsense_certificate_valid_to_seconds - time()) / 86400
+(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400
 ```
 
-**What it measures:** Days until a certificate's notAfter time ((opnsense_certificate_valid_to_seconds - time()) / 86400).
+**What it measures:** Days until a certificate's notAfter time ((opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400).
 
 **Threshold & window:** within_range [0, 14] - the certificate expires within the next 14 days (and has not already expired, which is covered by the critical rule below).
 
@@ -1192,10 +1192,10 @@ opnsense_firmware_update_check_success
 
 **Expression:**
 ```promql
-(opnsense_certificate_valid_to_seconds - time()) / 86400
+(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400
 ```
 
-**What it measures:** The same days-until-expiry expression as OPNsenseCertificateExpiringSoon ((opnsense_certificate_valid_to_seconds - time()) / 86400).
+**What it measures:** The same days-until-expiry expression as OPNsenseCertificateExpiringSoon ((opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400).
 
 **Threshold & window:** within_range [0, 3] - imminent expiry, escalated to critical severity because there is very little runway left to act.
 
@@ -1549,10 +1549,10 @@ opnsense_wireguard_peer_status
 
 **Expression:**
 ```promql
-opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) (opnsense_hasync_remote_services_total > 0)
+opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) (opnsense_hasync_remote_services > 0)
 ```
 
-**What it measures:** opnsense_hasync_remote_reachable, guarded to only fire on boxes where HA sync is actually configured (opnsense_hasync_remote_services_total > 0) - reachable=0 on an unconfigured box is the normal, expected reading and is deliberately excluded.
+**What it measures:** opnsense_hasync_remote_reachable, guarded to only fire on boxes where HA sync is actually configured (opnsense_hasync_remote_services > 0) - reachable=0 on an unconfigured box is the normal, expected reading and is deliberately excluded.
 
 **Threshold & window:** lt 1 sustained for 10m, on a box where HA sync is configured.
 

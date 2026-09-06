@@ -13,7 +13,7 @@ Rows:
   1. Service & Sync      — service_running stat, stratum stat, leap_status stat
   2. Tracking            — system_time_offset, last_offset, rms_offset, frequency gauges/ts;
                            update_interval, root_delay/dispersion; tracking_info table
-  3. Sources             — sources_total stat; source selected/stratum/reachability/last_rx table;
+  3. Sources             — sources stat; source selected/stratum/reachability/last_rx table;
                            offset timeseries
   4. Source Statistics   — source_offset_stddev, source_samples table
 """
@@ -75,7 +75,7 @@ def build(b: Builder):
     )
     sources_total = b.stat(
         "Sources",
-        sel("opnsense_chrony_sources_total"),
+        sel("opnsense_chrony_sources"),
         unit="short", w=4, h=4,
         desc="Total number of NTP sources configured in chrony.",
     )

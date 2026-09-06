@@ -87,7 +87,7 @@ func TestMonitCollector_Update_Running(t *testing.T) {
 	// Expected:
 	//   1  service_running
 	//   1  status_ok
-	//   1  checks_total
+	//   1  checks
 	//   2× check_status  (one per service)
 	//   2× check_monitored (one per service)
 	// Total = 7
@@ -112,9 +112,9 @@ func TestMonitCollector_Update_Running(t *testing.T) {
 			if val != 1 {
 				t.Errorf("status_ok: expected 1, got %v", val)
 			}
-		case strings.Contains(desc, "monit_checks_total"):
+		case hasFqName(m, "opnsense_monit_checks"):
 			if val != 2 {
-				t.Errorf("checks_total: expected 2, got %v", val)
+				t.Errorf("checks: expected 2, got %v", val)
 			}
 		case strings.Contains(desc, "monit_check_status"):
 			switch labels["name"] {
@@ -190,7 +190,7 @@ func TestMonitCollector_Update_Monit6Shape(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 service_running + 1 status_ok + 1 checks_total + 1 check_status +
+	// 1 service_running + 1 status_ok + 1 checks + 1 check_status +
 	// 1 check_monitored + 3 system_load + 1 system_memory_percent +
 	// 1 system_swap_percent + 1 system_cpu_percent. Monit's new paging node
 	// is deliberately ignored because it has no corresponding metric.
@@ -271,7 +271,7 @@ func TestMonitCollector_Update_ResourceTelemetry(t *testing.T) {
 	// Expected:
 	//   1  service_running
 	//   1  status_ok
-	//   1  checks_total
+	//   1  checks
 	//   4× check_status + 4× check_monitored  (one per check)          =  8
 	//   filesystem: usage_percent + inode_usage_percent                =  2
 	//   process: memory_bytes + uptime_seconds + threads               =  3

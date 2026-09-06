@@ -9,10 +9,10 @@ bfd_peer_control_packets_received/sent_total,
 bfd_peer_session_up/down_events_total, ospf_area_spf_executed_total,
 bgp_peer_connections_established/dropped_total, bgp_peer_messages_by_type_total)
 are cumulative -> rate().
-Gauges shown raw: service_running, bgp_peers_total, bgp_failed_peers,
+Gauges shown raw: service_running, bgp_peers, bgp_failed_peers,
 bgp_rib_entries, bgp_peer_up, bgp_peer_prefixes_received/sent,
-bgp_peer_uptime_seconds, ospf_neighbors_total, ospf_neighbor_adjacency,
-ospf_area_*, bfd_peers_total, bfd_peer_up, bfd_peer_uptime_seconds,
+bgp_peer_uptime_seconds, ospf_neighbors, ospf_neighbor_adjacency,
+ospf_area_*, bfd_peers, bfd_peer_up, bfd_peer_uptime_seconds,
 bfd_peer_downtime_seconds, bfd_peer_rtt_min/avg/max_microseconds,
 bgp_peer_last_reset_seconds, bgp_peer_prefixes_accepted, bgp_peer_queue_depth,
 ospf_interface_up/cost/neighbors/neighbors_adjacent, ospfv3_interface_up/cost,
@@ -90,7 +90,7 @@ def build(b: Builder):
     )
     bgp_peers = b.stat(
         "BGP Peers",
-        sel("opnsense_frr_bgp_peers_total"),
+        sel("opnsense_frr_bgp_peers"),
         unit="short", w=4, h=4,
         desc="Total BGP peers configured (by address family).",
     )
@@ -107,13 +107,13 @@ def build(b: Builder):
     )
     ospf_neighbors = b.stat(
         "OSPF Neighbors",
-        sel("opnsense_frr_ospf_neighbors_total"),
+        sel("opnsense_frr_ospf_neighbors"),
         unit="short", w=4, h=4,
         desc="Total number of OSPF neighbors.",
     )
     bfd_peers = b.stat(
         "BFD Peers",
-        sel("opnsense_frr_bfd_peers_total"),
+        sel("opnsense_frr_bfd_peers"),
         unit="short", w=4, h=4,
         desc="Total number of configured BFD peers.",
     )

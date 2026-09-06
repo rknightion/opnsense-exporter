@@ -37,11 +37,9 @@ const (
 )
 
 const (
-	ruleGaugeTotal       = "gauge_total"
-	ruleTimestamp        = "timestamp_suffix"
-	legacyRuleMarker     = "OPN-0033"
-	legacyGaugeTotalNote = "legacy current-count gauge"
-	legacyTimestampNote  = "legacy Unix timestamp gauge"
+	ruleGaugeTotal    = "gauge_total"
+	ruleTimestamp     = "timestamp_suffix"
+	ruleRenamedMetric = "retired_metric_name"
 )
 
 // Metric is one source declaration found by ScanRepository.
@@ -94,90 +92,93 @@ func (e *ReportError) Error() string {
 	return b.String()
 }
 
-// legacyAllowlist is intentionally keyed by source file and local metric name,
-// not by a broad filename or a suffix. Every entry is a named compatibility
-// debt item whose removal trigger is the breaking rename task OPN-0033.
-//
-// The initial entries are populated from the repository's pre-existing metric
-// declarations. Keeping the list explicit makes a newly added declaration fail
-// until somebody makes the compatibility decision in the same place.
-var legacyAllowlist = map[string]string{
-	"internal/collector/acme.go:certificates_total":                         "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/activity.go:threads_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/alias.go:tables_total":                              "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/arp_table.go:entries_total":                         "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/bpf.go:listeners_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/captiveportal.go:zones_total":                       "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/captiveportal.go:sessions_total":                    "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/captiveportal.go:voucher_group_next_expiry_seconds": "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/carp.go:vips_total":                                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/certificates.go:valid_from_seconds":                 "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/certificates.go:valid_to_seconds":                   "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/certificates.go:ca_valid_from_seconds":              "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/certificates.go:ca_valid_to_seconds":                "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/certificates.go:ca_total":                           "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/chrony.go:sources_total":                            "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/collector.go:series_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/crowdsec.go:alerts_total":                           "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/crowdsec.go:decisions_total":                        "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/crowdsec.go:bouncers_total":                         "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/crowdsec.go:machines_total":                         "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv4.go:leases_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv4.go:leases_reserved_total":                    "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv4.go:leases_dynamic_total":                     "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv6.go:leases_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv6.go:leases_reserved_total":                    "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv6.go:leases_dynamic_total":                     "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dhcpv6.go:pd_prefixes_total":                        "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dnsmasq.go:leases_total":                            "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dnsmasq.go:leases_reserved_total":                   "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dnsmasq.go:leases_dynamic_total":                    "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/dyndns.go:accounts_total":                           "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/firewall_rules.go:rules_total":                      "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/frr.go:bgp_peers_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/frr.go:ospf_neighbors_total":                        "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/frr.go:bfd_peers_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/hasync.go:remote_services_total":                    "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/ids.go:installed_rules_total":                       "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/kea.go:dhcp4_leases_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/kea.go:dhcp4_leases_reserved_total":                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/kea.go:dhcp4_leases_dynamic_total":                  "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/kea.go:dhcp6_leases_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/kea.go:dhcp6_leases_reserved_total":                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/kea.go:dhcp6_leases_dynamic_total":                  "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/mbuf.go:cluster_total":                              "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/mbuf.go:pool_total":                                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/mbuf.go:bytes_total":                                "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/monit.go:checks_total":                              "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/ndp.go:entries_total":                               "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/netbird.go:relays_total":                            "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/netbird.go:peers_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/network_diag.go:sockets_unix_total":                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/network_diag.go:routes_total":                       "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/network_diag.go:pfsync_nodes_total":                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/ntp.go:peers_total":                                 "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/openvpn.go:sessions_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/qfeeds.go:feeds_total":                              "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/services.go:running_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/services.go:stopped_total":                          "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/smart.go:devices_total":                             "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/system.go:config_last_change":                       "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/tailscale.go:peers_total":                           "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/trafficshaper.go:pipes_total":                       "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/trafficshaper.go:queues_total":                      "OPN-0033 removal trigger: legacy current-count gauge",
-	"internal/collector/unbound_dns.go:qstats_start_time_seconds":           "OPN-0033 removal trigger: legacy Unix timestamp gauge",
-	"internal/collector/wireguard.go:peer_last_handshake_seconds":           "OPN-0033 removal trigger: legacy Unix timestamp gauge",
+// MetricRename records a breaking metric-name migration. Names are fully
+// qualified for operator PromQL; local names retain the source descriptor seam.
+type MetricRename struct {
+	File        string
+	OldName     string
+	NewName     string
+	OldFullName string
+	NewFullName string
+	Release     string
 }
 
-// LegacyAllowlist returns a copy of the compatibility ledger. It is exposed so
-// tests can verify that every exception carries the OPN-0033 removal trigger
-// without allowing callers to mutate the guard's policy.
-func LegacyAllowlist() map[string]string {
-	out := make(map[string]string, len(legacyAllowlist))
-	for key, note := range legacyAllowlist {
-		out[key] = note
-	}
-	return out
+// renamedMetrics is the v5.0 migration ledger shared by the lint and docgen.
+// Retired names must never return, even in a different file or metric type.
+var renamedMetrics = []MetricRename{
+	{"internal/collector/certificates.go", "total", "certificates", "opnsense_certificate_total", "opnsense_certificate_certificates", "5.0.0"},
+	{"internal/collector/mbuf.go", "total", "mbufs", "opnsense_mbuf_total", "opnsense_mbuf_mbufs", "5.0.0"},
+	{"internal/collector/snapshots.go", "total", "boot_environments", "opnsense_snapshots_total", "opnsense_snapshots_boot_environments", "5.0.0"},
+	{"internal/collector/acme.go", "certificates_total", "certificates", "opnsense_acme_certificates_total", "opnsense_acme_certificates", "5.0.0"},
+	{"internal/collector/activity.go", "threads_total", "threads", "opnsense_activity_threads_total", "opnsense_activity_threads", "5.0.0"},
+	{"internal/collector/alias.go", "tables_total", "tables", "opnsense_alias_tables_total", "opnsense_alias_tables", "5.0.0"},
+	{"internal/collector/arp_table.go", "entries_total", "table_entries", "opnsense_arp_table_entries_total", "opnsense_arp_table_table_entries", "5.0.0"},
+	{"internal/collector/bpf.go", "listeners_total", "listeners", "opnsense_bpf_listeners_total", "opnsense_bpf_listeners", "5.0.0"},
+	{"internal/collector/captiveportal.go", "zones_total", "zones", "opnsense_captiveportal_zones_total", "opnsense_captiveportal_zones", "5.0.0"},
+	{"internal/collector/captiveportal.go", "sessions_total", "sessions", "opnsense_captiveportal_sessions_total", "opnsense_captiveportal_sessions", "5.0.0"},
+	{"internal/collector/captiveportal.go", "voucher_group_next_expiry_seconds", "voucher_group_next_expiry_timestamp_seconds", "opnsense_captiveportal_voucher_group_next_expiry_seconds", "opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds", "5.0.0"},
+	{"internal/collector/carp.go", "vips_total", "vips", "opnsense_carp_vips_total", "opnsense_carp_vips", "5.0.0"},
+	{"internal/collector/certificates.go", "valid_from_seconds", "valid_from_timestamp_seconds", "opnsense_certificate_valid_from_seconds", "opnsense_certificate_valid_from_timestamp_seconds", "5.0.0"},
+	{"internal/collector/certificates.go", "valid_to_seconds", "valid_to_timestamp_seconds", "opnsense_certificate_valid_to_seconds", "opnsense_certificate_valid_to_timestamp_seconds", "5.0.0"},
+	{"internal/collector/certificates.go", "ca_valid_from_seconds", "ca_valid_from_timestamp_seconds", "opnsense_certificate_ca_valid_from_seconds", "opnsense_certificate_ca_valid_from_timestamp_seconds", "5.0.0"},
+	{"internal/collector/certificates.go", "ca_valid_to_seconds", "ca_valid_to_timestamp_seconds", "opnsense_certificate_ca_valid_to_seconds", "opnsense_certificate_ca_valid_to_timestamp_seconds", "5.0.0"},
+	{"internal/collector/certificates.go", "ca_total", "ca", "opnsense_certificate_ca_total", "opnsense_certificate_ca", "5.0.0"},
+	{"internal/collector/chrony.go", "sources_total", "sources", "opnsense_chrony_sources_total", "opnsense_chrony_sources", "5.0.0"},
+	{"internal/collector/collector.go", "series_total", "series", "opnsense_exporter_series_total", "opnsense_exporter_series", "5.0.0"},
+	{"internal/collector/crowdsec.go", "alerts_total", "alerts", "opnsense_crowdsec_alerts_total", "opnsense_crowdsec_alerts", "5.0.0"},
+	{"internal/collector/crowdsec.go", "decisions_total", "decisions", "opnsense_crowdsec_decisions_total", "opnsense_crowdsec_decisions", "5.0.0"},
+	{"internal/collector/crowdsec.go", "bouncers_total", "bouncers", "opnsense_crowdsec_bouncers_total", "opnsense_crowdsec_bouncers", "5.0.0"},
+	{"internal/collector/crowdsec.go", "machines_total", "machines", "opnsense_crowdsec_machines_total", "opnsense_crowdsec_machines", "5.0.0"},
+	{"internal/collector/dhcpv4.go", "leases_total", "leases", "opnsense_dhcpv4_leases_total", "opnsense_dhcpv4_leases", "5.0.0"},
+	{"internal/collector/dhcpv4.go", "leases_reserved_total", "leases_reserved", "opnsense_dhcpv4_leases_reserved_total", "opnsense_dhcpv4_leases_reserved", "5.0.0"},
+	{"internal/collector/dhcpv4.go", "leases_dynamic_total", "leases_dynamic", "opnsense_dhcpv4_leases_dynamic_total", "opnsense_dhcpv4_leases_dynamic", "5.0.0"},
+	{"internal/collector/dhcpv6.go", "leases_total", "leases", "opnsense_dhcpv6_leases_total", "opnsense_dhcpv6_leases", "5.0.0"},
+	{"internal/collector/dhcpv6.go", "leases_reserved_total", "leases_reserved", "opnsense_dhcpv6_leases_reserved_total", "opnsense_dhcpv6_leases_reserved", "5.0.0"},
+	{"internal/collector/dhcpv6.go", "leases_dynamic_total", "leases_dynamic", "opnsense_dhcpv6_leases_dynamic_total", "opnsense_dhcpv6_leases_dynamic", "5.0.0"},
+	{"internal/collector/dhcpv6.go", "pd_prefixes_total", "pd_prefixes", "opnsense_dhcpv6_pd_prefixes_total", "opnsense_dhcpv6_pd_prefixes", "5.0.0"},
+	{"internal/collector/dnsmasq.go", "leases_total", "leases", "opnsense_dnsmasq_leases_total", "opnsense_dnsmasq_leases", "5.0.0"},
+	{"internal/collector/dnsmasq.go", "leases_reserved_total", "leases_reserved", "opnsense_dnsmasq_leases_reserved_total", "opnsense_dnsmasq_leases_reserved", "5.0.0"},
+	{"internal/collector/dnsmasq.go", "leases_dynamic_total", "leases_dynamic", "opnsense_dnsmasq_leases_dynamic_total", "opnsense_dnsmasq_leases_dynamic", "5.0.0"},
+	{"internal/collector/dyndns.go", "accounts_total", "accounts", "opnsense_dyndns_accounts_total", "opnsense_dyndns_accounts", "5.0.0"},
+	{"internal/collector/firewall_rules.go", "rules_total", "rules", "opnsense_firewall_rule_rules_total", "opnsense_firewall_rule_rules", "5.0.0"},
+	{"internal/collector/frr.go", "bgp_peers_total", "bgp_peers", "opnsense_frr_bgp_peers_total", "opnsense_frr_bgp_peers", "5.0.0"},
+	{"internal/collector/frr.go", "ospf_neighbors_total", "ospf_neighbors", "opnsense_frr_ospf_neighbors_total", "opnsense_frr_ospf_neighbors", "5.0.0"},
+	{"internal/collector/frr.go", "bfd_peers_total", "bfd_peers", "opnsense_frr_bfd_peers_total", "opnsense_frr_bfd_peers", "5.0.0"},
+	{"internal/collector/hasync.go", "remote_services_total", "remote_services", "opnsense_hasync_remote_services_total", "opnsense_hasync_remote_services", "5.0.0"},
+	{"internal/collector/ids.go", "installed_rules_total", "installed_rules", "opnsense_ids_installed_rules_total", "opnsense_ids_installed_rules", "5.0.0"},
+	{"internal/collector/kea.go", "dhcp4_leases_total", "dhcp4_leases", "opnsense_kea_dhcp4_leases_total", "opnsense_kea_dhcp4_leases", "5.0.0"},
+	{"internal/collector/kea.go", "dhcp4_leases_reserved_total", "dhcp4_leases_reserved", "opnsense_kea_dhcp4_leases_reserved_total", "opnsense_kea_dhcp4_leases_reserved", "5.0.0"},
+	{"internal/collector/kea.go", "dhcp4_leases_dynamic_total", "dhcp4_leases_dynamic", "opnsense_kea_dhcp4_leases_dynamic_total", "opnsense_kea_dhcp4_leases_dynamic", "5.0.0"},
+	{"internal/collector/kea.go", "dhcp6_leases_total", "dhcp6_leases", "opnsense_kea_dhcp6_leases_total", "opnsense_kea_dhcp6_leases", "5.0.0"},
+	{"internal/collector/kea.go", "dhcp6_leases_reserved_total", "dhcp6_leases_reserved", "opnsense_kea_dhcp6_leases_reserved_total", "opnsense_kea_dhcp6_leases_reserved", "5.0.0"},
+	{"internal/collector/kea.go", "dhcp6_leases_dynamic_total", "dhcp6_leases_dynamic", "opnsense_kea_dhcp6_leases_dynamic_total", "opnsense_kea_dhcp6_leases_dynamic", "5.0.0"},
+	{"internal/collector/mbuf.go", "cluster_total", "cluster", "opnsense_mbuf_cluster_total", "opnsense_mbuf_cluster", "5.0.0"},
+	{"internal/collector/mbuf.go", "pool_total", "pool", "opnsense_mbuf_pool_total", "opnsense_mbuf_pool", "5.0.0"},
+	{"internal/collector/mbuf.go", "bytes_total", "bytes", "opnsense_mbuf_bytes_total", "opnsense_mbuf_bytes", "5.0.0"},
+	{"internal/collector/monit.go", "checks_total", "checks", "opnsense_monit_checks_total", "opnsense_monit_checks", "5.0.0"},
+	{"internal/collector/ndp.go", "entries_total", "table_entries", "opnsense_ndp_entries_total", "opnsense_ndp_table_entries", "5.0.0"},
+	{"internal/collector/netbird.go", "relays_total", "relays", "opnsense_netbird_relays_total", "opnsense_netbird_relays", "5.0.0"},
+	{"internal/collector/netbird.go", "peers_total", "peers", "opnsense_netbird_peers_total", "opnsense_netbird_peers", "5.0.0"},
+	{"internal/collector/network_diag.go", "sockets_unix_total", "sockets_unix", "opnsense_network_diag_sockets_unix_total", "opnsense_network_diag_sockets_unix", "5.0.0"},
+	{"internal/collector/network_diag.go", "routes_total", "routes", "opnsense_network_diag_routes_total", "opnsense_network_diag_routes", "5.0.0"},
+	{"internal/collector/network_diag.go", "pfsync_nodes_total", "pfsync_nodes", "opnsense_network_diag_pfsync_nodes_total", "opnsense_network_diag_pfsync_nodes", "5.0.0"},
+	{"internal/collector/ntp.go", "peers_total", "peers", "opnsense_ntp_peers_total", "opnsense_ntp_peers", "5.0.0"},
+	{"internal/collector/openvpn.go", "sessions_total", "current_sessions", "opnsense_openvpn_sessions_total", "opnsense_openvpn_current_sessions", "5.0.0"},
+	{"internal/collector/qfeeds.go", "feeds_total", "feeds", "opnsense_qfeeds_feeds_total", "opnsense_qfeeds_feeds", "5.0.0"},
+	{"internal/collector/services.go", "running_total", "running", "opnsense_services_running_total", "opnsense_services_running", "5.0.0"},
+	{"internal/collector/services.go", "stopped_total", "stopped", "opnsense_services_stopped_total", "opnsense_services_stopped", "5.0.0"},
+	{"internal/collector/smart.go", "devices_total", "devices", "opnsense_smart_devices_total", "opnsense_smart_devices", "5.0.0"},
+	{"internal/collector/system.go", "config_last_change", "config_last_change_timestamp_seconds", "opnsense_system_config_last_change", "opnsense_system_config_last_change_timestamp_seconds", "5.0.0"},
+	{"internal/collector/tailscale.go", "peers_total", "peers", "opnsense_tailscale_peers_total", "opnsense_tailscale_peers", "5.0.0"},
+	{"internal/collector/trafficshaper.go", "pipes_total", "pipes", "opnsense_trafficshaper_pipes_total", "opnsense_trafficshaper_pipes", "5.0.0"},
+	{"internal/collector/trafficshaper.go", "queues_total", "queues", "opnsense_trafficshaper_queues_total", "opnsense_trafficshaper_queues", "5.0.0"},
+	{"internal/collector/unbound_dns.go", "qstats_start_time_seconds", "qstats_start_time_timestamp_seconds", "opnsense_unbound_dns_qstats_start_time_seconds", "opnsense_unbound_dns_qstats_start_time_timestamp_seconds", "5.0.0"},
+	{"internal/collector/wireguard.go", "peer_last_handshake_seconds", "peer_last_handshake_timestamp_seconds", "opnsense_wireguard_peer_last_handshake_seconds", "opnsense_wireguard_peer_last_handshake_timestamp_seconds", "5.0.0"},
+}
+
+// RenamedMetrics returns a copy of the release-marked migration ledger.
+func RenamedMetrics() []MetricRename {
+	return append([]MetricRename(nil), renamedMetrics...)
 }
 
 // FindRepositoryRoot walks upward from start until it finds the module's go.mod.
@@ -294,7 +295,7 @@ func ScanRepository(root string) ([]Metric, error) {
 
 // CheckRepository runs the same source scan used by the command and the
 // repository-scan test. It returns nil only when all declarations obey the
-// naming rules or are individually present in the legacy ledger.
+// naming rules and no retired metric name has returned.
 func CheckRepository(root string) error {
 	metrics, err := ScanRepository(root)
 	if err != nil {
@@ -313,13 +314,14 @@ func CheckRepository(root string) error {
 func CheckMetrics(metrics []Metric) []Violation {
 	violations := make([]Violation, 0)
 	for _, metric := range metrics {
-		key := metricKey(metric)
-		if strings.HasSuffix(metricName(metric), "_total") && metric.Kind != KindCounter &&
-			!allowlisted(key, ruleGaugeTotal) {
+		if retiredMetric(metric) {
+			violations = append(violations, Violation{Rule: ruleRenamedMetric, Metric: metric})
+			continue
+		}
+		if strings.HasSuffix(metricName(metric), "_total") && metric.Kind != KindCounter {
 			violations = append(violations, Violation{Rule: ruleGaugeTotal, Metric: metric})
 		}
-		if metric.UnixTimestamp && !strings.HasSuffix(metricName(metric), "_timestamp_seconds") &&
-			!allowlisted(key, ruleTimestamp) {
+		if metric.UnixTimestamp && !strings.HasSuffix(metricName(metric), "_timestamp_seconds") {
 			violations = append(violations, Violation{Rule: ruleTimestamp, Metric: metric})
 		}
 	}
@@ -420,6 +422,7 @@ func scanDeclarations(files []sourceFile, scope map[string]string) []metricDecl 
 	var declarations []metricDecl
 	for _, source := range files {
 		options := collectOptionLiterals(source.file)
+		subsystem := collectorSubsystem(source.file, scope)
 		ast.Inspect(source.file, func(node ast.Node) bool {
 			switch n := node.(type) {
 			case *ast.AssignStmt:
@@ -439,10 +442,14 @@ func scanDeclarations(files []sourceFile, scope map[string]string) []metricDecl 
 							continue
 						}
 						help, _ := resolveString(call.Args[2], scope)
+						name := local
+						if subsystem != "" && scope["namespace"] != "" {
+							name = scope["namespace"] + "_" + subsystem + "_" + local
+						}
 						declarations = append(declarations, metricDecl{
 							key: key,
 							metric: Metric{
-								Name:          local,
+								Name:          name,
 								LocalName:     local,
 								Help:          help,
 								Kind:          KindUnknown,
@@ -499,6 +506,37 @@ func scanDeclarations(files []sourceFile, scope map[string]string) []metricDecl 
 		})
 	}
 	return declarations
+}
+
+// collectorSubsystem resolves the repository's self-registration idiom. Leave
+// ambiguous files unresolved rather than assigning another collector's name.
+func collectorSubsystem(file *ast.File, scope map[string]string) string {
+	values := map[string]bool{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "init" || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			pair, ok := node.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			key, ok := pair.Key.(*ast.Ident)
+			if ok && key.Name == "subsystem" {
+				if value, resolved := resolveString(pair.Value, scope); resolved {
+					values[value] = true
+				}
+			}
+			return true
+		})
+	}
+	if len(values) == 1 {
+		for value := range values {
+			return value
+		}
+	}
+	return ""
 }
 
 func collectOptionLiterals(file *ast.File) map[string]*ast.CompositeLit {
@@ -1068,19 +1106,13 @@ func metricKey(metric Metric) string {
 	return filepath.ToSlash(metric.File) + ":" + name
 }
 
-func allowlisted(key, rule string) bool {
-	note, ok := legacyAllowlist[key]
-	if !ok || !strings.Contains(note, legacyRuleMarker) {
-		return false
+func retiredMetric(metric Metric) bool {
+	for _, rename := range renamedMetrics {
+		if metricName(metric) == rename.OldFullName || metricKey(metric) == rename.File+":"+rename.OldName {
+			return true
+		}
 	}
-	switch rule {
-	case ruleGaugeTotal:
-		return strings.Contains(note, legacyGaugeTotalNote)
-	case ruleTimestamp:
-		return strings.Contains(note, legacyTimestampNote)
-	default:
-		return false
-	}
+	return false
 }
 
 func dedupeMetrics(metrics []Metric) []Metric {

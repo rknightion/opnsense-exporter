@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "(opnsense_certificate_valid_to_seconds - time()) / 86400",
+          "expr": "(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

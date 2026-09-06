@@ -527,7 +527,7 @@ def build_overview(b: Builder):
     uptime = b.stat("Uptime", sel("opnsense_system_uptime_seconds"), unit="s", w=3, h=4,
                     graph="none", color="thresholds", legend="{{opnsense_instance}}",
                     desc="Time since the firewall last booted.")
-    svc = b.stat("Stopped services", sel("opnsense_services_stopped_total"),
+    svc = b.stat("Stopped services", sel("opnsense_services_stopped"),
                  thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
                  color_mode="background", desc="Configured services currently not running.",
                  legend="{{opnsense_instance}}", w=3, h=4)
@@ -780,7 +780,7 @@ def build_diagnostics(b: Builder):
     # job. Charted as a rate alongside the level because a budget breach is far less
     # interesting than the slope that got there.
     series_total = b.ts("Collector Series Total (soft budget)",
-                        [(sel("opnsense_exporter_series_total"), "series {{opnsense_instance}}")],
+                        [(sel("opnsense_exporter_series"), "series {{opnsense_instance}}")],
                         w=12, h=6,
                         desc="Total series on the collector registry, the number --exporter.series-budget "
                              "is measured against. The budget is advisory: exceeding it logs a rate-limited "
@@ -1423,7 +1423,7 @@ def build_health_overview(b: Builder):
              "broken cache hide behind a healthy one. A collapse here shows up as a "
              "step in the API request rate on the OPNsense API tab.")
     series = b.stat(
-        "Collector Series", sel("opnsense_exporter_series_total"),
+        "Collector Series", sel("opnsense_exporter_series"),
         w=4, h=5, legend="{{opnsense_instance}}",
         desc="Series on the collector registry, the number --exporter.series-budget is "
              "measured against. The budget is advisory: exceeding it warns and changes "
@@ -1607,8 +1607,8 @@ def coverage(*builders: Builder) -> list:
     for n in load_catalogue():
         if n in COVERAGE_EXEMPT:
             continue
-        # Word-boundary match so e.g. opnsense_mbuf_total is not "covered" by
-        # opnsense_mbuf_cluster_total. Right boundary = not followed by [a-z0-9_].
+        # Word-boundary match so e.g. opnsense_mbuf_mbufs is not "covered" by
+        # opnsense_mbuf_cluster. Right boundary = not followed by [a-z0-9_].
         if not re.search(re.escape(n) + r"(?![a-z0-9_])", blob):
             missing.append(n)
     return missing

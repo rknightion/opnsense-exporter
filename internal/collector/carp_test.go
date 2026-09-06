@@ -47,7 +47,7 @@ func TestCarpCollector_Update_WithVIPs(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 4 global (demotion, allow, maintenance_mode, vips_total) + 2 VIPs * 3 metrics each (status, advbase, advskew) = 10
+	// 4 global (demotion, allow, maintenance_mode, vips) + 2 VIPs * 3 metrics each (status, advbase, advskew) = 10
 	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
@@ -66,9 +66,9 @@ func TestCarpCollector_Update_WithVIPs(t *testing.T) {
 	if v := getMetricValue(metrics[2]); v != 0 {
 		t.Errorf("expected maintenance_mode=0, got %f", v)
 	}
-	// metrics[3] = vips_total
+	// metrics[3] = vips
 	if v := getMetricValue(metrics[3]); v != 2 {
-		t.Errorf("expected vips_total=2, got %f", v)
+		t.Errorf("expected vips=2, got %f", v)
 	}
 
 	// Verify first VIP labels
@@ -126,15 +126,15 @@ func TestCarpCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 4 global metrics only (demotion, allow, maintenance_mode, vips_total)
+	// 4 global metrics only (demotion, allow, maintenance_mode, vips)
 	expectedCount := 4
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
-	// vips_total should be 0
+	// vips should be 0
 	if v := getMetricValue(metrics[3]); v != 0 {
-		t.Errorf("expected vips_total=0, got %f", v)
+		t.Errorf("expected vips=0, got %f", v)
 	}
 }
 

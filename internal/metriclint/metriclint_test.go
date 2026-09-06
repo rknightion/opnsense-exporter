@@ -34,6 +34,17 @@ func TestCheckMetricsAllowsCounterTotal(t *testing.T) {
 	}
 }
 
+// A renamed metric must not return under another file or Prometheus type.
+func TestCheckMetricsRejectsRenamedMetricInAnotherFile(t *testing.T) {
+	violations := CheckMetrics([]Metric{{
+		Name: "opnsense_acme_certificates_total", LocalName: "certificates_total",
+		Kind: KindCounter, File: "internal/collector/moved.go", Line: 1,
+	}})
+	if len(violations) == 0 {
+		t.Fatal("retired metric name was accepted after moving files and changing type")
+	}
+}
+
 func TestCheckMetricsRejectsUnknownTotal(t *testing.T) {
 	violations := CheckMetrics([]Metric{{
 		Name:      "opnsense_fixture_items_total",
@@ -87,6 +98,14 @@ import "github.com/prometheus/client_golang/prometheus"
 var gauge = prometheus.NewGauge(prometheus.GaugeOpts{Name: "items_total", Help: "current item count"})
 var counter = prometheus.NewCounter(prometheus.CounterOpts{Name: "events_total", Help: "monotonic event count"})
 var timestamp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "last_seen_seconds", Help: "Unix timestamp of the last observation"})
+
+const namespace = "opnsense"
+const fixtureSubsystem = "fixture"
+func init() { collectorInstances = append(collectorInstances, &fixtureCollector{subsystem: fixtureSubsystem}) }
+func register() {
+    c.total = buildPrometheusDesc(c.subsystem, "total", "Current number of items", nil)
+    prometheus.MustNewConstMetric(c.total, prometheus.GaugeValue, 1)
+}
 `
 	if err := os.WriteFile(filepath.Join(root, "metrics.go"), []byte(source), 0o600); err != nil {
 		t.Fatal(err)
@@ -97,44 +116,72 @@ var timestamp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "last_seen_second
 		t.Fatal(err)
 	}
 	violations := CheckMetrics(metrics)
-	if len(violations) != 2 {
-		t.Fatalf("fixture violations = %#v, want gauge_total and timestamp_suffix", violations)
+	if len(violations) != 3 {
+		t.Fatalf("fixture violations = %#v, want two gauge_total and one timestamp_suffix", violations)
 	}
 	seen := map[string]bool{}
+	sawLocalTotal := false
 	for _, violation := range violations {
 		seen[violation.Rule] = true
+		if violation.Metric.LocalName == "total" && violation.Metric.Name == "opnsense_fixture_total" {
+			sawLocalTotal = true
+		}
 	}
-	if !seen[ruleGaugeTotal] || !seen[ruleTimestamp] {
-		t.Fatalf("fixture violations = %#v, want both rules", violations)
+	if !seen[ruleGaugeTotal] || !seen[ruleTimestamp] || !sawLocalTotal {
+		t.Fatalf("fixture violations = %#v, want both rules including the qualified local-total gauge", violations)
 	}
 }
 
-func TestLegacyAllowlistEntriesNameOPN0033AsRemovalTrigger(t *testing.T) {
-	if len(legacyAllowlist) == 0 {
-		t.Fatal("legacy allowlist is empty")
+func TestRenamedMetricsLedgerEnforcesEveryRetiredName(t *testing.T) {
+	renamed := RenamedMetrics()
+	if len(renamed) != 68 {
+		t.Fatalf("RenamedMetrics() returned %d entries, want 68", len(renamed))
 	}
-	for key, note := range legacyAllowlist {
-		if note == "" || !containsOPN0033(note) {
-			t.Errorf("legacy allowlist entry %q has no OPN-0033 removal trigger: %q", key, note)
+
+	seen := make(map[string]bool, len(renamed))
+	for _, rename := range renamed {
+		if rename.File == "" || rename.OldName == "" || rename.NewName == "" ||
+			rename.OldFullName == "" || rename.NewFullName == "" || rename.Release == "" {
+			t.Errorf("incomplete rename ledger entry: %#v", rename)
+			continue
+		}
+		key := rename.File + ":" + rename.OldName
+		if seen[key] {
+			t.Errorf("duplicate rename ledger key %q", key)
+		}
+		seen[key] = true
+
+		cases := []Metric{
+			{
+				Name: rename.OldFullName, LocalName: "moved_metric",
+				Kind: KindCounter, File: "internal/collector/moved.go", Line: 1,
+			},
+			{
+				LocalName: rename.OldName, Kind: KindGauge,
+				File: rename.File, Line: 1,
+			},
+		}
+		for _, metric := range cases {
+			violations := CheckMetrics([]Metric{metric})
+			if len(violations) != 1 || violations[0].Rule != ruleRenamedMetric {
+				t.Errorf("retired metric %#v produced violations %#v, want one %s violation",
+					metric, violations, ruleRenamedMetric)
+			}
 		}
 	}
 }
 
-func TestLegacyAllowlistDoesNotCrossRuleBoundaries(t *testing.T) {
-	gaugeKey := "internal/collector/acme.go:certificates_total"
-	if !allowlisted(gaugeKey, ruleGaugeTotal) {
-		t.Fatalf("allowlisted(%q, %q) = false, want true", gaugeKey, ruleGaugeTotal)
+func TestRenamedMetricsReturnsIndependentCopy(t *testing.T) {
+	first := RenamedMetrics()
+	if len(first) == 0 {
+		t.Fatal("RenamedMetrics() returned no entries")
 	}
-	if allowlisted(gaugeKey, ruleTimestamp) {
-		t.Fatalf("allowlisted(%q, %q) = true, want false", gaugeKey, ruleTimestamp)
-	}
+	want := first[0]
+	first[0].OldName = "mutated"
 
-	timestampKey := "internal/collector/system.go:config_last_change"
-	if !allowlisted(timestampKey, ruleTimestamp) {
-		t.Fatalf("allowlisted(%q, %q) = false, want true", timestampKey, ruleTimestamp)
-	}
-	if allowlisted(timestampKey, ruleGaugeTotal) {
-		t.Fatalf("allowlisted(%q, %q) = true, want false", timestampKey, ruleGaugeTotal)
+	second := RenamedMetrics()
+	if second[0] != want {
+		t.Fatalf("RenamedMetrics() exposed mutable ledger state: got %#v, want %#v", second[0], want)
 	}
 }
 
@@ -160,18 +207,4 @@ func emit() {
 	if len(evidence.timestamp) != 0 {
 		t.Fatalf("timestamp evidence = %#v, want no entry for an unresolved descriptor", evidence.timestamp)
 	}
-}
-
-func containsOPN0033(note string) bool {
-	return len(note) >= len(legacyRuleMarker) &&
-		containsString(note, legacyRuleMarker)
-}
-
-func containsString(value, want string) bool {
-	for i := 0; i+len(want) <= len(value); i++ {
-		if value[i:i+len(want)] == want {
-			return true
-		}
-	}
-	return false
 }

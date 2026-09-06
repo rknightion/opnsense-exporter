@@ -28,13 +28,13 @@ def build(b: Builder):
                     unit="short", w=4, h=4, mappings=CONNDISC,
                     desc="Whether this node's netbird daemon has an active connection "
                          "to the signal server.")
-    relays_total = b.stat("Relays Known", sel("opnsense_netbird_relays_total"),
+    relays_total = b.stat("Relays Known", sel("opnsense_netbird_relays"),
                           unit="short", w=4, h=4)
     relays_available = b.stat("Relays Available", sel("opnsense_netbird_relays_available"),
                               unit="short", w=4, h=4,
                               desc="Relay servers currently reachable, out of "
                                    "Relays Known.")
-    peers_total = b.stat("Peers Known", sel("opnsense_netbird_peers_total"),
+    peers_total = b.stat("Peers Known", sel("opnsense_netbird_peers"),
                          unit="short", w=4, h=4)
     peers_connected = b.stat("Peers Connected", sel("opnsense_netbird_peers_connected"),
                              unit="short", w=4, h=4,

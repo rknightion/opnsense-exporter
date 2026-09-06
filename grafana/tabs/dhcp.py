@@ -8,7 +8,7 @@ separate sub-rows gated on their own sentinels (they are opt-in via
 
 Rows:
   Dnsmasq:
-    1. dnsmasq summary       — gated has_dnsmasq: leases_total/*_reserved_total/*_dynamic_total
+    1. dnsmasq summary       — gated has_dnsmasq: leases/*_reserved/*_dynamic
                                (stats RAW), leases_by_interface (bargauge), service_running (stat)
     2. dnsmasq lease details — gated has_dnsmasq_details: lease_info table
   Kea:
@@ -32,22 +32,22 @@ from tabs import log_events
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    # Gate each backend row on PRESENCE, not lease count. A `leases_total > 0` filter conflates
-    # "backend absent" with "backend up but idle": a running-but-idle backend emits leases_total=0
+    # Gate each backend row on PRESENCE, not lease count. A `leases > 0` filter conflates
+    # "backend absent" with "backend up but idle": a running-but-idle backend emits leases=0
     # and its row would vanish — hiding the very service-health stat meant to answer "is it up?"
     # (#114). label_values(metric, __name__) is non-empty whenever the series exists, regardless of
     # value, so the row shows for a live backend even at 0 leases (or when the service is stopped).
     # dnsmasq/kea expose service_running; the ISC v4/v6 collectors emit nothing when their plugin is
-    # absent (Present-gated, #87), so their always-emitted leases_total is a valid presence signal.
+    # absent (Present-gated, #87), so their always-emitted leases is a valid presence signal.
     b.sentinel("has_dnsmasq", metric="opnsense_dnsmasq_service_running")
     b.sentinel("has_dnsmasq_details", metric="opnsense_dnsmasq_lease_info")
     b.sentinel("has_kea", metric="opnsense_kea_service_running")
     b.sentinel("has_kea4_details", metric="opnsense_kea_dhcp4_lease_info")
     b.sentinel("has_kea6_details", metric="opnsense_kea_dhcp6_lease_info")
     b.sentinel("has_kea_pd_pools", metric="opnsense_kea_dhcp6_pd_pool_size")
-    b.sentinel("has_dhcpv4_isc", metric="opnsense_dhcpv4_leases_total")
+    b.sentinel("has_dhcpv4_isc", metric="opnsense_dhcpv4_leases")
     b.sentinel("has_dhcpv4_details", metric="opnsense_dhcpv4_lease_info")
-    b.sentinel("has_dhcpv6_isc", metric="opnsense_dhcpv6_leases_total")
+    b.sentinel("has_dhcpv6_isc", metric="opnsense_dhcpv6_leases")
     b.sentinel("has_dhcpv6_details", metric="opnsense_dhcpv6_lease_info")
 
     # ================================================================
@@ -55,19 +55,19 @@ def build(b: Builder):
     # ================================================================
     dnsmasq_total = b.stat(
         "Dnsmasq Leases",
-        sel("opnsense_dnsmasq_leases_total"),
+        sel("opnsense_dnsmasq_leases"),
         unit="short", w=4, h=4,
         desc="Total DHCP leases currently tracked by dnsmasq (instantaneous count).",
     )
     dnsmasq_reserved = b.stat(
         "Reserved (Static)",
-        sel("opnsense_dnsmasq_leases_reserved_total"),
+        sel("opnsense_dnsmasq_leases_reserved"),
         unit="short", w=4, h=4,
         desc="Static/reserved DHCP leases (instantaneous count).",
     )
     dnsmasq_dynamic = b.stat(
         "Dynamic",
-        sel("opnsense_dnsmasq_leases_dynamic_total"),
+        sel("opnsense_dnsmasq_leases_dynamic"),
         unit="short", w=4, h=4,
         desc="Dynamic DHCP leases (instantaneous count).",
     )
@@ -136,19 +136,19 @@ def build(b: Builder):
     # ================================================================
     kea4_total = b.stat(
         "Kea DHCPv4 Leases",
-        sel("opnsense_kea_dhcp4_leases_total"),
+        sel("opnsense_kea_dhcp4_leases"),
         unit="short", w=4, h=4,
         desc="Total Kea DHCPv4 leases (instantaneous count).",
     )
     kea4_reserved = b.stat(
         "Kea DHCPv4 Reserved",
-        sel("opnsense_kea_dhcp4_leases_reserved_total"),
+        sel("opnsense_kea_dhcp4_leases_reserved"),
         unit="short", w=4, h=4,
         desc="Reserved (static) Kea DHCPv4 leases.",
     )
     kea4_dynamic = b.stat(
         "Kea DHCPv4 Dynamic",
-        sel("opnsense_kea_dhcp4_leases_dynamic_total"),
+        sel("opnsense_kea_dhcp4_leases_dynamic"),
         unit="short", w=4, h=4,
         desc="Dynamic Kea DHCPv4 leases.",
     )
@@ -160,19 +160,19 @@ def build(b: Builder):
     )
     kea6_total = b.stat(
         "Kea DHCPv6 Leases",
-        sel("opnsense_kea_dhcp6_leases_total"),
+        sel("opnsense_kea_dhcp6_leases"),
         unit="short", w=4, h=4,
         desc="Total Kea DHCPv6 leases (instantaneous count).",
     )
     kea6_reserved = b.stat(
         "Kea DHCPv6 Reserved",
-        sel("opnsense_kea_dhcp6_leases_reserved_total"),
+        sel("opnsense_kea_dhcp6_leases_reserved"),
         unit="short", w=4, h=4,
         desc="Reserved (static) Kea DHCPv6 leases.",
     )
     kea6_dynamic = b.stat(
         "Kea DHCPv6 Dynamic",
-        sel("opnsense_kea_dhcp6_leases_dynamic_total"),
+        sel("opnsense_kea_dhcp6_leases_dynamic"),
         unit="short", w=4, h=4,
         desc="Dynamic Kea DHCPv6 leases.",
     )
@@ -386,19 +386,19 @@ def build(b: Builder):
     # ================================================================
     dhcpv4_total = b.stat(
         "ISC DHCPv4 Leases",
-        sel("opnsense_dhcpv4_leases_total"),
+        sel("opnsense_dhcpv4_leases"),
         unit="short", w=4, h=4,
         desc="Total ISC DHCPv4 leases (instantaneous count).",
     )
     dhcpv4_reserved = b.stat(
         "ISC DHCPv4 Reserved",
-        sel("opnsense_dhcpv4_leases_reserved_total"),
+        sel("opnsense_dhcpv4_leases_reserved"),
         unit="short", w=4, h=4,
         desc="Reserved (static) ISC DHCPv4 leases.",
     )
     dhcpv4_dynamic = b.stat(
         "ISC DHCPv4 Dynamic",
-        sel("opnsense_dhcpv4_leases_dynamic_total"),
+        sel("opnsense_dhcpv4_leases_dynamic"),
         unit="short", w=4, h=4,
         desc="Dynamic ISC DHCPv4 leases.",
     )
@@ -441,19 +441,19 @@ def build(b: Builder):
     # ================================================================
     dhcpv6_total = b.stat(
         "ISC DHCPv6 Leases",
-        sel("opnsense_dhcpv6_leases_total"),
+        sel("opnsense_dhcpv6_leases"),
         unit="short", w=4, h=4,
         desc="Total ISC DHCPv6 leases (instantaneous count).",
     )
     dhcpv6_reserved = b.stat(
         "ISC DHCPv6 Reserved",
-        sel("opnsense_dhcpv6_leases_reserved_total"),
+        sel("opnsense_dhcpv6_leases_reserved"),
         unit="short", w=4, h=4,
         desc="Reserved (static) ISC DHCPv6 leases.",
     )
     dhcpv6_dynamic = b.stat(
         "ISC DHCPv6 Dynamic",
-        sel("opnsense_dhcpv6_leases_dynamic_total"),
+        sel("opnsense_dhcpv6_leases_dynamic"),
         unit="short", w=4, h=4,
         desc="Dynamic ISC DHCPv6 leases.",
     )
@@ -465,9 +465,9 @@ def build(b: Builder):
     )
     dhcpv6_pd_total = b.stat(
         "PD Prefixes Total",
-        sel("opnsense_dhcpv6_pd_prefixes_total"),
+        sel("opnsense_dhcpv6_pd_prefixes"),
         unit="short", w=4, h=4,
-        desc="Total number of delegated prefixes (pd_prefixes_total — instantaneous count).",
+        desc="Total number of delegated prefixes (pd_prefixes — instantaneous count).",
     )
     dhcpv6_pd_active = b.stat(
         "PD Prefixes Active",

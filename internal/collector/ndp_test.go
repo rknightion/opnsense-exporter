@@ -94,12 +94,12 @@ func TestNDPCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Details off (default) + empty table: only the aggregate (entries_total=0) is emitted.
+	// Details off (default) + empty table: only the aggregate (table_entries=0) is emitted.
 	if len(metrics) != 1 {
 		t.Fatalf("expected 1 metric (aggregate only), got %d", len(metrics))
 	}
-	if !hasFqName(metrics[0], "opnsense_ndp_entries_total") || getMetricValue(metrics[0]) != 0 {
-		t.Errorf("expected opnsense_ndp_entries_total=0, got %s=%v",
+	if !hasFqName(metrics[0], "opnsense_ndp_table_entries") || getMetricValue(metrics[0]) != 0 {
+		t.Errorf("expected opnsense_ndp_table_entries=0, got %s=%v",
 			metrics[0].Desc().String(), getMetricValue(metrics[0]))
 	}
 }
@@ -117,7 +117,7 @@ func TestNDPCollector_DetailsGating(t *testing.T) {
 	off := &ndpCollector{subsystem: NDPSubsystem}
 	off.Register(namespace, "test", promslog.NewNopLogger())
 	m := collectMetrics(t, off, client)
-	if len(m) != 1 || !hasFqName(m[0], "opnsense_ndp_entries_total") {
+	if len(m) != 1 || !hasFqName(m[0], "opnsense_ndp_table_entries") {
 		t.Errorf("details-off should emit only the aggregate, got %d metrics", len(m))
 	}
 }

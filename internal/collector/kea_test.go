@@ -114,24 +114,24 @@ func TestKeaCollector_Update(t *testing.T) {
 		labels := getMetricLabels(m)
 		value := getMetricValue(m)
 
-		if strings.Contains(desc, "dhcp4_leases_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_kea_dhcp4_leases") && labels["opnsense_instance"] == "test" {
 			if value != 2 {
-				t.Errorf("expected dhcp4_leases_total=2, got %v", value)
+				t.Errorf("expected dhcp4_leases=2, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "dhcp4_leases_reserved_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_kea_dhcp4_leases_reserved") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
-				t.Errorf("expected dhcp4_leases_reserved_total=1, got %v", value)
+				t.Errorf("expected dhcp4_leases_reserved=1, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "dhcp4_leases_dynamic_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_kea_dhcp4_leases_dynamic") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
-				t.Errorf("expected dhcp4_leases_dynamic_total=1, got %v", value)
+				t.Errorf("expected dhcp4_leases_dynamic=1, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "dhcp6_leases_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_kea_dhcp6_leases") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
-				t.Errorf("expected dhcp6_leases_total=1, got %v", value)
+				t.Errorf("expected dhcp6_leases=1, got %v", value)
 			}
 		}
 		if strings.Contains(desc, "dhcp4_leases_by_state") {

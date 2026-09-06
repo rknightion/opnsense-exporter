@@ -54,7 +54,7 @@ func TestSnapshotsCollector_ZFS(t *testing.T) {
 			if v := getMetricValue(m); v != 1 {
 				t.Errorf("expected supported=1, got %v", v)
 			}
-		case hasFqName(m, "opnsense_snapshots_total"):
+		case hasFqName(m, "opnsense_snapshots_boot_environments"):
 			if v := getMetricValue(m); v != 2 {
 				t.Errorf("expected total=2, got %v", v)
 			}
@@ -98,7 +98,7 @@ func TestSnapshotsCollector_UFS(t *testing.T) {
 			if v := getMetricValue(m); v != 0 {
 				t.Errorf("expected supported=0 on UFS, got %v", v)
 			}
-		case hasFqName(m, "opnsense_snapshots_total"):
+		case hasFqName(m, "opnsense_snapshots_boot_environments"):
 			if v := getMetricValue(m); v != 0 {
 				t.Errorf("expected total=0 on UFS, got %v", v)
 			}

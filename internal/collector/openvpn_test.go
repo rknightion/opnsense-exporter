@@ -118,12 +118,12 @@ func TestOpenVPNCollector_Update_DefaultNoSessionDetails(t *testing.T) {
 		t.Errorf("expected no per-session metrics by default, got %d", len(got))
 	}
 
-	totals := metricsByDesc(metrics, "opnsense_openvpn_sessions_total")
+	totals := metricsByDesc(metrics, "opnsense_openvpn_current_sessions")
 	if len(totals) != 1 {
-		t.Fatalf("expected 1 sessions_total metric, got %d", len(totals))
+		t.Fatalf("expected 1 current_sessions metric, got %d", len(totals))
 	}
 	if v := getMetricValue(totals[0]); v != 3 {
-		t.Errorf("expected sessions_total = 3, got %v", v)
+		t.Errorf("expected current_sessions = 3, got %v", v)
 	}
 
 	byInstance := metricsByDesc(metrics, "opnsense_openvpn_sessions_by_instance")
@@ -184,7 +184,7 @@ func TestOpenVPNCollector_Update_DefaultNoSessionDetails(t *testing.T) {
 		t.Errorf("expected no per-session connected-since metrics by default, got %d", len(got))
 	}
 
-	// 2 instances + 1 sessions_total + 2 sessions_by_instance
+	// 2 instances + 1 current_sessions + 2 sessions_by_instance
 	// + 2 instance_received_bytes_total + 2 instance_transmitted_bytes_total = 9
 	if expectedCount := 9; len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
@@ -236,8 +236,8 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 	}
 
 	// Aggregates still emitted alongside details.
-	if got := metricsByDesc(metrics, "opnsense_openvpn_sessions_total"); len(got) != 1 {
-		t.Errorf("expected 1 sessions_total metric, got %d", len(got))
+	if got := metricsByDesc(metrics, "opnsense_openvpn_current_sessions"); len(got) != 1 {
+		t.Errorf("expected 1 current_sessions metric, got %d", len(got))
 	}
 
 	// Per-session traffic counters + connected-since gauge, one series per
@@ -325,7 +325,7 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 		t.Errorf("expected virtual_ipv6_address='fd00:0:0::3' for dual-stack session cert-user2 on connected-since series, got %q", csV6ByUser["cert-user2"])
 	}
 
-	// 2 instances + 1 sessions_total + 2 sessions_by_instance + 3 sessions
+	// 2 instances + 1 current_sessions + 2 sessions_by_instance + 3 sessions
 	// + 2 instance_received_bytes_total + 2 instance_transmitted_bytes_total
 	// + 3 session_received_bytes_total + 3 session_transmitted_bytes_total
 	// + 3 session_connected_since_timestamp_seconds = 21
@@ -464,23 +464,23 @@ func TestOpenVPNCollector_Update_NoSessions(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// sessions_total must be emitted even when there are zero sessions.
-	totals := metricsByDesc(metrics, "opnsense_openvpn_sessions_total")
+	// current_sessions must be emitted even when there are zero sessions.
+	totals := metricsByDesc(metrics, "opnsense_openvpn_current_sessions")
 	if len(totals) != 1 {
-		t.Fatalf("expected 1 sessions_total metric, got %d", len(totals))
+		t.Fatalf("expected 1 current_sessions metric, got %d", len(totals))
 	}
 	if v := getMetricValue(totals[0]); v != 0 {
-		t.Errorf("expected sessions_total = 0, got %v", v)
+		t.Errorf("expected current_sessions = 0, got %v", v)
 	}
 
-	// 2 instances + 1 sessions_total = 3
+	// 2 instances + 1 current_sessions = 3
 	if expectedCount := 3; len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 }
 
 // TestOpenVPNCollector_Update_ExcludesNonClientRows guards #88: idle running-
-// instance rows and enabled-but-stopped stub rows must not inflate sessions_total,
+// instance rows and enabled-but-stopped stub rows must not inflate current_sessions,
 // sessions_by_instance, or the per-session detail metric.
 func TestOpenVPNCollector_Update_ExcludesNonClientRows(t *testing.T) {
 	sessions := `{
@@ -500,12 +500,12 @@ func TestOpenVPNCollector_Update_ExcludesNonClientRows(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	totals := metricsByDesc(metrics, "opnsense_openvpn_sessions_total")
+	totals := metricsByDesc(metrics, "opnsense_openvpn_current_sessions")
 	if len(totals) != 1 {
-		t.Fatalf("expected 1 sessions_total metric, got %d", len(totals))
+		t.Fatalf("expected 1 current_sessions metric, got %d", len(totals))
 	}
 	if v := getMetricValue(totals[0]); v != 1 {
-		t.Errorf("expected sessions_total = 1 (only the client row), got %v", v)
+		t.Errorf("expected current_sessions = 1 (only the client row), got %v", v)
 	}
 
 	byInstance := metricsByDesc(metrics, "opnsense_openvpn_sessions_by_instance")

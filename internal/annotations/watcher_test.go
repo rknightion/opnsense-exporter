@@ -139,7 +139,7 @@ func TestWatcherWritesAnEventAtTheMetricsOwnInstant(t *testing.T) {
 	changed := now.Add(-90 * time.Minute).Truncate(time.Second)
 
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(changed.Unix()),
 	})
@@ -166,7 +166,7 @@ func TestWatcherDoesNotRewriteTheSameEvent(t *testing.T) {
 	f := newFakeGrafana(t)
 	now := time.Now()
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(now.Add(-time.Hour).Unix()),
 	})
@@ -204,7 +204,7 @@ func TestWatcherSkipsEventsFurtherAheadThanTheClockTolerance(t *testing.T) {
 	f := newFakeGrafana(t)
 	now := time.Now()
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(now.Add(48 * time.Hour).Unix()),
 	})
@@ -252,7 +252,7 @@ func TestWatcherSeedsSilentlyWhenReconciliationFails(t *testing.T) {
 	w := newTestWatcher(t, f, now,
 		series{name: BootMetric, labels: map[string]string{instanceLabel: "fw-a"},
 			value: float64(now.Add(-time.Hour).Unix())},
-		series{name: "opnsense_system_config_last_change", labels: map[string]string{instanceLabel: "fw-a"},
+		series{name: "opnsense_system_config_last_change_timestamp_seconds", labels: map[string]string{instanceLabel: "fw-a"},
 			value: float64(now.Add(-2 * time.Hour).Unix())},
 	)
 	w.reconcile(context.Background())
@@ -265,7 +265,7 @@ func TestWatcherSeedsSilentlyWhenReconciliationFails(t *testing.T) {
 	// The next real change still gets written: seeding suppresses the backlog, not
 	// the feature.
 	registry := fixtureRegistry(t, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(now.Add(-5 * time.Minute).Unix()),
 	})
@@ -283,7 +283,7 @@ func TestWatcherRetriesAFailedWrite(t *testing.T) {
 	now := time.Now()
 
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(now.Add(-time.Hour).Unix()),
 	})
@@ -370,9 +370,9 @@ func TestWatcherKeepsAppliancesApart(t *testing.T) {
 	// Two firewalls whose configs changed at the SAME instant. Both must be
 	// annotated: keying without the instance would silently drop the second.
 	w := newTestWatcher(t, f, now,
-		series{name: "opnsense_system_config_last_change",
+		series{name: "opnsense_system_config_last_change_timestamp_seconds",
 			labels: map[string]string{instanceLabel: "fw-a"}, value: float64(at.Unix())},
-		series{name: "opnsense_system_config_last_change",
+		series{name: "opnsense_system_config_last_change_timestamp_seconds",
 			labels: map[string]string{instanceLabel: "fw-b"}, value: float64(at.Unix())},
 	)
 	w.reconcile(context.Background())
@@ -757,7 +757,7 @@ func TestWatcherAddsConfiguredExtraTags(t *testing.T) {
 	f := newFakeGrafana(t)
 	now := time.Now()
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(now.Add(-time.Hour).Unix()),
 	})
@@ -855,7 +855,7 @@ func TestWatcherPrunesTheDedupeSet(t *testing.T) {
 	at := now.Add(-2 * time.Hour).Truncate(time.Second)
 
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(at.Unix()),
 	})
@@ -927,7 +927,7 @@ func TestWatcherKindsListIsExclusive(t *testing.T) {
 	f := newFakeGrafana(t)
 	now := time.Now()
 	w := newTestWatcher(t, f, now, series{
-		name:   "opnsense_system_config_last_change",
+		name:   "opnsense_system_config_last_change_timestamp_seconds",
 		labels: map[string]string{instanceLabel: "fw-a"},
 		value:  float64(now.Add(-time.Hour).Unix()),
 	})

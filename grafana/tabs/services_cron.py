@@ -25,7 +25,7 @@ from builder import Builder, sel, epoch_ms, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_dyndns", metric="opnsense_dyndns_accounts_total")
+    b.sentinel("has_dyndns", metric="opnsense_dyndns_accounts")
 
     # =====================================================================
     # Row 1: Services
@@ -59,7 +59,7 @@ def build(b: Builder):
     # Running total — instantaneous gauge (RAW per AUTHORING.md)
     svc_running = b.stat(
         "Services Running",
-        sel("opnsense_services_running_total"),
+        sel("opnsense_services_running"),
         unit="short",
         w=4, h=4,
         thresholds=[{"color": "green", "value": None}],
@@ -70,7 +70,7 @@ def build(b: Builder):
     # Stopped total — instantaneous gauge, alert if > 0
     svc_stopped = b.stat(
         "Services Stopped",
-        sel("opnsense_services_stopped_total"),
+        sel("opnsense_services_stopped"),
         unit="short",
         w=4, h=4,
         thresholds=[
@@ -166,7 +166,7 @@ def build(b: Builder):
     # Total accounts stat (instantaneous — RAW per AUTHORING.md)
     dyndns_total = b.stat(
         "DynDNS Accounts",
-        sel("opnsense_dyndns_accounts_total"),
+        sel("opnsense_dyndns_accounts"),
         unit="short",
         w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],

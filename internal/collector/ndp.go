@@ -33,8 +33,8 @@ func (c *ndpCollector) Register(namespace, instance string, log *slog.Logger) {
 
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.entriesTotal = buildPrometheusDesc(c.subsystem, "entries_total",
-		"Total number of NDP table entries (low-cardinality aggregate, always emitted)",
+	c.entriesTotal = buildPrometheusDesc(c.subsystem, "table_entries",
+		"Current number of NDP table entries (low-cardinality aggregate, always emitted)",
 		nil,
 	)
 	c.entries = buildPrometheusDesc(c.subsystem, "entries",

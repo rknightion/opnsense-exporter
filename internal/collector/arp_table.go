@@ -34,8 +34,8 @@ func (c *arpTableCollector) Register(namespace, instance string, log *slog.Logge
 
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.entriesTotal = buildPrometheusDesc(c.subsystem, "entries_total",
-		"Total number of ARP table entries (low-cardinality aggregate, always emitted)",
+	c.entriesTotal = buildPrometheusDesc(c.subsystem, "table_entries",
+		"Current number of ARP table entries (low-cardinality aggregate, always emitted)",
 		nil,
 	)
 	c.entries = buildPrometheusDesc(c.subsystem, "entries",

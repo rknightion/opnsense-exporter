@@ -71,8 +71,8 @@ func TestNetbirdCollector_Update_Default(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 
 	metrics := collectMetrics(t, c, client)
-	// management_connected + signal_connected + relays_total + relays_available +
-	// peers_total + peers_connected + service_running + info + daemon_state = 9
+	// management_connected + signal_connected + relays + relays_available +
+	// peers + peers_connected + service_running + info + daemon_state = 9
 	if len(metrics) != 9 {
 		t.Fatalf("expected 9 metrics without details, got %d", len(metrics))
 	}

@@ -103,7 +103,7 @@ either way. See [Compatibility](compatibility.md#version-dependent-data-availabi
 Leave the high-cardinality detail flags (`--exporter.enable-*-details`) off unless you need
 per-item data - they emit one series per DHCP lease, firewall rule or VPN session and can add
 thousands of series on a busy network. `--exporter.series-budget` gives cardinality a declared
-ceiling, checked against `opnsense_exporter_series_total`. See
+ceiling, checked against `opnsense_exporter_series`. See
 [Configuration: high-cardinality detail options](configuration.md#high-cardinality-detail-options).
 
 ## Flow, syslog and Zenarmor

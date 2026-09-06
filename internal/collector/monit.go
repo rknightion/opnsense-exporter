@@ -58,8 +58,8 @@ func (c *monitCollector) Register(namespace, instanceLabel string, log *slog.Log
 	c.statusOK = buildPrometheusDesc(c.subsystem, "status_ok",
 		"Whether the monit httpd was reachable and returned a valid status (1 = ok, 0 = failed/unreachable)", nil)
 
-	c.checksTotal = buildPrometheusDesc(c.subsystem, "checks_total",
-		"Total number of service checks configured in monit", nil)
+	c.checksTotal = buildPrometheusDesc(c.subsystem, "checks",
+		"Current number of service checks configured in monit", nil)
 
 	c.checkStatus = buildPrometheusDesc(c.subsystem, "check_status",
 		"Whether a monit check reports no errors (1 = status field is 0, 0 = error)",

@@ -3,7 +3,6 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/prometheus/common/promslog"
@@ -90,23 +89,22 @@ func TestDhcpv4Collector_Update_NoDetails(t *testing.T) {
 
 	// Verify metric values
 	for _, m := range metrics {
-		desc := m.Desc().String()
 		labels := getMetricLabels(m)
 		value := getMetricValue(m)
 
-		if strings.Contains(desc, "leases_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_dhcpv4_leases") && labels["opnsense_instance"] == "test" {
 			if value != 3 {
-				t.Errorf("expected leases_total=3, got %v", value)
+				t.Errorf("expected leases=3, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "leases_reserved_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_dhcpv4_leases_reserved") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
-				t.Errorf("expected leases_reserved_total=1, got %v", value)
+				t.Errorf("expected leases_reserved=1, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "leases_dynamic_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_dhcpv4_leases_dynamic") && labels["opnsense_instance"] == "test" {
 			if value != 2 {
-				t.Errorf("expected leases_dynamic_total=2, got %v", value)
+				t.Errorf("expected leases_dynamic=2, got %v", value)
 			}
 		}
 	}
@@ -283,7 +281,7 @@ func TestDhcpv4Collector_Update_ArrayQuirks(t *testing.T) {
 
 // TestDhcpv4Collector_Update_PluginAbsent guards #87: when the ISC DHCPv4 plugin
 // is absent (endpoint 404s) the collector must stay completely silent, not emit
-// leases_total=0 which is indistinguishable from a present-but-empty server.
+// leases=0 which is indistinguishable from a present-but-empty server.
 func TestDhcpv4Collector_Update_PluginAbsent(t *testing.T) {
 	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
 	server := httptest.NewServer(mux)

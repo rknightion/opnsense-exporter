@@ -39,7 +39,7 @@ func TestBPFCollector_Update_Normal(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Expected metrics:
-	// listeners_total                    = 1
+	// listeners                    = 1
 	// per listener (2 listeners × 5):
 	//   received_packets_total           = 2
 	//   dropped_packets_total            = 2
@@ -57,13 +57,12 @@ func TestBPFCollector_Update_Normal(t *testing.T) {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 	}
 
-	// Verify listeners_total == 2 (raw entry count)
+	// Verify listeners == 2 (raw entry count)
 	for _, m := range metrics {
-		desc := m.Desc().String()
 		val := getMetricValue(m)
-		if strings.Contains(desc, "bpf_listeners_total") {
+		if hasFqName(m, "opnsense_bpf_listeners") {
 			if val != 2 {
-				t.Errorf("listeners_total: expected 2, got %v", val)
+				t.Errorf("listeners: expected 2, got %v", val)
 			}
 		}
 	}
@@ -84,7 +83,7 @@ func TestBPFCollector_Update_Normal(t *testing.T) {
 
 func TestBPFCollector_Update_Empty(t *testing.T) {
 	// Core endpoint always responds; empty means zero BPF listeners.
-	// The collector must still emit listeners_total=0.
+	// The collector must still emit listeners=0.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/diagnostics/interface/get_bpf_statistics", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(bpfCollectorEmptyFixture))
@@ -98,14 +97,14 @@ func TestBPFCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Only listeners_total should be emitted (value 0)
+	// Only listeners should be emitted (value 0)
 	if len(metrics) != 1 {
-		t.Errorf("expected 1 metric (listeners_total), got %d", len(metrics))
+		t.Errorf("expected 1 metric (listeners), got %d", len(metrics))
 	}
 	if len(metrics) > 0 {
 		val := getMetricValue(metrics[0])
 		if val != 0 {
-			t.Errorf("listeners_total: expected 0, got %v", val)
+			t.Errorf("listeners: expected 0, got %v", val)
 		}
 	}
 }

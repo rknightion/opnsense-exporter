@@ -409,7 +409,7 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		"Total DNS queries over Unbound's rolling query-stats window. Gauge, not a counter, for the same reason as qstats_queries_7d. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on.",
 		nil,
 	)
-	c.qstatsStartTime = buildPrometheusDesc(c.subsystem, "qstats_start_time_seconds",
+	c.qstatsStartTime = buildPrometheusDesc(c.subsystem, "qstats_start_time_timestamp_seconds",
 		"Unix timestamp the current query-stats rolling window starts from. A jump forward beyond the expected daily roll-off signals the underlying qstats database was reset. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on.",
 		nil,
 	)

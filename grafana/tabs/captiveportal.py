@@ -3,18 +3,18 @@ Captive Portal tab — Captive Portal session + voucher metrics
 (opnsense_captiveportal_*).
 
 Plugin-gated: tab hidden unless captive portal reports at least one zone
-(query_result(opnsense_captiveportal_zones_total > 0)).
+(query_result(opnsense_captiveportal_zones > 0)).
 
 All metrics are gauges (instantaneous counts — never rate()).
   service_running                    — service up/down
-  zones_total                        — number of configured zones
-  sessions_total                     — aggregate session count across all zones
+  zones                              — number of configured zones
+  sessions                           — aggregate session count across all zones
   zone_sessions                      — per-zone session count (labels: zone_id, zone_description)
   vouchers                           — voucher count per (provider, group, state) (#207)
-  voucher_group_next_expiry_seconds  — earliest hard-expiry epoch among a group's
-                                        unused/valid vouchers (#207; only emitted for
-                                        groups where at least one voucher has a hard
-                                        expiry cutoff set — most don't)
+  voucher_group_next_expiry_timestamp_seconds — earliest hard-expiry epoch among a group's
+                                                 unused/valid vouchers (#207; only emitted for
+                                                 groups where at least one voucher has a hard
+                                                 expiry cutoff set — most don't)
 
 Vouchers row is separately gated (has_captiveportal_vouchers): a box can have the
 captive portal module configured with zero voucher-type auth servers, in which case
@@ -28,7 +28,7 @@ from builder import Builder, sel, RUNSTOP
 
 
 def build(b: Builder):
-    # Existence, not `opnsense_captiveportal_zones_total > 0` (#414 / #114).
+    # Existence, not `opnsense_captiveportal_zones > 0` (#414 / #114).
     #
     # THE RULE: use existence when the series only appears if the feature is
     # deployed; use a value test only when the series is emitted unconditionally.
@@ -40,9 +40,9 @@ def build(b: Builder):
     # it — exactly the #114 shape that hid a live-but-idle DHCP backend along with
     # the health stat meant to answer "is it up?". A Captive Portal tab reading
     # "0 zones" on a box with the plugin installed is honest; hiding it misreports
-    # what is deployed. Contrast opnsense_carp_vips_total in carp.py, which every
+    # what is deployed. Contrast opnsense_carp_vips in carp.py, which every
     # box emits and which therefore still needs the value test.
-    b.sentinel("has_captiveportal", metric="opnsense_captiveportal_zones_total")
+    b.sentinel("has_captiveportal", metric="opnsense_captiveportal_zones")
     b.sentinel("has_captiveportal_vouchers", metric="opnsense_captiveportal_vouchers")
 
     # ------------------------------------------------------------------ #
@@ -58,13 +58,13 @@ def build(b: Builder):
     )
     zones_total = b.stat(
         "Zones Configured",
-        sel("opnsense_captiveportal_zones_total"),
+        sel("opnsense_captiveportal_zones"),
         unit="short", w=4, h=4,
         desc="Total number of configured captive portal zones.",
     )
     sessions_total = b.stat(
         "Total Sessions",
-        sel("opnsense_captiveportal_sessions_total"),
+        sel("opnsense_captiveportal_sessions"),
         unit="short", w=4, h=4,
         thresholds=[
             {"color": "green", "value": None},
@@ -152,7 +152,7 @@ def build(b: Builder):
     )
     voucher_expiry_table = b.table(
         "Voucher Group Next Hard Expiry",
-        [f"({sel('opnsense_captiveportal_voucher_group_next_expiry_seconds')} - time()) / 3600"],
+        [f"({sel('opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds')} - time()) / 3600"],
         w=24, h=8,
         excludes=["__name__", "job", "instance"],
         renames={

@@ -55,8 +55,8 @@ func (c *smartCollector) Register(namespace, instanceLabel string, log *slog.Log
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.devicesTotal = buildPrometheusDesc(c.subsystem, "devices_total",
-		"Number of SMART-monitored devices enumerated by the os-smart plugin",
+	c.devicesTotal = buildPrometheusDesc(c.subsystem, "devices",
+		"Current number of SMART-monitored devices enumerated by the os-smart plugin",
 		nil,
 	)
 	c.deviceHealth = buildPrometheusDesc(c.subsystem, "device_health",
@@ -165,7 +165,7 @@ func (c *smartCollector) Register(namespace, instanceLabel string, log *slog.Log
 	// #615: the per-device info path used to fail at Debug level and nothing
 	// else, so a decode bug that cost EVERY per-device SMART metric on the one
 	// box with a real disk read as perfectly healthy — collector_success=1,
-	// devices_total=1, and not another series in the family. This gauge is the
+	// devices=1, and not another series in the family. This gauge is the
 	// thing that would have caught it on day one.
 	//
 	// reason="failed" = the device is reported by name only, nothing decoded.
@@ -206,7 +206,7 @@ func (c *smartCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		return err
 	}
 
-	// os-smart absent → Present=false; stay silent so devices_total=0 (plugin
+	// os-smart absent → Present=false; stay silent so devices=0 (plugin
 	// absent) is not confused with a box that genuinely has no disks (#87).
 	if !data.Present {
 		return nil

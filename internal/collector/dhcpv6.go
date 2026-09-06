@@ -39,20 +39,20 @@ func (c *dhcpv6Collector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.leasesTotal = buildPrometheusDesc(c.subsystem, "leases_total",
-		"Total number of ISC DHCPv6 leases",
+	c.leasesTotal = buildPrometheusDesc(c.subsystem, "leases",
+		"Current number of ISC DHCPv6 leases",
 		nil,
 	)
 	c.leasesByIface = buildPrometheusDesc(c.subsystem, "leases_by_interface",
 		"Number of ISC DHCPv6 leases per interface",
 		[]string{"interface"},
 	)
-	c.reservedTotal = buildPrometheusDesc(c.subsystem, "leases_reserved_total",
-		"Total number of reserved (static) ISC DHCPv6 leases",
+	c.reservedTotal = buildPrometheusDesc(c.subsystem, "leases_reserved",
+		"Current number of reserved (static) ISC DHCPv6 leases",
 		nil,
 	)
-	c.dynamicTotal = buildPrometheusDesc(c.subsystem, "leases_dynamic_total",
-		"Total number of dynamic ISC DHCPv6 leases",
+	c.dynamicTotal = buildPrometheusDesc(c.subsystem, "leases_dynamic",
+		"Current number of dynamic ISC DHCPv6 leases",
 		nil,
 	)
 	c.leaseInfo = buildPrometheusDesc(c.subsystem, "lease_info",
@@ -62,8 +62,8 @@ func (c *dhcpv6Collector) Register(namespace, instanceLabel string, log *slog.Lo
 			"only `device` joins against the interfaces metrics (the #544 item-5 pattern).",
 		[]string{"address", "mac", "duid", "if_descr", "state", "status", "type", "device"},
 	)
-	c.pdTotal = buildPrometheusDesc(c.subsystem, "pd_prefixes_total",
-		"Total number of ISC DHCPv6 prefix delegation entries",
+	c.pdTotal = buildPrometheusDesc(c.subsystem, "pd_prefixes",
+		"Current number of ISC DHCPv6 prefix delegation entries",
 		nil,
 	)
 	c.pdActive = buildPrometheusDesc(c.subsystem, "pd_prefixes_active",

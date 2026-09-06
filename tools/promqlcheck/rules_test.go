@@ -84,7 +84,7 @@ func folderFixture() []byte {
 
 func TestValidateRuleManifestValidatesAlertRuleAndSkipsThresholdNode(t *testing.T) {
 	count, err := validateRuleManifest(alertRuleFixture(
-		`(opnsense_certificate_valid_to_seconds - time()) / 86400`,
+		`(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400`,
 	))
 	if err != nil {
 		t.Fatalf("validateRuleManifest() error = %v", err)

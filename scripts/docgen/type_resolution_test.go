@@ -21,12 +21,12 @@ func TestMetricTypesFromEmission(t *testing.T) {
 		}
 	}
 
-	// _total-suffixed metrics that are actually emitted as GaugeValue (instantaneous counts).
-	// Previously misdocumented as Counter by the suffix heuristic.
+	// Current-count metrics that are emitted as GaugeValue (instantaneous counts).
+	// These names used to carry _total and are now covered by the v5.0 rename ledger.
 	gauges := []string{
-		"opnsense_dhcpv4_leases_total",
-		"opnsense_dnsmasq_leases_total",
-		"opnsense_services_running_total",
+		"opnsense_dhcpv4_leases",
+		"opnsense_dnsmasq_leases",
+		"opnsense_services_running",
 	}
 	for _, name := range gauges {
 		if got[name] != "Gauge" {

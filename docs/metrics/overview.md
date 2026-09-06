@@ -152,7 +152,7 @@ opnsense_system_memory_total_bytes{opnsense_instance="my-firewall"}
 Certificates expiring within 30 days:
 
 ```promql
-(opnsense_certificate_valid_to_seconds - time()) / 86400 < 30
+(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400 < 30
 ```
 
 ### Service availability

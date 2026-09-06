@@ -36,15 +36,12 @@ bug fix, and it is expected to stay green. That matters for how a future failure
 should be read: this file going red means a genuinely new violation, not a backlog
 finally becoming visible.
 
-## The naming trap — do NOT "fix" it
+## The series gauge coverage pin
 
-`opnsense_exporter_series_total` is a **Gauge** whose name ends in `_total`. It
-counts the series on the collector registry right now; it can and does go down.
-The convention this file enforces runs one way only — a Counter must end `_total` —
-and says nothing about what may end `_total`, so the gauge is correct as named and
-correctly ignored here. Renaming it would break every dashboard and alert that reads
-it to satisfy a rule that does not exist. `test_the_series_total_gauge_is_not_a_false_positive`
-pins that reading so nobody has to rediscover it.
+`opnsense_exporter_series` is a **Gauge** counting the series on the collector
+registry right now; it can and does go down. Its name deliberately has no `_total`
+suffix, and the coverage pin keeps the budget signal visible in both catalogues and
+dashboards.
 """
 import glob
 import re
@@ -180,20 +177,17 @@ class CounterMetricsEndInTotalTest(unittest.TestCase):
             "in the benign untyped-Desc direction. Precedence would silently pick "
             f"metrics.md; resolve it in docgen instead: {unexpected}")
 
-    def test_the_series_total_gauge_is_not_a_false_positive(self):
-        """`opnsense_exporter_series_total` is a Gauge ending in `_total` and must
-        stay that way. Pinned so a future reader does not "fix" the name to satisfy a
-        symmetry this rule does not have — the convention is Counter => `_total`, not
-        `_total` => Counter."""
+    def test_the_series_gauge_is_catalogued_and_referenced(self):
+        """The current series-count Gauge must remain catalogued and panelled."""
         catalogue = load_catalogue_types()
-        self.assertEqual("Gauge", catalogue.get("opnsense_exporter_series_total"),
-                         "opnsense_exporter_series_total is a Gauge; it reports the "
+        self.assertEqual("Gauge", catalogue.get("opnsense_exporter_series"),
+                         "opnsense_exporter_series is a Gauge; it reports the "
                          "current series count on the collector registry and goes "
                          "down as well as up")
         referenced = referenced_metric_names(DASHBOARD_JSON, DASHBOARD_HEALTH_JSON)
-        self.assertIn("opnsense_exporter_series_total", referenced,
-                      "the trap metric is no longer charted, so this pin no longer "
-                      "guards anything; delete it or repoint it")
+        self.assertIn("opnsense_exporter_series", referenced,
+                      "the series gauge is no longer charted, so this pin no longer "
+                      "guards its catalogue and dashboard coverage")
 
 
 if __name__ == "__main__":

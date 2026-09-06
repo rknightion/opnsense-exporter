@@ -42,8 +42,8 @@ func (c *bpfCollector) Register(namespace, instanceLabel string, log *slog.Logge
 
 	perListenerLabels := []string{"process", "interface"}
 
-	c.listenersTotal = buildPrometheusDesc(c.subsystem, "listeners_total",
-		"Total number of active BPF listeners (raw entry count before aggregation)", nil)
+	c.listenersTotal = buildPrometheusDesc(c.subsystem, "listeners",
+		"Current number of active BPF listeners (raw entry count before aggregation)", nil)
 	c.receivedPackets = buildPrometheusDesc(c.subsystem, "received_packets_total",
 		"Cumulative packets received by BPF listeners for this process/interface pair",
 		perListenerLabels)
@@ -111,7 +111,7 @@ func (c *bpfCollector) Update(_ context.Context, client *opnsense.Client, ch cha
 		return err
 	}
 
-	// Core endpoint — always emit listeners_total even when zero BPF listeners
+	// Core endpoint — always emit listeners even when zero BPF listeners
 	// are active, so the absence of BPF activity is distinguishable from the
 	// metric being absent entirely.
 	ch <- prometheus.MustNewConstMetric(c.listenersTotal, prometheus.GaugeValue,

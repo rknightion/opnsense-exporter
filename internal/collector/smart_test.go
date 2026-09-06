@@ -69,7 +69,7 @@ func TestSMARTCollector_Update_Normal(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Expected metrics:
-	//   devices_total = 1
+	//   devices = 1
 	//   ada0:  health + temperature + power_on_hours = 3
 	//   nvme0: health + temperature + power_on_hours = 3
 	//   bad0:  no output → no health/temp/hours = 0
@@ -80,12 +80,12 @@ func TestSMARTCollector_Update_Normal(t *testing.T) {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
-	// Verify devices_total = 3 (list count, including bad0)
+	// Verify devices = 3 (list count, including bad0)
 	for _, m := range metrics {
-		if strings.Contains(m.Desc().String(), "devices_total") {
+		if hasFqName(m, "opnsense_smart_devices") {
 			val := getMetricValue(m)
 			if val != 3 {
-				t.Errorf("expected devices_total=3, got %v", val)
+				t.Errorf("expected devices=3, got %v", val)
 			}
 		}
 	}
@@ -198,18 +198,18 @@ func TestSMARTCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// devices_total = 0, plus the two always-on device_info_errors series (#615).
+	// devices = 0, plus the two always-on device_info_errors series (#615).
 	if len(metrics) != 3 {
-		t.Errorf("expected 3 metrics (devices_total + 2 info_errors), got %d", len(metrics))
+		t.Errorf("expected 3 metrics (devices + 2 info_errors), got %d", len(metrics))
 	}
 	if getMetricValue(metrics[0]) != 0 {
-		t.Errorf("expected devices_total=0, got %v", getMetricValue(metrics[0]))
+		t.Errorf("expected devices=0, got %v", getMetricValue(metrics[0]))
 	}
 }
 
 func TestSMARTCollector_Update_PartialFields(t *testing.T) {
 	// Drive with only health — no temperature or power_on_hours.
-	// Only devices_total + health should be emitted.
+	// Only devices + health should be emitted.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"devices":["da0"]}`))
@@ -234,7 +234,7 @@ func TestSMARTCollector_Update_PartialFields(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// devices_total + device_health + 2 info_errors = 4 (no temperature, no
+	// devices + device_health + 2 info_errors = 4 (no temperature, no
 	// power_on_hours)
 	if len(metrics) != 4 {
 		t.Errorf("expected 4 metrics, got %d", len(metrics))
@@ -262,7 +262,7 @@ func TestSMARTCollector_Update_PartialFields(t *testing.T) {
 }
 
 // TestSmartCollector_Update_PluginAbsent guards #87: with os-smart absent (list
-// endpoint 404s) the collector must emit nothing rather than devices_total=0.
+// endpoint 404s) the collector must emit nothing rather than devices=0.
 func TestSmartCollector_Update_PluginAbsent(t *testing.T) {
 	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
 	server := httptest.NewServer(mux)
@@ -523,7 +523,7 @@ func TestSMARTCollector_Update_AttributesAndNVMe(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 	metrics := collectMetrics(t, c, client)
 
-	// devices_total(1) + ada0 base(3) + 2 attrs × 4 series(8) + nvme0 base(3) + nvme(6) + info_errors(2) = 23
+	// devices(1) + ada0 base(3) + 2 attrs × 4 series(8) + nvme0 base(3) + nvme(6) + info_errors(2) = 23
 	if expected := 23; len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 	}

@@ -38,7 +38,7 @@ func TestCaptivePortalCollector_Update_Normal(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// zones_total (1) + sessions_total (1) + zone_sessions × 2 (2) + service_running (1) = 5
+	// zones (1) + sessions (1) + zone_sessions × 2 (2) + service_running (1) = 5
 	expected := 5
 	if len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
@@ -51,15 +51,15 @@ func TestCaptivePortalCollector_Update_Normal(t *testing.T) {
 		labels := getMetricLabels(m)
 		val := getMetricValue(m)
 		switch {
-		case strings.Contains(desc, "captiveportal_zones_total"):
+		case hasFqName(m, "opnsense_captiveportal_zones"):
 			foundZonesTotal = true
 			if val != 2 {
-				t.Errorf("zones_total expected 2, got %v", val)
+				t.Errorf("zones expected 2, got %v", val)
 			}
-		case strings.Contains(desc, "captiveportal_sessions_total"):
+		case hasFqName(m, "opnsense_captiveportal_sessions"):
 			foundSessionsTotal = true
 			if val != 3 {
-				t.Errorf("sessions_total expected 3, got %v", val)
+				t.Errorf("sessions expected 3, got %v", val)
 			}
 		case strings.Contains(desc, "captiveportal_zone_sessions"):
 			zoneSessionCounts[labels["zone_id"]] = val
@@ -72,10 +72,10 @@ func TestCaptivePortalCollector_Update_Normal(t *testing.T) {
 	}
 
 	if !foundZonesTotal {
-		t.Error("missing zones_total metric")
+		t.Error("missing zones metric")
 	}
 	if !foundSessionsTotal {
-		t.Error("missing sessions_total metric")
+		t.Error("missing sessions metric")
 	}
 	if !foundServiceRunning {
 		t.Error("missing service_running metric")
@@ -145,7 +145,7 @@ func TestCaptivePortalCollector_Update_Vouchers(t *testing.T) {
 			}
 			voucherCounts[labels["state"]] = val
 		}
-		if strings.Contains(desc, "captiveportal_voucher_group_next_expiry_seconds") {
+		if hasFqName(m, "opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds") {
 			sawNextExpiry = true
 		}
 	}
@@ -183,7 +183,7 @@ func TestCaptivePortalCollector_Update_VouchersNoProvider(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 	for _, m := range metrics {
 		if strings.Contains(m.Desc().String(), "captiveportal_vouchers") ||
-			strings.Contains(m.Desc().String(), "captiveportal_voucher_group_next_expiry_seconds") {
+			hasFqName(m, "opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds") {
 			t.Errorf("unexpected voucher metric with no provider configured: %s", m.Desc().String())
 		}
 	}
@@ -191,7 +191,7 @@ func TestCaptivePortalCollector_Update_VouchersNoProvider(t *testing.T) {
 
 func TestCaptivePortalCollector_Update_Unconfigured(t *testing.T) {
 	// Core feature: present but unconfigured. Totals still emitted so the
-	// dashboard sentinel query (zones_total > 0) can correctly hide the tab.
+	// dashboard sentinel query (zones > 0) can correctly hide the tab.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/captiveportal/session/zones", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`[]`))
@@ -212,7 +212,7 @@ func TestCaptivePortalCollector_Update_Unconfigured(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// zones_total (0) + sessions_total (0) + service_running = 3
+	// zones (0) + sessions (0) + service_running = 3
 	expected := 3
 	if len(metrics) != expected {
 		t.Errorf("expected %d metrics (unconfigured), got %d", expected, len(metrics))
@@ -221,11 +221,11 @@ func TestCaptivePortalCollector_Update_Unconfigured(t *testing.T) {
 	for _, m := range metrics {
 		desc := m.Desc().String()
 		val := getMetricValue(m)
-		if strings.Contains(desc, "captiveportal_zones_total") && val != 0 {
-			t.Errorf("zones_total expected 0, got %v", val)
+		if hasFqName(m, "opnsense_captiveportal_zones") && val != 0 {
+			t.Errorf("zones expected 0, got %v", val)
 		}
-		if strings.Contains(desc, "captiveportal_sessions_total") && val != 0 {
-			t.Errorf("sessions_total expected 0, got %v", val)
+		if hasFqName(m, "opnsense_captiveportal_sessions") && val != 0 {
+			t.Errorf("sessions expected 0, got %v", val)
 		}
 		if strings.Contains(desc, "captiveportal_service_running") && val != 0 {
 			t.Errorf("service_running expected 0 (disabled), got %v", val)

@@ -45,17 +45,17 @@ func (c *captivePortalCollector) Register(namespace, instanceLabel string, log *
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
 		"Whether the captive portal service is running (1 = running, 0 = stopped/disabled)", nil)
-	c.zonesTotal = buildPrometheusDesc(c.subsystem, "zones_total",
-		"Number of configured captive portal zones (including disabled zones)", nil)
-	c.sessionsTotal = buildPrometheusDesc(c.subsystem, "sessions_total",
-		"Total number of active captive portal sessions across all zones", nil)
+	c.zonesTotal = buildPrometheusDesc(c.subsystem, "zones",
+		"Current number of configured captive portal zones (including disabled zones)", nil)
+	c.sessionsTotal = buildPrometheusDesc(c.subsystem, "sessions",
+		"Current number of active captive portal sessions across all zones", nil)
 	c.zoneSessions = buildPrometheusDesc(c.subsystem, "zone_sessions",
 		"Number of active captive portal sessions in this zone",
 		[]string{"zone_id", "zone_description"})
 	c.vouchers = buildPrometheusDesc(c.subsystem, "vouchers",
 		"Number of captive portal vouchers in this group by state (valid, unused, expired)",
 		[]string{"provider", "group", "state"})
-	c.voucherNextExpiry = buildPrometheusDesc(c.subsystem, "voucher_group_next_expiry_seconds",
+	c.voucherNextExpiry = buildPrometheusDesc(c.subsystem, "voucher_group_next_expiry_timestamp_seconds",
 		"Unix timestamp of the earliest hard expiry deadline among this group's unused/valid vouchers (absent when no voucher in the group has one set)",
 		[]string{"provider", "group"})
 }

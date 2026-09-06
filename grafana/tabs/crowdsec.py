@@ -3,7 +3,7 @@ CrowdSec tab — CrowdSec IPS/IDS metrics via os-crowdsec plugin (opnsense_crowd
 
 Plugin-gated: tab hidden unless crowdsec metrics are present.
 
-Counts (alerts_total, decisions_total, bouncers_total, machines_total) are
+Counts (alerts, decisions, bouncers, machines) are
 instantaneous gauges — show raw, never rate().
 bouncer_last_pull_timestamp_seconds / machine_last_heartbeat_timestamp_seconds
 are unix timestamps — shown as age: time() - <ts>.
@@ -15,7 +15,7 @@ only, per AUTHORING.md rule 7.
 
 ## The Loki row (#591 item 5)
 
-Every metric above is a COUNT. `opnsense_crowdsec_alerts_total` says forty things
+Every metric above is a COUNT. `opnsense_crowdsec_alerts` says forty things
 were flagged and cannot say what or whom, because scenario and the banned address
 are unbounded and must never be metric labels. The `crowdsec` log lane
 (`--logs.crowdsec.enabled`, internal/logship/crowdsec.go) already ships both, plus
@@ -53,7 +53,7 @@ def build(b: Builder):
     )
     alerts = b.stat(
         "Active Alerts",
-        sel("opnsense_crowdsec_alerts_total"),
+        sel("opnsense_crowdsec_alerts"),
         unit="short", w=4, h=4,
         thresholds=[
             {"color": "green", "value": None},
@@ -65,7 +65,7 @@ def build(b: Builder):
     )
     decisions = b.stat(
         "Active Decisions",
-        sel("opnsense_crowdsec_decisions_total"),
+        sel("opnsense_crowdsec_decisions"),
         unit="short", w=4, h=4,
         thresholds=[
             {"color": "green", "value": None},
@@ -76,13 +76,13 @@ def build(b: Builder):
     )
     bouncers = b.stat(
         "Bouncers",
-        sel("opnsense_crowdsec_bouncers_total"),
+        sel("opnsense_crowdsec_bouncers"),
         unit="short", w=4, h=4,
         desc="Total number of registered CrowdSec bouncers.",
     )
     machines = b.stat(
         "Machines",
-        sel("opnsense_crowdsec_machines_total"),
+        sel("opnsense_crowdsec_machines"),
         unit="short", w=4, h=4,
         desc="Total number of registered CrowdSec machines.",
     )

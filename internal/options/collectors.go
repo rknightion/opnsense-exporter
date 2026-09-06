@@ -25,7 +25,7 @@ var (
 	).Envar("OPN2OTEL_DISABLE_SERVICES").Default("false").Bool()
 	arpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-arp-details",
-		"Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted.",
+		"Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off by default; the low-cardinality table_entries aggregate is always emitted.",
 	).Envar("OPN2OTEL_ENABLE_ARP_DETAILS").Default("false").IsSetByUser(&arpDetailsEnabledUserSet).Bool()
 	cronTableCollectorDisabled = kingpin.Flag(
 		"exporter.disable-cron-table",
@@ -173,7 +173,7 @@ var (
 	).Envar("OPN2OTEL_DISABLE_NDP").Default("false").Bool()
 	ndpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-ndp-details",
-		"Enable per-entry NDP metrics (ip/mac labels - high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted.",
+		"Enable per-entry NDP metrics (ip/mac labels - high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality table_entries aggregate is always emitted.",
 	).Envar("OPN2OTEL_ENABLE_NDP_DETAILS").Default("false").IsSetByUser(&ndpDetailsEnabledUserSet).Bool()
 	dhcpv4CollectorDisabled = kingpin.Flag(
 		"exporter.disable-dhcpv4",

@@ -64,7 +64,7 @@ func TestTrafficShaperCollector_Update_Normal(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// pipes_total (1) + queues_total (1) = 2
+	// pipes (1) + queues (1) = 2
 	// pipe×1: flows + packets + bytes + drop_packets + drop_bytes = 5
 	// queue×1: flows + packets + bytes + drop_packets + drop_bytes = 5
 	// rule×1: packets_total + bytes_total = 2
@@ -87,15 +87,15 @@ func TestTrafficShaperCollector_Update_Normal(t *testing.T) {
 		val := getMetricValue(m)
 
 		switch {
-		case strings.Contains(desc, "trafficshaper_pipes_total"):
+		case hasFqName(m, "opnsense_trafficshaper_pipes"):
 			foundPipesTotal = true
 			if val != 1 {
-				t.Errorf("pipes_total expected 1, got %v", val)
+				t.Errorf("pipes expected 1, got %v", val)
 			}
-		case strings.Contains(desc, "trafficshaper_queues_total"):
+		case hasFqName(m, "opnsense_trafficshaper_queues"):
 			foundQueuesTotal = true
 			if val != 1 {
-				t.Errorf("queues_total expected 1, got %v", val)
+				t.Errorf("queues expected 1, got %v", val)
 			}
 		case strings.Contains(desc, "trafficshaper_pipe_packets"):
 			if labels["pipe"] == "00001" {
@@ -111,10 +111,10 @@ func TestTrafficShaperCollector_Update_Normal(t *testing.T) {
 	}
 
 	if !foundPipesTotal {
-		t.Error("missing pipes_total metric")
+		t.Error("missing pipes metric")
 	}
 	if !foundQueuesTotal {
-		t.Error("missing queues_total metric")
+		t.Error("missing queues metric")
 	}
 
 	// Template-queue attribution: pipe_packets must reflect the template-queue flow.

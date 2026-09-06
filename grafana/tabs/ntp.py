@@ -94,7 +94,7 @@ def build(b: Builder):
     # Total peers stat (instantaneous gauge named _total — show RAW per AUTHORING.md)
     peers_total = b.stat(
         "Peers Total",
-        sel("opnsense_ntp_peers_total"),
+        sel("opnsense_ntp_peers"),
         unit="short",
         w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],

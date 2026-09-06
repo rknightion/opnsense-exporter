@@ -93,7 +93,7 @@ func crowdsecCollectorMux(t *testing.T) *http.ServeMux {
 
 // TestCrowdSecCollector_Update_Normal expects 14 metrics:
 //
-//	alerts_total (1) + decisions_total (1) + bouncers_total (1) + machines_total (1)
+//	alerts (1) + decisions (1) + bouncers (1) + machines (1)
 //	+ bouncer_valid (1) + bouncer_last_pull (1)
 //	+ machine_validated (1) + machine_heartbeat (1)
 //	+ service_running (1)
@@ -125,25 +125,25 @@ func TestCrowdSecCollector_Update_Normal(t *testing.T) {
 		labels := getMetricLabels(m)
 		val := getMetricValue(m)
 		switch {
-		case strings.Contains(desc, "crowdsec_alerts_total"):
+		case hasFqName(m, "opnsense_crowdsec_alerts"):
 			if val != 7 {
-				t.Errorf("alerts_total wrong: %v (expected 7)", val)
+				t.Errorf("alerts wrong: %v (expected 7)", val)
 			}
-		case strings.Contains(desc, "crowdsec_decisions_total"):
+		case hasFqName(m, "opnsense_crowdsec_decisions"):
 			if val != 4321 {
-				t.Errorf("decisions_total wrong: %v (expected 4321)", val)
+				t.Errorf("decisions wrong: %v (expected 4321)", val)
 			}
-		case strings.Contains(desc, "crowdsec_bouncers_total"):
+		case hasFqName(m, "opnsense_crowdsec_bouncers"):
 			if val != 1 {
-				t.Errorf("bouncers_total wrong: %v (expected 1)", val)
+				t.Errorf("bouncers wrong: %v (expected 1)", val)
 			}
 		case strings.Contains(desc, "crowdsec_bouncer_valid"):
 			if labels["name"] != "cs-firewall-bouncer" || val != 1 {
 				t.Errorf("bouncer_valid wrong: labels=%v val=%v", labels, val)
 			}
-		case strings.Contains(desc, "crowdsec_machines_total"):
+		case hasFqName(m, "opnsense_crowdsec_machines"):
 			if val != 1 {
-				t.Errorf("machines_total wrong: %v (expected 1)", val)
+				t.Errorf("machines wrong: %v (expected 1)", val)
 			}
 		case strings.Contains(desc, "crowdsec_machine_validated"):
 			if labels["name"] != "fw1-machine" || val != 1 {
@@ -178,14 +178,14 @@ func TestCrowdSecCollector_Update_Normal(t *testing.T) {
 	}
 }
 
-// TestCrowdSecCollector_Update_MessageEnvelope expects 8 metrics (no decisions_total).
+// TestCrowdSecCollector_Update_MessageEnvelope expects 8 metrics (no decisions).
 func TestCrowdSecCollector_Update_MessageEnvelope(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(crowdsecCollectorAlertsFixture))
 	})
 	mux.HandleFunc("/api/crowdsec/decisions/search", func(w http.ResponseWriter, r *http.Request) {
-		// Returns the error envelope → no decisions_total metric.
+		// Returns the error envelope → no decisions metric.
 		w.Write([]byte(crowdsecMessageEnvelopeCollector))
 	})
 	mux.HandleFunc("/api/crowdsec/bouncers/search", func(w http.ResponseWriter, r *http.Request) {
@@ -208,24 +208,24 @@ func TestCrowdSecCollector_Update_MessageEnvelope(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expected := 13 // no decisions_total (8 - 1 + hub_items(4) + version_info(1))
+	expected := 13 // no decisions (8 - 1 + hub_items(4) + version_info(1))
 	if len(metrics) != expected {
-		t.Errorf("expected %d metrics (no decisions_total), got %d", expected, len(metrics))
+		t.Errorf("expected %d metrics (no decisions), got %d", expected, len(metrics))
 		for _, m := range metrics {
 			t.Logf("  %s", m.Desc().String())
 		}
 	}
 
 	for _, m := range metrics {
-		if strings.Contains(m.Desc().String(), "crowdsec_decisions_total") {
-			t.Error("decisions_total should not be emitted when decisions endpoint returned message envelope")
+		if hasFqName(m, "opnsense_crowdsec_decisions") {
+			t.Error("decisions should not be emitted when decisions endpoint returned message envelope")
 		}
 	}
 }
 
 // TestCrowdSecCollector_Update_UndecodableRows guards #104: when the bouncers
 // rows fail to decode, HasBouncers is false and the collector must omit
-// crowdsec_bouncers_total entirely (not emit a false 0).
+// crowdsec_bouncers entirely (not emit a false 0).
 func TestCrowdSecCollector_Update_UndecodableRows(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
@@ -256,8 +256,8 @@ func TestCrowdSecCollector_Update_UndecodableRows(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	for _, m := range metrics {
-		if strings.Contains(m.Desc().String(), "crowdsec_bouncers_total") {
-			t.Error("bouncers_total must be omitted (not emitted as 0) when bouncers rows fail to decode")
+		if hasFqName(m, "opnsense_crowdsec_bouncers") {
+			t.Error("bouncers must be omitted (not emitted as 0) when bouncers rows fail to decode")
 		}
 	}
 }

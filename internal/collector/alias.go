@@ -44,8 +44,8 @@ func (c *aliasCollector) Register(namespace, instanceLabel string, log *slog.Log
 
 	tableLabels := []string{"table"}
 
-	c.tablesTotal = buildPrometheusDesc(c.subsystem, "tables_total",
-		"Total number of pf alias tables", nil)
+	c.tablesTotal = buildPrometheusDesc(c.subsystem, "tables",
+		"Current number of pf alias tables", nil)
 	c.tableEntries = buildPrometheusDesc(c.subsystem, "table_entries",
 		"Current number of entries in this pf alias table", tableLabels)
 	c.tableEntriesUsed = buildPrometheusDesc(c.subsystem, "table_entries_used",

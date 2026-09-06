@@ -498,7 +498,7 @@ func TestUnboundDNSCollector_Update_QStatsDisabledByDefault(t *testing.T) {
 		"opnsense_unbound_dns_dnsbl_blocklist_size",
 		"opnsense_unbound_dns_qstats_queries_7d",
 		"opnsense_unbound_dns_qstats_queries_total_7d",
-		"opnsense_unbound_dns_qstats_start_time_seconds",
+		"opnsense_unbound_dns_qstats_start_time_timestamp_seconds",
 		"opnsense_unbound_dns_local_zones",
 		"opnsense_unbound_dns_local_data_records",
 		"opnsense_unbound_dns_insecure_domains",
@@ -542,7 +542,7 @@ func TestUnboundDNSCollector_Update_QStatsEnabled_StatsOff(t *testing.T) {
 		"opnsense_unbound_dns_dnsbl_blocklist_size",
 		"opnsense_unbound_dns_qstats_queries_7d",
 		"opnsense_unbound_dns_qstats_queries_total_7d",
-		"opnsense_unbound_dns_qstats_start_time_seconds",
+		"opnsense_unbound_dns_qstats_start_time_timestamp_seconds",
 	} {
 		if got := metricsByDesc(metrics, name); len(got) != 0 {
 			t.Errorf("expected no %s metrics when stats logging is off, got %d", name, len(got))
@@ -584,9 +584,9 @@ func TestUnboundDNSCollector_Update_QStatsEnabled_Full(t *testing.T) {
 		t.Errorf("expected qstats_queries_total_7d=16236, got %v", total7d)
 	}
 
-	startTime := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_start_time_seconds")
+	startTime := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_start_time_timestamp_seconds")
 	if len(startTime) != 1 || getMetricValue(startTime[0]) != 1783872391 {
-		t.Errorf("expected qstats_start_time_seconds=1783872391, got %v", startTime)
+		t.Errorf("expected qstats_start_time_timestamp_seconds=1783872391, got %v", startTime)
 	}
 
 	byResult := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_queries_7d")

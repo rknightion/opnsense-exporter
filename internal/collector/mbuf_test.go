@@ -64,7 +64,7 @@ func TestMbufCollector_Update(t *testing.T) {
 
 	for _, m := range metrics {
 		if hasFqName(m, "opnsense_mbuf_pool_current") || hasFqName(m, "opnsense_mbuf_pool_cache") ||
-			hasFqName(m, "opnsense_mbuf_pool_total") || hasFqName(m, "opnsense_mbuf_pool_max") {
+			hasFqName(m, "opnsense_mbuf_pool") || hasFqName(m, "opnsense_mbuf_pool_max") {
 			t.Errorf("expected no pool series on a fixture predating jumbo9/jumbo16/packet pool keys, got %s", m.Desc().String())
 		}
 	}
@@ -121,13 +121,13 @@ func TestMbufCollector_JumboPoolMetrics(t *testing.T) {
 	wantSeries := map[string]map[string]float64{
 		"opnsense_mbuf_pool_current": {"jumbo9": 3, "jumbo16": 4, "packet": 12},
 		"opnsense_mbuf_pool_cache":   {"jumbo9": 1, "jumbo16": 2, "packet": 13},
-		"opnsense_mbuf_pool_total":   {"jumbo9": 20, "jumbo16": 30},
+		"opnsense_mbuf_pool":         {"jumbo9": 20, "jumbo16": 30},
 		"opnsense_mbuf_pool_max":     {"jumbo9": 9, "jumbo16": 6},
 	}
 	found := map[string]map[string]bool{
 		"opnsense_mbuf_pool_current": {},
 		"opnsense_mbuf_pool_cache":   {},
-		"opnsense_mbuf_pool_total":   {},
+		"opnsense_mbuf_pool":         {},
 		"opnsense_mbuf_pool_max":     {},
 	}
 	for _, m := range metrics {
@@ -156,9 +156,9 @@ func TestMbufCollector_JumboPoolMetrics(t *testing.T) {
 	}
 
 	// The packet pool has no ceiling upstream (it borrows memory from mbuf/cluster) --
-	// pool_total/pool_max must never carry a packet series.
+	// pool/pool_max must never carry a packet series.
 	for _, m := range metrics {
-		if (hasFqName(m, "opnsense_mbuf_pool_total") || hasFqName(m, "opnsense_mbuf_pool_max")) &&
+		if (hasFqName(m, "opnsense_mbuf_pool") || hasFqName(m, "opnsense_mbuf_pool_max")) &&
 			getMetricLabels(m)["pool"] == "packet" {
 			t.Errorf("expected no packet-labelled %s series (packet pool has no ceiling upstream)", m.Desc().String())
 		}

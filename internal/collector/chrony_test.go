@@ -90,7 +90,7 @@ func TestChronyCollector_Update_Normal(t *testing.T) {
 	//   frequency_ppm, residual_frequency_ppm, skew_ppm, root_delay,
 	//   root_dispersion, update_interval, leap_status)
 	// tracking_info = 1
-	// sources_total = 1
+	// sources = 1
 	// per source: selected + stratum + reachability = 3 × 3 sources = 9
 	// last_rx: 2 sources (^? has LastRx="-" → HasLastRx=false → skipped)
 	// offset: 3 sources (^? "+0ns" parses ok=true → HasOffset=true)
@@ -164,7 +164,7 @@ func TestChronyCollector_Update_PluginAbsent(t *testing.T) {
 }
 
 // TestChronyCollector_Update_SourcesFetchFailure guards #163: when the sources
-// sub-fetch fails (transient 500), sources_total and per-source metrics must be
+// sub-fetch fails (transient 500), sources and per-source metrics must be
 // omitted, not emitted as a false 0. Tracking metrics still appear.
 func TestChronyCollector_Update_SourcesFetchFailure(t *testing.T) {
 	mux := http.NewServeMux()
@@ -193,7 +193,7 @@ func TestChronyCollector_Update_SourcesFetchFailure(t *testing.T) {
 	sawTracking := false
 	for _, m := range metrics {
 		desc := m.Desc().String()
-		if strings.Contains(desc, "sources_total") || strings.Contains(desc, "source_selected") ||
+		if hasFqName(m, "opnsense_chrony_sources") || strings.Contains(desc, "source_selected") ||
 			strings.Contains(desc, "source_stratum") || strings.Contains(desc, "source_reachability") {
 			t.Errorf("sources metric must be omitted on sources-fetch failure: %s", desc)
 		}

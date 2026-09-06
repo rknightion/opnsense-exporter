@@ -109,7 +109,7 @@
           "iconColor": "light-blue",
           "name": "Config change",
           "legacyOptions": {
-            "expr": "opnsense_system_config_last_change{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
+            "expr": "opnsense_system_config_last_change_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "Configuration changed",
             "tagKeys": "opnsense_instance",
             "useValueForTime": "on"
@@ -7370,7 +7370,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_series_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_series{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "series {{opnsense_instance}}",
                         "instant": false,
@@ -11547,7 +11547,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_series_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_series{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": false,

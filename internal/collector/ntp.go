@@ -75,8 +75,8 @@ func (c *ntpCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Dispersion jitter of the NTP peer in milliseconds",
 		[]string{"server"},
 	)
-	c.peersTotal = buildPrometheusDesc(c.subsystem, "peers_total",
-		"Total number of NTP peers",
+	c.peersTotal = buildPrometheusDesc(c.subsystem, "peers",
+		"Current number of NTP peers",
 		nil,
 	)
 	c.gpsOK = buildPrometheusDesc(c.subsystem, "gps_ok",

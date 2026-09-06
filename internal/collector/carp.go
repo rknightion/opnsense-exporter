@@ -50,8 +50,8 @@ func (c *carpCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Whether CARP maintenance mode is enabled (1 = enabled, 0 = disabled)",
 		nil,
 	)
-	c.vipsTotal = buildPrometheusDesc(c.subsystem, "vips_total",
-		"Total number of CARP Virtual IPs",
+	c.vipsTotal = buildPrometheusDesc(c.subsystem, "vips",
+		"Current number of CARP Virtual IPs",
 		nil,
 	)
 	c.vipStatus = buildPrometheusDesc(c.subsystem, "vip_status",

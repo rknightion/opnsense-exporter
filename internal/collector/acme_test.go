@@ -59,7 +59,7 @@ func TestACMECollector_Update_Normal(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Expected:
-	//   1 certificates_total
+	//   1 certificates
 	//   Per cert (2 certs): enabled + status_code + info + last_update + status_last_update = 5 each
 	//   Total = 1 + 2*5 = 11
 	expectedCount := 11
@@ -67,13 +67,12 @@ func TestACMECollector_Update_Normal(t *testing.T) {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
-	// Verify certificates_total
+	// Verify certificates
 	for _, m := range metrics {
-		desc := m.Desc().String()
-		if strings.Contains(desc, "certificates_total") {
+		if hasFqName(m, "opnsense_acme_certificates") {
 			val := getMetricValue(m)
 			if val != 2 {
-				t.Errorf("expected certificates_total=2, got %v", val)
+				t.Errorf("expected certificates=2, got %v", val)
 			}
 		}
 	}
@@ -215,13 +214,13 @@ func TestACMECollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Only certificates_total = 0
+	// Only certificates = 0
 	expectedCount := 1
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 	if val := getMetricValue(metrics[0]); val != 0 {
-		t.Errorf("expected certificates_total=0, got %v", val)
+		t.Errorf("expected certificates=0, got %v", val)
 	}
 }
 
@@ -265,7 +264,7 @@ func TestACMECollector_Update_ArrayQuirks(t *testing.T) {
 }
 
 // TestAcmeCollector_Update_PluginAbsent guards #87: with os-acme-client absent
-// (endpoint 404s) the collector must emit nothing rather than certificates_total=0.
+// (endpoint 404s) the collector must emit nothing rather than certificates=0.
 func TestAcmeCollector_Update_PluginAbsent(t *testing.T) {
 	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
 	server := httptest.NewServer(mux)

@@ -37,8 +37,8 @@ func (c *firewallRulesCollector) Register(namespace, instanceLabel string, log *
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.rulesTotal = buildPrometheusDesc(c.subsystem, "rules_total",
-		"Total number of firewall rules with statistics",
+	c.rulesTotal = buildPrometheusDesc(c.subsystem, "rules",
+		"Current number of firewall rules with statistics",
 		nil,
 	)
 	c.evaluationsTotal = buildPrometheusDesc(c.subsystem, "evaluations_total",

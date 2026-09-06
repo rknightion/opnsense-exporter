@@ -33,7 +33,7 @@ func TestAliasCollector_Update_Default(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 
 	metrics := collectMetrics(t, c, client)
-	// tables_total + used + limit + 2×table_entries = 5
+	// tables + used + limit + 2×table_entries = 5
 	if len(metrics) != 5 {
 		t.Fatalf("expected 5 metrics without details, got %d", len(metrics))
 	}

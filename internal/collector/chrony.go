@@ -79,8 +79,8 @@ func (c *chronyCollector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.trackingInfo = buildPrometheusDesc(c.subsystem, "tracking_info",
 		"Chrony tracking info label gauge (always 1) - pool-rotation note: source labels churn with pool directives; use instant queries/tables",
 		[]string{"reference_id", "reference_name", "leap_status"})
-	c.sourcesTotal = buildPrometheusDesc(c.subsystem, "sources_total",
-		"Total number of NTP sources chrony is currently tracking", nil)
+	c.sourcesTotal = buildPrometheusDesc(c.subsystem, "sources",
+		"Current number of NTP sources chrony is currently tracking", nil)
 	c.sourceSelected = buildPrometheusDesc(c.subsystem, "source_selected",
 		"Whether this source is currently selected as the best available (1 = selected)",
 		srcLabels)
@@ -154,7 +154,7 @@ func (c *chronyCollector) Update(_ context.Context, client *opnsense.Client, ch 
 	}
 
 	// Sources total + per-source metrics. Skip entirely when the sources sub-fetch
-	// failed, so a transient error is not reported as a real sources_total=0 that
+	// failed, so a transient error is not reported as a real sources=0 that
 	// looks like chronyd lost all its NTP sources (#163).
 	if data.HasSources {
 		ch <- prometheus.MustNewConstMetric(c.sourcesTotal, prometheus.GaugeValue,

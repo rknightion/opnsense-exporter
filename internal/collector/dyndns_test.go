@@ -109,7 +109,7 @@ func TestDynDNSCollector_Update_Normal(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Expected metrics:
-	//   1 accounts_total
+	//   1 accounts
 	//   Per account (2): account_enabled + account_info = 2 each → 4
 	//   account with current_mtime: +1 last_update_timestamp → 1
 	//   never-updated account: no timestamp metric → 0
@@ -123,11 +123,11 @@ func TestDynDNSCollector_Update_Normal(t *testing.T) {
 		}
 	}
 
-	// Verify accounts_total = 2
+	// Verify accounts = 2
 	for _, m := range metrics {
-		if strings.Contains(m.Desc().String(), "accounts_total") {
+		if hasFqName(m, "opnsense_dyndns_accounts") {
 			if val := getMetricValue(m); val != 2 {
-				t.Errorf("expected accounts_total=2, got %v", val)
+				t.Errorf("expected accounts=2, got %v", val)
 			}
 		}
 	}
@@ -242,7 +242,7 @@ func TestDynDNSCollector_Update_TimestampSkippedWhenEmpty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Expected: 1 accounts_total + 1 account_enabled + 1 account_info + 1 service_running = 4
+	// Expected: 1 accounts + 1 account_enabled + 1 account_info + 1 service_running = 4
 	// No timestamp metric.
 	expectedCount := 4
 	if len(metrics) != expectedCount {
@@ -285,23 +285,23 @@ func TestDynDNSCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Expected: 1 accounts_total (=0) + 1 service_running = 2
+	// Expected: 1 accounts (=0) + 1 service_running = 2
 	expectedCount := 2
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
 	for _, m := range metrics {
-		if strings.Contains(m.Desc().String(), "accounts_total") {
+		if hasFqName(m, "opnsense_dyndns_accounts") {
 			if val := getMetricValue(m); val != 0 {
-				t.Errorf("expected accounts_total=0, got %v", val)
+				t.Errorf("expected accounts=0, got %v", val)
 			}
 		}
 	}
 }
 
 // TestDyndnsCollector_Update_PluginAbsent guards #87: with os-ddclient absent
-// (endpoints 404) the collector must emit nothing rather than accounts_total=0,
+// (endpoints 404) the collector must emit nothing rather than accounts=0,
 // and must not log a service-status warning on every scrape.
 func TestDyndnsCollector_Update_PluginAbsent(t *testing.T) {
 	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent

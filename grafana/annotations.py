@@ -11,7 +11,7 @@ traffic, every rate panel steps down, and nothing on the dashboard connects the 
 Two mechanisms, deliberately not one:
 
 * **Prometheus, value-as-time.** For a metric whose VALUE is an instant
-  (`opnsense_system_config_last_change`), Grafana's `useValueForTime` places the
+  (`opnsense_system_config_last_change_timestamp_seconds`), Grafana's `useValueForTime` places the
   marker at the value rather than at the sample. `* 1000` because Grafana reads the
   value as epoch milliseconds, and `> $__from < $__to` because without it every
   historical event of a months-old metric renders on a six-hour window. The idiom
@@ -130,11 +130,11 @@ ANNOTATIONS: list = [
         group="prometheus",
         on_toolbar=True,
         title="Configuration changed",
-        expr=f'{sel("opnsense_system_config_last_change")} * 1000 > $__from < $__to',
+        expr=f'{sel("opnsense_system_config_last_change_timestamp_seconds")} * 1000 > $__from < $__to',
         value_as_time=True,
         color="light-blue",
         tag_keys=("opnsense_instance",),
-        metrics=("opnsense_system_config_last_change",),
+        metrics=("opnsense_system_config_last_change_timestamp_seconds",),
         why="The headline case: a rule or interface change lands, traffic shifts, and "
             "the graph alone cannot distinguish 'someone changed something' from 'the "
             "network broke'. Available with no log shipping, which is why this rather "
@@ -434,6 +434,20 @@ TAG_QUERIES = {
 # neither annotated nor listed here, so a new one is a decision rather than an
 # oversight.
 NOT_ANNOTATED: dict = {
+    "opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds":
+        "Scheduled voucher expiry is a future deadline, not an observed event; shown in the portal table.",
+    "opnsense_certificate_valid_from_timestamp_seconds":
+        "Certificate validity starts are inventory metadata, not observed installation events; shown in the certificate table.",
+    "opnsense_certificate_valid_to_timestamp_seconds":
+        "Certificate expiry is a future deadline monitored by the certificate panels and expiry alerts.",
+    "opnsense_certificate_ca_valid_from_timestamp_seconds":
+        "CA validity starts are inventory metadata, not observed installation events; shown in the CA table.",
+    "opnsense_certificate_ca_valid_to_timestamp_seconds":
+        "CA expiry is a future deadline displayed in the CA table, not an observed event.",
+    "opnsense_unbound_dns_qstats_start_time_timestamp_seconds":
+        "The query-statistics epoch is diagnostic metadata shown in the Unbound panels, not a firewall event.",
+    "opnsense_wireguard_peer_last_handshake_timestamp_seconds":
+        "Routine peer handshakes are frequent liveness updates; the peer table shows freshness without event noise.",
     "opnsense_acme_certificate_status_last_update_timestamp_seconds":
         "The last time the ACME CLIENT RAN, which is a scheduled no-op on most runs. "
         "The renewal itself is annotated from the certificate's own update timestamp.",

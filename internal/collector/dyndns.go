@@ -36,8 +36,8 @@ func (c *dyndnsCollector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.accountsTotal = buildPrometheusDesc(c.subsystem, "accounts_total",
-		"Total number of configured DynDNS accounts",
+	c.accountsTotal = buildPrometheusDesc(c.subsystem, "accounts",
+		"Current number of configured DynDNS accounts",
 		nil,
 	)
 	c.accountEnabled = buildPrometheusDesc(c.subsystem, "account_enabled",
@@ -76,8 +76,8 @@ func (c *dyndnsCollector) Update(ctx context.Context, client *opnsense.Client, c
 		return err
 	}
 
-	// os-ddclient absent → Present=false; stay silent so accounts_total=0 (plugin
-	// absent) is not confused with a present-but-unconfigured ddclient, and we do
+	// os-ddclient absent → Present=false; emit no accounts metric, distinguishing
+	// absence from a present plugin with zero configured accounts. We also do
 	// not probe the service-status endpoint (which would 404-warn every scheduled poll) (#87).
 	if !data.Present {
 		return nil

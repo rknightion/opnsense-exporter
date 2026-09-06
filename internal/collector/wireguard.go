@@ -65,8 +65,8 @@ func (c *WireguardCollector) Register(namespace, instanceLabel string, log *slog
 		[]string{"device", "device_type", "device_name", "peer_name"},
 	)
 
-	c.LatestHandshake = buildPrometheusDesc(c.subsystem, "peer_last_handshake_seconds",
-		"Last handshake by peer in seconds",
+	c.LatestHandshake = buildPrometheusDesc(c.subsystem, "peer_last_handshake_timestamp_seconds",
+		"Unix timestamp of the last handshake by this WireGuard peer",
 		[]string{"device", "device_type", "device_name", "peer_name"},
 	)
 

@@ -8,14 +8,14 @@ from builder import Builder, sel, grp, RATE
 
 
 def build(b: Builder):
-    b.sentinel("has_alias", metric="opnsense_alias_tables_total")
+    b.sentinel("has_alias", metric="opnsense_alias_tables")
     b.sentinel("has_alias_details", metric="opnsense_alias_table_packets_total")
     # #583: the freshness row is only meaningful on a box that actually has a
     # DNS- or URL-backed alias. Static-alias-only boxes emit no series at all,
     # so the row would render permanently empty without this gate.
     b.sentinel("has_alias_feeds", metric="opnsense_alias_table_updated_timestamp_seconds")
 
-    tables = b.stat("Alias Tables", sel("opnsense_alias_tables_total"),
+    tables = b.stat("Alias Tables", sel("opnsense_alias_tables"),
                     unit="short", w=4, h=4)
     used = b.stat("Table Entries Used", sel("opnsense_alias_table_entries_used"),
                   unit="short", w=4, h=4,

@@ -23,7 +23,7 @@ DEV = 'interface=~"$device"'
 
 def build(b: Builder):
     # ── Sentinel for firewall rules rows ──────────────────────────────────
-    b.sentinel("has_firewall_rules", metric="opnsense_firewall_rule_rules_total")
+    b.sentinel("has_firewall_rules", metric="opnsense_firewall_rule_rules")
     # ── Sentinel for the opt-in NAT rule inventory row (#221) ─────────────
     b.sentinel("has_firewall_nat_counts", metric="opnsense_firewall_nat_rules")
     # Default-off API fallback; keep its sampled boards hidden unless enabled.
@@ -363,7 +363,7 @@ def build(b: Builder):
     # ══════════════════════════════════════════════════════════════════════
     fw_rules_count = b.stat(
         "Firewall Rules Total",
-        sel("opnsense_firewall_rule_rules_total"),
+        sel("opnsense_firewall_rule_rules"),
         unit="short", w=4, h=4,
         desc="Total number of firewall rules with statistics (instantaneous count, not a rate).",
     )

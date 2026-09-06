@@ -9,9 +9,9 @@ from builder import Builder, sel, epoch_ms, RATE
 
 
 def build(b: Builder):
-    b.sentinel("has_qfeeds", metric="opnsense_qfeeds_feeds_total")
+    b.sentinel("has_qfeeds", metric="opnsense_qfeeds_feeds")
 
-    feeds = b.stat("Configured Feeds", sel("opnsense_qfeeds_feeds_total"),
+    feeds = b.stat("Configured Feeds", sel("opnsense_qfeeds_feeds"),
                    unit="short", w=4, h=4)
     entries = b.stat("Total Entries", sel("opnsense_qfeeds_entries"),
                      unit="short", w=4, h=4)

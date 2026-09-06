@@ -47,13 +47,13 @@ Coverage:
   opnsense_network_diag_netisr_cpu_queue_length
   opnsense_network_diag_netisr_cpu_queue_watermark
   opnsense_network_diag_sockets_active
-  opnsense_network_diag_sockets_unix_total
-  opnsense_network_diag_routes_total
+  opnsense_network_diag_sockets_unix
+  opnsense_network_diag_routes
   opnsense_network_diag_interface_routes
   opnsense_network_diag_routes_by_flags
   opnsense_network_diag_default_route_present
   opnsense_network_diag_default_route_info
-  opnsense_network_diag_pfsync_nodes_total
+  opnsense_network_diag_pfsync_nodes
   opnsense_network_diag_pfsync_node_info
 """
 
@@ -63,7 +63,7 @@ from tabs import log_events
 
 def build(b: Builder):
     # ---- Sentinels -------------------------------------------------------
-    b.sentinel("has_network_diag", metric="opnsense_network_diag_sockets_unix_total")
+    b.sentinel("has_network_diag", metric="opnsense_network_diag_sockets_unix")
     # opnsense_lldp_neighbors/neighbor_info are only emitted when at least one
     # neighbor has been seen (os-lldpd present but quiet emits nothing at all),
     # so this sentinel doubles as "plugin present AND has neighbors right now".
@@ -74,7 +74,7 @@ def build(b: Builder):
     # ======================================================================
     arp_count = b.stat(
         "ARP Entries",
-        sel("opnsense_arp_table_entries_total"),
+        sel("opnsense_arp_table_table_entries"),
         unit="short",
         w=4, h=4,
         instant=True,
@@ -113,7 +113,7 @@ def build(b: Builder):
     # ======================================================================
     ndp_count = b.stat(
         "NDP Entries",
-        sel("opnsense_ndp_entries_total"),
+        sel("opnsense_ndp_table_entries"),
         unit="short",
         w=4, h=4,
         instant=True,
@@ -364,7 +364,7 @@ def build(b: Builder):
     )
     sockets_unix_stat = b.stat(
         "Unix Domain Sockets",
-        sel("opnsense_network_diag_sockets_unix_total"),
+        sel("opnsense_network_diag_sockets_unix"),
         unit="short",
         w=4, h=4,
         instant=True,
@@ -412,7 +412,7 @@ def build(b: Builder):
     )
     routes_bg = b.bargauge(
         "Routing Table Entries by Protocol",
-        [(sel("opnsense_network_diag_routes_total"), "{{proto}}")],
+        [(sel("opnsense_network_diag_routes"), "{{proto}}")],
         unit="short",
         w=12, h=8,
         orient="horizontal",
@@ -425,7 +425,7 @@ def build(b: Builder):
     # ======================================================================
     pfsync_nodes_stat = b.stat(
         "pfsync Cluster Nodes",
-        sel("opnsense_network_diag_pfsync_nodes_total"),
+        sel("opnsense_network_diag_pfsync_nodes"),
         unit="short",
         w=4, h=4,
         instant=True,

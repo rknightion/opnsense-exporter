@@ -110,7 +110,7 @@
           "iconColor": "light-blue",
           "name": "Config change",
           "legacyOptions": {
-            "expr": "opnsense_system_config_last_change{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
+            "expr": "opnsense_system_config_last_change_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "Configuration changed",
             "tagKeys": "opnsense_instance",
             "useValueForTime": "on"
@@ -1901,7 +1901,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_services_stopped_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_services_stopped{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
@@ -3727,7 +3727,7 @@
         "spec": {
           "id": 27,
           "title": "Config Last Changed",
-          "description": "opnsense_system_config_last_change: Unix timestamp of last configuration change, and the source of the Config change annotation on every tab (#421).",
+          "description": "opnsense_system_config_last_change_timestamp_seconds: Unix timestamp of last configuration change, and the source of the Config change annotation on every tab (#421).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3750,7 +3750,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_system_config_last_change{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_system_config_last_change_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -4645,7 +4645,7 @@
         "spec": {
           "id": 36,
           "title": "Threads Total",
-          "description": "opnsense_activity_threads_total: instantaneous total thread count (RAW, not rate).",
+          "description": "opnsense_activity_threads: instantaneous total thread count (RAW, not rate).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -4668,7 +4668,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_activity_threads_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_activity_threads{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -8546,7 +8546,7 @@
         "spec": {
           "id": 75,
           "title": "Boot Environments",
-          "description": "opnsense_snapshots_total: number of ZFS boot environments currently present.",
+          "description": "opnsense_snapshots_boot_environments: number of ZFS boot environments currently present.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -8569,7 +8569,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_snapshots_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_snapshots_boot_environments{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -8893,7 +8893,7 @@
         "spec": {
           "id": 79,
           "title": "SMART Devices",
-          "description": "opnsense_smart_devices_total: number of SMART-monitored devices.",
+          "description": "opnsense_smart_devices: number of SMART-monitored devices.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -8916,7 +8916,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_smart_devices_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_smart_devices{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -10489,7 +10489,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_mbufs{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "C",
                         "legendFormat": "Total",
                         "instant": false,
@@ -10654,7 +10654,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_cluster_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_cluster{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "C",
                         "legendFormat": "Total",
                         "instant": false,
@@ -10793,7 +10793,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_bytes_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_bytes{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "B",
                         "legendFormat": "Total",
                         "instant": false,
@@ -11393,7 +11393,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_pool_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_mbuf_pool{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "{{pool}} total",
                         "instant": false,
@@ -20723,7 +20723,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_firewall_rule_rules{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -23032,7 +23032,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_alias_tables_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_alias_tables{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -28793,7 +28793,7 @@
         "spec": {
           "id": 268,
           "title": "Query-Stats Window Age",
-          "description": "Time since the current query-stats rolling window started (time() - opnsense_unbound_dns_qstats_start_time_seconds). A sudden drop close to zero signals the underlying qstats database was reset.",
+          "description": "Time since the current query-stats rolling window started (time() - opnsense_unbound_dns_qstats_start_time_timestamp_seconds). A sudden drop close to zero signals the underlying qstats database was reset.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -28816,7 +28816,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (time() - opnsense_unbound_dns_qstats_start_time_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (time() - opnsense_unbound_dns_qstats_start_time_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -30483,7 +30483,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dnsmasq_leases_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dnsmasq_leases{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -30566,7 +30566,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dnsmasq_leases_reserved_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dnsmasq_leases_reserved{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -30649,7 +30649,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dnsmasq_leases_dynamic_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dnsmasq_leases_dynamic{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -31215,7 +31215,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp4_leases_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp4_leases{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -31298,7 +31298,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp4_leases_reserved_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp4_leases_reserved{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -31381,7 +31381,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp4_leases_dynamic_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp4_leases_dynamic{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -31546,7 +31546,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp6_leases_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp6_leases{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -31629,7 +31629,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp6_leases_reserved_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp6_leases_reserved{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -31712,7 +31712,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp6_leases_dynamic_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_kea_dhcp6_leases_dynamic{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -33339,7 +33339,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv4_leases{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -33422,7 +33422,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv4_leases_reserved_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv4_leases_reserved{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -33505,7 +33505,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv4_leases_dynamic_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv4_leases_dynamic{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -33787,7 +33787,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_leases{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -33870,7 +33870,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_leases_reserved_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_leases_reserved{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -33953,7 +33953,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_leases_dynamic_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_leases_dynamic{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -34095,7 +34095,7 @@
         "spec": {
           "id": 326,
           "title": "PD Prefixes Total",
-          "description": "Total number of delegated prefixes (pd_prefixes_total \u2014 instantaneous count).",
+          "description": "Total number of delegated prefixes (pd_prefixes \u2014 instantaneous count).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -34118,7 +34118,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_pd_prefixes_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dhcpv6_pd_prefixes{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -36135,7 +36135,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_wireguard_peer_last_handshake_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_wireguard_peer_last_handshake_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -36764,7 +36764,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_openvpn_sessions_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_openvpn_current_sessions{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "sessions",
                         "instant": false,
@@ -40275,7 +40275,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_tailscale_peers_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_tailscale_peers{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -41577,7 +41577,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_netbird_relays_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_netbird_relays{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -41743,7 +41743,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_netbird_peers_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_netbird_peers{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -42654,7 +42654,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_arp_table_entries_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_arp_table_table_entries{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -42937,7 +42937,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_ndp_entries_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_ndp_table_entries{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -44756,7 +44756,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_network_diag_sockets_unix{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -45205,7 +45205,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_network_diag_routes_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_network_diag_routes{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "legendFormat": "{{proto}}",
                         "instant": true,
@@ -45287,7 +45287,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_network_diag_pfsync_nodes_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_network_diag_pfsync_nodes{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -49385,7 +49385,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_bpf_listeners_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_bpf_listeners{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -50996,7 +50996,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_ntp_peers_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_ntp_peers{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -51576,7 +51576,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_valid_to_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 86400)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_valid_to_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 86400)",
                         "refId": "A",
                         "legendFormat": "{{commonname}} - {{description}} ({{opnsense_instance}})",
                         "instant": false,
@@ -51705,7 +51705,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_valid_from_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_valid_from_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -51944,7 +51944,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_certificate_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_certificate_certificates{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -52027,7 +52027,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_certificate_ca_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_certificate_ca{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -52110,7 +52110,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_ca_valid_to_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 86400)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_ca_valid_to_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 86400)",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -52345,7 +52345,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_ca_valid_from_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_certificate_ca_valid_from_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000)",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -52462,7 +52462,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_acme_certificates_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_acme_certificates{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -53864,7 +53864,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_services_running_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_services_running{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -53947,7 +53947,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_services_stopped_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_services_stopped{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -55447,7 +55447,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dyndns_accounts_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_dyndns_accounts{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -57084,7 +57084,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_qfeeds_feeds_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_qfeeds_feeds{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -59586,7 +59586,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_carp_vips_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_carp_vips{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -67517,7 +67517,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_frr_bgp_peers_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_frr_bgp_peers{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -67691,7 +67691,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_frr_ospf_neighbors_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_frr_ospf_neighbors{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -67774,7 +67774,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_frr_bfd_peers_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_frr_bfd_peers{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -72810,7 +72810,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_monit_checks_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_monit_checks{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -74441,7 +74441,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_alerts_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_alerts{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -74532,7 +74532,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_decisions_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_decisions{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -74619,7 +74619,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_bouncers_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_bouncers{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -74702,7 +74702,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_machines_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_crowdsec_machines{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -76384,7 +76384,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_ids_installed_rules_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_ids_installed_rules{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -79682,7 +79682,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_captiveportal_zones_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_captiveportal_zones{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -79765,7 +79765,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_captiveportal_sessions_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_captiveportal_sessions{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -80431,7 +80431,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_captiveportal_voucher_group_next_expiry_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 3600)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) ((opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 3600)",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -80555,7 +80555,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_trafficshaper_pipes{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -80638,7 +80638,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_trafficshaper_queues_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_trafficshaper_queues{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -82386,7 +82386,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_hasync_remote_services_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_hasync_remote_services{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -82881,7 +82881,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_chrony_sources_total{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_chrony_sources{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "A",
                         "instant": false,
                         "range": true
@@ -91541,7 +91541,7 @@
                                   "name": "${datasource}"
                                 },
                                 "spec": {
-                                  "query": "label_values(opnsense_smart_devices_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "query": "label_values(opnsense_smart_devices{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                                   "refId": "has_smart_plugin"
                                 }
                               },
@@ -92328,7 +92328,7 @@
                                   "name": "${datasource}"
                                 },
                                 "spec": {
-                                  "query": "label_values(opnsense_dyndns_accounts_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "query": "label_values(opnsense_dyndns_accounts{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                                   "refId": "has_dyndns"
                                 }
                               },
@@ -92602,7 +92602,7 @@
                                   "name": "${datasource}"
                                 },
                                 "spec": {
-                                  "query": "label_values(opnsense_acme_certificates_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "query": "label_values(opnsense_acme_certificates{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                                   "refId": "has_acme"
                                 }
                               },
@@ -93757,7 +93757,7 @@
                                   "name": "${datasource}"
                                 },
                                 "spec": {
-                                  "query": "query_result(opnsense_carp_vips_total{opnsense_instance=~\"$opnsense_instance\"} > 0)",
+                                  "query": "query_result(opnsense_carp_vips{opnsense_instance=~\"$opnsense_instance\"} > 0)",
                                   "refId": "has_carp_vips"
                                 }
                               },
@@ -98304,7 +98304,7 @@
                                   "name": "${datasource}"
                                 },
                                 "spec": {
-                                  "query": "label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "query": "label_values(opnsense_network_diag_sockets_unix{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                                   "refId": "has_network_diag"
                                 }
                               },
@@ -102573,7 +102573,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "query": "label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "query": "label_values(opnsense_dhcpv4_leases{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                         "refId": "has_dhcpv4_isc"
                       }
                     },
@@ -102605,7 +102605,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "query": "label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "query": "label_values(opnsense_dhcpv6_leases{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                         "refId": "has_dhcpv6_isc"
                       }
                     },
@@ -102733,7 +102733,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "query": "label_values(opnsense_captiveportal_zones_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "query": "label_values(opnsense_captiveportal_zones{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                         "refId": "has_captiveportal"
                       }
                     },
@@ -102765,7 +102765,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "query": "label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "query": "label_values(opnsense_trafficshaper_pipes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                         "refId": "has_trafficshaper"
                       }
                     },
@@ -103811,7 +103811,7 @@
                                   "name": "${datasource}"
                                 },
                                 "spec": {
-                                  "query": "label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                                  "query": "label_values(opnsense_firewall_rule_rules{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                                   "refId": "has_firewall_rules"
                                 }
                               },
@@ -106558,7 +106558,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "query": "label_values(opnsense_alias_tables_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "query": "label_values(opnsense_alias_tables{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                         "refId": "has_alias"
                       }
                     },
@@ -106622,7 +106622,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "query": "label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+                        "query": "label_values(opnsense_qfeeds_feeds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
                         "refId": "has_qfeeds"
                       }
                     },

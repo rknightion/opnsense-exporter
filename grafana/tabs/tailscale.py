@@ -17,7 +17,7 @@ def build(b: Builder):
                  unit="short", w=4, h=4, mappings=RUNSTOP)
     backend = b.stat("Backend (tailscaled)", sel("opnsense_tailscale_backend_running"),
                      unit="short", w=4, h=4, mappings=RUNSTOP)
-    total = b.stat("Peers Known", sel("opnsense_tailscale_peers_total"),
+    total = b.stat("Peers Known", sel("opnsense_tailscale_peers"),
                    unit="short", w=4, h=4)
     sessions = b.stat("Active Sessions", sel("opnsense_tailscale_peers_with_active_session"),
                       unit="short", w=4, h=4,

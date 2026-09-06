@@ -45,7 +45,7 @@ func hasyncCollectorMux(t *testing.T) *http.ServeMux {
 //   - remote_reachable (1)
 //   - remote_version_match (1)
 //   - remote_version_info (1)
-//   - remote_services_total (1)
+//   - remote_services (1)
 //   - remote_service_running × 2 (2)
 //
 // Total = 6.
@@ -91,9 +91,9 @@ func TestHasyncCollector_Update_Configured(t *testing.T) {
 				t.Errorf("remote_version_info labels: got remote=%q local=%q",
 					labels["remote_version"], labels["local_version"])
 			}
-		case strings.Contains(desc, "hasync_remote_services_total"):
+		case hasFqName(m, "opnsense_hasync_remote_services"):
 			if val != 2 {
-				t.Errorf("remote_services_total: got %v, want 2", val)
+				t.Errorf("remote_services: got %v, want 2", val)
 			}
 		case strings.Contains(desc, "hasync_remote_service_running"):
 			switch labels["service"] {

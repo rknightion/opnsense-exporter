@@ -106,7 +106,7 @@ def build(b: Builder):
     )
     wg_handshake_table = b.table(
         "WireGuard Last Handshake",
-        [epoch_ms(sel("opnsense_wireguard_peer_last_handshake_seconds"))],
+        [epoch_ms(sel("opnsense_wireguard_peer_last_handshake_timestamp_seconds"))],
         w=16, h=8,
         excludes=["__name__", "job", "instance"],
         renames={
@@ -177,7 +177,7 @@ def build(b: Builder):
     # ================================================================
     ovpn_sessions_total = b.ts(
         "OpenVPN Sessions",
-        [(sel("opnsense_openvpn_sessions_total"), "sessions")],
+        [(sel("opnsense_openvpn_current_sessions"), "sessions")],
         unit="short", w=12, h=8,
         desc="Total number of active OpenVPN sessions over time.",
     )

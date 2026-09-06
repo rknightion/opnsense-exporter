@@ -49,8 +49,8 @@ func (c *hasyncCollector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.remoteVersionInfo = buildPrometheusDesc(c.subsystem, "remote_version_info",
 		"HA sync firmware version information (value is always 1; see labels)",
 		[]string{"remote_version", "local_version"})
-	c.remoteServicesTotal = buildPrometheusDesc(c.subsystem, "remote_services_total",
-		"Total number of services in the cached remote HA peer service list", nil)
+	c.remoteServicesTotal = buildPrometheusDesc(c.subsystem, "remote_services",
+		"Current number of services in the cached remote HA peer service list", nil)
 	c.remoteServiceRunning = buildPrometheusDesc(c.subsystem, "remote_service_running",
 		"Whether a service is running on the remote HA peer (1 = running, 0 = stopped)",
 		[]string{"service", "id"})

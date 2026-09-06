@@ -5,7 +5,7 @@ Covers the seven CARP metrics:
  - opnsense_carp_demotion   (stat)
  - opnsense_carp_allow      (stat, Yes/No coloured mapping)
  - opnsense_carp_maintenance_mode (stat, YESNO)
- - opnsense_carp_vips_total (stat, raw count)
+ - opnsense_carp_vips (stat, raw count)
  - opnsense_carp_vip_status       (statetimeline, per VIP)
  - opnsense_carp_vip_advbase_seconds (table)
  - opnsense_carp_vip_advskew      (table)
@@ -50,15 +50,15 @@ def build(b: Builder):
     # deployed; use a value test only when the series is emitted unconditionally.
     #
     # CARP status is CORE, not a plugin, so internal/collector/carp.go emits
-    # vips_total on every readable box — including as a literal 0 when no VIPs are
+    # vips on every readable box — including as a literal 0 when no VIPs are
     # configured. Existence therefore conveys nothing about whether the feature is
     # in use, which makes `> 0` not a value-gate bolted onto a presence test but the
     # only presence test available. #414's "presence tests remain based on series
     # existence" is about not regressing #114; it is not a mandate to convert a
-    # metric every box emits. Contrast opnsense_captiveportal_zones_total in
+    # metric every box emits. Contrast opnsense_captiveportal_zones in
     # captiveportal.py, which is plugin-gated and so uses existence.
-    b.sentinel("has_carp_vips", metric="opnsense_carp_vips_total", nonzero=True)
-    # #405. Plain existence, and NOT nonzero: unlike vips_total above, this counter is
+    b.sentinel("has_carp_vips", metric="opnsense_carp_vips", nonzero=True)
+    # #405. Plain existence, and NOT nonzero: unlike vips above, this counter is
     # absent entirely until syslog shipping sees a kernel CARP line, so the series IS
     # the presence signal. Deliberately its own sentinel rather than has_carp — a box
     # can have CARP configured and running while shipping no syslog to the exporter,
@@ -101,7 +101,7 @@ def build(b: Builder):
 
     vips_total = b.stat(
         "CARP VIPs Total",
-        sel("opnsense_carp_vips_total"),
+        sel("opnsense_carp_vips"),
         unit="short", w=6, h=4,
         desc="Total number of configured CARP Virtual IPs (instantaneous count).",
     )

@@ -82,8 +82,8 @@ func (c *idsCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Whether an installable Suricata ruleset is enabled (1) or disabled (0), by ruleset filename", []string{"ruleset"})
 	c.rulesetUpdated = buildPrometheusDesc(c.subsystem, "ruleset_last_updated_timestamp_seconds",
 		"Unix timestamp of the last download of a ruleset (best-effort from the box-local modified time; omitted when never downloaded)", []string{"ruleset"})
-	c.installedRules = buildPrometheusDesc(c.subsystem, "installed_rules_total",
-		"Total number of installed Suricata rules in the rule cache (a current count; treat as RAW, not rate)", nil)
+	c.installedRules = buildPrometheusDesc(c.subsystem, "installed_rules",
+		"Current number of installed Suricata rules in the rule cache (a current count; treat as RAW, not rate)", nil)
 }
 
 func (c *idsCollector) Describe(ch chan<- *prometheus.Desc) {

@@ -67,8 +67,8 @@ func (c *tailscaleCollector) Register(namespace, instanceLabel string, log *slog
 	c.info = buildPrometheusDesc(c.subsystem, "info",
 		"Tailscale node information (value is always 1; see labels)",
 		[]string{"version", "relay"})
-	c.peersTotal = buildPrometheusDesc(c.subsystem, "peers_total",
-		"Number of tailnet peers known to this node", nil)
+	c.peersTotal = buildPrometheusDesc(c.subsystem, "peers",
+		"Current number of tailnet peers known to this node", nil)
 	c.peersWithActiveSession = buildPrometheusDesc(c.subsystem, "peers_with_active_session",
 		"Number of tailnet peers with an established WireGuard session from this node (derived from local last-handshake presence, not coordination-server online state)", nil)
 	c.healthWarnings = buildPrometheusDesc(c.subsystem, "health_warnings",

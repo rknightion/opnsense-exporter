@@ -63,8 +63,8 @@ func TestDhcpv6Collector_Update_NoDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// leases_total + reserved_total + dynamic_total + 1×leases_by_interface (LAN) +
-	// pd_prefixes_total + pd_prefixes_active = 6
+	// leases + leases_reserved + leases_dynamic + 1×leases_by_interface (LAN) +
+	// pd_prefixes + pd_prefixes_active = 6
 	expectedCount := 6
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
@@ -78,19 +78,19 @@ func TestDhcpv6Collector_Update_NoDetails(t *testing.T) {
 		labels := getMetricLabels(m)
 		value := getMetricValue(m)
 
-		if strings.Contains(desc, "dhcpv6_leases_total") && !strings.Contains(desc, "reserved") && !strings.Contains(desc, "dynamic") {
+		if hasFqName(m, "opnsense_dhcpv6_leases") {
 			if labels["opnsense_instance"] == "test" && value != 2 {
-				t.Errorf("expected leases_total=2, got %v", value)
+				t.Errorf("expected leases=2, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "leases_reserved_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_dhcpv6_leases_reserved") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
-				t.Errorf("expected leases_reserved_total=1, got %v", value)
+				t.Errorf("expected leases_reserved=1, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "leases_dynamic_total") && labels["opnsense_instance"] == "test" {
+		if hasFqName(m, "opnsense_dhcpv6_leases_dynamic") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
-				t.Errorf("expected leases_dynamic_total=1, got %v", value)
+				t.Errorf("expected leases_dynamic=1, got %v", value)
 			}
 		}
 		if strings.Contains(desc, "leases_by_interface") {
@@ -101,9 +101,9 @@ func TestDhcpv6Collector_Update_NoDetails(t *testing.T) {
 				t.Errorf("expected leases_by_interface=2, got %v", value)
 			}
 		}
-		if strings.Contains(desc, "pd_prefixes_total") {
+		if hasFqName(m, "opnsense_dhcpv6_pd_prefixes") {
 			if value != 1 {
-				t.Errorf("expected pd_prefixes_total=1, got %v", value)
+				t.Errorf("expected pd_prefixes=1, got %v", value)
 			}
 		}
 		if strings.Contains(desc, "pd_prefixes_active") {
@@ -134,8 +134,8 @@ func TestDhcpv6Collector_Update_WithDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// leases_total + reserved_total + dynamic_total + 1×leases_by_interface (LAN) +
-	// pd_prefixes_total + pd_prefixes_active + 2×lease_info = 8
+	// leases + leases_reserved + leases_dynamic + 1×leases_by_interface (LAN) +
+	// pd_prefixes + pd_prefixes_active + 2×lease_info = 8
 	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
@@ -230,7 +230,7 @@ func TestDhcpv6Collector_Update_PrefixFetchError(t *testing.T) {
 	// Should not fail — prefix error is logged and skipped
 	metrics := collectMetrics(t, c, client)
 
-	// leases_total + reserved_total + dynamic_total + 1×leases_by_interface = 4
+	// leases + leases_reserved + leases_dynamic + 1×leases_by_interface = 4
 	// pd metrics are absent because fetch failed
 	expectedCount := 4
 	if len(metrics) != expectedCount {

@@ -60,20 +60,20 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	c.log.Debug("Registering collector", "collector", c.Name())
 
 	// DHCPv4 metrics
-	c.dhcp4LeasesTotal = buildPrometheusDesc(c.subsystem, "dhcp4_leases_total",
-		"Total number of Kea DHCPv4 leases",
+	c.dhcp4LeasesTotal = buildPrometheusDesc(c.subsystem, "dhcp4_leases",
+		"Current number of Kea DHCPv4 leases",
 		nil,
 	)
 	c.dhcp4LeasesByIface = buildPrometheusDesc(c.subsystem, "dhcp4_leases_by_interface",
 		"Number of Kea DHCPv4 leases per interface",
 		[]string{"interface"},
 	)
-	c.dhcp4ReservedTotal = buildPrometheusDesc(c.subsystem, "dhcp4_leases_reserved_total",
-		"Total number of reserved (static) Kea DHCPv4 leases",
+	c.dhcp4ReservedTotal = buildPrometheusDesc(c.subsystem, "dhcp4_leases_reserved",
+		"Current number of reserved (static) Kea DHCPv4 leases",
 		nil,
 	)
-	c.dhcp4DynamicTotal = buildPrometheusDesc(c.subsystem, "dhcp4_leases_dynamic_total",
-		"Total number of dynamic Kea DHCPv4 leases",
+	c.dhcp4DynamicTotal = buildPrometheusDesc(c.subsystem, "dhcp4_leases_dynamic",
+		"Current number of dynamic Kea DHCPv4 leases",
 		nil,
 	)
 	c.dhcp4LeasesByState = buildPrometheusDesc(c.subsystem, "dhcp4_leases_by_state",
@@ -97,20 +97,20 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	)
 
 	// DHCPv6 metrics
-	c.dhcp6LeasesTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_total",
-		"Total number of Kea DHCPv6 leases",
+	c.dhcp6LeasesTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases",
+		"Current number of Kea DHCPv6 leases",
 		nil,
 	)
 	c.dhcp6LeasesByIface = buildPrometheusDesc(c.subsystem, "dhcp6_leases_by_interface",
 		"Number of Kea DHCPv6 leases per interface",
 		[]string{"interface"},
 	)
-	c.dhcp6ReservedTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_reserved_total",
-		"Total number of reserved (static) Kea DHCPv6 leases",
+	c.dhcp6ReservedTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_reserved",
+		"Current number of reserved (static) Kea DHCPv6 leases",
 		nil,
 	)
-	c.dhcp6DynamicTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_dynamic_total",
-		"Total number of dynamic Kea DHCPv6 leases",
+	c.dhcp6DynamicTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_dynamic",
+		"Current number of dynamic Kea DHCPv6 leases",
 		nil,
 	)
 	c.dhcp6LeasesByState = buildPrometheusDesc(c.subsystem, "dhcp6_leases_by_state",

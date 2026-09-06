@@ -85,7 +85,7 @@ func TestWireguardCollector_Update(t *testing.T) {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
-	// Verify peer_last_handshake_seconds is a GAUGE (not a counter).
+	// Verify peer_last_handshake_timestamp_seconds is a GAUGE (not a counter).
 	// Verify peer_handshake_age_seconds value and absence for zero-handshake peer.
 	var foundHandshakeAge bool
 	var handshakeAgeValue float64
@@ -100,9 +100,9 @@ func TestWireguardCollector_Update(t *testing.T) {
 
 		labels := getMetricLabels(m)
 
-		// Check peer_last_handshake_seconds is a gauge (Gauge field populated, Counter nil).
+		// Check peer_last_handshake_timestamp_seconds is a gauge (Gauge field populated, Counter nil).
 		desc := m.Desc().String()
-		if strings.Contains(desc, "peer_last_handshake_seconds") {
+		if strings.Contains(desc, "peer_last_handshake_timestamp_seconds") {
 			if d.Gauge != nil && d.Counter == nil {
 				lastHandshakeIsGauge = true
 			}
@@ -121,7 +121,7 @@ func TestWireguardCollector_Update(t *testing.T) {
 	}
 
 	if !lastHandshakeIsGauge {
-		t.Error("expected peer_last_handshake_seconds to be a gauge, but it was not")
+		t.Error("expected peer_last_handshake_timestamp_seconds to be a gauge, but it was not")
 	}
 
 	if !foundHandshakeAge {

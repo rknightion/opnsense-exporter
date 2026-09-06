@@ -38,13 +38,13 @@ func (c *servicesCollector) Register(namespace, instanceLabel string, log *slog.
 		[]string{"name", "description"},
 	)
 
-	c.servicesRunning = buildPrometheusDesc(c.subsystem, "running_total",
-		"Total number of running services",
+	c.servicesRunning = buildPrometheusDesc(c.subsystem, "running",
+		"Current number of running services",
 		nil,
 	)
 
-	c.servicesStopped = buildPrometheusDesc(c.subsystem, "stopped_total",
-		"Total number of stopped services",
+	c.servicesStopped = buildPrometheusDesc(c.subsystem, "stopped",
+		"Current number of stopped services",
 		nil,
 	)
 }

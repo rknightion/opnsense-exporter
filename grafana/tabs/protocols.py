@@ -484,7 +484,7 @@ def build(b: Builder):
     # -------------------------------------------------------------------------
     bpf_listeners = b.stat(
         "BPF Listeners",
-        sel("opnsense_bpf_listeners_total"),
+        sel("opnsense_bpf_listeners"),
         unit="short", w=6, h=4,
         desc=(
             "Total number of BPF listener entries before aggregation. "

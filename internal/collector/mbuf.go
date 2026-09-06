@@ -59,8 +59,8 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Number of mbufs in cache",
 		nil,
 	)
-	c.mbufTotal = buildPrometheusDesc(c.subsystem, "total",
-		"Total number of mbufs available",
+	c.mbufTotal = buildPrometheusDesc(c.subsystem, "mbufs",
+		"Current number of mbufs available",
 		nil,
 	)
 	c.mbufMax = buildPrometheusDesc(c.subsystem, "max",
@@ -78,8 +78,8 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Number of mbuf clusters in cache",
 		nil,
 	)
-	c.clusterTotal = buildPrometheusDesc(c.subsystem, "cluster_total",
-		"Total number of mbuf clusters available",
+	c.clusterTotal = buildPrometheusDesc(c.subsystem, "cluster",
+		"Current number of mbuf clusters available",
 		nil,
 	)
 	c.clusterMax = buildPrometheusDesc(c.subsystem, "cluster_max",
@@ -98,15 +98,15 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Number of bytes of memory currently in use by mbufs",
 		nil,
 	)
-	c.bytesTotal = buildPrometheusDesc(c.subsystem, "bytes_total",
-		"Total number of bytes of memory available for mbufs",
+	c.bytesTotal = buildPrometheusDesc(c.subsystem, "bytes",
+		"Current number of bytes of memory available for mbufs",
 		nil,
 	)
 	c.bytesInCache = buildPrometheusDesc(c.subsystem, "bytes_in_cache",
 		"Number of bytes of memory sitting in the mbuf allocator's cache -- already charged to the "+
 			"mbuf/cluster/jumbo pools but not currently in use, so available for immediate reuse "+
 			"without a new system allocation. Complements bytes_in_use (currently used) and "+
-			"bytes_total (the ceiling both draw from) (#579).",
+			"bytes (the ceiling both draw from) (#579).",
 		nil,
 	)
 	c.poolCurrent = buildPrometheusDesc(c.subsystem, "pool_current",
@@ -126,7 +126,7 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 			"JSON key (#579).",
 		[]string{"pool"},
 	)
-	c.poolTotal = buildPrometheusDesc(c.subsystem, "pool_total",
+	c.poolTotal = buildPrometheusDesc(c.subsystem, "pool",
 		"Total number of items ever allocated to this secondary mbuf pool. NEVER reported for "+
 			"pool=\"packet\": that zone borrows memory from the mbuf and cluster zones rather than "+
 			"owning its own allocation, so upstream's netstat -m has no packet-total key and no "+
@@ -135,7 +135,7 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 	)
 	c.poolMax = buildPrometheusDesc(c.subsystem, "pool_max",
 		"Configured ceiling on this secondary mbuf pool. NEVER reported for pool=\"packet\", for "+
-			"the same reason as pool_total. jumbo16's ceiling is read from upstream's jumbo16-limit "+
+			"the same reason as pool. jumbo16's ceiling is read from upstream's jumbo16-limit "+
 			"key and normalised onto this same metric even though jumbo9's equivalent key is spelled "+
 			"jumbo9-max -- verified against FreeBSD's usr.bin/netstat/mbuf.c: both fields come from an "+
 			"otherwise-identical xo_emit format string whose human-readable label reads "+

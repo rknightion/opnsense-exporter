@@ -12,6 +12,91 @@ This page lists breaking changes by release, most recent first, plus notes for u
 migrating from the upstream AthennaMind exporter. Full details for every release:
 [Changelog](changelog.md).
 
+## Upgrading to v5.0 from v4.x
+
+v5.0 makes metric names describe their value semantics. The `_total` suffix is reserved for
+monotonic counters; applying `rate()` to a current-count gauge produces a meaningless rate of
+change in an inventory count. Unix timestamps now use `_timestamp_seconds`, which lets dashboards
+distinguish an absolute instant from a duration measured in seconds. This release contains 68
+migrations: 60 current-count gauges and 8 timestamp gauges.
+
+<!-- docgen:begin:metric-renames -->
+| Source file | Old metric | New metric | Release |
+|-------------|------------|------------|---------|
+| `internal/collector/certificates.go` | `opnsense_certificate_total` | `opnsense_certificate_certificates` | `5.0.0` |
+| `internal/collector/mbuf.go` | `opnsense_mbuf_total` | `opnsense_mbuf_mbufs` | `5.0.0` |
+| `internal/collector/snapshots.go` | `opnsense_snapshots_total` | `opnsense_snapshots_boot_environments` | `5.0.0` |
+| `internal/collector/acme.go` | `opnsense_acme_certificates_total` | `opnsense_acme_certificates` | `5.0.0` |
+| `internal/collector/activity.go` | `opnsense_activity_threads_total` | `opnsense_activity_threads` | `5.0.0` |
+| `internal/collector/alias.go` | `opnsense_alias_tables_total` | `opnsense_alias_tables` | `5.0.0` |
+| `internal/collector/arp_table.go` | `opnsense_arp_table_entries_total` | `opnsense_arp_table_table_entries` | `5.0.0` |
+| `internal/collector/bpf.go` | `opnsense_bpf_listeners_total` | `opnsense_bpf_listeners` | `5.0.0` |
+| `internal/collector/captiveportal.go` | `opnsense_captiveportal_zones_total` | `opnsense_captiveportal_zones` | `5.0.0` |
+| `internal/collector/captiveportal.go` | `opnsense_captiveportal_sessions_total` | `opnsense_captiveportal_sessions` | `5.0.0` |
+| `internal/collector/captiveportal.go` | `opnsense_captiveportal_voucher_group_next_expiry_seconds` | `opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds` | `5.0.0` |
+| `internal/collector/carp.go` | `opnsense_carp_vips_total` | `opnsense_carp_vips` | `5.0.0` |
+| `internal/collector/certificates.go` | `opnsense_certificate_valid_from_seconds` | `opnsense_certificate_valid_from_timestamp_seconds` | `5.0.0` |
+| `internal/collector/certificates.go` | `opnsense_certificate_valid_to_seconds` | `opnsense_certificate_valid_to_timestamp_seconds` | `5.0.0` |
+| `internal/collector/certificates.go` | `opnsense_certificate_ca_valid_from_seconds` | `opnsense_certificate_ca_valid_from_timestamp_seconds` | `5.0.0` |
+| `internal/collector/certificates.go` | `opnsense_certificate_ca_valid_to_seconds` | `opnsense_certificate_ca_valid_to_timestamp_seconds` | `5.0.0` |
+| `internal/collector/certificates.go` | `opnsense_certificate_ca_total` | `opnsense_certificate_ca` | `5.0.0` |
+| `internal/collector/chrony.go` | `opnsense_chrony_sources_total` | `opnsense_chrony_sources` | `5.0.0` |
+| `internal/collector/collector.go` | `opnsense_exporter_series_total` | `opnsense_exporter_series` | `5.0.0` |
+| `internal/collector/crowdsec.go` | `opnsense_crowdsec_alerts_total` | `opnsense_crowdsec_alerts` | `5.0.0` |
+| `internal/collector/crowdsec.go` | `opnsense_crowdsec_decisions_total` | `opnsense_crowdsec_decisions` | `5.0.0` |
+| `internal/collector/crowdsec.go` | `opnsense_crowdsec_bouncers_total` | `opnsense_crowdsec_bouncers` | `5.0.0` |
+| `internal/collector/crowdsec.go` | `opnsense_crowdsec_machines_total` | `opnsense_crowdsec_machines` | `5.0.0` |
+| `internal/collector/dhcpv4.go` | `opnsense_dhcpv4_leases_total` | `opnsense_dhcpv4_leases` | `5.0.0` |
+| `internal/collector/dhcpv4.go` | `opnsense_dhcpv4_leases_reserved_total` | `opnsense_dhcpv4_leases_reserved` | `5.0.0` |
+| `internal/collector/dhcpv4.go` | `opnsense_dhcpv4_leases_dynamic_total` | `opnsense_dhcpv4_leases_dynamic` | `5.0.0` |
+| `internal/collector/dhcpv6.go` | `opnsense_dhcpv6_leases_total` | `opnsense_dhcpv6_leases` | `5.0.0` |
+| `internal/collector/dhcpv6.go` | `opnsense_dhcpv6_leases_reserved_total` | `opnsense_dhcpv6_leases_reserved` | `5.0.0` |
+| `internal/collector/dhcpv6.go` | `opnsense_dhcpv6_leases_dynamic_total` | `opnsense_dhcpv6_leases_dynamic` | `5.0.0` |
+| `internal/collector/dhcpv6.go` | `opnsense_dhcpv6_pd_prefixes_total` | `opnsense_dhcpv6_pd_prefixes` | `5.0.0` |
+| `internal/collector/dnsmasq.go` | `opnsense_dnsmasq_leases_total` | `opnsense_dnsmasq_leases` | `5.0.0` |
+| `internal/collector/dnsmasq.go` | `opnsense_dnsmasq_leases_reserved_total` | `opnsense_dnsmasq_leases_reserved` | `5.0.0` |
+| `internal/collector/dnsmasq.go` | `opnsense_dnsmasq_leases_dynamic_total` | `opnsense_dnsmasq_leases_dynamic` | `5.0.0` |
+| `internal/collector/dyndns.go` | `opnsense_dyndns_accounts_total` | `opnsense_dyndns_accounts` | `5.0.0` |
+| `internal/collector/firewall_rules.go` | `opnsense_firewall_rule_rules_total` | `opnsense_firewall_rule_rules` | `5.0.0` |
+| `internal/collector/frr.go` | `opnsense_frr_bgp_peers_total` | `opnsense_frr_bgp_peers` | `5.0.0` |
+| `internal/collector/frr.go` | `opnsense_frr_ospf_neighbors_total` | `opnsense_frr_ospf_neighbors` | `5.0.0` |
+| `internal/collector/frr.go` | `opnsense_frr_bfd_peers_total` | `opnsense_frr_bfd_peers` | `5.0.0` |
+| `internal/collector/hasync.go` | `opnsense_hasync_remote_services_total` | `opnsense_hasync_remote_services` | `5.0.0` |
+| `internal/collector/ids.go` | `opnsense_ids_installed_rules_total` | `opnsense_ids_installed_rules` | `5.0.0` |
+| `internal/collector/kea.go` | `opnsense_kea_dhcp4_leases_total` | `opnsense_kea_dhcp4_leases` | `5.0.0` |
+| `internal/collector/kea.go` | `opnsense_kea_dhcp4_leases_reserved_total` | `opnsense_kea_dhcp4_leases_reserved` | `5.0.0` |
+| `internal/collector/kea.go` | `opnsense_kea_dhcp4_leases_dynamic_total` | `opnsense_kea_dhcp4_leases_dynamic` | `5.0.0` |
+| `internal/collector/kea.go` | `opnsense_kea_dhcp6_leases_total` | `opnsense_kea_dhcp6_leases` | `5.0.0` |
+| `internal/collector/kea.go` | `opnsense_kea_dhcp6_leases_reserved_total` | `opnsense_kea_dhcp6_leases_reserved` | `5.0.0` |
+| `internal/collector/kea.go` | `opnsense_kea_dhcp6_leases_dynamic_total` | `opnsense_kea_dhcp6_leases_dynamic` | `5.0.0` |
+| `internal/collector/mbuf.go` | `opnsense_mbuf_cluster_total` | `opnsense_mbuf_cluster` | `5.0.0` |
+| `internal/collector/mbuf.go` | `opnsense_mbuf_pool_total` | `opnsense_mbuf_pool` | `5.0.0` |
+| `internal/collector/mbuf.go` | `opnsense_mbuf_bytes_total` | `opnsense_mbuf_bytes` | `5.0.0` |
+| `internal/collector/monit.go` | `opnsense_monit_checks_total` | `opnsense_monit_checks` | `5.0.0` |
+| `internal/collector/ndp.go` | `opnsense_ndp_entries_total` | `opnsense_ndp_table_entries` | `5.0.0` |
+| `internal/collector/netbird.go` | `opnsense_netbird_relays_total` | `opnsense_netbird_relays` | `5.0.0` |
+| `internal/collector/netbird.go` | `opnsense_netbird_peers_total` | `opnsense_netbird_peers` | `5.0.0` |
+| `internal/collector/network_diag.go` | `opnsense_network_diag_sockets_unix_total` | `opnsense_network_diag_sockets_unix` | `5.0.0` |
+| `internal/collector/network_diag.go` | `opnsense_network_diag_routes_total` | `opnsense_network_diag_routes` | `5.0.0` |
+| `internal/collector/network_diag.go` | `opnsense_network_diag_pfsync_nodes_total` | `opnsense_network_diag_pfsync_nodes` | `5.0.0` |
+| `internal/collector/ntp.go` | `opnsense_ntp_peers_total` | `opnsense_ntp_peers` | `5.0.0` |
+| `internal/collector/openvpn.go` | `opnsense_openvpn_sessions_total` | `opnsense_openvpn_current_sessions` | `5.0.0` |
+| `internal/collector/qfeeds.go` | `opnsense_qfeeds_feeds_total` | `opnsense_qfeeds_feeds` | `5.0.0` |
+| `internal/collector/services.go` | `opnsense_services_running_total` | `opnsense_services_running` | `5.0.0` |
+| `internal/collector/services.go` | `opnsense_services_stopped_total` | `opnsense_services_stopped` | `5.0.0` |
+| `internal/collector/smart.go` | `opnsense_smart_devices_total` | `opnsense_smart_devices` | `5.0.0` |
+| `internal/collector/system.go` | `opnsense_system_config_last_change` | `opnsense_system_config_last_change_timestamp_seconds` | `5.0.0` |
+| `internal/collector/tailscale.go` | `opnsense_tailscale_peers_total` | `opnsense_tailscale_peers` | `5.0.0` |
+| `internal/collector/trafficshaper.go` | `opnsense_trafficshaper_pipes_total` | `opnsense_trafficshaper_pipes` | `5.0.0` |
+| `internal/collector/trafficshaper.go` | `opnsense_trafficshaper_queues_total` | `opnsense_trafficshaper_queues` | `5.0.0` |
+| `internal/collector/unbound_dns.go` | `opnsense_unbound_dns_qstats_start_time_seconds` | `opnsense_unbound_dns_qstats_start_time_timestamp_seconds` | `5.0.0` |
+| `internal/collector/wireguard.go` | `opnsense_wireguard_peer_last_handshake_seconds` | `opnsense_wireguard_peer_last_handshake_timestamp_seconds` | `5.0.0` |
+<!-- docgen:end:metric-renames -->
+
+Update the PromQL, alerts, recording rules, and dashboards that you maintain using the old names
+with the corresponding new names in the table. The shipped Grafana dashboard and alert/recording
+rules already use the new names.
+
 ## Upgrading to v4.0 from v3.x
 
 ### Project renamed: opnsense-exporter -> opnsense2otel
@@ -251,8 +336,8 @@ Grafana dashboard UIDs are the exception - see the last item below.
   and `opnsense_ndp_entries` series (one series per host, high cardinality) are no
   longer emitted by default. Set `--exporter.enable-arp-details` /
   `--exporter.enable-ndp-details` to restore them. Otherwise switch dashboards and
-  alerts to the new `opnsense_arp_table_entries_total` /
-  `opnsense_ndp_entries_total` aggregate gauges, which are always emitted.
+  alerts to the new `opnsense_arp_table_table_entries` /
+  `opnsense_ndp_table_entries` aggregate gauges, which are always emitted.
 - **`opnsense_firewall_interface_hits_total` renamed and re-typed** - it is now
   `opnsense_firewall_interface_log_entries_recent` and is a **gauge**, not a counter.
   It reflects the current count of recent log entries, so it no longer makes sense to
@@ -283,12 +368,12 @@ Grafana dashboard UIDs are the exception - see the last item below.
 - **OpenVPN per-session metrics are opt-in** - the per-session
   `opnsense_openvpn_sessions` series (username and tunnel-address labels) is only
   emitted with `--exporter.enable-openvpn-details`. The aggregate
-  `opnsense_openvpn_sessions_total` and `opnsense_openvpn_sessions_by_instance`
+  `opnsense_openvpn_current_sessions` and `opnsense_openvpn_sessions_by_instance`
   series are always emitted. Set the flag to restore the old behaviour.
-- **WireGuard handshake metric type** - `opnsense_wireguard_peer_last_handshake_seconds`
-  changed from counter to gauge (it is a Unix timestamp). Replace
-  `rate(opnsense_wireguard_peer_last_handshake_seconds[...])` with the purpose-built
-  `opnsense_wireguard_peer_handshake_age_seconds` gauge.
+- **WireGuard handshake metric type** - the peer timestamp is exposed as
+  `opnsense_wireguard_peer_last_handshake_timestamp_seconds`, a gauge (it is a Unix timestamp).
+  Replace `rate(opnsense_wireguard_peer_last_handshake_timestamp_seconds[...])` with the
+  purpose-built `opnsense_wireguard_peer_handshake_age_seconds` gauge.
 - **`opnsense_up` semantics** - `opnsense_up` no longer flips to 0 for a box that is
   reachable but self-reports as degraded (e.g. a leftover crash report). Such a box
   now trips the warning-level `OPNsenseCrashReports` / `OPNsenseFirewallUnhealthy`

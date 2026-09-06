@@ -41,7 +41,7 @@ type SeriesBudget struct {
 	Now func() time.Time
 	// Observed, when non-nil, is called with the current total collector
 	// series count on every real Gather — independent of whether Total is
-	// configured — so a caller (the opnsense_exporter_series_total
+	// configured — so a caller (the opnsense_exporter_series
 	// self-metric) can stay current without this package depending on the
 	// collector package.
 	Observed func(total int)

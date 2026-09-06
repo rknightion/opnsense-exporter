@@ -69,7 +69,7 @@ running few plugins stops paying for endpoints it will never have.
 see which is which.
 
 **Cardinality has a declared budget.** `--exporter.series-budget` is compared against
-`opnsense_exporter_series_total`, and the web UI's cardinality report replays the same set.
+`opnsense_exporter_series`, and the web UI's cardinality report replays the same set.
 1006 metrics is a lot of metrics; the budget exists so that "a lot" stays a number somebody
 chose rather than a number somebody discovers on an invoice.
 

@@ -39,20 +39,20 @@ func (c *dnsmasqCollector) Register(namespace, instanceLabel string, log *slog.L
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.leasesTotal = buildPrometheusDesc(c.subsystem, "leases_total",
-		"Total number of DHCP leases",
+	c.leasesTotal = buildPrometheusDesc(c.subsystem, "leases",
+		"Current number of DHCP leases",
 		nil,
 	)
 	c.leasesByIface = buildPrometheusDesc(c.subsystem, "leases_by_interface",
 		"Number of DHCP leases per interface",
 		[]string{"interface"},
 	)
-	c.reservedTotal = buildPrometheusDesc(c.subsystem, "leases_reserved_total",
-		"Total number of reserved (static) DHCP leases",
+	c.reservedTotal = buildPrometheusDesc(c.subsystem, "leases_reserved",
+		"Current number of reserved (static) DHCP leases",
 		nil,
 	)
-	c.dynamicTotal = buildPrometheusDesc(c.subsystem, "leases_dynamic_total",
-		"Total number of dynamic DHCP leases",
+	c.dynamicTotal = buildPrometheusDesc(c.subsystem, "leases_dynamic",
+		"Current number of dynamic DHCP leases",
 		nil,
 	)
 	c.leaseInfo = buildPrometheusDesc(c.subsystem, "lease_info",

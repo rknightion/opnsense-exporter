@@ -1,11 +1,11 @@
 """
 Traffic Shaper tab — covers all opnsense_trafficshaper_* metrics.
 
-Gated on `query_result(opnsense_trafficshaper_pipes_total > 0)` so the tab
+Gated on `query_result(opnsense_trafficshaper_pipes > 0)` so the tab
 only appears when dummynet pipes are actually configured.
 
 Rows:
-  1. Summary        — pipes_total, queues_total stats
+  1. Summary        — pipes, queues stats
   2. Pipes          — per-pipe active_flows, bytes, drop gauges (timeseries)
   3. Queues         — per-queue active_flows, bytes, drop gauges (timeseries)
   4. Rules          — rule packet/byte counters table (rate)
@@ -16,7 +16,7 @@ from builder import Builder, sel, RATE, epoch_ms
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    # Existence, not `pipes_total > 0` (#414 / #114).
+    # Existence, not `pipes > 0` (#414 / #114).
     #
     # THE RULE: use existence when the series only appears if the feature is
     # deployed; use a value test only when the series is emitted unconditionally.
@@ -25,22 +25,22 @@ def build(b: Builder):
     # configured with no pipes and no queues (internal/collector/trafficshaper.go),
     # so this metric is never exported as a lone zero and the comparison was already
     # redundant. It was also actively wrong in one state: a box with queues but no
-    # pipes exports pipes_total=0 alongside real queue data, and `> 0` hid the whole
-    # tab. Contrast opnsense_carp_vips_total in carp.py, which every box emits.
-    b.sentinel("has_trafficshaper", metric="opnsense_trafficshaper_pipes_total")
+    # pipes exports pipes=0 alongside real queue data, and `> 0` hid the whole
+    # tab. Contrast opnsense_carp_vips in carp.py, which every box emits.
+    b.sentinel("has_trafficshaper", metric="opnsense_trafficshaper_pipes")
 
     # ================================================================
     # Row 1: Summary
     # ================================================================
     pipes_total = b.stat(
         "Configured Pipes",
-        sel("opnsense_trafficshaper_pipes_total"),
+        sel("opnsense_trafficshaper_pipes"),
         unit="short", w=6, h=4,
         desc="Number of configured dummynet pipes (gauge — instantaneous count).",
     )
     queues_total = b.stat(
         "Configured Queues",
-        sel("opnsense_trafficshaper_queues_total"),
+        sel("opnsense_trafficshaper_queues"),
         unit="short", w=6, h=4,
         desc="Number of configured dummynet queues (gauge — instantaneous count).",
     )

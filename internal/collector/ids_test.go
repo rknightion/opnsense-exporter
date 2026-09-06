@@ -36,7 +36,7 @@ func idsMux(t *testing.T) *http.ServeMux {
 // TestIDSCollector_DefaultOn: no alerts flag → the default-on series only.
 //
 //	status(1) + ips_mode(1) + promiscuous(1) + alert_log_files(1)
-//	+ alert_log_size_bytes(1) + installed_rules_total(1)
+//	+ alert_log_size_bytes(1) + installed_rules(1)
 //	+ ruleset_enabled(2) + ruleset_last_updated(1, only the downloaded one)
 //	= 9
 func TestIDSCollector_DefaultOn(t *testing.T) {
@@ -68,8 +68,8 @@ func TestIDSCollector_DefaultOn(t *testing.T) {
 		if hasFqName(m, "opnsense_ids_ips_mode_enabled") && getMetricValue(m) != 1 {
 			t.Errorf("ips_mode_enabled = %v, want 1", getMetricValue(m))
 		}
-		if hasFqName(m, "opnsense_ids_installed_rules_total") && getMetricValue(m) != 1966 {
-			t.Errorf("installed_rules_total = %v, want 1966", getMetricValue(m))
+		if hasFqName(m, "opnsense_ids_installed_rules") && getMetricValue(m) != 1966 {
+			t.Errorf("installed_rules = %v, want 1966", getMetricValue(m))
 		}
 	}
 }

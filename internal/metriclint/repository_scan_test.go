@@ -35,9 +35,9 @@ func TestRepositoryScanUsesSourceMetricTypes(t *testing.T) {
 	var sawGauge, sawCounter bool
 	for _, metric := range metrics {
 		switch {
-		case metric.File == "internal/collector/crowdsec.go" && metric.LocalName == "alerts_total":
+		case metric.File == "internal/collector/crowdsec.go" && metric.LocalName == "alerts":
 			if metric.Kind != KindGauge {
-				t.Errorf("crowdsec alerts_total kind = %q, want Gauge", metric.Kind)
+				t.Errorf("crowdsec alerts kind = %q, want Gauge", metric.Kind)
 			}
 			sawGauge = true
 		case metric.File == "internal/collector/collector.go" && metric.LocalName == "exporter_scrapes_total":

@@ -59,7 +59,7 @@ def build(b: Builder):
     # ================================================================
     services_total = b.stat(
         "Remote Services",
-        sel("opnsense_hasync_remote_services_total"),
+        sel("opnsense_hasync_remote_services"),
         unit="short", w=6, h=4,
         desc="Number of services reported by the HA peer.",
     )

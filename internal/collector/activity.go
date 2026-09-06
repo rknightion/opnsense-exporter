@@ -62,8 +62,8 @@ func (c *activityCollector) Register(namespace, instanceLabel string, log *slog.
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.threadsTotal = buildPrometheusDesc(c.subsystem, "threads_total",
-		"Total number of threads on the system",
+	c.threadsTotal = buildPrometheusDesc(c.subsystem, "threads",
+		"Current number of threads on the system",
 		nil,
 	)
 	c.threadsRunning = buildPrometheusDesc(c.subsystem, "threads_running",

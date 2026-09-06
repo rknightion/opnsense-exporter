@@ -6,7 +6,7 @@ is always emitted). The Alert Activity row is gated separately on has_ids_alerts
 because opnsense_ids_recent_alerts is opt-in (--exporter.enable-ids-alerts).
 
 opnsense_ids_recent_alerts is a GAUGE (windowed, saturating backend) — show RAW,
-never rate(). opnsense_ids_installed_rules_total is a current count → RAW.
+never rate(). opnsense_ids_installed_rules is a current count → RAW.
 opnsense_ids_ruleset_last_updated_timestamp_seconds is a unix timestamp → shown
 as age: time() - <ts>.
 
@@ -77,7 +77,7 @@ def build(b: Builder):
     )
     rules = b.stat(
         "Installed Rules",
-        sel("opnsense_ids_installed_rules_total"),
+        sel("opnsense_ids_installed_rules"),
         unit="short", w=4, h=4,
         desc="Total rules loaded in the Suricata rule cache (current count, not a rate).",
     )

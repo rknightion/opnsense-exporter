@@ -36,7 +36,7 @@ def build(b: Builder):
     )
     checks_total = b.stat(
         "Checks Configured",
-        sel("opnsense_monit_checks_total"),
+        sel("opnsense_monit_checks"),
         unit="short", w=4, h=4,
         desc="Total number of configured monit checks.",
     )

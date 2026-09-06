@@ -65,8 +65,8 @@ func (c *openVPNCollector) Register(namespace, instanceLabel string, log *slog.L
 		"OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set.",
 		[]string{"description", "real_address", "virtual_address", "virtual_ipv6_address", "username"},
 	)
-	c.sessionsTotal = buildPrometheusDesc(c.subsystem, "sessions_total",
-		"Total number of OpenVPN sessions",
+	c.sessionsTotal = buildPrometheusDesc(c.subsystem, "current_sessions",
+		"Current number of OpenVPN sessions",
 		nil,
 	)
 	c.sessionsByInstance = buildPrometheusDesc(c.subsystem, "sessions_by_instance",

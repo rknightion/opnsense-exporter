@@ -212,18 +212,18 @@ func (c *networkDiagCollector) Register(namespace, instanceLabel string, log *sl
 		"Number of active sockets by type",
 		[]string{"type"},
 	)
-	c.socketsUnixTotal = buildPrometheusDesc(c.subsystem, "sockets_unix_total",
-		"Total number of active Unix domain sockets",
+	c.socketsUnixTotal = buildPrometheusDesc(c.subsystem, "sockets_unix",
+		"Current number of active Unix domain sockets",
 		nil,
 	)
 
-	c.routesTotal = buildPrometheusDesc(c.subsystem, "routes_total",
-		"Number of routing table entries by protocol",
+	c.routesTotal = buildPrometheusDesc(c.subsystem, "routes",
+		"Current number of routing table entries by protocol",
 		[]string{"proto"},
 	)
 	c.interfaceRoutes = buildPrometheusDesc(c.subsystem, "interface_routes",
 		"Number of routing table entries whose egress interface is this one, by address family. "+
-			"Per-interface breakdown of routes_total, which remains the sum. `device` is the raw "+
+			"Per-interface breakdown of routes, which remains the sum. `device` is the raw "+
 			"kernel device and `interface` the assigned description; they diverge on VLAN children, "+
 			"PPPoE links and unassigned devices, and only `device` joins against the interfaces "+
 			"metrics. A count collapsing to near zero on a WAN device is a link that has dropped its "+
@@ -260,8 +260,8 @@ func (c *networkDiagCollector) Register(namespace, instanceLabel string, log *sl
 		[]string{"proto", "device", "interface", "gateway"},
 	)
 
-	c.pfsyncNodesTotal = buildPrometheusDesc(c.subsystem, "pfsync_nodes_total",
-		"Total number of pfsync cluster nodes",
+	c.pfsyncNodesTotal = buildPrometheusDesc(c.subsystem, "pfsync_nodes",
+		"Current number of pfsync cluster nodes",
 		nil,
 	)
 	c.pfsyncNodeInfo = buildPrometheusDesc(c.subsystem, "pfsync_node_info",

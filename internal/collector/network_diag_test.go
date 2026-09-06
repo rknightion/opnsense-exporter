@@ -479,7 +479,7 @@ func TestNetworkDiagCollector_DescribeCoversNetisr(t *testing.T) {
 	}
 }
 
-// #544 item 2: the whole routing table collapsed to routes_total{proto}. This
+// #544 item 2: the whole routing table collapsed to routes{proto}. This
 // fixture is trimmed from the prod box and keeps the default route on each
 // family, a VLAN child whose netif differs from its description, and a
 // blackhole route.

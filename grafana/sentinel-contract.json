@@ -13,7 +13,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_acme_certificates_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_acme_certificates{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > System > Certificates > ACME Client"
         ]
@@ -23,7 +23,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_alias_tables_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_alias_tables{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Security > Aliases",
           "opnsense2otel > Security > Aliases > Alias Tables"
@@ -85,7 +85,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_captiveportal_zones_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_captiveportal_zones{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > Captive Portal",
           "opnsense2otel > Network > Captive Portal > Captive Portal Overview",
@@ -118,7 +118,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "value",
-        "query": "query_result(opnsense_carp_vips_total{opnsense_instance=~\"$opnsense_instance\"} > 0)",
+        "query": "query_result(opnsense_carp_vips{opnsense_instance=~\"$opnsense_instance\"} > 0)",
         "gates": [
           "opnsense2otel > System > CARP / HA > VIP Status & Advertisement"
         ]
@@ -207,7 +207,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_dhcpv4_leases{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > DHCP",
           "opnsense2otel > Network > DHCP - ISC & Client",
@@ -229,7 +229,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_dhcpv6_leases{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > DHCP",
           "opnsense2otel > Network > DHCP - ISC & Client",
@@ -263,7 +263,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_dyndns_accounts_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_dyndns_accounts{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > System > Services, Cron & DynDNS > DynDNS"
         ]
@@ -283,7 +283,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_firewall_rule_rules{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Security > Firewall Rules & NAT > Firewall Rules (top 20)"
         ]
@@ -847,7 +847,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_network_diag_sockets_unix{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem)",
           "opnsense2otel > Network > Routing & Neighbors > NetISR Per-CPU Distribution",
@@ -962,7 +962,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_qfeeds_feeds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Security > Q-Feeds",
           "opnsense2otel > Security > Q-Feeds > Q-Feeds Activity",
@@ -1111,7 +1111,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_smart_devices_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_smart_devices{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > System > Hardware & SMART > SMART Read Errors"
         ]
@@ -1202,7 +1202,7 @@
         "datasource": "prometheus",
         "scope": "collector",
         "presence": "existence",
-        "query": "label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "query": "label_values(opnsense_trafficshaper_pipes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "opnsense2otel > Network > Traffic Shaper",
           "opnsense2otel > Network > Traffic Shaper > Configured Capacity",

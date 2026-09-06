@@ -59,10 +59,10 @@ func (c *trafficShaperCollector) Register(namespace, instanceLabel string, log *
 	queueLabels := []string{"queue", "pipe", "description"}
 	ruleLabels := []string{"rule", "attached_to", "target_type", "description"}
 
-	c.pipesTotal = buildPrometheusDesc(c.subsystem, "pipes_total",
-		"Total number of configured traffic shaper pipes", nil)
-	c.queuesTotal = buildPrometheusDesc(c.subsystem, "queues_total",
-		"Total number of configured traffic shaper queues (excluding template queues)", nil)
+	c.pipesTotal = buildPrometheusDesc(c.subsystem, "pipes",
+		"Current number of configured traffic shaper pipes", nil)
+	c.queuesTotal = buildPrometheusDesc(c.subsystem, "queues",
+		"Current number of configured traffic shaper queues (excluding template queues)", nil)
 
 	c.pipeFlows = buildPrometheusDesc(c.subsystem, "pipe_active_flows",
 		"Number of currently active flows on this pipe", pipeLabels)
@@ -169,7 +169,7 @@ func (c *trafficShaperCollector) Update(_ context.Context, client *opnsense.Clie
 	// Shaper present but unconfigured (empty items): stay completely silent.
 	// This matches plugin-collector convention, and this silence IS what hides the
 	// dashboard's Traffic Shaper tab: its presence sentinel tests whether
-	// pipes_total EXISTS (#414). Emitting zeros here would show an empty tab on
+	// pipes EXISTS (#414). Emitting zeros here would show an empty tab on
 	// every box with the plugin installed.
 	if len(data.Pipes) == 0 && len(data.Queues) == 0 {
 		return nil

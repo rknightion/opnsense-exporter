@@ -87,7 +87,7 @@ Every tab shares one event timeline, so a step in a graph can be attributed with
 | Layer | Marks | Source |
 | --- | --- | --- |
 | Reboot | Every counter on the box resetting at once | `opnsense_system_boot_timestamp_seconds` |
-| Config change | A configuration being applied | `opnsense_system_config_last_change` |
+| Config change | A configuration being applied | `opnsense_system_config_last_change_timestamp_seconds` |
 | Interface counter reset | One interface's counters restarting | boot instant + `opnsense_interfaces_attach_or_statistics_reset_uptime_seconds` |
 | Boot environment created | An OPNsense upgrade | `opnsense_snapshots_active_created_timestamp_seconds` |
 | Certificate renewed | Services reloading behind a new certificate | `opnsense_acme_certificate_last_update_timestamp_seconds` |
@@ -267,15 +267,15 @@ opnsense_system_disk_used_ratio * 100
 **Days until certificate expiry:**
 
 ```promql
-(opnsense_certificate_valid_to_seconds - time()) / 86400
+(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400
 ```
 
 **Certificates expiring within 14 days:**
 
 ```promql
-(opnsense_certificate_valid_to_seconds - time()) / 86400 < 14
+(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400 < 14
   and
-(opnsense_certificate_valid_to_seconds - time()) > 0
+(opnsense_certificate_valid_to_timestamp_seconds - time()) > 0
 ```
 
 ### DNS performance
@@ -371,7 +371,7 @@ groups:
           summary: "Gateway {{ $labels.gateway }} is down on {{ $labels.opnsense_instance }}"
 
       - alert: OPNsenseCertExpiringSoon
-        expr: (opnsense_certificate_valid_to_seconds - time()) / 86400 < 14
+        expr: (opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400 < 14
         for: 1h
         labels:
           severity: warning

@@ -42,7 +42,7 @@ func TestActivityCollector_Update(t *testing.T) {
 	}
 
 	expectedValues := map[string]float64{
-		"opnsense_activity_threads_total":          849,
+		"opnsense_activity_threads":                849,
 		"opnsense_activity_threads_running":        13,
 		"opnsense_activity_threads_sleeping":       802,
 		"opnsense_activity_threads_waiting":        34,
@@ -69,17 +69,13 @@ func TestActivityCollector_Update(t *testing.T) {
 			continue
 		}
 
-		found := false
-		for name, expected := range expectedValues {
-			if containsString(desc, name) {
-				found = true
-				if value != expected {
-					t.Errorf("metric %s: expected %f, got %f", name, expected, value)
-				}
-				break
+		name := metricNameOf(m)
+		expected, found := expectedValues[name]
+		if found {
+			if value != expected {
+				t.Errorf("metric %s: expected %f, got %f", name, expected, value)
 			}
-		}
-		if !found {
+		} else {
 			t.Errorf("unexpected metric with desc: %s", desc)
 		}
 	}

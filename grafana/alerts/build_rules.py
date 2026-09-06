@@ -1256,12 +1256,12 @@ RULES = [
             ],
          )),
     dict(name="opnsense-cert-expiring", title="OPNsenseCertificateExpiringSoon",
-         A="(opnsense_certificate_valid_to_seconds - time()) / 86400",
+         A="(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400",
          op="within_range", params=[0, 14], for_min=0, severity="warning",
          summary="OPNsense certificate expiring soon: {{ $labels.commonname }} ({{ $labels.opnsense_instance }})",
          description="Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 14 days.",
          runbook=dict(
-             measures="Days until a certificate's notAfter time ((opnsense_certificate_valid_to_seconds - time()) / 86400).",
+             measures="Days until a certificate's notAfter time ((opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400).",
              threshold='within_range [0, 14] - the certificate expires within the next 14 days (and has not already expired, which is covered by the critical rule below).',
              absent="Default noDataState (Ok) - absence means that certificate is no longer tracked (removed/replaced), not that it's safely far from expiry.",
              checks=[
@@ -1277,12 +1277,12 @@ RULES = [
             ],
          )),
     dict(name="opnsense-cert-expiring-critical", title="OPNsenseCertificateExpiringCritical",
-         A="(opnsense_certificate_valid_to_seconds - time()) / 86400",
+         A="(opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400",
          op="within_range", params=[0, 3], for_min=0, severity="critical",
          summary="OPNsense certificate expiring imminently: {{ $labels.commonname }} ({{ $labels.opnsense_instance }})",
          description="Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 3 days.",
          runbook=dict(
-             measures='The same days-until-expiry expression as OPNsenseCertificateExpiringSoon ((opnsense_certificate_valid_to_seconds - time()) / 86400).',
+             measures='The same days-until-expiry expression as OPNsenseCertificateExpiringSoon ((opnsense_certificate_valid_to_timestamp_seconds - time()) / 86400).',
              threshold='within_range [0, 3] - imminent expiry, escalated to critical severity because there is very little runway left to act.',
              absent='Default noDataState (Ok) - same reasoning as the warning-tier sibling: absence means the certificate is no longer tracked.',
              checks=[
@@ -1614,18 +1614,18 @@ RULES = [
                 "The peer's last-handshake timestamp is recent",
             ],
          )),
-    # remote_services_total>0 is load-bearing: reachable=0 also means "HA sync isn't configured at
+    # remote_services > 0 is load-bearing: reachable=0 also means "HA sync isn't configured at
     # all", so the guard restricts firing to boxes where HA sync is actually set up.
     dict(name="opnsense-hasync-unreachable", title="OPNsenseHASyncUnreachable",
          A="opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) "
-           "(opnsense_hasync_remote_services_total > 0)",
+           "(opnsense_hasync_remote_services > 0)",
          op="lt", params=[1, 0], for_min=10, severity="warning",
          summary="OPNsense HA sync peer unreachable ({{ $labels.opnsense_instance }})",
          description="opnsense_hasync_remote_reachable has been 0 for 10m on a box where HA sync is "
-                     "configured (remote_services_total > 0). The guard excludes boxes with HA sync "
+                     "configured (remote_services > 0). The guard excludes boxes with HA sync "
                      "unconfigured, where reachable=0 is the normal, expected reading.",
          runbook=dict(
-             measures='opnsense_hasync_remote_reachable, guarded to only fire on boxes where HA sync is actually configured (opnsense_hasync_remote_services_total > 0) - reachable=0 on an unconfigured box is the normal, expected reading and is deliberately excluded.',
+             measures='opnsense_hasync_remote_reachable, guarded to only fire on boxes where HA sync is actually configured (opnsense_hasync_remote_services > 0) - reachable=0 on an unconfigured box is the normal, expected reading and is deliberately excluded.',
              threshold='lt 1 sustained for 10m, on a box where HA sync is configured.',
              absent="Default noDataState (Ok) - absence means HA sync isn't configured on this box at all, which the guard already treats as non-alertable.",
              checks=[

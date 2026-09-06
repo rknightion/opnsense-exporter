@@ -8,7 +8,7 @@
 // # How an event is detected
 //
 // Every event this package emits comes from a metric whose VALUE is an instant —
-// `opnsense_system_config_last_change` is the epoch of the last configuration
+// `opnsense_system_config_last_change_timestamp_seconds` is the epoch of the last configuration
 // change, not a count of them. So detection is a diff, not a parse: gather the
 // watched families from the same registry `/metrics` replays, and emit when a
 // series' value changes to a new non-zero instant. The annotation is then stamped
@@ -95,7 +95,7 @@ var Watches = []Watch{
 		Text:   "OPNsense rebooted",
 	},
 	{
-		Metric: "opnsense_system_config_last_change",
+		Metric: "opnsense_system_config_last_change_timestamp_seconds",
 		Kind:   "config-change",
 		Text:   "OPNsense configuration changed",
 	},

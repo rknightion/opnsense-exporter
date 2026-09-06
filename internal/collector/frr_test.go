@@ -377,7 +377,7 @@ func TestFRRCollector_Update_PluginAbsentRoutesEnabled(t *testing.T) {
 
 // TestFRRCollector_Update_DualSAFINoDuplicateSeries guards #162: a neighbor
 // activated in both ipv4 unicast and multicast must not emit duplicate label
-// tuples for bgp_peers_total/bgp_failed_peers/bgp_rib_entries (which would fail
+// tuples for bgp_peers/bgp_failed_peers/bgp_rib_entries (which would fail
 // the whole scrape's Gather).
 func TestFRRCollector_Update_DualSAFINoDuplicateSeries(t *testing.T) {
 	mux := http.NewServeMux()
@@ -408,12 +408,12 @@ func TestFRRCollector_Update_DualSAFINoDuplicateSeries(t *testing.T) {
 	// Both SAFIs must be represented as distinct af label values.
 	afs := map[string]bool{}
 	for _, m := range metrics {
-		if strings.Contains(m.Desc().String(), "bgp_peers_total") {
+		if hasFqName(m, "opnsense_frr_bgp_peers") {
 			afs[getMetricLabels(m)["af"]] = true
 		}
 	}
 	if !afs["ipv4"] || !afs["ipv4multicast"] {
-		t.Errorf("expected bgp_peers_total for both ipv4 and ipv4multicast, got %v", afs)
+		t.Errorf("expected bgp_peers for both ipv4 and ipv4multicast, got %v", afs)
 	}
 }
 

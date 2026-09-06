@@ -172,6 +172,9 @@ func main() {
 	generateComposeReference(out, filepath.Join(repoRoot, "docs", "deployment", "reference.md"), allFlags)
 	generateHelmValues(out, filepath.Join(repoRoot, "charts", "opnsense2otel"), allFlags)
 
+	// Step 7c: Inject the v5.0 metric rename table from the metric-lint ledger.
+	injectUpgradingDoc(out)
+
 	// Step 8: Inject the generated dashboard tab-name list into prose that enumerates tabs.
 	dashMetrics, dashTabs, tabNames := loadDashboardStats(repoRoot)
 	injectDashboardTabs(out, tabNames)

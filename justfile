@@ -80,7 +80,7 @@ check-public-ips:
     python3 scripts/check_public_ips.py --selftest
     python3 scripts/check_public_ips.py
 
-# enforce Prometheus metric naming contracts, including the OPN-0033 legacy ledger
+# enforce Prometheus metric naming contracts and the release migration ledger
 [group('check')]
 [no-exit-message]
 metric-lint:

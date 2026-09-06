@@ -44,8 +44,8 @@ func (c *qfeedsCollector) Register(namespace, instanceLabel string, log *slog.Lo
 
 	feedLabels := []string{"feed"}
 
-	c.feedsTotal = buildPrometheusDesc(c.subsystem, "feeds_total",
-		"Total number of configured Q-Feeds threat intelligence feeds", nil)
+	c.feedsTotal = buildPrometheusDesc(c.subsystem, "feeds",
+		"Current number of configured Q-Feeds threat intelligence feeds", nil)
 	c.feedEntries = buildPrometheusDesc(c.subsystem, "feed_entries",
 		"Current number of entries in this Q-Feeds feed", feedLabels)
 	c.feedPacketsBlocked = buildPrometheusDesc(c.subsystem, "feed_packets_blocked_total",

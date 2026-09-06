@@ -86,12 +86,11 @@ func TestCertificatesCollector_Update_Empty(t *testing.T) {
 	// Use name-matched lookup instead of positional — channel order not guaranteed.
 	var certTotal, caTotal *float64
 	for _, m := range metrics {
-		desc := m.Desc().String()
 		v := getMetricValue(m)
 		switch {
-		case strings.Contains(desc, "certificate_ca_total"):
+		case hasFqName(m, "opnsense_certificate_ca"):
 			caTotal = &v
-		case strings.Contains(desc, "certificate_total") && !strings.Contains(desc, "certificate_ca_total"):
+		case hasFqName(m, "opnsense_certificate_certificates"):
 			certTotal = &v
 		}
 	}
@@ -101,14 +100,14 @@ func TestCertificatesCollector_Update_Empty(t *testing.T) {
 		t.Errorf("expected certificate_total=0, got %f", *certTotal)
 	}
 	if caTotal == nil {
-		t.Error("expected certificate_ca_total metric to be emitted")
+		t.Error("expected certificate_ca metric to be emitted")
 	} else if *caTotal != 0 {
-		t.Errorf("expected certificate_ca_total=0, got %f", *caTotal)
+		t.Errorf("expected certificate_ca=0, got %f", *caTotal)
 	}
 }
 
 // TestCertificatesCollector_Update_PendingCSR guards #167: a pending-CSR row
-// (empty valid_from/valid_to) must not emit valid_from_seconds/valid_to_seconds
+// (empty valid_from/valid_to) must not emit valid_from_timestamp_seconds/valid_to_timestamp_seconds
 // (which would read as epoch 0 = expired 1970), while info is still emitted.
 func TestCertificatesCollector_Update_PendingCSR(t *testing.T) {
 	mux := http.NewServeMux()
@@ -132,7 +131,7 @@ func TestCertificatesCollector_Update_PendingCSR(t *testing.T) {
 	sawInfo := false
 	for _, m := range metrics {
 		desc := m.Desc().String()
-		if strings.Contains(desc, "certificate_valid_from_seconds") || strings.Contains(desc, "certificate_valid_to_seconds") {
+		if hasFqName(m, "opnsense_certificate_valid_from_timestamp_seconds") || hasFqName(m, "opnsense_certificate_valid_to_timestamp_seconds") {
 			t.Errorf("pending-CSR row must not emit an expiry metric: %s", desc)
 		}
 		if strings.Contains(desc, "certificate_info") {
@@ -169,14 +168,13 @@ func TestCertificatesCollector_CAMetrics(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 	var sawCATotal, sawCAValidTo bool
 	for _, m := range metrics {
-		desc := m.Desc().String()
-		if strings.Contains(desc, "certificate_ca_total") {
+		if hasFqName(m, "opnsense_certificate_ca") {
 			sawCATotal = true
 			if getMetricValue(m) != 1 {
-				t.Errorf("expected ca_total=1, got %v", getMetricValue(m))
+				t.Errorf("expected ca=1, got %v", getMetricValue(m))
 			}
 		}
-		if strings.Contains(desc, "certificate_ca_valid_to_seconds") {
+		if hasFqName(m, "opnsense_certificate_ca_valid_to_timestamp_seconds") {
 			sawCAValidTo = true
 			labels := getMetricLabels(m)
 			if labels["commonname"] != "OPNsense-CA" || getMetricValue(m) != 1958500565 {

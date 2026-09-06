@@ -436,12 +436,12 @@ def build(b: Builder):
     )
     window_age = b.stat(
         "Query-Stats Window Age",
-        f"time() - {u('qstats_start_time_seconds')}",
+        f"time() - {u('qstats_start_time_timestamp_seconds')}",
         unit="s", w=6, h=4,
         color_mode="value",
         thresholds=[{"color": "blue", "value": None}],
         desc="Time since the current query-stats rolling window started "
-             "(time() - opnsense_unbound_dns_qstats_start_time_seconds). A sudden drop "
+             "(time() - opnsense_unbound_dns_qstats_start_time_timestamp_seconds). A sudden drop "
              "close to zero signals the underlying qstats database was reset.",
     )
     queries_by_result = b.piechart(

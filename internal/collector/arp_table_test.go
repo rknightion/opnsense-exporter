@@ -56,7 +56,7 @@ func TestArpTableCollector_Update(t *testing.T) {
 	var total *float64
 	perEntry := 0
 	for _, m := range metrics {
-		if hasFqName(m, "opnsense_arp_table_entries_total") {
+		if hasFqName(m, "opnsense_arp_table_table_entries") {
 			v := getMetricValue(m)
 			total = &v
 			continue
@@ -67,7 +67,7 @@ func TestArpTableCollector_Update(t *testing.T) {
 		}
 	}
 	if total == nil || *total != 2 {
-		t.Errorf("entries_total = %v, want 2", total)
+		t.Errorf("table_entries = %v, want 2", total)
 	}
 	if perEntry != 2 {
 		t.Errorf("expected 2 per-entry ARP metrics with details on, got %d", perEntry)
@@ -88,7 +88,7 @@ func TestArpTableCollector_DetailsGating(t *testing.T) {
 	off := &arpTableCollector{subsystem: ArpTableSubsystem}
 	off.Register(namespace, "test", promslog.NewNopLogger())
 	m := collectMetrics(t, off, client)
-	if len(m) != 1 || !hasFqName(m[0], "opnsense_arp_table_entries_total") {
+	if len(m) != 1 || !hasFqName(m[0], "opnsense_arp_table_table_entries") {
 		t.Errorf("details-off should emit only the aggregate, got %d metrics", len(m))
 	}
 
@@ -99,7 +99,7 @@ func TestArpTableCollector_DetailsGating(t *testing.T) {
 	m = collectMetrics(t, on, client)
 	var sawPerEntry bool
 	for _, x := range m {
-		if hasFqName(x, "opnsense_arp_table_entries") && !hasFqName(x, "opnsense_arp_table_entries_total") {
+		if hasFqName(x, "opnsense_arp_table_entries") && !hasFqName(x, "opnsense_arp_table_table_entries") {
 			sawPerEntry = true
 		}
 	}

@@ -37,20 +37,20 @@ func (c *dhcpv4Collector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.leasesTotal = buildPrometheusDesc(c.subsystem, "leases_total",
-		"Total number of ISC DHCPv4 leases",
+	c.leasesTotal = buildPrometheusDesc(c.subsystem, "leases",
+		"Current number of ISC DHCPv4 leases",
 		nil,
 	)
 	c.leasesByIface = buildPrometheusDesc(c.subsystem, "leases_by_interface",
 		"Number of ISC DHCPv4 leases per interface",
 		[]string{"interface"},
 	)
-	c.reservedTotal = buildPrometheusDesc(c.subsystem, "leases_reserved_total",
-		"Total number of reserved (static) ISC DHCPv4 leases",
+	c.reservedTotal = buildPrometheusDesc(c.subsystem, "leases_reserved",
+		"Current number of reserved (static) ISC DHCPv4 leases",
 		nil,
 	)
-	c.dynamicTotal = buildPrometheusDesc(c.subsystem, "leases_dynamic_total",
-		"Total number of dynamic ISC DHCPv4 leases",
+	c.dynamicTotal = buildPrometheusDesc(c.subsystem, "leases_dynamic",
+		"Current number of dynamic ISC DHCPv4 leases",
 		nil,
 	)
 	c.leaseInfo = buildPrometheusDesc(c.subsystem, "lease_info",
@@ -81,7 +81,7 @@ func (c *dhcpv4Collector) Update(ctx context.Context, client *opnsense.Client, c
 	}
 
 	// The legacy ISC DHCPv4 plugin is deprecated and absent on modern boxes; a 404
-	// yields Present=false. Stay completely silent then, so leases_total=0 (plugin
+	// yields Present=false. Stay completely silent then, so leases=0 (plugin
 	// absent) is never confused with a present-but-empty server (#87).
 	if !data.Present {
 		return nil

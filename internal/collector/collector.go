@@ -292,7 +292,7 @@ type Collector struct {
 	// replay; this gauge is the clock that does not move on a replay.
 	apiCacheFetchedTs *prometheus.Desc
 
-	// seriesTotal backs opnsense_exporter_series_total (#494): the most recent
+	// seriesTotal backs opnsense_exporter_series (#494): the most recent
 	// total collector-registry series count observed by metricsnap's
 	// Tee/TeeLane on a real scrape or OTLP export, so the soft
 	// --exporter.series-budget check is alertable rather than only visible in
@@ -1272,7 +1272,7 @@ func WithBuildInfo(version string) Option {
 
 // SetObservedSeriesTotal records the most recent total collector-registry
 // series count observed by metricsnap's Tee/TeeLane on a real scrape or OTLP
-// export (#494), surfaced via opnsense_exporter_series_total on the next
+// export (#494), surfaced via opnsense_exporter_series on the next
 // Collect. Safe to call concurrently with Collect(). Wired as
 // metricsnap.SeriesBudget.Observed by main.go — this package never imports
 // metricsnap, so the wiring lives at the composition root, not here.
@@ -1408,8 +1408,8 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	)
 
 	c.seriesTotal = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "exporter", "series_total"),
-		"Total number of Prometheus series produced by the COLLECTOR registry on the most recent real /metrics scrape or OTLP export (#494) — the same set --exporter.series-budget is compared against, and what metricsnap replays to the web UI's /cardinality report. Self-metrics on the separate self registry (process_*/go_*, the opnsense_exporter_otlp_* delivery-health family, and this gauge itself) are NOT included, so this reads lower than a full scrape's total series count; see --exporter.series-budget's flag help for the same caveat. This gauge is itself exactly one series, so it cannot meaningfully move the number it reports. Reads 0 before the first real scrape/export has completed.",
+		prometheus.BuildFQName(namespace, "exporter", "series"),
+		"Current number of Prometheus series produced by the COLLECTOR registry on the most recent real /metrics scrape or OTLP export (#494) — the same set --exporter.series-budget is compared against, and what metricsnap replays to the web UI's /cardinality report. Self-metrics on the separate self registry (process_*/go_*, the opnsense_exporter_otlp_* delivery-health family, and this gauge itself) are NOT included, so this reads lower than a full scrape's total series count; see --exporter.series-budget's flag help for the same caveat. This gauge is itself exactly one series, so it cannot meaningfully move the number it reports. Reads 0 before the first real scrape/export has completed.",
 		[]string{instanceLabelName},
 		nil,
 	)

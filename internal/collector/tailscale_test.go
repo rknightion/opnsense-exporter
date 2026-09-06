@@ -39,7 +39,7 @@ func TestTailscaleCollector_Update_Default(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 
 	metrics := collectMetrics(t, c, client)
-	// service_running + backend_running + info + peers_total + peers_with_active_session
+	// service_running + backend_running + info + peers + peers_with_active_session
 	// + health_warnings + the #583 reauth_required gauge = 7.
 	// key_expiry_timestamp_seconds is NOT counted: the fixture's Self carries no
 	// KeyExpiry (upstream omits it when the node key does not expire), and an

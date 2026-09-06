@@ -27,7 +27,7 @@ func TestQFeedsCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// feeds_total + 6 per-feed + 4 aggregate + license_info + license_expiry = 13
+	// feeds + 6 per-feed + 4 aggregate + license_info + license_expiry = 13
 	if len(metrics) != 13 {
 		t.Fatalf("expected 13 metrics, got %d", len(metrics))
 	}

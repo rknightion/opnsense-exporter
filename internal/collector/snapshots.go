@@ -44,8 +44,8 @@ func (c *snapshotsCollector) Register(namespace, instanceLabel string, log *slog
 		"Whether the root filesystem supports ZFS boot environments (1 = ZFS/bectl, 0 = e.g. UFS).",
 		nil,
 	)
-	c.total = buildPrometheusDesc(c.subsystem, "total",
-		"Number of ZFS boot environments currently present.",
+	c.total = buildPrometheusDesc(c.subsystem, "boot_environments",
+		"Current number of ZFS boot environments.",
 		nil,
 	)
 	c.activeCreatedTimestamp = buildPrometheusDesc(c.subsystem, "active_created_timestamp_seconds",

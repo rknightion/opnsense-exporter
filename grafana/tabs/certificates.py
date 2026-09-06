@@ -25,7 +25,7 @@ from builder import Builder, sel, epoch_ms
 
 
 def build(b: Builder):
-    b.sentinel("has_acme", metric="opnsense_acme_certificates_total")
+    b.sentinel("has_acme", metric="opnsense_acme_certificates")
 
     # =====================================================================
     # Row 1: Certificates
@@ -36,7 +36,7 @@ def build(b: Builder):
     # The title is stable because alert panel links resolve it by name.
     cert_expiry = b.ts(
         "Certificate Expiry (days left)",
-        [(f"({sel('opnsense_certificate_valid_to_seconds')} - time()) / 86400",
+        [(f"({sel('opnsense_certificate_valid_to_timestamp_seconds')} - time()) / 86400",
           "{{commonname}} - {{description}} ({{opnsense_instance}})")],
         w=24, h=10,
         unit="d", min0=False,
@@ -66,7 +66,7 @@ def build(b: Builder):
     # valid_from table (epoch timestamp)
     cert_valid_from = b.table(
         "Certificate Valid From",
-        [epoch_ms(sel("opnsense_certificate_valid_from_seconds"))],
+        [epoch_ms(sel("opnsense_certificate_valid_from_timestamp_seconds"))],
         w=16, h=8,
         excludes=["__name__", "job", "instance"],
         renames={
@@ -102,7 +102,7 @@ def build(b: Builder):
     # Total certificates stat (instantaneous gauge)
     cert_total = b.stat(
         "Certificates Total",
-        sel("opnsense_certificate_total"),
+        sel("opnsense_certificate_certificates"),
         unit="short",
         w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],
@@ -112,14 +112,14 @@ def build(b: Builder):
     # CA certificate panels
     ca_total = b.stat(
         "Certificate Authorities",
-        sel("opnsense_certificate_ca_total"),
+        sel("opnsense_certificate_ca"),
         unit="short", w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],
         desc="Total number of CA certificates managed by OPNsense.",
     )
     ca_expiry = b.table(
         "CA Expiry",
-        [f'({sel("opnsense_certificate_ca_valid_to_seconds")} - time()) / 86400'],
+        [f'({sel("opnsense_certificate_ca_valid_to_timestamp_seconds")} - time()) / 86400'],
         w=10, h=8,
         excludes=["__name__", "job", "instance"],
         renames={"description": "Description", "commonname": "Common Name",
@@ -149,7 +149,7 @@ def build(b: Builder):
     )
     ca_valid_from = b.table(
         "CA Validity Start",
-        [epoch_ms(sel("opnsense_certificate_ca_valid_from_seconds"))],
+        [epoch_ms(sel("opnsense_certificate_ca_valid_from_timestamp_seconds"))],
         w=10, h=8,
         excludes=["__name__", "job", "instance"],
         renames={"description": "Description", "commonname": "Common Name"},
@@ -170,7 +170,7 @@ def build(b: Builder):
     # Total ACME certificates (instantaneous — RAW per AUTHORING.md)
     acme_total = b.stat(
         "ACME Certificates",
-        sel("opnsense_acme_certificates_total"),
+        sel("opnsense_acme_certificates"),
         unit="short",
         w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],

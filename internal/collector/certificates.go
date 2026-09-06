@@ -42,11 +42,11 @@ func (c *certificatesCollector) Register(namespace, instanceLabel string, log *s
 
 	certLabels := []string{"description", "commonname", "cert_type", "in_use"}
 
-	c.validFrom = buildPrometheusDesc(c.subsystem, "valid_from_seconds",
+	c.validFrom = buildPrometheusDesc(c.subsystem, "valid_from_timestamp_seconds",
 		"Certificate valid from timestamp in seconds since epoch",
 		certLabels,
 	)
-	c.validTo = buildPrometheusDesc(c.subsystem, "valid_to_seconds",
+	c.validTo = buildPrometheusDesc(c.subsystem, "valid_to_timestamp_seconds",
 		"Certificate valid to (expiry) timestamp in seconds since epoch",
 		certLabels,
 	)
@@ -54,23 +54,23 @@ func (c *certificatesCollector) Register(namespace, instanceLabel string, log *s
 		"Certificate information (value is always 1)",
 		certLabels,
 	)
-	c.certificateTotal = buildPrometheusDesc(c.subsystem, "total",
-		"Total number of certificates",
+	c.certificateTotal = buildPrometheusDesc(c.subsystem, "certificates",
+		"Current number of certificates",
 		nil,
 	)
 
 	caLabels := []string{"description", "commonname"}
 
-	c.caValidFrom = buildPrometheusDesc(c.subsystem, "ca_valid_from_seconds",
+	c.caValidFrom = buildPrometheusDesc(c.subsystem, "ca_valid_from_timestamp_seconds",
 		"Certificate authority valid from timestamp in seconds since epoch",
 		caLabels,
 	)
-	c.caValidTo = buildPrometheusDesc(c.subsystem, "ca_valid_to_seconds",
+	c.caValidTo = buildPrometheusDesc(c.subsystem, "ca_valid_to_timestamp_seconds",
 		"Certificate authority valid to (expiry) timestamp in seconds since epoch",
 		caLabels,
 	)
-	c.caTotal = buildPrometheusDesc(c.subsystem, "ca_total",
-		"Total number of certificate authorities",
+	c.caTotal = buildPrometheusDesc(c.subsystem, "ca",
+		"Current number of certificate authorities",
 		nil,
 	)
 	// #583. Deliberately keyed on the SAME (description, commonname) tuple as

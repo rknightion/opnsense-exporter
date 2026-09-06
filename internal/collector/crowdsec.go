@@ -74,18 +74,18 @@ func (c *crowdsecCollector) Register(namespace, instanceLabel string, log *slog.
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
 		"Whether the CrowdSec service is running (1 = running, 0 = stopped/disabled)", nil)
-	c.alertsTotal = buildPrometheusDesc(c.subsystem, "alerts_total",
-		"Total number of CrowdSec alerts (count-only, no per-type breakdown)", nil)
-	c.decisionsTotal = buildPrometheusDesc(c.subsystem, "decisions_total",
-		"Total number of active CrowdSec decisions (count-only, no per-type breakdown)", nil)
-	c.bouncersTotal = buildPrometheusDesc(c.subsystem, "bouncers_total",
-		"Total number of registered CrowdSec bouncers", nil)
+	c.alertsTotal = buildPrometheusDesc(c.subsystem, "alerts",
+		"Current number of CrowdSec alerts (count-only, no per-type breakdown)", nil)
+	c.decisionsTotal = buildPrometheusDesc(c.subsystem, "decisions",
+		"Current number of active CrowdSec decisions (count-only, no per-type breakdown)", nil)
+	c.bouncersTotal = buildPrometheusDesc(c.subsystem, "bouncers",
+		"Current number of registered CrowdSec bouncers", nil)
 	c.bouncerValid = buildPrometheusDesc(c.subsystem, "bouncer_valid",
 		"Whether the bouncer API key is valid (1 = valid, 0 = invalid)", bouncerLabels)
 	c.bouncerLastPull = buildPrometheusDesc(c.subsystem, "bouncer_last_pull_timestamp_seconds",
 		"Unix timestamp of the last pull by this bouncer (omitted when never pulled)", bouncerLabels)
-	c.machinesTotal = buildPrometheusDesc(c.subsystem, "machines_total",
-		"Total number of registered CrowdSec machines (agents)", nil)
+	c.machinesTotal = buildPrometheusDesc(c.subsystem, "machines",
+		"Current number of registered CrowdSec machines (agents)", nil)
 	c.machineValidated = buildPrometheusDesc(c.subsystem, "machine_validated",
 		"Whether the machine registration has been validated (1 = validated, 0 = pending)", machineLabels)
 	c.machineHeartbeat = buildPrometheusDesc(c.subsystem, "machine_last_heartbeat_timestamp_seconds",

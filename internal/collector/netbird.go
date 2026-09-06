@@ -68,12 +68,12 @@ func (c *netbirdCollector) Register(namespace, instanceLabel string, log *slog.L
 		"Whether this node's netbird daemon has an active connection to the management server (1 = connected, 0 = not)", nil)
 	c.signalConnected = buildPrometheusDesc(c.subsystem, "signal_connected",
 		"Whether this node's netbird daemon has an active connection to the signal server (1 = connected, 0 = not)", nil)
-	c.relaysTotal = buildPrometheusDesc(c.subsystem, "relays_total",
-		"Number of relay servers known to this node's netbird daemon", nil)
+	c.relaysTotal = buildPrometheusDesc(c.subsystem, "relays",
+		"Current number of relay servers known to this node's netbird daemon", nil)
 	c.relaysAvailable = buildPrometheusDesc(c.subsystem, "relays_available",
 		"Number of relay servers currently reachable from this node's netbird daemon", nil)
-	c.peersTotal = buildPrometheusDesc(c.subsystem, "peers_total",
-		"Number of netbird network peers known to this node", nil)
+	c.peersTotal = buildPrometheusDesc(c.subsystem, "peers",
+		"Current number of netbird network peers known to this node", nil)
 	c.peersConnected = buildPrometheusDesc(c.subsystem, "peers_connected",
 		"Number of netbird network peers this node currently has an active WireGuard connection to", nil)
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
