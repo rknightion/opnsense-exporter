@@ -354,6 +354,13 @@ structured metadata rather than stream labels. A fresh source, or a cursor whose
 revision has fallen out of the retained history, re-baselines at the newest revision
 without replaying older configuration. Configure `--logs.state-file` to preserve
 that cursor across restarts. This source is independent of the syslog receiver.
+Before any of that unescaping and redaction runs, the client itself bounds the
+fetched diff to 4 MiB at a line boundary, appending a distinct truncation marker
+when it drops trailing lines, so a pathological upstream diff cannot balloon
+transient allocation ahead of the 192 KiB output cap. The raw JSON response for
+that one endpoint is capped at 16 MiB before it is decoded at all; a larger body
+is refused as an API error and surfaces as a configchange poll error rather than
+a truncated diff.
 
 ### Historical revision visibility in Loki
 

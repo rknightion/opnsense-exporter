@@ -1,11 +1,16 @@
 package opnsense
 
 import (
+	"bytes"
+	"log/slog"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
 )
 
 func TestFetchConfigBackupHistory_Success(t *testing.T) {
@@ -96,6 +101,48 @@ func TestFetchConfigBackupDiff(t *testing.T) {
 	}
 	if diff != "--- old\n+++ new\n+&lt;rule/&gt;" {
 		t.Fatalf("diff = %q", diff)
+	}
+}
+
+func TestBoundConfigBackupDiffLines_CutAtLineBoundaryWithMarker(t *testing.T) {
+	items := []string{"aaaa", "bbbb", "cccc", "dddd"}
+	// "aaaa\nbbbb" is exactly 9 bytes; adding "\ncccc" would push it to 14. The
+	// bound includes the marker line, so it is 9 plus the marker and its newline.
+	max := 9 + 1 + len(configBackupDiffTruncationMarker)
+	got, truncated := boundConfigBackupDiffLines(items, max)
+	if !truncated {
+		t.Fatalf("expected truncated=true")
+	}
+	want := "aaaa\nbbbb\n" + configBackupDiffTruncationMarker
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if len(got) > max {
+		t.Fatalf("bounded diff is %d bytes, over the %d byte bound including the marker", len(got), max)
+	}
+	if !strings.HasSuffix(got, configBackupDiffTruncationMarker) {
+		t.Fatalf("marker is not the final line: %q", got)
+	}
+	if !strings.Contains(got, "aaaa") || !strings.Contains(got, "bbbb") {
+		t.Fatalf("kept lines are not intact: %q", got)
+	}
+	if strings.Contains(got, "cccc") || strings.Contains(got, "dddd") {
+		t.Fatalf("dropped lines leaked into output: %q", got)
+	}
+}
+
+func TestBoundConfigBackupDiffLines_UnderBoundUnchanged(t *testing.T) {
+	items := []string{"line one", "line two", "line three"}
+	got, truncated := boundConfigBackupDiffLines(items, 1<<20)
+	if truncated {
+		t.Fatalf("expected truncated=false for a diff under the bound")
+	}
+	want := strings.Join(items, "\n")
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if strings.Contains(got, configBackupDiffTruncationMarker) {
+		t.Fatalf("marker present on an unbounded diff: %q", got)
 	}
 }
 
@@ -237,5 +284,38 @@ func TestFetchConfigBackupHistory_InfTimestamp(t *testing.T) {
 	}
 	if data.LastTimestamp != 1783886416.55 {
 		t.Errorf("expected LastTimestamp=1783886416.55, got %v", data.LastTimestamp)
+	}
+}
+
+func TestFetchConfigBackupDiff_RefusesOversizedResponseBeforeDecoding(t *testing.T) {
+	// A body past configBackupDiffMaxResponseBytes must be refused while it is
+	// still bytes, never decoded into a []string only to be trimmed afterwards.
+	oversized := configBackupDiffMaxResponseBytes + 1024
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":["`))
+		filler := bytes.Repeat([]byte("x"), 64*1024)
+		for written := 0; written < oversized; written += len(filler) {
+			_, _ = w.Write(filler)
+		}
+		_, _ = w.Write([]byte(`"]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(options.OPNSenseConfig{
+		Protocol:  "http",
+		Host:      strings.TrimPrefix(server.URL, "http://"),
+		APIKey:    "test-key",
+		APISecret: "test-secret",
+	}, "test", slog.Default())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	diff, apiErr := client.FetchConfigBackupDiff("this", "config-old.xml", "config-new.xml")
+	if apiErr == nil {
+		t.Fatalf("expected an API error for an oversized body, got %d bytes of diff", len(diff))
+	}
+	if !strings.Contains(apiErr.Message, "exceeds") {
+		t.Fatalf("expected the body-limit error, got %q", apiErr.Message)
 	}
 }

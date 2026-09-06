@@ -36,6 +36,66 @@ type configBackupDiffResponse struct {
 	Items []string `json:"items"`
 }
 
+// ConfigBackupDiffMaxInputBytes bounds the diff FetchConfigBackupDiff will join
+// and return. Upstream can return a diff of roughly 64 MiB for a pathological
+// revision pair; the log-shipping pipeline unescapes and redacts that whole
+// string before its own 192 KiB output truncation (internal/logship/configchange.go),
+// so an unbounded input costs about three times its size in transient
+// allocation. This bound is applied here, at the client, before any of that
+// unescape/redact work runs.
+const ConfigBackupDiffMaxInputBytes = 4 << 20
+
+// configBackupDiffTruncationMarker is appended as a final line whenever
+// boundConfigBackupDiffLines drops one or more trailing lines to stay under
+// ConfigBackupDiffMaxInputBytes.
+const configBackupDiffTruncationMarker = "[diff truncated at 4 MiB by opnsense2otel before redaction]"
+
+// configBackupDiffMaxResponseBytes caps the raw JSON body FetchConfigBackupDiff
+// will read at all, before it is decoded. The line bound above only trims what
+// is retained after decoding, so without this the client would still buffer and
+// decode a 64 MiB body to keep 4 MiB of it. Four times the input bound leaves
+// generous room for JSON quoting and escaping of a diff that fits the bound; a
+// body beyond it is refused as an API error, which the configchange source
+// reports as a poll error.
+const configBackupDiffMaxResponseBytes = 4 * ConfigBackupDiffMaxInputBytes
+
+// boundConfigBackupDiffLines joins items with "\n", stopping at a line
+// boundary once including the next whole line would exceed max. It never cuts
+// inside a line: a credential element on one diff line is either kept whole
+// (and later redacted by the log-shipping pipeline) or dropped whole, never
+// left half-included in clear text. It reports whether any line was dropped.
+func boundConfigBackupDiffLines(items []string, max int) (string, bool) {
+	var b strings.Builder
+	total := 0
+	truncated := false
+	// Reserve room for the marker and its separator so the returned string,
+	// marker included, never exceeds max.
+	budget := max - len(configBackupDiffTruncationMarker) - 1
+	for i, line := range items {
+		sep := 0
+		if i > 0 {
+			sep = 1
+		}
+		if total+sep+len(line) > budget {
+			truncated = true
+			break
+		}
+		if i > 0 {
+			b.WriteByte('\n')
+			total++
+		}
+		b.WriteString(line)
+		total += len(line)
+	}
+	if truncated {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(configBackupDiffTruncationMarker)
+	}
+	return b.String(), truncated
+}
+
 // requestObserverAtPath retains the client's per-request instrumentation while
 // collapsing a parameterized route onto its registered endpoint path. In
 // particular, a config-revision filename is a fresh value on every write and
@@ -171,6 +231,7 @@ func (c *Client) FetchConfigBackupDiff(host, oldRevision, newRevision string) (s
 	// duration metrics keyed by the static registered route, rather than growing
 	// a new time series for every configuration write.
 	requestClient := *c
+	requestClient.maxResponseBody = configBackupDiffMaxResponseBytes
 	if c.observer != nil {
 		requestClient.observer = requestObserverAtPath{observer: c.observer, path: string(base)}
 	}
@@ -178,7 +239,8 @@ func (c *Client) FetchConfigBackupDiff(host, oldRevision, newRevision string) (s
 	if err := requestClient.do("GET", path, nil, &resp); err != nil {
 		return "", err
 	}
-	return strings.Join(resp.Items, "\n"), nil
+	diff, _ := boundConfigBackupDiffLines(resp.Items, ConfigBackupDiffMaxInputBytes)
+	return diff, nil
 }
 
 func configBackupTime(raw string) time.Time {

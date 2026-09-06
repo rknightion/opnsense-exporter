@@ -85,6 +85,16 @@ func retryableStatus(method string, code int) bool {
 // compressed response.
 const maxResponseBodyBytes = 64 << 20 // 64 MiB
 
+// responseBodyLimit is the cap the current request reads up to. A request-scoped
+// clone may lower it for an endpoint whose payload is bounded downstream anyway,
+// so an oversized body is refused before it is decoded rather than after.
+func (c *Client) responseBodyLimit() int {
+	if c.maxResponseBody > 0 && c.maxResponseBody < maxResponseBodyBytes {
+		return c.maxResponseBody
+	}
+	return maxResponseBodyBytes
+}
+
 // maxErrorBodyBytes caps how much of a non-2xx response body is propagated
 // into APICallError messages (and from there into logs).
 const maxErrorBodyBytes = 4 << 10 // 4 KiB
@@ -316,6 +326,9 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 
 // Client is an OPNsense API client
 type Client struct {
+	// maxResponseBody overrides maxResponseBodyBytes for one request-scoped clone
+	// (see FetchConfigBackupDiff). Zero means the client-wide cap applies.
+	maxResponseBody  int
 	httpClient       *http.Client
 	gatewayLossRegex *regexp.Regexp
 	gatewayRTTRegex  *regexp.Regexp
@@ -793,7 +806,8 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 		reader = gz
 	}
 
-	respBody, err := io.ReadAll(io.LimitReader(reader, maxResponseBodyBytes+1))
+	bodyLimit := c.responseBodyLimit()
+	respBody, err := io.ReadAll(io.LimitReader(reader, int64(bodyLimit)+1))
 	if err != nil {
 		return &APICallError{
 			Endpoint:   string(path),
@@ -801,10 +815,10 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 			StatusCode: resp.StatusCode,
 		}
 	}
-	if len(respBody) > maxResponseBodyBytes {
+	if len(respBody) > bodyLimit {
 		return &APICallError{
 			Endpoint:   string(path),
-			Message:    fmt.Sprintf("response body exceeds %d byte limit", maxResponseBodyBytes),
+			Message:    fmt.Sprintf("response body exceeds %d byte limit", bodyLimit),
 			StatusCode: resp.StatusCode,
 		}
 	}

@@ -6,9 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rknightion/opnsense2otel/v4/internal/options"
+	"github.com/rknightion/opnsense2otel/v4/opnsense"
 )
 
 type fakeConfigChangeFetcher struct {
@@ -489,5 +494,65 @@ func TestConfigChangeRecord_RedactsBeforeTruncation(t *testing.T) {
 	}
 	if len(record.Body) > configChangeMaxBodyBytes+len(configChangeTruncationMarker) {
 		t.Fatalf("body is %d bytes, over the cap", len(record.Body))
+	}
+}
+
+// TestFetchConfigBackupDiff_ClientBoundIsLineSafeAgainstCredentialStraddle is
+// the OPN-0097 regression: it exercises the real client-side input bound
+// (opnsense.FetchConfigBackupDiff) with a diff engineered so the 4 MiB cut
+// would fall in the middle of a line carrying a credential if the bound cut
+// on bytes rather than lines. A byte-safe (line-unsafe) cut would ship half of
+// "s3cr3tvalue" in clear, because redaction matches a complete
+// <password>...</password> element and never sees a element that was itself
+// cut in two. The line-safe bound must drop that whole line instead, so the
+// secret never reaches the log-shipping pipeline's unescape/redact/truncate
+// step at all.
+func TestFetchConfigBackupDiff_ClientBoundIsLineSafeAgainstCredentialStraddle(t *testing.T) {
+	fillerLen := opnsense.ConfigBackupDiffMaxInputBytes - 30
+	filler := strings.Repeat("x", fillerLen)
+	credentialLine := "+      &lt;password&gt;s3cr3tvalue&lt;/password&gt;"
+	items := []string{filler, credentialLine}
+
+	var body bytes.Buffer
+	enc := json.NewEncoder(&body)
+	enc.SetEscapeHTML(false) // preserve "&lt;" the way OPNsense actually sends it
+	if err := enc.Encode(map[string][]string{"items": items}); err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body.Bytes())
+	}))
+	defer server.Close()
+
+	client, err := opnsense.NewClient(options.OPNSenseConfig{
+		Protocol:  "http",
+		Host:      strings.TrimPrefix(server.URL, "http://"),
+		APIKey:    "test-key",
+		APISecret: "test-secret",
+	}, "test", slog.Default())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	diff, apiErr := client.FetchConfigBackupDiff("this", "config-old.xml", "config-new.xml")
+	if apiErr != nil {
+		t.Fatalf("FetchConfigBackupDiff: %v", apiErr)
+	}
+
+	if strings.Contains(diff, "s3cr3tvalue") {
+		t.Fatalf("credential leaked in clear across the client-side input cut")
+	}
+	if !strings.Contains(diff, "diff truncated at 4 MiB") {
+		t.Fatalf("client-side truncation marker missing from bounded diff")
+	}
+
+	// The pipeline the source actually runs (order pinned by
+	// TestConfigChangeRecord_RedactsBeforeTruncation): the credential is
+	// already gone before unescape/redact/truncate ever sees it.
+	record := configChangeRecord(ConfigChangeRevision{ID: "rev-3", User: "root"}, diff)
+	if strings.Contains(record.Body, "s3cr3tvalue") {
+		t.Fatalf("credential reached the shipped record body")
 	}
 }
