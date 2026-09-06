@@ -355,6 +355,23 @@ revision has fallen out of the retained history, re-baselines at the newest revi
 without replaying older configuration. Configure `--logs.state-file` to preserve
 that cursor across restarts. This source is independent of the syslog receiver.
 
+### Historical revision visibility in Loki
+
+A replayed revision keeps its retained revision timestamp. If that timestamp is older
+than Loki's `query_ingesters_within` default of three hours, the querier reads the
+store only rather than the ingesters. The record remains invisible until its ingester
+chunk flushes: `chunk_idle_period` defaults to 30 minutes and `max_chunk_age` to two
+hours, so the practical delay can be about two hours. These are Loki defaults, and a
+tenant may configure different values. See the public [querier][loki-querier] and
+[ingester][loki-ingester] configuration references.
+
+Loki's `reject_old_samples_max_age` default is seven days when
+`reject_old_samples` is enabled. A replay older than that horizon is rejected by the
+destination; the exporter surfaces the OTLP partial-success refusal as
+`opnsense_exporter_logs_dropped_total{source="configchange",reason="rejected"}`.
+The actual tenant limit may differ; no tenant value is assumed here. See
+[limits_config][loki-limits].
+
 ### Configuration snapshots (`configstate`)
 
 Configuration snapshots are default-off and enabled per family. The firewall family,
@@ -515,6 +532,9 @@ classic Loki cardinality footgun, and the reason the exporter keeps it out of re
 
 [otlp-defaults]: https://grafana.com/docs/loki/latest/send-data/otel/
 [gc-selfserve]: https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve-api/#otlp-label-mappings
+[loki-querier]: https://grafana.com/docs/loki/latest/configure/#querier
+[loki-ingester]: https://grafana.com/docs/loki/latest/configure/#ingester
+[loki-limits]: https://grafana.com/docs/loki/latest/configure/#limits_config
 
 ## Delivery semantics
 

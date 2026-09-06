@@ -334,7 +334,7 @@ class TestLiveDeliveryProof(unittest.TestCase):
         with mock.patch.dict(proof.os.environ, environment, clear=False), \
                 mock.patch.object(proof, "API", FakeAPI), \
                 mock.patch.object(proof.subprocess, "Popen", return_value=process) as popen, \
-                mock.patch.object(proof, "stop_process_group"), \
+                mock.patch.object(proof, "stop_process_group", return_value=False), \
                 mock.patch.object(proof.time, "sleep"), \
                 mock.patch.object(proof.time, "time_ns", side_effect=[1_000_000_000_000, 1_000_000_000_100]), \
                 mock.patch.object(proof, "scrape_logship_metrics", return_value=metrics), \
@@ -364,6 +364,147 @@ class TestLiveDeliveryProof(unittest.TestCase):
         self.assertIn("- cursor advanced: no", rendered)
         self.assertNotIn("arbitrary-secret-value", rendered)
 
+    def test_main_accepts_visibility_pending_after_confirmed_configchange_delivery(self):
+        class FakeAPI:
+            def __init__(self, *_args):
+                pass
+
+            def get(self, _path):
+                return {"items": [{"id": "config-1.xml", "time": "100"},
+                                  {"id": "config-2.xml", "time": "101"}]}
+
+        def query_result(streams, end):
+            return {"streams": streams, "succeeded": True, "start_ns": 10, "end_ns": end}
+
+        configstate = [
+            ["1", "{}", {"structuredMetadata": {"snapshot_family": "firewall"}}],
+            ["2", "{}", {"structuredMetadata": {"snapshot_family": "device_inventory"}}],
+            ["3", "{}", {"structuredMetadata": {"snapshot_family": "security_posture"}}],
+        ]
+        exporter = [
+            ["4", proof.CONFIGCHANGE_POLL_SUMMARY_MESSAGE, {"structuredMetadata": {
+                "branch": "emitted", "poll_sequence": "1", "emitted_records": "1"}}],
+            ["5", proof.CONFIGCHANGE_DIFF_OBSERVATION_MESSAGE, {"structuredMetadata": {
+                "branch": "emitted", "poll_sequence": "1", "record_index": "1",
+                "diff_bytes": "24", "diff_lines": "2"}}],
+        ]
+        historical = [["6", "+<password>[redacted]</password>", {"structuredMetadata": {
+            "service_instance_id": "delivery-proof-456"}}]]
+        query_results = [
+            query_result([], 201),
+            query_result([{"stream": {}, "values": configstate}], 202),
+            query_result([], 203),
+            query_result([{"stream": {"opnsense_source": "exporter"}, "values": exporter}], 204),
+            query_result([{"stream": {}, "values": historical}], 205),
+        ]
+        clean = {
+            "configchange_bodies": 1, "configchange_sensitive_elements": 1,
+            "configchange_bodies_redacted": True, "configstate_bodies": 3,
+            "configstate_sensitive_keys": 0, "configstate_bodies_redacted": True,
+        }
+        environment = {
+            "DEVBOX_HOST": "testbed.invalid", "DEVBOX_API_KEY": "not-rendered",
+            "DEVBOX_API_SECRET": "not-rendered", "GRAFANA_OTLP_USER": "not-rendered",
+            "GRAFANA_LOKI_USER": "not-rendered", "GRAFANA_CAP_TOKEN": "not-rendered",
+            "GITHUB_RUN_ID": "123",
+        }
+        process = mock.Mock(stderr=io.BytesIO())
+        output = io.StringIO()
+        with mock.patch.dict(proof.os.environ, environment, clear=False), \
+                mock.patch.object(proof, "API", FakeAPI), \
+                mock.patch.object(proof.subprocess, "Popen", return_value=process), \
+                mock.patch.object(proof, "stop_process_group", return_value=False), \
+                mock.patch.object(proof.time, "sleep"), \
+                mock.patch.object(proof.time, "time_ns", side_effect=[1_000_000_000_000, 1_000_000_000_100]), \
+                mock.patch.object(proof, "scrape_logship_metrics", return_value=proof.parse_logship_metrics(
+                    complete_metrics_payload("delivery-proof-123"), "delivery-proof-123")), \
+                mock.patch.object(proof, "loki_query", side_effect=query_results), \
+                mock.patch.object(proof, "verify_redaction", return_value=clean), \
+                mock.patch("sys.stdout", output):
+            self.assertEqual(proof.main(["--exporter", "not-started", "--redaction-verifier", "verifier"]), 0)
+
+        rendered = output.getvalue()
+        self.assertIn("- configchange arrived: no", rendered)
+        self.assertIn("- configchange delivery acceptable: yes", rendered)
+        self.assertIn("- configchange delivery outcome: visibility-pending", rendered)
+        self.assertIn("- selected configchange instance label: `delivery-proof-456`", rendered)
+
+    def test_main_rejects_loss_even_when_current_configchange_arrives(self):
+        class FakeAPI:
+            def __init__(self, *_args):
+                pass
+
+            def get(self, _path):
+                return {"items": [{"id": "config-1.xml", "time": "100"},
+                                  {"id": "config-2.xml", "time": "101"}]}
+
+        def query_result(streams, end):
+            return {"streams": streams, "succeeded": True, "start_ns": 10, "end_ns": end}
+
+        configchange = [["1", "+<password>[redacted]</password>", {"structuredMetadata": {}}]]
+        configstate = [
+            ["2", "{}", {"structuredMetadata": {"snapshot_family": "firewall"}}],
+            ["3", "{}", {"structuredMetadata": {"snapshot_family": "device_inventory"}}],
+            ["4", "{}", {"structuredMetadata": {"snapshot_family": "security_posture"}}],
+        ]
+        exporter = [
+            ["5", proof.CONFIGCHANGE_POLL_SUMMARY_MESSAGE, {"structuredMetadata": {
+                "branch": "emitted", "poll_sequence": "1", "emitted_records": "1"}}],
+            ["6", proof.CONFIGCHANGE_DIFF_OBSERVATION_MESSAGE, {"structuredMetadata": {
+                "branch": "emitted", "poll_sequence": "1", "record_index": "1",
+                "diff_bytes": "24", "diff_lines": "2"}}],
+        ]
+        historical = [["7", "+<password>[redacted]</password>", {"structuredMetadata": {
+            "service_instance_id": "delivery-proof-123"}}]]
+        clean = {
+            "configchange_bodies": 1, "configchange_sensitive_elements": 1,
+            "configchange_bodies_redacted": True, "configstate_bodies": 3,
+            "configstate_sensitive_keys": 0, "configstate_bodies_redacted": True,
+        }
+        environment = {
+            "DEVBOX_HOST": "testbed.invalid", "DEVBOX_API_KEY": "not-rendered",
+            "DEVBOX_API_SECRET": "not-rendered", "GRAFANA_OTLP_USER": "not-rendered",
+            "GRAFANA_LOKI_USER": "not-rendered", "GRAFANA_CAP_TOKEN": "not-rendered",
+            "GITHUB_RUN_ID": "123",
+        }
+        cases = {
+            "shipped zero": ("shipped_zero", lambda metrics: metrics["shipped"].update({"configchange": 0}), b""),
+            "dropped": ("dropped_rejected", lambda metrics: metrics["dropped"]["configchange"].update({"rejected": 1}), b""),
+            "partial success": ("partial_success_rejection", lambda metrics: None, json.dumps({
+                "msg": proof.STDERR_MESSAGES["endpoint_terminal_rejection"], "err": "partial success"}).encode() + b"\n"),
+            "shutdown abandonment": ("shutdown_batch_abandoned", lambda metrics: None, json.dumps({
+                "msg": "log batch abandoned during shutdown; records lost"}).encode() + b"\n"),
+            "shutdown drain timeout": ("shutdown_drain_timeout", lambda metrics: None, json.dumps({
+                "msg": "log pipeline shutdown timed out before the queue fully drained; buffered records may be lost"}).encode() + b"\n"),
+            "maximum retries": ("max_retries", lambda metrics: None, json.dumps({
+                "msg": proof.STDERR_MESSAGES["max_retries"]}).encode() + b"\n"),
+        }
+        for name, (outcome, alter_metrics, stderr) in cases.items():
+            with self.subTest(name=name):
+                metrics = proof.parse_logship_metrics(
+                    complete_metrics_payload("delivery-proof-123"), "delivery-proof-123")
+                alter_metrics(metrics)
+                query_results = [
+                    query_result([{"stream": {}, "values": configchange}], 201),
+                    query_result([{"stream": {}, "values": configstate}], 202),
+                    query_result([{"stream": {"opnsense_source": "exporter"}, "values": exporter}], 203),
+                    query_result([{"stream": {}, "values": historical}], 204),
+                ]
+                output = io.StringIO()
+                process = mock.Mock(stderr=io.BytesIO(stderr))
+                with mock.patch.dict(proof.os.environ, environment, clear=False), \
+                        mock.patch.object(proof, "API", FakeAPI), \
+                        mock.patch.object(proof.subprocess, "Popen", return_value=process), \
+                        mock.patch.object(proof, "stop_process_group", return_value=False), \
+                        mock.patch.object(proof.time, "sleep"), \
+                        mock.patch.object(proof.time, "time_ns", side_effect=[1_000_000_000_000, 1_000_000_000_100]), \
+                        mock.patch.object(proof, "scrape_logship_metrics", return_value=metrics), \
+                        mock.patch.object(proof, "loki_query", side_effect=query_results), \
+                        mock.patch.object(proof, "verify_redaction", return_value=clean), \
+                        mock.patch("sys.stdout", output):
+                    self.assertEqual(proof.main(["--exporter", "not-started", "--redaction-verifier", "verifier"]), 1)
+                self.assertIn("- configchange delivery outcome: " + outcome.replace("_", "-"), output.getvalue())
+
     def test_main_never_queries_loki_when_the_metrics_scrape_fails(self):
         class FakeAPI:
             def __init__(self, *_args):
@@ -383,7 +524,7 @@ class TestLiveDeliveryProof(unittest.TestCase):
         with mock.patch.dict(proof.os.environ, environment, clear=False), \
                 mock.patch.object(proof, "API", FakeAPI), \
                 mock.patch.object(proof.subprocess, "Popen", return_value=process), \
-                mock.patch.object(proof, "stop_process_group"), \
+                mock.patch.object(proof, "stop_process_group", return_value=False), \
                 mock.patch.object(proof.time, "sleep"), \
                 mock.patch.object(proof.time, "time_ns", return_value=1_000_000_000_000), \
                 mock.patch.object(proof, "scrape_logship_metrics",
@@ -511,15 +652,63 @@ opnsense_exporter_logs_poll_errors_total{opnsense_instance="delivery-proof-1",so
         with self.assertRaises(proof.ProofFailure):
             proof.extract_configchange_poll_observations(rows)
 
-    def test_historical_records_separate_own_identity_from_unrelated_records(self):
-        rows = [
-            ({"service_instance_id": "delivery-proof-1"}, "own", {}),
-            ({"service_instance_id": "another-run"}, "other", {}),
-            ({}, "unlabelled", {}),
-        ]
-        self.assertEqual(proof.historical_record_counts(rows, "delivery-proof-1"), {
-            "total": 3, "matching_instance": 1, "other_instance": 1, "without_instance": 1,
-        })
+    def test_configchange_delivery_outcomes_fail_closed_and_allow_present_or_pending(self):
+        clean_drops = {reason: 0 for reason in proof.DROP_REASONS}
+        cases = {
+            "present": (True, True, 1, 1, clean_drops, 0, "present"),
+            "visibility pending": (False, True, 1, 1, clean_drops, 0, "visibility_pending"),
+            "shipped zero": (False, True, 1, 0, clean_drops, 0, "shipped_zero"),
+            "dropped": (False, True, 1, 1, clean_drops | {"rejected": 1}, 0, "dropped_rejected"),
+            "partial success": (False, True, 1, 1, clean_drops, 1, "partial_success_rejection"),
+        }
+        for name, args in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(proof.configchange_delivery_outcome(*args[:-1]), args[-1])
+
+        for name, diagnostics, forced_kill, expected in (
+                ("maximum retries", {"stderr_max_retries_count": 1}, False, "max_retries"),
+                ("shutdown abandonment", {"stderr_shutdown_batch_abandoned_count": 1}, False,
+                 "shutdown_batch_abandoned"),
+                ("shutdown drain timeout", {"stderr_shutdown_drain_timeout_count": 1}, False,
+                 "shutdown_drain_timeout"),
+                ("forced kill", {}, True, "process_forced_kill"),
+                ("incomplete stderr", {"stderr_reader_incomplete_count": 1}, False,
+                 "stderr_capture_incomplete")):
+            with self.subTest(name=name):
+                self.assertEqual(proof.configchange_delivery_outcome(
+                    True, True, 1, 1, clean_drops, 0, diagnostics, forced_kill), expected)
+
+    def test_stop_process_group_reports_forced_kill(self):
+        process = mock.Mock(pid=123, poll=mock.Mock(return_value=None))
+        process.wait.side_effect = [proof.subprocess.TimeoutExpired("process", 20), None]
+        with mock.patch.object(proof.os, "killpg") as killpg:
+            self.assertTrue(proof.stop_process_group(process))
+        self.assertEqual([call.args[1] for call in killpg.call_args_list], [proof.signal.SIGTERM, proof.signal.SIGKILL])
+
+    def test_newest_delivered_instance_uses_entry_metadata_and_newest_timestamp(self):
+        streams = [{"stream": {"service_instance_id": "delivery-proof-wrong"}, "values": [
+            ["100", "old", {"structuredMetadata": {"service_instance_id": "delivery-proof-9",
+                                                    "observed_timestamp": "2026-09-06T00:00:00Z"}}],
+            ["100", "new", {"structuredMetadata": {"service_instance_id": "delivery-proof-10",
+                                                    "observed_timestamp": "2026-09-06T00:01:00Z"}}],
+            ["300", "ignored", {"structuredMetadata": {"service_instance_id": "other"}}],
+        ]}]
+        selected = proof.newest_delivered_configchange_instance(streams)
+        self.assertEqual(selected["instance"], "delivery-proof-10")
+        self.assertEqual(selected["instances"], 2)
+        self.assertEqual(selected["records"], 2)
+        self.assertEqual(selected["rows"], [
+            ({"service_instance_id": "delivery-proof-wrong"}, "new",
+             {"service_instance_id": "delivery-proof-10", "observed_timestamp": "2026-09-06T00:01:00Z"}),
+        ])
+
+    def test_newest_delivered_instance_uses_numeric_run_id_when_timestamps_tie(self):
+        streams = [{"stream": {}, "values": [
+            ["100", "first", {"structuredMetadata": {"service_instance_id": "delivery-proof-9"}}],
+            ["100", "second", {"structuredMetadata": {"service_instance_id": "delivery-proof-10"}}],
+        ]}]
+        selected = proof.newest_delivered_configchange_instance(streams)
+        self.assertEqual(selected["instance"], "delivery-proof-10")
 
     def test_state_file_uses_pipeline_envelope_and_exact_inner_cursor(self):
         revision = proof.RetainedRevision("config-123.456.xml", 123.456)

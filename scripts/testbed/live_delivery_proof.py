@@ -4,6 +4,7 @@
 import argparse
 import base64
 import binascii
+import datetime
 import hashlib
 import json
 import math
@@ -38,6 +39,10 @@ METRICS_RESPONSE_LIMIT_BYTES = 8 * 1024 * 1024
 METRICS_TIMEOUT_SECONDS = 10
 METRIC_SOURCES = ("configchange", "configstate", "exporter")
 DROP_REASONS = ("overflow", "ship_failed", "ship_failed_permanent", "record_too_large", "rejected")
+# CI labels are GitHub's positive decimal workflow-run IDs. Local invocations
+# use exactly secrets.token_hex(6), which stays bounded without claiming an
+# ordering it does not have.
+PROOF_INSTANCE_LABEL = re.compile(r"delivery-proof-(?:[1-9][0-9]*|[0-9a-f]{12})\Z")
 CONFIGCHANGE_POLL_SUMMARY_MESSAGE = "config-change poll observation"
 CONFIGCHANGE_DIFF_OBSERVATION_MESSAGE = "config-change diff observation"
 CONFIGCHANGE_POLL_BRANCHES = ("no_revisions", "baseline", "cursor_not_in_history", "emitted")
@@ -53,6 +58,8 @@ STDERR_MESSAGES = {
     "configchange_rebaseline": "config-change log source cursor is no longer in backup history; re-baselining without replay",
     "endpoint_terminal_rejection": "log endpoint terminally rejected records; they are lost and will NOT be retried (a permanent protocol response, or an OTLP partial-success rejection)",
     "max_retries": "log sink refused a batch for the maximum number of attempts; dropping it so delivery of later batches continues; records lost",
+    "shutdown_batch_abandoned": "log batch abandoned during shutdown; records lost",
+    "shutdown_drain_timeout": "log pipeline shutdown timed out before the queue fully drained; buffered records may be lost",
     "ingest_oversize": "log record exceeds the per-record size cap; rejected at ingest",
     "source_poll_error": "log source poll error",
 }
@@ -70,6 +77,8 @@ STDERR_DIAGNOSTIC_KEYS = (
     "stderr_endpoint_terminal_rejection_count",
     "stderr_endpoint_historical_rejection_count",
     "stderr_max_retries_count",
+    "stderr_shutdown_batch_abandoned_count",
+    "stderr_shutdown_drain_timeout_count",
     "stderr_ingest_oversize_count",
     "stderr_configchange_poll_error_count",
     "stderr_oversized_line_count",
@@ -147,7 +156,8 @@ def classify_stderr_line(line):
     events = []
     for name in (
             "state_file_unreadable", "state_file_corrupt", "state_entry_corrupt",
-            "configchange_rebaseline", "max_retries", "ingest_oversize"):
+            "configchange_rebaseline", "max_retries", "shutdown_batch_abandoned",
+            "shutdown_drain_timeout", "ingest_oversize"):
         if message == STDERR_MESSAGES[name]:
             events.append(name)
 
@@ -700,22 +710,85 @@ def extract_configchange_poll_observations(rows):
     return result
 
 
-def historical_record_counts(rows, instance):
-    """Count historical records by observed instance identity, never by total alone."""
-    counts = {"total": 0, "matching_instance": 0, "other_instance": 0, "without_instance": 0}
-    for labels, _, metadata in rows:
-        counts["total"] += 1
-        label_instance = labels.get("service_instance_id") if isinstance(labels, dict) else None
-        metadata_instance = metadata.get("service_instance_id") if isinstance(metadata, dict) else None
-        observed_instances = {value for value in (label_instance, metadata_instance)
-                               if isinstance(value, str) and value}
-        if instance in observed_instances:
-            counts["matching_instance"] += 1
-        elif observed_instances:
-            counts["other_instance"] += 1
-        else:
-            counts["without_instance"] += 1
-    return counts
+def _observed_timestamp_ns(metadata, fallback):
+    """Use Loki's per-entry observed timestamp when it has a valid UTC shape."""
+    observed = metadata.get("observed_timestamp")
+    if not isinstance(observed, str):
+        return fallback
+    try:
+        parsed = datetime.datetime.fromisoformat(observed.replace("Z", "+00:00"))
+    except ValueError:
+        return fallback
+    if parsed.tzinfo is None:
+        return fallback
+    return int(parsed.timestamp() * 1_000_000_000)
+
+
+def _proof_instance_tiebreak(instance):
+    suffix = instance.removeprefix("delivery-proof-")
+    if suffix.isdecimal():
+        return (1, int(suffix))
+    return (0, suffix)
+
+
+def newest_delivered_configchange_instance(streams):
+    """Choose the newest bounded proof instance from categorized entry metadata."""
+    grouped = {}
+    for stream in streams:
+        labels = stream.get("stream", {}) if isinstance(stream, dict) else {}
+        values = stream.get("values", []) if isinstance(stream, dict) else []
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, list) or len(value) < 3 or not isinstance(value[0], str) or \
+                    not value[0].isdigit() or not isinstance(value[1], str) or not isinstance(value[2], dict):
+                continue
+            metadata = value[2].get("structuredMetadata") or {}
+            if not isinstance(metadata, dict):
+                continue
+            instance = metadata.get("service_instance_id")
+            if not isinstance(instance, str) or not PROOF_INSTANCE_LABEL.fullmatch(instance):
+                continue
+            entry_timestamp_ns = int(value[0])
+            entry = grouped.setdefault(instance, {"latest": (0, 0), "rows": []})
+            entry["latest"] = max(entry["latest"], (
+                _observed_timestamp_ns(metadata, entry_timestamp_ns), entry_timestamp_ns))
+            entry["rows"].append((labels if isinstance(labels, dict) else {}, value[1], metadata))
+    if not grouped:
+        return None
+    instance, selected = max(grouped.items(), key=lambda item: (item[1]["latest"], _proof_instance_tiebreak(item[0])))
+    return {"instance": instance, "rows": selected["rows"], "instances": len(grouped),
+            "records": sum(len(group["rows"]) for group in grouped.values())}
+
+
+def configchange_delivery_outcome(arrived, query_succeeded, emitted_records, shipped, dropped, terminal_rejections,
+                                  diagnostics=None, forced_kill=False):
+    """Classify the current historical-diff proof without treating a flush delay as loss."""
+    diagnostics = {} if diagnostics is None else diagnostics
+    for reason in DROP_REASONS:
+        if dropped.get(reason, 0) > 0:
+            return "dropped_" + reason
+    if terminal_rejections > 0:
+        return "partial_success_rejection"
+    if diagnostics.get("stderr_max_retries_count", 0) > 0:
+        return "max_retries"
+    if diagnostics.get("stderr_shutdown_batch_abandoned_count", 0) > 0:
+        return "shutdown_batch_abandoned"
+    if diagnostics.get("stderr_shutdown_drain_timeout_count", 0) > 0:
+        return "shutdown_drain_timeout"
+    if forced_kill:
+        return "process_forced_kill"
+    if diagnostics.get("stderr_reader_incomplete_count", 0) > 0:
+        return "stderr_capture_incomplete"
+    if shipped < 1:
+        return "shipped_zero"
+    if arrived:
+        return "present"
+    if not query_succeeded:
+        return "query_failed"
+    if emitted_records < 1:
+        return "absent_not_emitted"
+    return "visibility_pending"
 
 
 def safe_diagnostic(value):
@@ -774,8 +847,8 @@ def configstate_family_summary(rows):
     }
 
 
-def redaction_assertion_passes(redaction, configchange_arrived, observed_families):
-    if not isinstance(redaction, dict) or not configchange_arrived:
+def redaction_assertion_passes(redaction, configchange_verified, observed_families):
+    if not isinstance(redaction, dict) or not configchange_verified:
         return False
     if not REQUIRED_CONFIGSTATE_FAMILIES.issubset(observed_families):
         return False
@@ -809,12 +882,12 @@ def verify_redaction(verifier, configchange, configstate):
 def stop_process_group(process):
     if process.poll() is not None:
         process.wait()
-        return
+        return False
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
         process.wait()
-        return
+        return False
     try:
         process.wait(timeout=20)
     except subprocess.TimeoutExpired:
@@ -823,6 +896,8 @@ def stop_process_group(process):
         except ProcessLookupError:
             pass
         process.wait()
+        return True
+    return False
 
 
 def main(argv=None):
@@ -889,6 +964,12 @@ def main(argv=None):
         facts["logs_shipped_exporter"] = metrics["shipped"]["exporter"]
         facts["logs_ship_errors"] = metrics["ship_errors"]
         query_window_end_ns = time.time_ns()
+        # Freeze the exporter at the metrics boundary so terminal sink
+        # diagnostics are complete before the delivery outcome is classified.
+        facts["process_forced_kill"] = stop_process_group(process)
+        process = None
+        facts.update(stderr_monitor.finish())
+        stderr_monitor = None
         stage = "querying_configchange_and_configstate"
         queries = {}
         for name in PROOF_SOURCES:
@@ -936,6 +1017,15 @@ def main(argv=None):
                 facts["configchange_poll_diff_" + str(index) + "_record"] = diff["record"]
         else:
             diagnostics["configchange poll observation"] = "not_observed"
+        configchange_outcome = configchange_delivery_outcome(
+            facts["configchange_arrived"], queries["configchange"]["succeeded"],
+            poll_observation["emitted_records"], metrics["shipped"]["configchange"],
+            metrics["dropped"]["configchange"], facts["stderr_endpoint_terminal_rejection_count"],
+            facts, facts["process_forced_kill"])
+        facts["configchange_delivery_outcome"] = configchange_outcome
+        # This admits the no-loss pending case; it does not claim that the
+        # current instance's historical body was observed in Loki.
+        facts["configchange_delivery_acceptable"] = configchange_outcome in ("present", "visibility_pending")
         stage = "querying_historical_configchange_disambiguation"
         historical_query_text = '{service_name="opnsense2otel",opnsense_source="configchange"}'
         historical_start_ns = int((successor.timestamp - 3600) * 1_000_000_000)
@@ -943,14 +1033,17 @@ def main(argv=None):
         historical_query = loki_query(historical_query_text, loki_user, cap_token,
                                       historical_start_ns, historical_end_ns, extend_end=False)
         query_reports.append(("historical configchange disambiguation", historical_query_text, historical_query))
-        historical_rows = list(records(historical_query["streams"]))
-        historical_counts = historical_record_counts(historical_rows, instance)
-        facts["historical_configchange_records"] = historical_counts["total"]
-        facts["historical_configchange_records_matching_instance"] = historical_counts["matching_instance"]
-        facts["historical_configchange_records_other_instance"] = historical_counts["other_instance"]
-        facts["historical_configchange_records_without_instance"] = historical_counts["without_instance"]
+        selected_configchange = newest_delivered_configchange_instance(historical_query["streams"])
+        selected_configchange_rows = [] if selected_configchange is None else selected_configchange["rows"]
+        facts["selected_configchange_instance_label"] = (
+            "none" if selected_configchange is None else selected_configchange["instance"])
+        facts["selected_configchange_delivered_bodies"] = len(selected_configchange_rows)
+        facts["selected_configchange_delivered_instances"] = (
+            0 if selected_configchange is None else selected_configchange["instances"])
+        facts["historical_configchange_delivered_records"] = (
+            0 if selected_configchange is None else selected_configchange["records"])
         stage = "verifying_delivered_redaction"
-        redaction = verify_redaction(args.redaction_verifier, configchange, configstate)
+        redaction = verify_redaction(args.redaction_verifier, selected_configchange_rows, configstate)
         if redaction is None:
             diagnostics["redaction verifier"] = "unavailable_or_invalid"
             facts["delivered_bodies_redacted"] = False
@@ -960,7 +1053,7 @@ def main(argv=None):
             facts["configchange_sensitive_elements"] = redaction["configchange_sensitive_elements"]
             facts["configstate_sensitive_keys"] = redaction["configstate_sensitive_keys"]
             facts["delivered_bodies_redacted"] = redaction_assertion_passes(
-                redaction, facts["configchange_arrived"], families)
+                redaction, bool(selected_configchange_rows), families)
         facts["proof_completed"] = True
         stage = "complete"
     except ProofFailure as err:
@@ -991,11 +1084,16 @@ def main(argv=None):
         print("- query " + name + ": " + query + " start=" + str(start) + " end=" + str(end))
     for name in sorted(facts):
         value = facts[name]
-        print("- " + name.replace("_", " ") + ": " + (("yes" if value else "no") if isinstance(value, bool) else str(value)))
+        rendered_value = (("yes" if value else "no") if isinstance(value, bool) else str(value))
+        if name == "configchange_delivery_outcome":
+            rendered_value = rendered_value.replace("_", "-")
+        if name == "selected_configchange_instance_label" and rendered_value != "none":
+            rendered_value = "`" + rendered_value + "`"
+        print("- " + name.replace("_", " ") + ": " + rendered_value)
     for name in sorted(diagnostics):
         print("- " + name + " query result: " + diagnostics[name])
     return 0 if all(facts.get(name) for name in (
-        "proof_completed", "configchange_arrived", "configstate_families_arrived",
+        "proof_completed", "configchange_delivery_acceptable", "configstate_families_arrived",
         "configchange_poll_observation_available", "delivered_bodies_redacted")) else 1
 
 

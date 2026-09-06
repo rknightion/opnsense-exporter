@@ -89,6 +89,23 @@ Then follow the receiver-specific checklist:
   **Reporting → NetFlow** export target, UDP reachability, and template/decoder
   counters.
 
+## A replayed config revision is not in Grafana yet
+
+`configchange` records retain the revision's original timestamp. A replay older than
+Loki's default three-hour `query_ingesters_within` window is read from the store, not
+the ingesters, and can remain absent until the chunk flushes. The default idle flush
+is 30 minutes and the maximum chunk age is two hours, so allow about two hours in
+practice. These are Loki defaults; the tenant may differ. See Loki's
+[querier](https://grafana.com/docs/loki/latest/configure/#querier) and
+[ingester](https://grafana.com/docs/loki/latest/configure/#ingester) configuration.
+
+If the retained timestamp is older than the default seven-day
+`reject_old_samples_max_age` limit, Loki rejects it when old-sample rejection is
+enabled. The exporter records the OTLP partial-success result in
+`opnsense_exporter_logs_dropped_total{source="configchange",reason="rejected"}`.
+The actual tenant limit may differ; this page does not assume one. See
+[Loki limits_config](https://grafana.com/docs/loki/latest/configure/#limits_config).
+
 ## Data is stale or collector polls are slow
 
 Prometheus scrapes replay an in-memory snapshot; they do not fan out to OPNsense.

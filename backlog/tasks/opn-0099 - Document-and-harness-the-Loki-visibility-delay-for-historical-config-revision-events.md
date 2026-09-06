@@ -3,9 +3,11 @@ id: OPN-0099
 title: >-
   Document and harness the Loki visibility delay for historical config revision
   events
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-09-05 22:47'
+updated_date: '2026-09-06 10:55'
 labels:
   - docs
   - testbed
@@ -33,3 +35,15 @@ OPN-0060 resolution 2026-09-05. Three proof runs each shipped a configchange rec
 - [ ] #1 just check
 - [ ] #2 just gen (if any generated artifact changed) and the diff committed
 <!-- DOD:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Wave 9: offline harness lane implements present/visibility-pending/absent outcomes with fail-first genuine-drop regressions and verifies delivered bodies of the most recent flushed instance using the shared redaction vocabulary; document sourced Loki defaults. Root lands the fix after OPN-0033, takes up 10800 hold, dispatches once at the fix SHA, records counts and retains hold for OPN-0057.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Wave 9 source verification: 35 offline proof tests pass. Three outcomes are present (exit 0 with other assertions passing), visibility-pending (exit 0 only with emitted/shipped records, zero drops and complete shutdown diagnostics plus delivered redaction proof), and genuine loss/query failure (exit 1). New shutdown-abandonment regression failed before its fix with AssertionError: 0 != 1. Original genuine-drop subcases were verified failing against isolated HEAD after initial implementation, not claimed to have been written first. Sourced Loki defaults are documented. CodeRabbit source slice completed; its older-Python timestamp parsing suggestion is left because the dispatched ubuntu-latest proof runs modern Python and invalid timestamp fallback retains numeric workflow-run ordering. Live dispatch remains pending at the fix SHA.
+<!-- SECTION:NOTES:END -->
