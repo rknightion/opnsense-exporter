@@ -1,5 +1,37 @@
 # Changelog
 
+## [5.1.0](https://github.com/rknightion/opnsense2otel/compare/v5.0.0...v5.1.0) (2026-09-06)
+
+
+### Features
+
+* **logs:** add --log.console=quiet so self-logs over OTLP are the only copy ([6bab250](https://github.com/rknightion/opnsense2otel/commit/6bab25008f9cb7715564ec2ee0d06d3ececd96f7))
+* **syslog:** classify captured events and preserve known pass-through ([22a903c](https://github.com/rknightion/opnsense2otel/commit/22a903c4bde60cf0d21ce9e85dfb6e994dd50971))
+
+
+### Bug Fixes
+
+* **geoip:** skip the startup fetch when the database was checked inside the interval ([015a2f1](https://github.com/rknightion/opnsense2otel/commit/015a2f106e4784028ea2258baa001b36b934d726))
+
+
+### Miscellaneous
+
+* **deps:** update anthropics/claude-code-action action to v1.0.217 ([#738](https://github.com/rknightion/opnsense2otel/issues/738)) ([ef8805f](https://github.com/rknightion/opnsense2otel/commit/ef8805f5de5f72953dc96cf1289d52136d44befc))
+* **deps:** update rknightion/.github action to v1.21.0 ([#739](https://github.com/rknightion/opnsense2otel/issues/739)) ([78100f9](https://github.com/rknightion/opnsense2otel/commit/78100f9ca981a0969c2ed0d042b7cb340cc07ec1))
+
+
+### Documentation
+
+* **agents:** name the OTEL_EXPORTER_OTLP_* exceptions to the OPN2OTEL_ prefix rule ([df0fffc](https://github.com/rknightion/opnsense2otel/commit/df0fffcda406925b25a693dbe07ad084cc13d66a))
+* **agents:** opnsense2otel to AGENTS.md standard ([e7eda18](https://github.com/rknightion/opnsense2otel/commit/e7eda180fef0883b74e02ebfd0afb6b1b484f9dc))
+* **agents:** restore docgen-owned sub-collector count in AGENTS.md ([59e68e5](https://github.com/rknightion/opnsense2otel/commit/59e68e563695227f6ad3ed8169fcb6f1b2a4fdd6))
+* **agents:** review fix - restore the [#656](https://github.com/rknightion/opnsense2otel/issues/656) issue-number boundary ([6406f35](https://github.com/rknightion/opnsense2otel/commit/6406f359195b2a1768933d682ba0d2269fdd4106))
+* **backlog:** close OPN-0102 and OPN-0103 with their landing SHAs ([e63a8ce](https://github.com/rknightion/opnsense2otel/commit/e63a8ce7453cea3c3d5b53ac28fe5a968fc1a452))
+* **backlog:** file OPN-0102 geoip startup fetch, OPN-0103 console quiet mode, OPN-0104 capture-mount retirement ([c59f2f0](https://github.com/rknightion/opnsense2otel/commit/c59f2f0ffb843386fc0f43fd3720a61e8b3b95f1))
+* **backlog:** record OPN-0104 live parser proof and observation window ([09a0bf5](https://github.com/rknightion/opnsense2otel/commit/09a0bf5236bf0641432a27a714b472f4d1d5436a))
+* review Camden captures for parser coverage (OPN-0104) ([fd34d78](https://github.com/rknightion/opnsense2otel/commit/fd34d78094e7dd26cf6517e76dcfccfd608f75bd))
+* sync fan-out protocol from agent-docs ad7abd2 ([75fcdeb](https://github.com/rknightion/opnsense2otel/commit/75fcdeb73564b9764f2145559a9c7e77d4cd66ed))
+
 ## [5.0.0](https://github.com/rknightion/opnsense2otel/compare/v4.2.0...v5.0.0) (2026-09-06)
 
 
