@@ -35,7 +35,7 @@ This page provides a summary of all collectors in opnsense2otel.
 | Gateway Groups | gateway_groups | 1 | Enabled | --exporter.disable-gateway-groups | OPN2OTEL_DISABLE_GATEWAY_GROUPS |
 | Gateways | gateways | 20 | Enabled | --exporter.disable-gateways | OPN2OTEL_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPN2OTEL_ENABLE_HASYNC |
-| HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPN2OTEL_DISABLE_HAPROXY |
+| HAProxy | haproxy | 57 | Enabled | --exporter.disable-haproxy | OPN2OTEL_DISABLE_HAPROXY |
 | Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPN2OTEL_DISABLE_HARDWARE |
 | Host Discovery | hostdiscovery | 2 | Enabled | --exporter.disable-hostdiscovery | OPN2OTEL_DISABLE_HOSTDISCOVERY |
 | IDS/IPS (Suricata) | ids | 9 | Enabled | --exporter.disable-ids | OPN2OTEL_DISABLE_IDS |

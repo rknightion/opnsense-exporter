@@ -98,7 +98,7 @@ func TestFetchHAProxyStats_Normal(t *testing.T) {
 	}
 
 	srv := data.Servers[0]
-	if srv.Backend != "web_backend" || srv.Name != "srv1" || srv.StatusUp != 1 ||
+	if srv.Backend != "web_backend" || srv.Name != "srv1" || srv.Status != "UP" || srv.StatusUp != 1 ||
 		srv.CheckFailures != 2 || srv.DowntimeSeconds != 120 || srv.Weight != 100 {
 		t.Errorf("server parsed wrong: %+v", srv)
 	}

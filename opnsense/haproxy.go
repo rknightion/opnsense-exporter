@@ -112,6 +112,7 @@ type HAProxyBackend struct {
 type HAProxyServer struct {
 	Backend          string
 	Name             string
+	Status           string
 	StatusUp         float64
 	CurrentSessions  float64
 	SessionsTotal    float64
@@ -346,6 +347,7 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 			data.Servers = append(data.Servers, HAProxyServer{
 				Backend:                row.PXName,
 				Name:                   row.SVName,
+				Status:                 row.Status,
 				StatusUp:               haproxyStatusUp(row.Status),
 				CurrentSessions:        safeParseFloat(row.Scur),
 				SessionsTotal:          safeParseFloat(row.Stot),

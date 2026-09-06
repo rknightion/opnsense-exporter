@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense2otel/v4/opnsense"
@@ -39,6 +40,7 @@ type haproxyCollector struct {
 	backendBackupSrv  *prometheus.Desc
 	backendResponses  *prometheus.Desc
 	serverStatus      *prometheus.Desc
+	serverMaintenance *prometheus.Desc
 	serverCurrSess    *prometheus.Desc
 	serverSessTotal   *prometheus.Desc
 	serverBytesIn     *prometheus.Desc
@@ -153,6 +155,8 @@ func (c *haproxyCollector) Register(namespace, instanceLabel string, log *slog.L
 
 	c.serverStatus = buildPrometheusDesc(c.subsystem, "server_status",
 		"HAProxy server status (1 = UP, 0 = otherwise)", srvLabels)
+	c.serverMaintenance = buildPrometheusDesc(c.subsystem, "server_maintenance",
+		"Whether this HAProxy server is in maintenance (1 = status begins with MAINT, 0 = otherwise)", srvLabels)
 	c.serverCurrSess = buildPrometheusDesc(c.subsystem, "server_current_sessions",
 		"Current sessions on this server", srvLabels)
 	c.serverSessTotal = buildPrometheusDesc(c.subsystem, "server_sessions_total",
@@ -234,7 +238,7 @@ func (c *haproxyCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.backendConnErrors, c.backendRespErrors, c.backendRetries,
 		c.backendRedispatch, c.backendActiveSrv, c.backendBackupSrv,
 		c.backendResponses,
-		c.serverStatus, c.serverCurrSess, c.serverSessTotal,
+		c.serverStatus, c.serverMaintenance, c.serverCurrSess, c.serverSessTotal,
 		c.serverBytesIn, c.serverBytesOut, c.serverQueue,
 		c.serverConnErrors, c.serverRespErrors, c.serverCheckFail,
 		c.serverDowntime, c.serverWeight,
@@ -347,6 +351,12 @@ func (c *haproxyCollector) Update(_ context.Context, client *opnsense.Client, ch
 
 	for _, srv := range data.Servers {
 		ch <- prometheus.MustNewConstMetric(c.serverStatus, prometheus.GaugeValue, srv.StatusUp, srv.Backend, srv.Name, c.instance)
+		maintenance := 0.0
+		if strings.HasPrefix(srv.Status, "MAINT") {
+			maintenance = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(c.serverMaintenance, prometheus.GaugeValue,
+			maintenance, srv.Backend, srv.Name, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.serverCurrSess, prometheus.GaugeValue, srv.CurrentSessions, srv.Backend, srv.Name, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.serverSessTotal, prometheus.CounterValue, srv.SessionsTotal, srv.Backend, srv.Name, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.serverBytesIn, prometheus.CounterValue, srv.BytesIn, srv.Backend, srv.Name, c.instance)

@@ -434,6 +434,8 @@ TAG_QUERIES = {
 # neither annotated nor listed here, so a new one is a decision rather than an
 # oversight.
 NOT_ANNOTATED: dict = {
+    "opnsense_haproxy_server_maintenance":
+        "Per-server maintenance state is displayed as a state timeline; routine state samples are not timestamp-valued events.",
     "opnsense_captiveportal_voucher_group_next_expiry_timestamp_seconds":
         "Scheduled voucher expiry is a future deadline, not an observed event; shown in the portal table.",
     "opnsense_certificate_valid_from_timestamp_seconds":

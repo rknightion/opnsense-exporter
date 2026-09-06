@@ -266,6 +266,13 @@ def build(b: Builder):
         UPDOWN, w=24, h=8,
         desc="Individual server status over time (1 = UP, 0 = DOWN/MAINT/DRAIN).",
     )
+    srv_maintenance = b.statetimeline(
+        "Server Maintenance",
+        [(sel("opnsense_haproxy_server_maintenance"), "{{backend}}/{{server}}")],
+        {"0": ("Not in maintenance", "green"), "1": ("Maintenance", "orange")},
+        w=24, h=8,
+        desc="HAProxy server maintenance over time (1 = status begins with MAINT, 0 = otherwise).",
+    )
     srv_table = b.table(
         "Server Details",
         [
@@ -398,7 +405,7 @@ def build(b: Builder):
                be_latency, be_selected_aborts],
               present="has_haproxy"),
         b.row("Server Details",
-              [srv_status, srv_table, srv_sess_rate, srv_bytes, srv_errors,
+              [srv_status, srv_maintenance, srv_table, srv_sess_rate, srv_bytes, srv_errors,
                srv_latency, srv_health_transitions],
               present="has_haproxy"),
         b.row("Stick Tables",

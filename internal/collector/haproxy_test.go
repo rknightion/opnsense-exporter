@@ -45,10 +45,10 @@ func TestHAProxyCollector_Update_Normal(t *testing.T) {
 	// frontend: status + scur + stot + bin + bout + ereq + dreq + 6 codes = 13
 	// backend:  status + scur + stot + bin + bout + qcur + econ + eresp +
 	//           wretr + wredis + act + bck + 6 codes = 18
-	// server:   status + scur + stot + bin + bout + qcur + econ + eresp +
-	//           chkfail + downtime + weight = 11
+	// server:   status + maintenance + scur + stot + bin + bout + qcur + econ + eresp +
+	//           chkfail + downtime + weight = 12
 	// service_running = 1
-	expected := 5 + 13 + 18 + 11 + 1
+	expected := 5 + 13 + 18 + 12 + 1
 	if len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 	}
@@ -271,5 +271,65 @@ func TestHAProxyCollector_Update_CheckDownTransition(t *testing.T) {
 		if getMetricValue(m) != 12 {
 			t.Errorf("expected server_last_state_change_seconds=12, got %v", getMetricValue(m))
 		}
+	}
+}
+
+// TestHAProxyCollector_Update_ServerMaintenance keeps the maintenance signal
+// tied to the raw status field from show stat. HAProxy emits both ordinary and
+// qualified MAINT statuses, including the resolution form; all must map to 1,
+// while UP and DOWN remain 0.
+func TestHAProxyCollector_Update_ServerMaintenance(t *testing.T) {
+	const counters = `[
+  {"pxname":"bk-maint","svname":"srv-maint","status":"MAINT","type":"2"},
+  {"pxname":"bk-via","svname":"srv-via","status":"MAINT (via bk-via/srv-maint)","type":"2"},
+  {"pxname":"bk-resolution","svname":"srv-resolution","status":"MAINT (resolution)","type":"2"},
+  {"pxname":"bk-up","svname":"srv-up","status":"UP","type":"2"},
+  {"pxname":"bk-down","svname":"srv-down","status":"DOWN","type":"2"}
+]`
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/haproxy/statistics/counters", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(counters))
+	})
+	mux.HandleFunc("/api/haproxy/statistics/info", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`null`))
+	})
+	mux.HandleFunc("/api/haproxy/service/status", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &haproxyCollector{subsystem: HAProxySubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	byName := metricsByName(t, collectMetrics(t, c, client))
+	maintenance := byName["opnsense_haproxy_server_maintenance"]
+	want := map[string]float64{
+		"bk-maint/srv-maint":           1,
+		"bk-via/srv-via":               1,
+		"bk-resolution/srv-resolution": 1,
+		"bk-up/srv-up":                 0,
+		"bk-down/srv-down":             0,
+	}
+	if len(maintenance) != len(want) {
+		t.Fatalf("expected %d server_maintenance series, got %d", len(want), len(maintenance))
+	}
+	for _, metric := range maintenance {
+		labels := getMetricLabels(metric)
+		key := labels["backend"] + "/" + labels["server"]
+		value, ok := want[key]
+		if !ok {
+			t.Errorf("unexpected server_maintenance labels: %v", labels)
+			continue
+		}
+		if got := getMetricValue(metric); got != value {
+			t.Errorf("server_maintenance{%v} = %v, want %v", labels, got, value)
+		}
+		delete(want, key)
+	}
+	if len(want) != 0 {
+		t.Errorf("missing server_maintenance labels: %v", want)
 	}
 }

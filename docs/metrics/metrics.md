@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 1047
-- **Gauges:** 698
+- **Total metrics:** 1048
+- **Gauges:** 699
 - **Counters:** 349
 
 ## General
@@ -562,6 +562,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_haproxy_backend_backup_servers | Gauge | backend | Number of backup servers on this backend | --exporter.disable-haproxy |
 | opnsense_haproxy_backend_http_responses_total | Counter | backend, code | Cumulative HTTP responses by status code class on this backend | --exporter.disable-haproxy |
 | opnsense_haproxy_server_status | Gauge | backend, server | HAProxy server status (1 = UP, 0 = otherwise) | --exporter.disable-haproxy |
+| opnsense_haproxy_server_maintenance | Gauge | backend, server | Whether this HAProxy server is in maintenance (1 = status begins with MAINT, 0 = otherwise) | --exporter.disable-haproxy |
 | opnsense_haproxy_server_current_sessions | Gauge | backend, server | Current sessions on this server | --exporter.disable-haproxy |
 | opnsense_haproxy_server_sessions_total | Counter | backend, server | Cumulative sessions on this server | --exporter.disable-haproxy |
 | opnsense_haproxy_server_bytes_in_total | Counter | backend, server | Cumulative bytes received by this server | --exporter.disable-haproxy |

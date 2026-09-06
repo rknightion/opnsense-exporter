@@ -27,7 +27,7 @@ all four telemetry paths off the firewall, plus a local console:
 | **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so you can answer "how much traffic, which interface, which direction, which application category" from Prometheus for years, instead of scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense2otel/flow/) |
 | **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense2otel/architecture/) |
 
-Underneath that: 1047 metrics across 82 collectors covering firewall and PF statistics,
+Underneath that: 1048 metrics across 82 collectors covering firewall and PF statistics,
 interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq, ISC), Unbound DNS,
 certificates and ACME, hardware temperatures, SMART disk health, system resources and more.
 Collection is decoupled from scraping: each collector polls on its own volatility tier and
@@ -124,7 +124,7 @@ The generated flag and collector reference lives in the
 > schema-v1 build, by design. Note that Grafana 12.4 *accepts* this file with HTTP 200 and then
 > renders an empty dashboard with no error at all - that is the version, not a broken export.
 
-Two cross-linked dynamic dashboards cover all 1090 metrics across 57 tabs, auto-hiding tabs and rows
+Two cross-linked dynamic dashboards cover all 1091 metrics across 57 tabs, auto-hiding tabs and rows
 for collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) for the firewall itself and
 [`grafana/dashboard-health.json`](./grafana/dashboard-health.json) for the exporter's own health,
@@ -156,7 +156,7 @@ silent when the plugin is absent rather than erroring. See
 |---|---|
 | [Getting started](https://m7kni.io/opnsense2otel/getting-started/) | API key, first deploy, verifying metrics |
 | [Configuration](https://m7kni.io/opnsense2otel/configuration/) | Every flag and environment variable |
-| [Metrics reference](https://m7kni.io/opnsense2otel/metrics/metrics/) | All 1047 metrics with types, labels and PromQL |
+| [Metrics reference](https://m7kni.io/opnsense2otel/metrics/metrics/) | All 1048 metrics with types, labels and PromQL |
 | [Collectors](https://m7kni.io/opnsense2otel/collectors/) | What each of the 82 collectors covers |
 | [Deployment](https://m7kni.io/opnsense2otel/deployment/) | Docker, Kubernetes, systemd |
 | [Log shipping](https://m7kni.io/opnsense2otel/log-shipping/) | Syslog, Zenarmor, NetFlow, Loki |
