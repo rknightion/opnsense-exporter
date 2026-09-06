@@ -3,7 +3,7 @@ id: doc-0004
 title: Camden capture parser and pass-through review - OPN-0104
 type: other
 created_date: '2026-09-06 17:28'
-updated_date: '2026-09-06 17:30'
+updated_date: '2026-09-06 18:25'
 ---
 ## Scope and evidence
 
@@ -21,7 +21,7 @@ Priority is operational value, not captured volume. These are implementation can
 
 1. **dpinger alarm coverage:** seven captured transitions remain generic because `loss` and/or the `ALERT:` prefix are unsupported. Model the observed none/loss/down edges while retaining the previous/current states and distinguishing loss-to-down from recovery. One sendto-error line is a separate diagnostic candidate. Existing comments saying these transitions lack capture evidence are now stale.
 2. **Explicit failures:** cron bad-minute errors; configd timeout/disconnect/socket failures; configctl socket failure; lighttpd backend-connect/TLS errors; syslog-ng destination connection refusal; DHCP packet send/address-removal failures; lldpd buffer exhaustion; firewall GeoIP download failure; backup-provider connection failure. These must stay visible and must not receive a blanket known-benign exemption.
-3. **DNS transactions:** 418 Unbound query and 312 reply examples contain query name/type/class, client and reply outcome/timing. Dnsmasq query/config-answer variants also exist. Useful structured logs, but no DNS-name metric labels and no assumption that query plus reply represents two requests. Unbound's current local-zone parser does not cover these grammars.
+3. **DNS transactions:** 418 Unbound query and 312 reply examples contain query name/type/class, client and reply outcome/timing. Dnsmasq query/config-answer variants also exist. Useful structured logs, but no DNS-name metric labels and no assumption that query plus reply represents two requests. Correction after implementation review: Unbound query/reply parsing already exists behind the disabled-by-default per-query opt-in. The baseline replay used that default; these 730 records are not missing parser coverage.
 4. **Network and clock lifecycle:** kernel link up/down, OPNsense interface attach/detach and routing changes, selected devd IFNET notifications, DHCPv6 prefix release/restart, and ntpd unsynchronised/synchronised/peer-state events. Avoid counting the same link event from kernel, devd and opnsense three times.
 5. **Change audit:** package upgrades from pkg/pkg-static, firmware-update audit and requested reboot. Package old/new versions are useful log attributes; a reboot request is not evidence that reboot completed.
 6. **PPP diagnostics:** LCP/IPCP/IPv6CP state changes and CHAP outcome shapes are potentially useful, but option dumps and CHAP peer-supplied text are not reliable tunnel outcomes. In particular a text string mentioning an attack is carried inside a successful CHAP exchange; do not infer an attack event from its wording.
@@ -106,3 +106,16 @@ Read-only live metrics on 2026-09-06 showed 36,129 accepted NetFlow datagrams an
 The shared capture cap is the default 256 MiB: no environment or command-line override was configured. The retained tree uses about 4.6 MiB. Keep NetFlow unidentified capture: it is bounded, has headroom and remains useful for future template changes. No evidence justifies a new NetFlow decoder or a never-decode entry.
 
 OPN-0104 must remain open. The recent week contains more than dhclient, and the historical corpus contains substantive parser candidates. A quiet newest file does not prove coverage. Before retirement, implement or explicitly settle the remaining candidates, then observe a full week with no new unclassified shapes. Keeping NetFlow capture also requires keeping its shared directory and mount; retire only the syslog/Zenarmor enable flags unless NetFlow gets an explicitly configured replacement destination. Archive retained files rather than deleting them. The existing acceptance criterion that removes the shared mount needs reconciling with retained NetFlow capture before deployment.
+
+
+## Implemented dispositions (2026-09-06)
+
+The preceding census is the historical baseline, not the current implementation. Supplemental program-scoped parsers now cover explicit service failures, DNSmasq transactions, gateway loss/ALERT transitions, interface/routing/clock events, DHCPv6 and PPP diagnostics, package/firmware/reboot audit and API authentication failures. New supplemental events are log-only and do not create lease, session, authentication or CARP counters. Alarm-to-alarm gateway transitions emit alarm_changed rather than recovery.
+
+Complete, anchored known-pass-through grammars now implement the informational families above with code-defined reasons. They preserve shipping and enrichment while excluding those records from debug capture and unknown-coverage counts. No whole-program exemptions or capture-normalisation allowlist was added. Unbound query/reply opt-in remains unchanged; complete supported-but-disabled messages are known with reason unbound_per_query_disabled, while malformed/new shapes remain unknown. dhclient script notices are known; both packet diagnostics are structured.
+
+API supplied-key suffixes are removed before envelope parsing, capture, enrichment and shipping, including multiline or malformed input. Fixtures use synthetic values; private payloads are not committed.
+
+Production-ingress replay classified the original 4,082 records as 1,429 parsed and 2,653 known, and the refreshed 4,093 records as 1,429 parsed and 2,664 known. Every record shipped. Each replay captured exactly one deliberately unknown positive control and no corpus record. Private evidence: corpus-ingress-evidence.log and archived corpus_ingress_scratch_test.go in the evidence directory above. This proves corpus disposition and ingress behaviour; deployment and backend read-back are recorded separately in OPN-0104.
+
+No retained NetFlow/Zenarmor unknown payload required a decoder. Their existing capture modes and the shared mount remain enabled. OPN-0104 stays open for observation; archive the previous corpus outside the active tree when deploying.

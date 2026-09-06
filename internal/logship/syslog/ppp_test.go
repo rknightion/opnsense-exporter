@@ -258,11 +258,10 @@ func TestPPPIPv6InterfaceIdentifierIsNotAnAddress(t *testing.T) {
 	assertNoAttrs(t, rec, "ppp.event", "ppp.address.local", "ppp.address.peer")
 }
 
-// TestPPPUnmatchedShapesDegradeToGeneric covers the mpd chatter this parser
-// deliberately does not model: negotiation trivia, interface renames, keepalive
-// pings, and the CHAP authentication lines (see the privacy note in ppp.go). None of
-// these should ever produce a ppp.* attribute.
-func TestPPPUnmatchedShapesDegradeToGeneric(t *testing.T) {
+// Diagnostic protocol observations and known negotiation details are distinct
+// from the session/lease events the original PPP parser produces. In particular,
+// CHAP peer text must not be turned into an outcome or identity attribute.
+func TestPPPDiagnosticsDoNotBecomeSessionEvents(t *testing.T) {
 	tests := []string{
 		`PPPoE: rec'd ACNAME "acc-aln3.elh"`,
 		"[opt7]     198.51.100.187 is OK",
@@ -305,14 +304,17 @@ func TestPPPUnmatchedShapesDegradeToGeneric(t *testing.T) {
 	for _, msg := range tests {
 		t.Run(strings.ReplaceAll(msg, " ", "_"), func(t *testing.T) {
 			env := pppEnv(t, msg)
-			rec, parsed := buildRecord(env, nil, func(string) {})
-			if parsed {
-				t.Fatalf("buildRecord(%q) parsed an unmodelled ppp shape", msg)
+			if _, parsed := parsePPP(env, nil, nil); parsed {
+				t.Fatal("primary PPP parser claimed a diagnostic as a session event")
+			}
+			rec, _ := buildRecord(env, nil, func(string) {})
+			if observeDerived(&fakeSink{}, "ppp", rec.Attributes) {
+				t.Fatal("PPP diagnostic derived a metric")
 			}
 			if rec.Body != msg {
 				t.Errorf("Body = %q, want generic body %q", rec.Body, msg)
 			}
-			assertNoAttrs(t, rec, "ppp.event", "ppp.link", "ppp.bundle", "ppp.protocol",
+			assertNoAttrs(t, rec, "ppp.event",
 				"ppp.state.previous", "ppp.state.current", "ppp.retry_attempt",
 				"ppp.retry_delay_seconds", "ppp.links_up", "ppp.bandwidth_bps",
 				"ppp.address.local", "ppp.address.peer", "ppp.interface",

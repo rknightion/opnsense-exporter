@@ -227,6 +227,7 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 	if emit == nil {
 		return // not running yet; drop rather than panic
 	}
+	line = []byte(redactAPIAuthFailure(string(line)))
 	now := time.Now()
 	env, err := ParseEnvelope(line, now)
 	if err != nil {
@@ -280,8 +281,10 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 	}
 	_, parserDispatched := parserFor(env.Program)
 	rec, parsed := buildRecord(env, s.cache.Load(), s.miss)
-	if !parsed && s.cap != nil {
-		// A line whose program has no parser, or whose parser could not match it: exactly
+	unknown := !parsed && rec.Attributes["syslog.parse_status"] != "known"
+	if unknown && s.cap != nil {
+		// A line no primary/supplemental parser or known-pass-through grammar
+		// recognised: exactly
 		// the "signal we do not model" the debug capture exists to surface. Captured
 		// BEFORE any sample drop so nothing an operator might want to model is lost.
 		//
@@ -303,7 +306,7 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 				"raw":       string(line),
 			})
 	}
-	if !parsed && parserDispatched {
+	if unknown && (parserDispatched || len(capturedRules[env.Program]) > 0) {
 		if s.unparsed != nil {
 			s.unparsed(subsystemFor(env.Program))
 		} else {

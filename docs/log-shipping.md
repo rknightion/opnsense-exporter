@@ -649,7 +649,7 @@ parsed, shipped stream:
 | `zenarmor` | `unhandled_endpoint` | an ES route the receiver does not implement (method, path, headers, bounded body) |
 | `zenarmor` | `unknown_family` | a bulk document addressed to an index whose family is not recognised |
 | `zenarmor` | `parse_error` | a document that would not parse (still shipped with its raw body) |
-| `syslog` | `unparsed` | a line whose program has no parser, whose parser did not match, or whose envelope would not parse (still shipped as a generic record) |
+| `syslog` | `unparsed` | a line whose envelope would not parse, or whose body matches neither a parser nor a documented known-pass-through grammar (still shipped as a generic record) |
 
 Enable it with a shared directory plus a per-receiver toggle:
 
@@ -659,6 +659,22 @@ Enable it with a shared directory plus a per-receiver toggle:
 | `--logs.debug-capture.max-bytes` | `OPN2OTEL_LOGS_DEBUG_CAPTURE_MAX_BYTES` | `256MiB` |
 | `--logs.zenarmor.debug-capture` | `OPN2OTEL_LOGS_ZENARMOR_DEBUG_CAPTURE` | `false` |
 | `--logs.syslog.debug-capture` | `OPN2OTEL_LOGS_SYSLOG_DEBUG_CAPTURE` | `false` |
+
+Parsed-envelope records carry `syslog.parse_status`: `parsed`, `known` or `unknown`.
+`known` records also carry a code-defined `syslog.parse_reason`. Known pass-through
+preserves the body, envelope and enrichment but omits debug capture and the
+parser-coverage miss counter. It does not count as a successful parse or a dropped
+log. Rules match a complete grammar under a specific program; a new message from
+that program still enters capture. A supported Unbound query/reply grammar with
+its per-query opt-in disabled is `known` with reason `unbound_per_query_disabled`;
+malformed query/reply messages remain `unknown`.
+
+The captured operational parsers cover gateway loss transitions, DNSmasq questions
+and answers, interface and clock events, package/firmware audit, PPP protocol
+states and explicit service failures. New diagnostic events use `syslog.event`
+and log attributes without deriving additional metrics. The API authentication
+failure diagnostic has its supplied-key suffix redacted before envelope parsing,
+shipping and capture, including embedded newlines and malformed envelopes.
 
 A per-receiver toggle with no `--logs.debug-capture.dir` set is a startup error - it
 would read as "on" but write nowhere. When Zenarmor capture is on, the receiver's
@@ -680,7 +696,7 @@ do **not** carry reusable authentication credentials: `Authorization`,
 `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` header
 values are redacted to a fixed placeholder before a captured request ever reaches
 disk, whatever receiver or auth scheme captured it. Point the directory at a writable
-bind mount and remove the captures once you are done with them. For the containerised
+bind mount and archive the captures once you are done with them. For the containerised
 exporter (runs as UID/GID `65532` nonroot):
 
 ```yaml

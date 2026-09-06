@@ -31,8 +31,10 @@ func BuildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) l
 // generic record because its program has no registered parser OR its parser could
 // not make sense of the line. The debug-capture path uses it to recognise a line
 // the receiver does not model (#330); a false here is exactly a "we saw something we
-// cannot parse" signal.
+// cannot parse" signal. Known pass-through remains false; syslog.parse_status
+// distinguishes it from an unknown grammar without claiming parser coverage.
 func buildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) (logship.Record, bool) {
+	env.Message = redactAPIAuthFailure(env.Message)
 	if p, ok := parserFor(env.Program); ok {
 		if rec, ok := p(env, snap, miss); ok {
 			// Body enrichment is off for a parsed record by default and opt-in per parser:
@@ -41,13 +43,23 @@ func buildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) (
 			// openvpn — #406) would otherwise silently LOSE the peer.* attributes its
 			// program's lines carried while they were generic. See bodyEnrichedPrograms.
 			addCommon(&rec, env, snap, parserEnrichesBody(env.Program))
+			rec.Attributes["syslog.parse_status"] = "parsed"
 			return rec, true
 		}
 		// A line the parser could not make sense of degrades to generic, carrying the
 		// raw body -- never a drop.
 	}
+	if rec, ok := parseCapturedRecord(env, snap); ok {
+		rec.Attributes["syslog.parse_status"] = "parsed"
+		return rec, true
+	}
 	rec := genericRecord(env)
 	addCommon(&rec, env, snap, true)
+	rec.Attributes["syslog.parse_status"] = "unknown"
+	if reason := knownPassThrough(env); reason != "" {
+		rec.Attributes["syslog.parse_status"] = "known"
+		rec.Attributes["syslog.parse_reason"] = reason
+	}
 	return rec, false
 }
 

@@ -354,17 +354,14 @@ func TestObserveDerived_CARP(t *testing.T) {
 	}
 }
 
-// An unrelated kernel line reaches observeDerived as a GENERIC record (the family is
-// now familyCARP for every kernel line, so the family lookup succeeds). It must not
+// An unrelated kernel line may have its own structured diagnostic (OPN-0104). It must not
 // be counted: carp.event is absent, and counting a blank tuple would both invent a
 // series and — via sampleKeep — make the line eligible for sampling when nothing
 // captured its total.
 func TestObserveDerived_CARP_DoesNotCountUnrelatedKernelLines(t *testing.T) {
 	env := carpEnv(t, "<6>[369283] vtnet2: link state changed to DOWN")
-	rec, parsed := buildRecord(env, nil, func(string) {})
-	if parsed {
-		t.Fatal("buildRecord structured an unrelated kernel line")
-	}
+	rec, _ := buildRecord(env, nil, func(string) {})
+	assertAttrs(t, rec, map[string]string{"syslog.event": "interface_link_changed"})
 
 	sink := &fakeSink{}
 	if observeDerived(sink, "kernel", rec.Attributes) {
@@ -452,11 +449,11 @@ func TestCARPUnrelatedKernelLinesAreNotClaimed(t *testing.T) {
 				t.Fatalf("parseCARP(%q) CLAIMED a line that is not one of the two captured CARP shapes", msg)
 			}
 
-			// And end to end: it must still reach the generic record it has always
-			// shipped as, body verbatim, with no carp.* attribute anywhere on it.
-			rec, parsed := buildRecord(env, nil, func(string) {})
-			if parsed {
-				t.Fatalf("buildRecord(%q) reported a structured parse", msg)
+			// Other kernel diagnostics may parse independently, but no CARP
+			// attributes or metric may be inferred from them.
+			rec, _ := buildRecord(env, nil, func(string) {})
+			if observeDerived(&fakeSink{}, "kernel", rec.Attributes) {
+				t.Fatal("unrelated kernel line derived a metric")
 			}
 			if rec.Body != msg {
 				t.Errorf("Body = %q, want generic body %q", rec.Body, msg)
